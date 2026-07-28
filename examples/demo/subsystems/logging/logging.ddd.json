@@ -1,0 +1,9 @@
+{
+  "project": {
+    "name": "Logging",
+    "description": "Sub project of its own, developed by a separate team",
+    "includes": [
+      "event_logger.ddd.json"
+    ]
+  }
+}

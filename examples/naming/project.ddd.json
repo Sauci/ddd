@@ -1,0 +1,10 @@
+{
+  "project": {
+    "name": "NamedDevice",
+    "description": "A project whose names follow a convention, checked on every run",
+    "naming": "convention.ddd.json",
+    "includes": [
+      "sensing.ddd.json"
+    ]
+  }
+}

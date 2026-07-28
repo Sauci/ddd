@@ -1,0 +1,10 @@
+{% macro banner(filename, model) -%}
+/*
+ * {{ filename }}
+ *
+ * Global variable data dictionary of project '{{ model.project }}'.
+ * Generated from '{{ model.source }}' by {{ model.generator }}.
+ *
+ * DO NOT EDIT - every change is lost the next time DDD runs.
+ */
+{%- endmacro %}

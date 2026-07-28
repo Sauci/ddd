@@ -1,0 +1,329 @@
+# Ddd.cmake
+#
+# CMake integration of the DDD data dictionary. It provides two functions:
+#
+# * ddd_add_component(<target> JSON <file>...): registers the DDD description(s) of a component on its target, and
+#   creates the on-demand <target>.ddd target checking that component on its own.
+# * ddd_generate(<image> ...): collects the descriptions of all components in the link closure of the given image,
+#   generates the global definition file, the per-component interface headers and the a2l, and links the result into
+#   the image.
+#
+# The collection relies on the custom transitive property DDD_JSON, introduced with the TRANSITIVE_LINK_PROPERTIES
+# feature of CMake 3.30: the description files travel through the link graph like usage requirements, so an image
+# collects exactly the components it actually links - no more, no less. Only the collecting mode needs 3.30; passing
+# a ready made project description with PROJECT works on older CMake as well.
+#
+# Typical use:
+#
+#   list(APPEND CMAKE_MODULE_PATH "/path/to/ddd/cmake")   # or: ddd cmake-dir
+#   include(Ddd)
+#
+#   add_library(sensor_hub STATIC sensor_hub.c)
+#   ddd_add_component(sensor_hub JSON sensor_hub.ddd.json)
+#
+#   add_executable(firmware main.c)
+#   target_link_libraries(firmware PRIVATE sensor_hub)
+#   ddd_generate(firmware)
+
+# The tool itself. Set -DDDD_EXECUTABLE=<path> to use a specific installation, for example the one of a virtual
+# environment, or a wrapper script running "python -m ddd".
+find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary tool")
+
+# The transitive property feature is only needed when the component descriptions are collected through the link
+# graph; a caller passing PROJECT never reaches this check.
+function(_ddd_require_transitive_properties context)
+    if(CMAKE_VERSION VERSION_LESS 3.30)
+        message(FATAL_ERROR
+                "${context}: collecting the DDD descriptions through the link graph requires CMake 3.30 or newer "
+                "(found ${CMAKE_VERSION}): it relies on the TRANSITIVE_LINK_PROPERTIES feature. An older CMake would "
+                "silently collect an incomplete set of components. Pass a ready made project description with "
+                "PROJECT to ddd_generate() instead.")
+    endif()
+endfunction()
+
+# Turns a path into an absolute one and refuses a source file that does not exist. A file below the binary directory
+# is accepted unconditionally: it may well be generated later during the build.
+function(_ddd_absolute_input variable base context)
+    set(path "${${variable}}")
+    cmake_path(ABSOLUTE_PATH path BASE_DIRECTORY "${base}" NORMALIZE)
+    cmake_path(IS_PREFIX CMAKE_BINARY_DIR "${path}" NORMALIZE path_is_generated)
+    if(NOT path_is_generated AND NOT EXISTS "${path}")
+        message(FATAL_ERROR "${context}: the file \"${path}\" does not exist.")
+    endif()
+    set(${variable} "${path}" PARENT_SCOPE)
+endfunction()
+
+# Registers one or more DDD description files (*.ddd.json) on the given component target. The files are attached as
+# transitive usage requirements: every image linking the component, directly or transitively, collects them with
+# ddd_generate(). Files in the source tree must exist at configure time; files in the build tree may be generated
+# later during the build.
+function(ddd_add_component target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "JSON")
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
+    endif()
+    if(NOT arg_JSON)
+        message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
+    endif()
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "ddd_add_component: \"${target}\" is not a target.")
+    endif()
+    _ddd_require_transitive_properties("ddd_add_component")
+
+    foreach(description IN LISTS arg_JSON)
+        _ddd_absolute_input(description "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_add_component")
+        if(NOT description MATCHES "\\.ddd\\.json$")
+            message(FATAL_ERROR "ddd_add_component: \"${description}\" registered on target \"${target}\" is a DDD "
+                                "description and has to be named \"*.ddd.json\".")
+        endif()
+        set_property(TARGET ${target} APPEND PROPERTY DDD_JSON "${description}")
+        set_property(TARGET ${target} APPEND PROPERTY INTERFACE_DDD_JSON "${description}")
+        # DDD_JSON travels through the link graph; the component's own files are recorded separately for the
+        # per-component check target, which must not see the files of the components it links.
+        set_property(TARGET ${target} APPEND PROPERTY DDD_OWN_JSON "${description}")
+    endforeach()
+    set_property(TARGET ${target} APPEND PROPERTY TRANSITIVE_LINK_PROPERTIES DDD_JSON)
+
+    # Remembered so that ddd_generate() can hand the generated interface headers to every component (see
+    # PROPAGATE_HEADERS). A target registered twice is listed once.
+    set_property(GLOBAL APPEND PROPERTY DDD_COMPONENT_TARGETS ${target})
+
+    # On-demand convenience target (for example `ninja sensor_hub.ddd`) checking this component on its own, before it
+    # is integrated into any image. A lone component has no counterpart, so the two checks about the other side of
+    # the interface are switched off; everything else - datatypes, conversions, limits, initial values, axis
+    # references, reserved names - is verified.
+    if(NOT TARGET ${target}.ddd)
+        if(NOT DDD_EXECUTABLE)
+            message(STATUS "ddd_add_component: not creating the ${target}.ddd check target (the ddd tool was not "
+                           "found).")
+        else()
+            add_custom_target(${target}.ddd
+                              COMMENT "Checking the DDD description of ${target}"
+                              VERBATIM)
+            set_property(TARGET ${target} PROPERTY DDD_CHECK_TARGET ${target}.ddd)
+        endif()
+    endif()
+    get_property(check_target TARGET ${target} PROPERTY DDD_CHECK_TARGET)
+    if(check_target)
+        foreach(description IN LISTS arg_JSON)
+            _ddd_absolute_input(description "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_add_component")
+            add_custom_command(TARGET ${check_target} POST_BUILD
+                               COMMAND ${DDD_EXECUTABLE} check "${description}"
+                                       -W missing-producer=ignore -W unused-output=ignore
+                               VERBATIM)
+        endforeach()
+    endif()
+endfunction()
+
+# Writes the project description that ties the collected component descriptions together. The list of components is
+# a generator expression - only at generate time is the link graph of the image known - so the file is produced with
+# file(GENERATE) rather than being written here. An image without any registered component yields an empty
+# "includes" list, which DDD accepts and reports as a project without variables.
+function(_ddd_write_project_file output name description components)
+    # $<COMMA> keeps the comma of the json separator out of the argument splitting of $<JOIN>.
+    set(entries "$<$<BOOL:${components}>:\n      \"$<JOIN:${components},\"$<COMMA>\n      \">\"\n    >")
+    file(GENERATE
+         OUTPUT "${output}"
+         CONTENT "{
+  \"project\": {
+    \"name\": \"${name}\",
+    \"description\": \"${description}\",
+    \"includes\": [${entries}]
+  }
+}
+")
+endfunction()
+
+# Generates the data dictionary of an image out of the component descriptions collected from its link closure, and
+# links the result into the image. Must be called in the CMakeLists.txt which defines the image target, and after the
+# components have been added (add_subdirectory), so that PROPAGATE_HEADERS reaches all of them.
+#
+# ddd_generate(<image>
+#              [PROJECT <file>]              # use this project description instead of collecting the link closure
+#              [NAME <name>]                 # project name in the a2l, defaults to the image name
+#              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
+#              [PREFIX <prefix>]             # base name of the shared files, defaults to ddd
+#              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
+#              [BYTE_ORDER little|big]       # byte order reported in the a2l
+#              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
+#              [LINK_LIBRARIES <target>...]  # usage requirements for compiling the generated definition file
+#              [DEPENDS <file>...]           # additional dependencies retriggering the generation
+#              [CONST_INPUTS]                # declare input variables const in the consumer headers
+#              [NO_A2L]                      # do not generate the a2l file
+#              [STRICT]                      # treat DDD warnings as errors
+#              [NO_PROPAGATE_HEADERS])       # do not hand the generated headers to the registered components
+#
+# It creates:
+#
+# * <image>_ddd_generation  custom target running the generator
+# * <image>_ddd_headers     interface library exposing the generated headers; linked into every registered component
+#                           unless NO_PROPAGATE_HEADERS is given
+# * <image>_ddd_globals     object library compiling the single definition file, linked into the image
+#
+# The helper names are derived from the image name without its extension, so an image named firmware.elf yields
+# firmware_ddd_headers. The path of the generated a2l is available as the DDD_A2L property of the image.
+#
+# Only the three shared files are declared as outputs of the generator; the per-component headers are written next to
+# them, but their names come from inside the description files and are therefore unknown at configure time. That is
+# what <image>_ddd_headers is for: a consumer depends on the generation step, not on an individual header path.
+function(ddd_generate image)
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+                          "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
+                          "PROJECT;NAME;OUTPUT_DIRECTORY;PREFIX;ADDRESS_MAP;BYTE_ORDER"
+                          "SEVERITY;LINK_LIBRARIES;DEPENDS")
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
+    endif()
+    if(NOT TARGET ${image})
+        message(FATAL_ERROR "ddd_generate: \"${image}\" is not a target.")
+    endif()
+    if(NOT DDD_EXECUTABLE)
+        message(FATAL_ERROR "ddd_generate: the ddd tool was not found. Install it, or point DDD_EXECUTABLE at it.")
+    endif()
+    # Multi-config generators are not supported: the project description and the generated sources are written to
+    # configuration-agnostic paths, which the configurations would fight over in a cryptic file(GENERATE) error.
+    get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    if(is_multi_config)
+        message(FATAL_ERROR "ddd_generate: multi-config generators are not supported, use a single-config generator "
+                            "such as Ninja.")
+    endif()
+
+    if(NOT arg_OUTPUT_DIRECTORY)
+        set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ddd/${image}")
+    endif()
+    if(NOT arg_PREFIX)
+        set(arg_PREFIX "ddd")
+    endif()
+    cmake_path(ABSOLUTE_PATH arg_OUTPUT_DIRECTORY BASE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" NORMALIZE)
+    if(arg_ADDRESS_MAP)
+        _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+    endif()
+    if(arg_BYTE_ORDER AND NOT arg_BYTE_ORDER MATCHES "^(little|big)$")
+        message(FATAL_ERROR "ddd_generate: BYTE_ORDER must be little or big, got \"${arg_BYTE_ORDER}\".")
+    endif()
+
+    # The helper targets are named after the image without its file extension: an image is typically named like its
+    # artifact (firmware.elf), and firmware_ddd_headers is what a consumer naturally writes.
+    cmake_path(GET image STEM LAST_ONLY image_stem)
+    if(NOT arg_NAME)
+        # The project name ends up as the a2l project and module name, which DDD requires to be a c identifier.
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" arg_NAME "${image_stem}")
+        string(REGEX REPLACE "^([0-9])" "N\\1" arg_NAME "${arg_NAME}")
+    endif()
+
+    set(descriptions "")
+    if(arg_PROJECT)
+        _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+        set(project_file "${arg_PROJECT}")
+    else()
+        # The component descriptions travel through the link graph as a transitive property (see
+        # ddd_add_component). The property is resolved at generate time, when the link graph is known but nothing is
+        # compiled yet - the generation therefore never waits for a single object file.
+        _ddd_require_transitive_properties("ddd_generate")
+        set_property(TARGET ${image} APPEND PROPERTY TRANSITIVE_LINK_PROPERTIES DDD_JSON)
+        set(descriptions "$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${image},DDD_JSON>>")
+        set(project_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.ddd.json")
+        _ddd_write_project_file("${project_file}" "${arg_NAME}"
+                                "Collected from the link closure of ${image} by ddd_generate()" "${descriptions}")
+    endif()
+
+    # The severity policy applies to both subcommands; everything else only makes sense for "generate", and
+    # "check" would reject an unknown option.
+    set(common_options "")
+    if(arg_STRICT)
+        list(APPEND common_options --strict)
+    endif()
+    foreach(severity IN LISTS arg_SEVERITY)
+        list(APPEND common_options -W ${severity})
+    endforeach()
+
+    set(generate_options ${common_options})
+    if(arg_CONST_INPUTS)
+        list(APPEND generate_options --const-inputs)
+    endif()
+    if(arg_NO_A2L)
+        list(APPEND generate_options --no-a2l)
+    endif()
+    if(arg_BYTE_ORDER)
+        list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
+    endif()
+    if(arg_ADDRESS_MAP)
+        list(APPEND generate_options --address-map "${arg_ADDRESS_MAP}")
+    endif()
+
+    set(definition_file "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_globals.c")
+    set(generated_outputs "${definition_file}"
+                          "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_globals.h"
+                          "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_types.h")
+    if(NOT arg_NO_A2L)
+        set(a2l_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.a2l")
+        list(APPEND generated_outputs "${a2l_file}")
+        set_property(TARGET ${image} PROPERTY DDD_A2L "${a2l_file}")
+    endif()
+
+    add_custom_command(OUTPUT ${generated_outputs}
+                       COMMAND ${DDD_EXECUTABLE} generate "${project_file}"
+                               --output-dir "${arg_OUTPUT_DIRECTORY}" --prefix "${arg_PREFIX}" ${generate_options}
+                       DEPENDS "${project_file}" ${descriptions} ${arg_ADDRESS_MAP} ${arg_DEPENDS}
+                               "${DDD_EXECUTABLE}"
+                       COMMENT "Generating the data dictionary of ${image}"
+                       COMMAND_EXPAND_LISTS
+                       VERBATIM)
+    add_custom_target(${image_stem}_ddd_generation DEPENDS ${generated_outputs})
+
+    # The generated headers are exposed through an interface library, so that a component can include its interface
+    # header without knowing where the image put it. The custom target bridges the build order across directories: a
+    # consumer never compiles before the generation ran. There is no cycle to fear here - unlike a tool reading the
+    # compiled objects, DDD only reads the description files, so a component may depend on the generation and still
+    # be part of the link closure that produced it.
+    add_library(${image_stem}_ddd_headers INTERFACE)
+    target_include_directories(${image_stem}_ddd_headers INTERFACE "${arg_OUTPUT_DIRECTORY}")
+    add_dependencies(${image_stem}_ddd_headers ${image_stem}_ddd_generation)
+
+    # The single definition file is compiled as an object library, so that every variable really ends up in the
+    # image: a static library would drop the members whose symbols nobody references, and a measurement written only
+    # by the calibration tool has no referencing code at all.
+    add_library(${image_stem}_ddd_globals OBJECT "${definition_file}")
+    if(arg_LINK_LIBRARIES)
+        target_link_libraries(${image_stem}_ddd_globals PRIVATE ${arg_LINK_LIBRARIES})
+    endif()
+    target_link_libraries(${image_stem}_ddd_globals PUBLIC ${image_stem}_ddd_headers)
+    target_link_libraries(${image} PRIVATE ${image_stem}_ddd_globals)
+
+    # Every component registered so far gets the generated headers, which is what makes the integration a two-liner
+    # on the component side: add the library, register its description, include "<Component>.h". Components
+    # registered after this call are not reached - call ddd_generate() last.
+    if(NOT arg_NO_PROPAGATE_HEADERS)
+        # Two images would hand two different sets of headers to the same components: a component's interface header
+        # depends on the link closure it was generated for, so whichever include directory came first would silently
+        # win. A project with several images has to say which headers each component is compiled against.
+        get_property(propagated_by GLOBAL PROPERTY DDD_HEADERS_PROPAGATED)
+        if(propagated_by)
+            message(FATAL_ERROR
+                    "ddd_generate: the components already compile against the headers generated for "
+                    "\"${propagated_by}\"; \"${image}\" cannot hand them a second set without making their include "
+                    "order ambiguous. Give NO_PROPAGATE_HEADERS to \"${image}\" and link the wanted "
+                    "<image>_ddd_headers into each component explicitly.")
+        endif()
+        set_property(GLOBAL PROPERTY DDD_HEADERS_PROPAGATED "${image}")
+        get_property(component_targets GLOBAL PROPERTY DDD_COMPONENT_TARGETS)
+        list(REMOVE_DUPLICATES component_targets)
+        foreach(component IN LISTS component_targets)
+            get_target_property(component_type ${component} TYPE)
+            if(component_type STREQUAL "INTERFACE_LIBRARY")
+                target_link_libraries(${component} INTERFACE ${image_stem}_ddd_headers)
+            else()
+                target_link_libraries(${component} PRIVATE ${image_stem}_ddd_headers)
+            endif()
+        endforeach()
+    endif()
+
+    # Checking is part of generating - the generator refuses to write anything when the interfaces disagree - but a
+    # separate target lets a ci job run the check without producing artefacts.
+    add_custom_target(${image_stem}_ddd_check
+                      COMMAND ${DDD_EXECUTABLE} check "${project_file}" ${common_options}
+                      DEPENDS "${project_file}" ${descriptions}
+                      COMMENT "Checking the data dictionary of ${image}"
+                      COMMAND_EXPAND_LISTS
+                      VERBATIM)
+endfunction()

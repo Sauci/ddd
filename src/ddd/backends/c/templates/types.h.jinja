@@ -1,0 +1,23 @@
+{% import "macros.jinja" as macros %}
+{{- macros.banner(filename, model) }}
+#ifndef {{ model.types_guard }}
+#define {{ model.types_guard }}
+
+{% if model.needs_stdint %}
+#include <stdint.h>
+{% endif %}
+{% if model.needs_stdbool %}
+#include <stdbool.h>
+{% endif %}
+{% for enum in model.enums %}
+
+/* {{ enum.name }} */
+typedef enum
+{
+{% for enumerator in enum.enumerators %}
+    {{ enumerator.name }} = {{ enumerator.value }}{{ "," if not loop.last else "" }}{{ (" /**< " ~ enumerator.description ~ " */") if enumerator.description else "" }}
+{% endfor %}
+} {{ enum.name }};
+{% endfor %}
+
+#endif /* {{ model.types_guard }} */

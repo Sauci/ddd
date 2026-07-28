@@ -1,0 +1,304 @@
+"""Diagnostics, check registry and severity policy."""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
+from enum import StrEnum
+from pathlib import Path
+from typing import Any, Final, Self
+
+
+class Severity(StrEnum):
+    """How a finding is reported."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+    IGNORE = "ignore"
+
+    @property
+    def rank(self) -> int:
+        return _SEVERITY_RANK[self]
+
+
+_NOTE_INDENT: Final = "    note: "
+
+_SEVERITY_RANK: Final[dict[Severity, int]] = {
+    Severity.ERROR: 0,
+    Severity.WARNING: 1,
+    Severity.INFO: 2,
+    Severity.IGNORE: 3,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class CheckInfo:
+    """Static description of one consistency check."""
+
+    identifier: str
+    default_severity: Severity
+    description: str
+    overridable: bool = True
+
+
+def _check(
+    identifier: str,
+    severity: Severity,
+    description: str,
+    *,
+    overridable: bool = True,
+) -> CheckInfo:
+    return CheckInfo(identifier, severity, description, overridable)
+
+
+CHECKS: Final[dict[str, CheckInfo]] = {
+    check.identifier: check
+    for check in (
+        # -- loading -------------------------------------------------------
+        _check("file-not-found", Severity.ERROR, "a referenced file does not exist",
+               overridable=False),
+        _check("json-syntax", Severity.ERROR, "a file is not valid json", overridable=False),
+        _check("file-kind", Severity.ERROR,
+               "a file is neither a project nor a component description", overridable=False),
+        _check("file-extension", Severity.ERROR,
+               "a description file is not named '*.ddd.json'"),
+        _check("schema", Severity.ERROR, "a file does not match the DDD contract",
+               overridable=False),
+        _check("include-cycle", Severity.ERROR, "projects include each other recursively",
+               overridable=False),
+        _check("include-empty", Severity.ERROR, "an include pattern matches no file"),
+        _check("duplicate-component", Severity.ERROR,
+               "two different files declare the same component name"),
+        # -- interface consistency ----------------------------------------
+        _check("reserved-identifier", Severity.ERROR, "a name collides with a c keyword"),
+        _check("duplicate-declaration", Severity.ERROR,
+               "a component declares the same variable more than once"),
+        _check("multiple-producers", Severity.ERROR,
+               "a variable is written by more than one component"),
+        _check("missing-producer", Severity.ERROR, "an input variable is written by nobody"),
+        _check("local-conflict", Severity.ERROR,
+               "a component local variable is also used by another component"),
+        _check("definition-mismatch", Severity.ERROR,
+               "components disagree on datatype, unit, scaling, dimensions or limits"),
+        _check("enum-conflict", Severity.ERROR,
+               "the same enum name is defined with different enumerators"),
+        _check("unknown-reference", Severity.ERROR,
+               "a curve, map or axis refers to an object that no component declares"),
+        _check("reference-kind", Severity.ERROR,
+               "a reference points at an object of the wrong kind"),
+        _check("init-invalid", Severity.ERROR,
+               "an initial value does not fit the datatype of the variable"),
+        _check("storage-mismatch", Severity.WARNING,
+               "components disagree on init value or volatile; the producer wins"),
+        _check("condition-mismatch", Severity.WARNING,
+               "declarations of one variable use different preprocessor conditions"),
+        _check("unused-output", Severity.WARNING, "an output variable is read by no component"),
+        _check("enum-duplicate-value", Severity.WARNING,
+               "two enumerators of one enum share the same value"),
+        _check("limits-out-of-range", Severity.WARNING,
+               "the physical limits exceed what the datatype can represent"),
+        _check("name-similar", Severity.WARNING,
+               "two variables differ only in upper/lower case"),
+        _check("naming", Severity.ERROR,
+               "a name does not follow the naming convention of the project"),
+        _check("empty-component", Severity.INFO, "a component declares no variable at all"),
+        # -- comparing two deliveries (ddd compare) ------------------------
+        _check("removed-object", Severity.ERROR,
+               "an object of the baseline is gone and somebody read it"),
+        _check("changed-interface", Severity.ERROR,
+               "kind, datatype, unit, scaling, shape, axes or locality of an object changed"),
+        _check("removed-unused-object", Severity.WARNING,
+               "an object of the baseline is gone; no component read it"),
+        _check("changed-storage", Severity.WARNING,
+               "the initial value or volatility of an object changed"),
+        _check("narrowed-limits", Severity.WARNING,
+               "the physical limits of an object got tighter, so calibrated data may not fit"),
+        _check("changed-owner", Severity.WARNING,
+               "another component produces the object now"),
+        _check("changed-condition", Severity.WARNING,
+               "the preprocessor condition of an object changed"),
+        _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed"),
+        _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
+               "did not"),
+    )
+}  # fmt: skip
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class Location:
+    """Where a diagnostic comes from."""
+
+    path: Path
+    pointer: str = ""
+    """Dotted path inside the json document, e.g. ``component.declarations[2].definition``."""
+
+    line: int | None = None
+    column: int | None = None
+
+    def render(self, root: Path | None = None) -> str:
+        path = self.path
+        if root is not None:
+            with contextlib.suppress(ValueError):
+                path = path.relative_to(root)
+        text = path.as_posix()
+        if self.line is not None:
+            text += f":{self.line}"
+            if self.column is not None:
+                text += f":{self.column}"
+        if self.pointer:
+            text += f"#{self.pointer}"
+        return text
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path.as_posix(),
+            "pointer": self.pointer or None,
+            "line": self.line,
+            "column": self.column,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Diagnostic:
+    """A single finding."""
+
+    check: str
+    severity: Severity
+    message: str
+    location: Location | None = None
+    notes: tuple[tuple[str, Location | None], ...] = ()
+    """Additional ``(text, location)`` hints, e.g. the conflicting declaration site."""
+
+    @property
+    def sort_key(self) -> tuple[int, str, str, str]:
+        location = self.location
+        return (
+            self.severity.rank,
+            location.path.as_posix() if location else "",
+            location.pointer if location else "",
+            self.check,
+        )
+
+    def render(self, root: Path | None = None) -> str:
+        where = self.location.render(root) if self.location else "<project>"
+        lines = [f"{where}: {self.severity.value}[{self.check}]: {self.message}"]
+        for text, location in self.notes:
+            prefix = f"{location.render(root)}: " if location else ""
+            first, *rest = f"{prefix}{text}".splitlines() or [""]
+            lines.append(f"{_NOTE_INDENT}{first}")
+            # A note may run over several lines - an underlined name, for one - and the
+            # continuation has to keep the column, or the carets point at the wrong letters.
+            lines.extend(f"{' ' * len(_NOTE_INDENT)}{line}" for line in rest)
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "check": self.check,
+            "severity": self.severity.value,
+            "message": self.message,
+            "location": self.location.to_dict() if self.location else None,
+            "notes": [
+                {"message": text, "location": location.to_dict() if location else None}
+                for text, location in self.notes
+            ],
+        }
+
+
+class UnknownCheckError(ValueError):
+    """Raised when a severity override names a check that does not exist."""
+
+
+@dataclass(frozen=True, slots=True)
+class SeverityPolicy:
+    """Maps check identifiers to the severity they are reported with."""
+
+    overrides: dict[str, Severity] = field(default_factory=dict)
+    strict: bool = False
+    """Report warnings as errors."""
+
+    @classmethod
+    def from_strings(cls, values: Iterable[str], *, strict: bool = False) -> Self:
+        """Build a policy from ``check=severity`` strings (as given on the command line)."""
+        overrides: dict[str, Severity] = {}
+        for value in values:
+            name, separator, severity = value.partition("=")
+            name = name.strip()
+            if not separator:
+                msg = f"expected 'check=severity', got '{value}'"
+                raise UnknownCheckError(msg)
+            info = CHECKS.get(name)
+            if info is None:
+                msg = f"unknown check '{name}'"
+                raise UnknownCheckError(msg)
+            if not info.overridable:
+                msg = f"the severity of check '{name}' cannot be changed"
+                raise UnknownCheckError(msg)
+            try:
+                overrides[name] = Severity(severity.strip().lower())
+            except ValueError:
+                choices = ", ".join(s.value for s in Severity)
+                msg = f"unknown severity '{severity}' for check '{name}', expected one of {choices}"
+                raise UnknownCheckError(msg) from None
+        return cls(overrides, strict)
+
+    def resolve(self, check: str) -> Severity:
+        info = CHECKS.get(check)
+        if info is None:
+            severity = Severity.ERROR
+        elif info.overridable:
+            severity = self.overrides.get(check, info.default_severity)
+        else:
+            severity = info.default_severity
+        if self.strict and severity is Severity.WARNING:
+            return Severity.ERROR
+        return severity
+
+
+class DiagnosticBag:
+    """Collects diagnostics and applies the severity policy."""
+
+    def __init__(self, policy: SeverityPolicy | None = None) -> None:
+        self.policy = policy or SeverityPolicy()
+        self._items: list[Diagnostic] = []
+
+    def add(
+        self,
+        check: str,
+        message: str,
+        location: Location | None = None,
+        notes: Iterable[tuple[str, Location | None]] = (),
+    ) -> Diagnostic | None:
+        """Record a finding; returns ``None`` when the check is ignored."""
+        severity = self.policy.resolve(check)
+        if severity is Severity.IGNORE:
+            return None
+        diagnostic = Diagnostic(check, severity, message, location, tuple(notes))
+        self._items.append(diagnostic)
+        return diagnostic
+
+    def __iter__(self) -> Iterator[Diagnostic]:
+        return iter(self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    @property
+    def sorted(self) -> list[Diagnostic]:
+        return sorted(self._items, key=lambda d: d.sort_key)
+
+    def count(self, severity: Severity) -> int:
+        return sum(1 for item in self._items if item.severity is severity)
+
+    @property
+    def has_errors(self) -> bool:
+        return any(item.severity is Severity.ERROR for item in self._items)
+
+    def summary(self) -> str:
+        parts = []
+        for severity in (Severity.ERROR, Severity.WARNING, Severity.INFO):
+            count = self.count(severity)
+            if count:
+                parts.append(f"{count} {severity.value}{'s' if count != 1 else ''}")
+        return ", ".join(parts) if parts else "no findings"

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ddd"
+version = "0.1.0"
+description = "Data Dictionary for global variables in component based embedded software projects"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "DDD contributors" }]
+keywords = ["embedded", "firmware", "a2l", "code-generation", "data-dictionary"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dependencies = ["pydantic>=2.7", "jinja2>=3.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+ddd = "ddd.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ddd"]
+
+# Shipped inside the package so that `ddd cmake-dir` finds it after a plain pip install.
+[tool.hatch.build.targets.wheel.force-include]
+"cmake/Ddd.cmake" = "ddd/cmake/Ddd.cmake"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/ddd", "cmake", "tests", "examples", "SPEC.md", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Coverage runs with every test run, and a gap fails the run: a line nobody executes is a
+# line nobody has ever seen behave. Use --no-cov for a quick partial run while developing.
+addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["ddd"]
+branch = true
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
+exclude_also = [
+    # A Protocol body is a signature, not code.
+    '^\s*\.\.\.$',
+    'if TYPE_CHECKING:',
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "PTH", "C4"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/ddd"]
+plugins = ["pydantic.mypy"]

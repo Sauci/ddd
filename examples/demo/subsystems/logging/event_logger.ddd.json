@@ -1,0 +1,63 @@
+{
+  "component": {
+    "name": "EventLogger",
+    "description": "Counts events; lives in a sub project of its own",
+    "declarations": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "ValueE",
+          "description": "Measurement used as the input quantity of AxisA",
+          "datatype": "uint16",
+          "unit": "Hz",
+          "conversion": { "kind": "linear", "factor": 0.25 },
+          "limits": { "min": 0, "max": 8000 },
+          "init": 0,
+          "volatile": true
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "FlagA",
+          "description": "Boolean measurement",
+          "datatype": "bool",
+          "init": false
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "ValueI",
+          "description": "Bit coded measurement written by the user interface",
+          "datatype": "uint32",
+          "init": 0
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueJ",
+          "description": "Counter written by the event logger",
+          "datatype": "uint8",
+          "init": 0
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "ValueK",
+          "description": "Two dimensional component local array",
+          "datatype": "int8",
+          "dimensions": [3, 4],
+          "init": [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
+          ],
+          "a2l": { "export": false }
+        }
+      }
+    ]
+  }
+}

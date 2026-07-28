@@ -1,0 +1,178 @@
+{
+  "component": {
+    "name": "Controller",
+    "description": "Consumes the raw values and produces the derived ones",
+    "declarations": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "ValueA",
+          "description": "Scalar measurement with a linear conversion",
+          "datatype": "uint8",
+          "unit": "%",
+          "conversion": { "kind": "linear", "factor": 0.5 },
+          "limits": { "min": 0, "max": 100 },
+          "init": 0
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "ValueB",
+          "description": "Array measurement with four elements",
+          "datatype": "uint16",
+          "unit": "V",
+          "dimensions": [4],
+          "conversion": { "factor": 0.001 },
+          "init": 0,
+          "volatile": true
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueE",
+          "description": "Measurement used as the input quantity of AxisA",
+          "datatype": "uint16",
+          "unit": "Hz",
+          "conversion": { "kind": "linear", "factor": 0.25 },
+          "limits": { "min": 0, "max": 8000 },
+          "init": 0,
+          "volatile": true
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueF",
+          "description": "Signed measurement with a fixed point conversion",
+          "datatype": "int16",
+          "unit": "degC",
+          "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
+          "limits": { "min": -40, "max": 150 },
+          "init": -400
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "StateA",
+          "description": "Measurement with a verbal conversion table",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "enum",
+            "name": "StateA_t",
+            "enumerators": [
+              { "name": "STATE_OFF", "value": 0, "description": "powered but not started" },
+              { "name": "STATE_INIT", "value": 1 },
+              { "name": "STATE_ACTIVE", "value": 2 },
+              { "name": "STATE_DEGRADED", "value": 3 },
+              { "name": "STATE_FAULT", "value": 15 }
+            ]
+          },
+          "init": 0
+        }
+      },
+      {
+        "scope": "output",
+        "condition": "defined(FEATURE_X)",
+        "definition": {
+          "name": "ValueG",
+          "description": "Measurement that only exists when FEATURE_X is defined",
+          "datatype": "uint16",
+          "unit": "V",
+          "conversion": { "factor": 0.001 },
+          "limits": { "min": 0, "max": 5 },
+          "init": 1000
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "ValueH",
+          "description": "Component local measurement of the controller",
+          "datatype": "int16",
+          "unit": "%",
+          "conversion": { "factor": 0.1 },
+          "limits": { "min": -100, "max": 100 },
+          "init": 0
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "parameter",
+          "name": "ParameterA",
+          "description": "Single calibratable constant",
+          "datatype": "uint16",
+          "unit": "Hz",
+          "conversion": { "factor": 0.25 },
+          "limits": { "min": 500, "max": 1500 },
+          "init": 3200
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "kind": "axis",
+          "name": "AxisA",
+          "description": "Shared axis indexed by ValueE",
+          "datatype": "uint16",
+          "unit": "Hz",
+          "conversion": { "factor": 0.25 },
+          "limits": { "min": 0, "max": 8000 },
+          "size": 6,
+          "input": "ValueE",
+          "init": [0, 3200, 6400, 12800, 19200, 32000]
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "axis",
+          "name": "AxisB",
+          "description": "Component local axis indexed by ValueA",
+          "datatype": "uint8",
+          "unit": "%",
+          "conversion": { "factor": 0.5 },
+          "limits": { "min": 0, "max": 100 },
+          "size": 4,
+          "input": "ValueA",
+          "init": [0, 60, 140, 200]
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "curve",
+          "name": "CurveA",
+          "description": "Calibratable curve over AxisA",
+          "datatype": "uint16",
+          "unit": "ms",
+          "conversion": { "factor": 0.01 },
+          "axis": "AxisA",
+          "init": [1200, 900, 800, 750, 700, 650]
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "map",
+          "name": "MapA",
+          "description": "Calibratable map over AxisA and AxisB",
+          "datatype": "int8",
+          "unit": "%",
+          "conversion": { "factor": 0.5 },
+          "x_axis": "AxisA",
+          "y_axis": "AxisB",
+          "init": [
+            [20, 24, 28, 30, 32, 30],
+            [18, 22, 26, 28, 30, 28],
+            [12, 16, 20, 22, 24, 22],
+            [6, 10, 14, 16, 18, 16]
+          ]
+        }
+      }
+    ]
+  }
+}

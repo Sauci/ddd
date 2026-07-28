@@ -1,0 +1,81 @@
+name: ddd
+
+# Common definition for every service.  The working tree is bind mounted at /work
+# and PYTHONPATH makes it shadow the copy installed into the image, so the
+# containers always run the current sources without a rebuild.
+x-ddd: &ddd
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: ddd:dev
+  working_dir: /work
+  volumes:
+    - .:/work
+  environment: &environment
+    PYTHONPATH: /work/src
+    PYTHONDONTWRITEBYTECODE: "1"
+
+services:
+  # docker compose run --rm ddd ddd check examples/demo/demo.ddd.json
+  ddd:
+    <<: *ddd
+    command: ["ddd", "--help"]
+
+  check:
+    <<: *ddd
+    command: ["ddd", "check", "examples/demo/demo.ddd.json"]
+
+  generate:
+    <<: *ddd
+    command: ["ddd", "generate", "examples/demo/demo.ddd.json", "-o", "build/gen"]
+
+  # Generates the demo project and compiles, links and inspects the result,
+  # once without and once with the optional feature switched on.
+  compile:
+    <<: *ddd
+    environment:
+      <<: *environment
+      CDEFS: "-DFEATURE_X"
+    command: ["ddd-compile", "examples/demo/demo.ddd.json", "build/gen"]
+
+  # Same, but with the input variables declared const in the consumer headers.
+  compile-const:
+    <<: *ddd
+    environment:
+      <<: *environment
+      CDEFS: "-DFEATURE_X"
+      GENFLAGS: "--const-inputs"
+    command: ["ddd-compile", "examples/demo/demo.ddd.json", "build/gen-const"]
+
+  # Configures and builds examples/cmake, which integrates the tool through cmake/Ddd.cmake:
+  # the components are collected through the link graph and the generated sources are compiled.
+  cmake:
+    <<: *ddd
+    command:
+      - sh
+      - -c
+      - cmake -G Ninja -S examples/cmake -B build/cmake && cmake --build build/cmake
+
+  test:
+    <<: *ddd
+    command: ["python", "-m", "pytest"]
+
+  # Same run, plus a browsable report in build/htmlcov/index.html.
+  coverage:
+    <<: *ddd
+    command:
+      - python
+      - -m
+      - pytest
+      - --cov-report=html:build/htmlcov
+      - --cov-report=term-missing
+
+  lint:
+    <<: *ddd
+    command: ["sh", "-c", "ruff check . && ruff format --check . && mypy"]
+
+  shell:
+    <<: *ddd
+    command: ["bash"]
+    stdin_open: true
+    tty: true

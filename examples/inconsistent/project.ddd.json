@@ -1,0 +1,11 @@
+{
+  "project": {
+    "name": "BrokenProject",
+    "description": "Deliberately inconsistent project, used to demonstrate the checks",
+    "includes": [
+      "component_a.ddd.json",
+      "component_b.ddd.json",
+      "component_c.ddd.json"
+    ]
+  }
+}

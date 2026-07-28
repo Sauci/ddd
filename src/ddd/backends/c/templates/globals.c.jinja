@@ -1,0 +1,50 @@
+{% import "macros.jinja" as macros %}
+{{- macros.banner(filename, model) }}
+#include "{{ model.options.globals_header }}"
+
+/*
+ * Definition of every global variable of the project.  Compile and link this
+ * file exactly once; DDD is the only owner of these storage locations.
+ */
+{% for group in model.groups %}
+
+/* ---------------------------------------------------------------------------
+ * {{ group.name }}{{ " - " ~ group.description if group.description else "" }}
+ * ------------------------------------------------------------------------ */
+{% if group.measurements and group.calibration %}
+
+/* measurements */
+{% endif %}
+{% for variable in group.measurements %}
+{% if variable.condition %}
+#if {{ variable.condition }}
+{% endif %}
+{% if variable.comment %}
+/** {{ variable.comment }} */
+{% endif %}
+{{ variable.definition }};
+{% if variable.condition %}
+#endif /* {{ variable.condition }} */
+{% endif %}
+{% endfor %}
+{% if group.measurements and group.calibration %}
+
+/* calibration data */
+{% endif %}
+{% for variable in group.calibration %}
+{% if variable.condition %}
+#if {{ variable.condition }}
+{% endif %}
+{% if variable.comment %}
+/** {{ variable.comment }} */
+{% endif %}
+{{ variable.definition }};
+{% if variable.condition %}
+#endif /* {{ variable.condition }} */
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% if not model.groups %}
+
+/* This project does not define any global variable. */
+{% endif %}

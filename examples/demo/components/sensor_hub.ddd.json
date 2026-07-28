@@ -1,0 +1,62 @@
+{
+  "component": {
+    "name": "SensorHub",
+    "description": "Produces the raw input values of the device",
+    "declarations": [
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueA",
+          "description": "Scalar measurement with a linear conversion",
+          "datatype": "uint8",
+          "unit": "%",
+          "conversion": { "kind": "linear", "factor": 0.5 },
+          "limits": { "min": 0, "max": 100 },
+          "init": 0
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueB",
+          "description": "Array measurement with four elements",
+          "datatype": "uint16",
+          "unit": "V",
+          "dimensions": [4],
+          "conversion": { "factor": 0.001 },
+          "init": 0,
+          "volatile": true
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValueC",
+          "description": "Floating point measurement without a conversion",
+          "datatype": "float32",
+          "unit": "degC",
+          "limits": { "min": -50, "max": 90 }
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "FlagA",
+          "description": "Boolean measurement",
+          "datatype": "bool",
+          "init": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "ValueD",
+          "description": "Component local measurement, kept out of the a2l",
+          "datatype": "uint16",
+          "dimensions": [8],
+          "a2l": { "export": false }
+        }
+      }
+    ]
+  }
+}

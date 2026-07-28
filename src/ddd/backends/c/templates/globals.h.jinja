@@ -1,0 +1,32 @@
+{% import "macros.jinja" as macros %}
+{{- macros.banner(filename, model) }}
+#ifndef {{ model.globals_guard }}
+#define {{ model.globals_guard }}
+
+#include "{{ model.options.types_header }}"
+
+/*
+ * Declarations of every global variable of the project.  Software components
+ * shall include their own interface header instead of this file; it exists so
+ * that {{ model.options.globals_source }} can be compiled with full prototype checking.
+ */
+{% for group in model.groups %}
+
+/* ---------------------------------------------------------------------------
+ * {{ group.name }}{{ " - " ~ group.description if group.description else "" }}
+ * ------------------------------------------------------------------------ */
+{% for variable in group.variables %}
+{% if variable.condition %}
+#if {{ variable.condition }}
+{% endif %}
+{% if variable.comment %}
+/** {{ variable.comment }} */
+{% endif %}
+{{ variable.declaration() }};
+{% if variable.condition %}
+#endif /* {{ variable.condition }} */
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+#endif /* {{ model.globals_guard }} */

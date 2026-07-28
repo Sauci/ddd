@@ -1,6 +1,0 @@
-{
-    "project": {
-    "name":"projectxx",
-    "components":["ModuleA","ModuleB"]
-}
-}

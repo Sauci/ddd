@@ -1,0 +1,32 @@
+{
+  "component": {
+    "name": "ComponentA",
+    "description": "Writes the shared value",
+    "declarations": [
+      {
+        "scope": "output",
+        "definition": {
+          "name": "SharedValue",
+          "description": "Value shared between components",
+          "datatype": "int16",
+          "unit": "%",
+          "conversion": { "factor": 0.5 }
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "UnusedSignal",
+          "datatype": "uint8"
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Scratch",
+          "datatype": "uint8"
+        }
+      }
+    ]
+  }
+}

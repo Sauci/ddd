@@ -1,0 +1,10 @@
+{
+  "project": {
+    "name": "DemoDevice",
+    "description": "Demonstration project showing every DDD feature",
+    "includes": [
+      "components/*.ddd.json",
+      "subsystems/logging/logging.ddd.json"
+    ]
+  }
+}

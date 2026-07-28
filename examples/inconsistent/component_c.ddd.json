@@ -1,0 +1,32 @@
+{
+  "component": {
+    "name": "ComponentC",
+    "description": "Reads the shared value with the wrong datatype and scaling",
+    "declarations": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "SharedValue",
+          "description": "Value shared between components",
+          "datatype": "uint16",
+          "unit": "%"
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "MissingValue",
+          "description": "Nobody produces this one",
+          "datatype": "uint8"
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "Scratch",
+          "datatype": "uint8"
+        }
+      }
+    ]
+  }
+}

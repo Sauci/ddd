@@ -1,0 +1,70 @@
+{% import "macros.jinja" as macros %}
+{{- macros.banner(filename, model) }}
+/*
+ * Interface of software component '{{ header.name }}'.
+{% if header.description %}
+ *
+ * {{ header.description }}
+{% endif %}
+ *
+ * Only the variables declared in the DDD description of this component are
+ * visible here; everything else is intentionally out of reach.
+ */
+#ifndef {{ header.guard }}
+#define {{ header.guard }}
+
+#include "{{ model.options.types_header }}"
+{% if header.outputs %}
+
+/* outputs - written by {{ header.name }}, read by other components */
+{% for entry in header.outputs %}
+{% if entry.condition %}
+#if {{ entry.condition }}
+{% endif %}
+{% if entry.variable.comment %}
+/** {{ entry.variable.comment }} */
+{% endif %}
+{{ entry.line }}
+{% if entry.condition %}
+#endif /* {{ entry.condition }} */
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if header.inputs %}
+
+/* inputs - produced elsewhere, {{ header.name }} may only read them */
+{% for entry in header.inputs %}
+{% if entry.condition %}
+#if {{ entry.condition }}
+{% endif %}
+{% if entry.variable.comment %}
+/** {{ entry.variable.comment }} */
+{% endif %}
+{{ entry.line }}{{ "  /* produced by " ~ entry.variable.owner ~ " */" if entry.variable.owner else "" }}
+{% if entry.condition %}
+#endif /* {{ entry.condition }} */
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if header.locals %}
+
+/* locals - owned exclusively by {{ header.name }} */
+{% for entry in header.locals %}
+{% if entry.condition %}
+#if {{ entry.condition }}
+{% endif %}
+{% if entry.variable.comment %}
+/** {{ entry.variable.comment }} */
+{% endif %}
+{{ entry.line }}
+{% if entry.condition %}
+#endif /* {{ entry.condition }} */
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if header.is_empty %}
+
+/* This component declares no global variable. */
+{% endif %}
+
+#endif /* {{ header.guard }} */

@@ -295,3 +295,19 @@ class TestOutputDirectory:
         arguments = ["generate", str(tmp_path / "a.ddd.json"), "-o", str(tmp_path / "blocked")]
         assert main(arguments) == EXIT_USAGE
         assert "cannot write into" in capsys.readouterr().err
+
+
+class TestVersion:
+    """The version is what a bug report quotes, so both spellings have to work."""
+
+    @pytest.mark.parametrize("flag", ["-v", "--version"])
+    def test_the_version_is_printed_and_the_run_ends(
+        self, flag: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from ddd import __version__
+
+        # argparse exits directly for an action of type "version".
+        with pytest.raises(SystemExit) as exit_code:
+            main([flag])
+        assert exit_code.value.code == EXIT_OK
+        assert capsys.readouterr().out.strip() == f"ddd {__version__}"

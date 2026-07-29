@@ -92,7 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "embedded software project."
         ),
     )
-    parser.add_argument("--version", action="version", version=f"ddd {__version__}")
+    parser.add_argument("-v", "--version", action="version", version=f"ddd {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check = subparsers.add_parser(

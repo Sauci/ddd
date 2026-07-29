@@ -34,7 +34,7 @@ RUN apt-get update \
 RUN pip install --no-cache-dir "cmake>=3.30"
 
 WORKDIR /opt/ddd
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE requirements*.txt ./
 COPY src ./src
 COPY cmake ./cmake
 COPY completion ./completion

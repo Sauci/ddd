@@ -1,5 +1,7 @@
 [build-system]
-requires = ["hatchling"]
+# hatch-requirements-txt keeps the dependency lists in requirements files, which is where a
+# container build, a pip-tools run and a vulnerability scanner all expect to find them.
+requires = ["hatchling", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [project]
@@ -24,7 +26,9 @@ classifiers = [
     "Topic :: Software Development :: Code Generators",
     "Topic :: Software Development :: Embedded Systems",
 ]
-dependencies = ["pydantic>=2.7", "jinja2>=3.1"]
+# Both lists are read from the requirements files by the metadata hook configured below, so
+# neither may also be stated here: declaring a field dynamic *and* statically is an error.
+dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/Sauci/ddd"
@@ -32,19 +36,12 @@ Documentation = "https://github.com/Sauci/ddd/blob/master/README.md"
 Specification = "https://github.com/Sauci/ddd/blob/master/SPEC.md"
 Issues = "https://github.com/Sauci/ddd/issues"
 
-[project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.10"]
-# The documentation is generated from the sources: autoprogram renders the command line from
-# the parser itself and autodoc_pydantic renders the file formats from the contracts, so a
-# renamed option or a changed field cannot leave its documentation behind.
-docs = [
-    "sphinx>=7.2",
-    "sphinx-rtd-theme>=2.0",
-    "sphinxcontrib-autoprogram>=0.1.9",
-    "autodoc-pydantic>=2.1",
-    "sphinxcontrib-plantuml>=0.30",
-    "erdantic>=1.0",
-]
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[tool.hatch.metadata.hooks.requirements_txt.optional-dependencies]
+dev = ["requirements-dev.txt"]
+docs = ["requirements-docs.txt"]
 
 [project.scripts]
 ddd = "ddd.cli:main"
@@ -70,6 +67,9 @@ include = [
     "LICENSE",
     "README.md",
     "SPEC.md",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "requirements-docs.txt",
 ]
 
 [tool.pytest.ini_options]

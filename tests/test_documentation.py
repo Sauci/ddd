@@ -133,3 +133,45 @@ class TestPackaging:
         for source in ("cmake/Ddd.cmake", "completion/ddd.bash"):
             assert source in wheel["force-include"], f"{source} is not shipped in the wheel"
             assert (ROOT / source).is_file()
+
+    def test_no_dependency_list_is_both_dynamic_and_static(self) -> None:
+        """Declaring a field dynamic *and* stating it is an error the build backend refuses.
+
+        It costs nothing here and fails nothing locally - the tests import the package from
+        ``src`` - so it surfaces only when somebody installs the project, which in practice
+        means in ci or on a customer's machine.
+        """
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = metadata["project"]
+        for field in project.get("dynamic", []):
+            assert field not in project, (
+                f"'{field}' is listed in [project].dynamic and also stated statically; the "
+                f"metadata hook refuses that and every install of this project fails"
+            )
+
+    def test_every_requirements_file_is_declared_and_shipped(self) -> None:
+        """The dependency lists live in requirements files, read by a metadata hook.
+
+        A file the hook names but the sdist leaves out makes that sdist unbuildable, and the
+        failure only shows up for whoever installs from it - which is nobody until a customer
+        does.
+        """
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        hook = metadata["tool"]["hatch"]["metadata"]["hooks"]["requirements_txt"]
+        named = list(hook["files"])
+        for group in hook["optional-dependencies"].values():
+            named.extend(group)
+        shipped = metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+        for name in named:
+            assert (ROOT / name).is_file(), f"{name} is declared but missing from the tree"
+            assert name in shipped, f"{name} is not in the sdist, which cannot then be built"
+
+    def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
+        """The two runtime dependencies are a deliberate claim of the README, so a third one
+        appearing in requirements.txt has to be a decision rather than a drive-by addition."""
+        listed = {
+            re.split(r"[<>=!~ ]", line, maxsplit=1)[0].lower()
+            for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+        assert listed == {"pydantic", "jinja2"}

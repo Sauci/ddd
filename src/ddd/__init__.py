@@ -1,11 +1,12 @@
 """DDD - a data dictionary for the global variables of an embedded software project.
 
-The package is organised in four layers:
+The package is organised in layers, each knowing only what is below it:
 
-* :mod:`ddd.models`      - the pydantic contracts describing the json file formats
-* :mod:`ddd.loading`     - reads a project/component tree from disk into those contracts
-* :mod:`ddd.analysis`    - resolves the variables and runs the consistency checks
-* :mod:`ddd.generation`  - renders the c sources and the a2l file with jinja2
+* :mod:`ddd.models`   - the pydantic contracts describing the json file formats
+* :mod:`ddd.loading`  - reads a project/component tree from disk into those contracts
+* :mod:`ddd.analysis` - resolves the data objects and runs the consistency checks
+* :mod:`ddd.ir`       - the resolved dictionary, the contract the backends consume
+* :mod:`ddd.backends` - renders that dictionary: ``backends.c`` and ``backends.a2l``
 """
 
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Severity

@@ -99,14 +99,22 @@ class Workspace:
     naming_path: Path | None = None
     """Where that convention was read from; part of what the project is built out of."""
 
+    read_paths: tuple[Path, ...] = ()
+    """Every file the loader opened, whatever came of it.
+
+    Deliberately not derived from ``components`` and ``projects``: a file that was read and
+    then rejected - a duplicate component name, a schema error - is still a file this project
+    is built out of, and editing it has to make the build run DDD again. Leaving it out is how
+    a build system ends up never noticing the fix.
+    """
+
     def sources(self) -> tuple[Path, ...]:
         """Every file that was read to build this workspace, sorted and without duplicates.
 
         What a build system needs in order to know when to run DDD again: the root file
         alone is not enough, because a project pulls its components in through ``includes``.
         """
-        paths = {self.root, *(item.path for item in self.projects)}
-        paths.update(item.path for item in self.components)
+        paths = {self.root, *self.read_paths}
         if self.naming_path is not None:
             paths.add(self.naming_path)
         return tuple(sorted(paths))
@@ -134,22 +142,45 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     text = _read_text(path, bag, None)
     if text is None:
         return None
+
+    # The version is read before the document is validated, not after. A dictionary from a
+    # later DDD is precisely one that carries fields this version does not know, and the
+    # contract forbids unknown fields - so validating first would answer "extra inputs are
+    # not permitted", which tells the reader nothing about what actually happened. Reading it
+    # anyway is not an option either: the parts this version does understand would compare
+    # clean and the rest would silently count as unchanged.
+    if not _dictionary_format_is_supported(text, path, bag):
+        return None
+
     try:
-        dictionary = DataDictionary.model_validate_json(text)
+        return DataDictionary.model_validate_json(text)
     except ValidationError as error:
         _report_validation_error(path, error, bag)
         return None
-    if dictionary.format > DICTIONARY_FORMAT:
-        # Reading it anyway would compare against fields this version does not know about
-        # and quietly report them as unchanged.
-        bag.add(
-            "schema",
-            f"this dictionary is in format {dictionary.format}, and this DDD understands up "
-            f"to {DICTIONARY_FORMAT}; use a newer DDD to read it",
-            Location(path, "format"),
-        )
-        return None
-    return dictionary
+
+
+def _dictionary_format_is_supported(text: str, path: Path, bag: DiagnosticBag) -> bool:
+    """Whether the ``format`` of a dumped dictionary is one this version can read.
+
+    Tolerant about everything except the version itself: a document that is not json, or not
+    an object, or carries no ``format``, is left to the real validation to report properly.
+    """
+    try:
+        data = json.loads(text, parse_constant=_reject_constant)
+    except ValueError:
+        return True
+    if not isinstance(data, dict):
+        return True
+    found = data.get("format", DICTIONARY_FORMAT)
+    if not isinstance(found, int) or isinstance(found, bool) or found <= DICTIONARY_FORMAT:
+        return True
+    bag.add(
+        "schema",
+        f"this dictionary is in format {found}, and this DDD understands up to "
+        f"{DICTIONARY_FORMAT}; use a newer DDD to read it",
+        Location(path, "format"),
+    )
+    return False
 
 
 def load_workspace(path: Path, bag: DiagnosticBag) -> Workspace | None:
@@ -169,6 +200,7 @@ class _Loader:
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
         self._seen_paths: set[Path] = set()
+        self._read_paths: set[Path] = set()
 
     def load(self, path: Path) -> Workspace | None:
         root = _resolve(path)
@@ -190,6 +222,7 @@ class _Loader:
                 description=component.component.description,
                 components=tuple(self._components),
                 projects=(),
+                read_paths=tuple(sorted(self._read_paths)),
             )
 
         project = self._load_project(root, data, parents=(), stack=())
@@ -204,6 +237,7 @@ class _Loader:
             projects=tuple(self._projects),
             naming=load_convention(naming_path, self._bag) if naming_path else None,
             naming_path=naming_path,
+            read_paths=tuple(sorted(self._read_paths)),
         )
 
     def _naming_path(self, project: LoadedProject) -> Path | None:
@@ -213,6 +247,10 @@ class _Loader:
         return _resolve(project.path.parent / project.project.naming)
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
+        # Recorded before anything can go wrong with it: a file that turns out to be
+        # unreadable, malformed or rejected is still one this project is built out of, and a
+        # build system has to run DDD again when it changes - especially then.
+        self._read_paths.add(path)
         text = _read_text(path, self._bag, origin)
         if text is None:
             return None
@@ -437,16 +475,51 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
 
 
 def _report_validation_error(path: Path, error: ValidationError, bag: DiagnosticBag) -> None:
-    for item in error.errors(include_url=False):
+    for item in _meaningful(error.errors(include_url=False)):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
         bag.add("schema", message, Location(path, _pointer(item["loc"])))
 
 
+def _meaningful(items: list[Any]) -> list[Any]:
+    """Drop the findings that are only consequences of another finding in the same run.
+
+    A list whose single entry fails validation is dropped by pydantic and then reported as
+    too short as well, so one mistake arrives as two errors: the useful one about the entry,
+    and 'Tuple should have at least 1 item after validation, not 0' about the list holding
+    it. Reporting both invites the reader to go looking for a second problem that is not
+    there.
+    """
+    locations = {tuple(item["loc"]) for item in items}
+
+    def explained_by_a_deeper_finding(location: tuple[Any, ...]) -> bool:
+        # Strictly deeper: a list that is empty because it was written empty has no finding
+        # under it, and has to keep reporting itself.
+        return any(
+            len(other) > len(location) and other[: len(location)] == location for other in locations
+        )
+
+    return [
+        item
+        for item in items
+        if item["type"] != "too_short" or not explained_by_a_deeper_finding(tuple(item["loc"]))
+    ]
+
+
 def _resolve(path: Path) -> Path:
-    """Absolute, symlink free path; works for files that do not exist yet."""
-    return Path(path).expanduser().resolve()
+    """Absolute, symlink free path; works for files that do not exist yet.
+
+    A path the operating system refuses to even look at - one with a NUL byte in it, say -
+    is handed back unresolved rather than raising. Where that refusal surfaces is otherwise
+    a property of the platform: linux rejects such a path in ``resolve()`` while Windows
+    carries it as far as the read. Degrading here puts every one of them through the same
+    handler in :func:`_read_text`, so the run ends with one located finding on both.
+    """
+    try:
+        return Path(path).expanduser().resolve()
+    except (OSError, ValueError):
+        return Path(path)
 
 
 def _pointer(loc: tuple[int | str, ...]) -> str:

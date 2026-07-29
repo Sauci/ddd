@@ -34,7 +34,12 @@ class Token(_Frozen):
     description: str = ""
 
     @model_validator(mode="after")
-    def _no_separator_inside(self) -> Token:
+    def _no_whitespace_inside(self) -> Token:
+        """A token is one piece of an identifier, so it cannot contain a space.
+
+        That it cannot contain the *separator* either is checked by the convention, which is
+        the only thing that knows what the separator is.
+        """
         if any(character.isspace() for character in self.value):
             msg = f"token '{self.value}' contains whitespace"
             raise ValueError(msg)

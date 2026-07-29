@@ -3,8 +3,9 @@
 A backend turns a :class:`~ddd.ir.DataDictionary` into files. It may know everything about
 its own output format and nothing about the others: the c backend does not know that a2l
 exists, the a2l backend does not know what a ``uint16_t`` is called. Adding a third output -
-a header for another language, a csv, an ARXML - means adding a package next to them and
-listing it in :func:`ddd.backends.build_backends`, and touching nothing else.
+a header for another language, a csv, an ARXML - means adding a package next to them,
+exporting it from :mod:`ddd.backends`, and adding it to the list ``_command_generate``
+assembles in :mod:`ddd.cli`. Nothing else has to change.
 """
 
 from __future__ import annotations

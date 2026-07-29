@@ -1,0 +1,338 @@
+Component description
+=====================
+
+A component description is the data interface of one software component, written down. It says
+which global variables the component reads, which ones it writes and which ones it keeps to
+itself, and it says everything about each of them that a c compiler and a calibration tool
+need to know. It is written by the team that owns the component, it lives next to that
+component's sources, and it is the only thing another team has to read in order to depend on
+it.
+
+The file that ends up being interesting is not this one on its own but this one next to all
+the others: because every component states both what it produces and what it expects to
+consume, DDD can compare the two sides of every shared variable and report a disagreement
+before it becomes a field report. That comparison is what the :doc:`consistency checks
+</consistency_checks>` do; this page describes what the file itself may contain.
+
+.. code-block:: json
+
+   {
+     "component": {
+       "name": "Controller",
+       "description": "Consumes the raw values and produces the derived ones",
+       "declarations": [
+         {
+           "scope": "output",
+           "condition": "defined(FEATURE_X)",
+           "definition": {
+             "name": "ValueG",
+             "description": "Measurement that only exists when FEATURE_X is defined",
+             "datatype": "uint16",
+             "unit": "V",
+             "conversion": { "factor": 0.001 },
+             "limits": { "min": 0, "max": 5 },
+             "init": 1000
+           }
+         }
+       ]
+     }
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - key
+     - default
+     - meaning
+   * - ``name``
+     - required
+     - Identifier of the component. It becomes the name of the header DDD generates for it -
+       ``Controller`` gives ``Controller.h`` - and the name of the a2l ``GROUP`` that collects
+       the component's objects in the calibration tool.
+   * - ``description``
+     - ``""``
+     - Free text. It is repeated in the banner of the generated header and becomes the long
+       identifier of the a2l ``GROUP``.
+   * - ``declarations``
+     - ``[]``
+     - The interface: one entry per variable the component reads, writes or owns.
+
+A component that declares nothing is legal - a component may exist before it has any data, or
+may genuinely have none - but it is reported at severity ``info``, because far more often it
+means a file that was started and never finished:
+
+.. code-block:: text
+
+   $ ddd check emptycomp.ddd.json
+   emptycomp.ddd.json#component: info[empty-component]: component 'Nothing' declares no variable
+   1 info
+
+Component names live in their own namespace and are not subject to the project's
+:doc:`naming convention </naming_conventions>`: a convention written for variables asks for a
+role token and a subject, and every component name in every project would fail it. What is
+checked is that two component names cannot end up asking for the same generated file, which on
+a case insensitive file system means names differing only in case:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   b.ddd.json#component.name: error[name-collision]: components 'Sensorhub' and 'SensorHub' differ only in upper/lower case, so they ask for the same generated header
+       note: a.ddd.json#component.name: other component
+   1 error
+
+declarations
+------------
+
+Each entry of ``declarations`` binds one data object to this component, and consists of three
+things: **what** is being declared, **how** this component relates to it, and **when** it
+exists at all.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - key
+     - default
+     - meaning
+   * - ``scope``
+     - required
+     - ``input``, ``output`` or ``local`` - the relationship between this component and the
+       object.
+   * - ``condition``
+     - ``null``
+     - A single c preprocessor expression. The generated declaration and definition are
+       wrapped in ``#if`` / ``#endif`` with it.
+   * - ``definition``
+     - required
+     - The :doc:`variable definition <variable_definition>` - name, kind, datatype, unit,
+       conversion, limits, initial value and a2l settings.
+
+The same variable is normally declared by several components: once by the one that writes it
+and once by each one that reads it. That repetition is not redundancy, it is the whole
+mechanism. The consumer states what it *expects*, the producer states what it *promises*, and
+DDD compares the two. Where they differ, the declaration of the **producing** component is the
+authoritative one: its definition is what gets generated, and the finding points at the
+consumer that deviates.
+
+Declaring the same variable twice inside **one** component is a different matter, and always a
+mistake - there is no second opinion to have with oneself:
+
+.. code-block:: text
+
+   $ ddd check dupdecl.ddd.json
+   dupdecl.ddd.json#component.declarations[1]: error[duplicate-declaration]: component 'Dup' declares 'V' twice (as local and as local)
+       note: dupdecl.ddd.json#component.declarations[0]: first declared here
+   1 error
+
+scope
+-----
+
+The scope is what turns a set of variable descriptions into an interface with rules. It says
+who owns a variable and who may see it, and DDD enforces both - the first through its checks,
+the second through what it puts into which generated header.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
+
+   * - scope
+     - meaning
+   * - ``input``
+     - The component reads the object. Some other component has to declare it as ``output``,
+       otherwise the interface has a hole and ``missing-producer`` says so.
+   * - ``output``
+     - The component owns the object and writes it. Exactly one component in the project may
+       say this about a given object; a second one is ``multiple-producers``. Other components
+       may read it.
+   * - ``local``
+     - The component owns the object exclusively. No other component may declare it at all,
+       in any scope; one that tries is ``local-conflict``.
+
+For a measurement, ``output`` means what it sounds like: the software writes the variable. For
+calibration data, which the software never writes, ``output`` means that the component
+*provides* the data and other components may read it - a shared axis is the typical case, as
+in the demo where ``Controller`` owns ``AxisA`` and ``UserInterface`` reads it in order to put
+a second curve over the same break points. For data that only parametrises the component that
+owns it, ``local`` is the normal choice, and it is the one that keeps the interface small.
+
+The three scopes are what ``examples/inconsistent/`` exists to demonstrate; every rule above
+appears in one run:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+       note: component_a.ddd.json#component.declarations[0]: also written here
+   component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+       note: component_a.ddd.json#component.declarations[0].definition: reference declaration
+   component_c.ddd.json#component.declarations[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+   component_c.ddd.json#component.declarations[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+       note: component_a.ddd.json#component.declarations[2]: declared local here
+   component_a.ddd.json#component.declarations[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+   4 errors, 1 warning
+
+What the scope does to the generated code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Checks catch a wrong description; visibility catches wrong code. Every variable of the project
+is defined exactly once, in ``ddd_globals.c``, but each component gets a header containing
+only what *it* declared, grouped by scope and annotated with who produces what. This is
+``Controller.h`` from the demo, shortened to the parts that matter:
+
+.. code-block:: c
+
+   /* outputs - written by Controller, read by other components */
+   /** Measurement used as the input quantity of AxisA [Hz] */
+   extern volatile uint16_t ValueE;
+   /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
+   extern const uint16_t AxisA[6];
+
+   /* inputs - produced elsewhere, Controller may only read them */
+   /** Scalar measurement with a linear conversion [%] */
+   extern uint8_t ValueA;  /* produced by SensorHub */
+   /** Array measurement with four elements [V] */
+   extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+
+   /* locals - owned exclusively by Controller */
+   /** Component local measurement of the controller [%] */
+   extern int16_t ValueH;
+   /** Single calibratable constant [Hz] (calibration parameter) */
+   extern const uint16_t ParameterA;
+
+A source file of ``Controller`` includes this one header and nothing else, so it simply has no
+way of naming a variable that belongs to ``SensorHub`` and was not declared as one of its own
+inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
+input is possible by construction, since that is what an input is; *writing* one still
+compiles here, because the declaration is not ``const``. ``ddd generate --const-inputs``
+declares inputs ``extern const`` instead, which stops that too, at the cost of a definition in
+``ddd_globals.c`` that stays non-const - strictly a constraint violation, accepted by the usual
+embedded toolchains, and therefore opt-in. The whole picture is on the
+:doc:`generated artefacts </generated_artefacts>` page.
+
+condition
+---------
+
+Some variables only exist in some builds: a diagnostic buffer in a development image, a
+feature behind a compile time switch, a signal that only the variant with the second sensor
+produces. ``condition`` carries that, as a c preprocessor expression:
+
+.. code-block:: json
+
+   {
+     "scope": "output",
+     "condition": "defined(FEATURE_X)",
+     "definition": {
+       "name": "ValueG",
+       "description": "Measurement that only exists when FEATURE_X is defined",
+       "datatype": "uint16",
+       "unit": "V",
+       "conversion": { "factor": 0.001 },
+       "limits": { "min": 0, "max": 5 },
+       "init": 1000
+     }
+   }
+
+The expression is emitted verbatim, around the definition in ``ddd_globals.c`` and around the
+declaration in every header that carries the variable, with the condition repeated in a comment
+on the ``#endif`` so that a long guarded region stays readable:
+
+.. code-block:: c
+
+   #if defined(FEATURE_X)
+   /** Measurement that only exists when FEATURE_X is defined [V] */
+   uint16_t ValueG = 1000U;
+   #endif /* defined(FEATURE_X) */
+
+a2l has no notion of preprocessor conditions - the file describes one built image, and DDD
+generates it before the build has happened. The object is therefore exported anyway, with the
+condition written above it as a comment, so that a calibration engineer who cannot find the
+symbol in the image knows immediately why:
+
+.. code-block:: text
+
+   /* only present in the build when: defined(FEATURE_X) */
+   /begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
+     UWORD CM_LIN_V 0 0 0 5
+     ECU_ADDRESS 0x00000000
+     SYMBOL_LINK "ValueG" 0
+   /end MEASUREMENT
+
+One expression, and nothing else
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A condition has to be a **single** preprocessor expression. Surrounding whitespace is
+stripped, and a condition that is empty or only whitespace is the same as no condition at all;
+but a line break and the comment markers ``/*``, ``*/`` and ``//`` are refused, and so is
+``#``:
+
+.. code-block:: text
+
+   $ ddd check cond.ddd.json
+   cond.ddd.json#component.declarations[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: 'defined(A)\n#undef NDEBUG')
+   cond.ddd.json#component.declarations[2].condition: error[schema]: Value error, a condition cannot contain '/*' (got: 'defined(B) /* sneaky */')
+   2 errors
+
+The reason is that the text goes into somebody else's translation unit unchanged. A line break
+would let a description file put arbitrary preprocessor directives - an ``#undef``, an
+``#include``, a redefinition of a macro from a different component - inside the guarded region
+of a file that team never sees. A comment marker would close the trailing
+``#endif /* ... */`` early and leave whatever followed it as live code. Neither is something
+the author of one component should be able to do to everybody else's build, and neither has
+any legitimate use in an expression that is only ever meant to say *when* a variable exists.
+Everything a real condition needs is still there: ``defined(FEATURE_X) && !defined(NO_FEATURE_X)``
+is accepted as written.
+
+When the components disagree about the condition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A condition belongs to the declaration, not to the variable, so two components can put
+different conditions on the same variable. That is almost always a mistake - the variable
+exists in the builds the producer says it exists in, and a consumer guarded by a different
+symbol will either fail to link or quietly disappear - so it is reported, and the producer's
+condition is the one that is generated:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   consumer.ddd.json#component.declarations[0].condition: warning[condition-mismatch]: 'ValueX': component 'Consumer' uses condition 'defined(FEATURE_Y)' while 'Producer' uses 'defined(FEATURE_X)'
+       note: producer.ddd.json#component.declarations[0]: reference declaration
+   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueX': component 'Consumer' specifies a different init than 'Producer' (init: 2 != 1); the value of 'Producer' is used
+       note: producer.ddd.json#component.declarations[0].definition: reference declaration
+   2 warnings
+
+It is a warning rather than an error because the case does occur legitimately: a consumer whose
+own code is guarded by a wider condition may reasonably repeat the narrower one imprecisely,
+and a project migrating from one feature macro to another goes through a state where the two
+spellings coexist. What DDD refuses to do is decide silently, which is why the message names
+both conditions and says which one won.
+
+.. note::
+   ``storage-mismatch`` in the transcript above is the same principle applied to ``init`` and
+   ``volatile``: a difference between components is reported, and the producer's value is the
+   one that is used. Anything that would make the consumers actually *wrong* - datatype, unit,
+   conversion, shape, limits, kind - is an error instead, under ``definition-mismatch``.
+
+Checking a component on its own
+-------------------------------
+
+``ddd check`` and ``ddd generate`` accept a component file directly, which is what lets a team
+check its own description before integrating it into a project. The inputs of that component
+have no producer in such a run, by definition, so silence the check that would otherwise
+dominate the output:
+
+.. code-block:: text
+
+   $ ddd check controller.ddd.json -W missing-producer=ignore
+   controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.declarations[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.declarations[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.declarations[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.declarations[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   5 warnings
+
+``unused-output`` is the mirror image of the same situation and can be silenced the same way;
+it is a warning, so the run still exits zero. Everything else applies unchanged: the schema,
+the reserved identifiers, the references between curves, maps and axes, the initial values
+against the datatypes and against the shapes. What cannot be checked this way is precisely
+what the project is for - whether the other components agree.

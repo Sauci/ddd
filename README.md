@@ -67,13 +67,14 @@ ddd generate examples/demo/demo.ddd.json -o build/gen
 
 ```text
 $ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]:
-    'SharedValue' is written by component 'ComponentB' and by component 'ComponentA';
-    exactly one writer is allowed
+examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
 ...
 4 errors, 1 warning
 ```
+
+Each finding is one line, however long, so that `grep` and a ci log parser see one record
+per finding; only a `note:` continues on its own line.
 
 ## File formats
 
@@ -153,7 +154,7 @@ Include cycles are reported instead of hanging.
 | `description` | `""` | becomes a doxygen comment and the a2l long identifier |
 | `unit` | `""` | physical unit; components sharing a variable must agree on it |
 | `conversion` | identity | raw to physical conversion, see below |
-| `limits` | derived | physical `min`/`max`; derived from datatype and conversion when omitted |
+| `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | per object a2l tuning |
 
@@ -217,7 +218,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `multiple-producers` | a variable is written by more than one component |
 | error | `missing-producer` | an input is written by nobody |
 | error | `local-conflict` | a component local variable is used by another component |
-| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, limits or axes |
+| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
@@ -228,8 +229,9 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `naming` | a name does not follow the naming convention of the project |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
-| error | `include-empty`, `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read |
-| warning | `storage-mismatch` | components disagree on `init`/`volatile`; the producer wins |
+| error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
+| error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |
+| warning | `storage-mismatch` | components disagree on `init`, `volatile` or the `a2l` block; the producer wins |
 | warning | `condition-mismatch` | declarations of one variable use different conditions |
 | warning | `unused-output` | an output nobody reads |
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
@@ -387,15 +389,22 @@ extern volatile uint16_t ValueE;  /* produced by Controller */
 extern int16_t ValueF;  /* produced by Controller */
 ```
 
-Access rules are enforced by visibility: a component can only reach a variable whose
-declaration is in its own header.  With `--const-inputs` the enforcement becomes stronger,
+Access rules are enforced by visibility: a component includes its own header, and that
+header declares only what the component declared.  The enforcement is the include path -
+`ddd_globals.h` sits next to the component headers and declares everything, and only asks
+in a comment not to be included; the cmake integration is what makes the path narrow in
+practice.  With `--const-inputs` the enforcement becomes stronger,
 inputs are then declared `extern const` so that writing to a foreign variable does not
 compile.  The definition in `ddd_globals.c` stays non-const, which is a constraint violation
 in strict c but is accepted by the usual embedded toolchains; that is why the option is
 opt-in.
 
-Useful options: `--prefix device` (renames the shared files), `--no-a2l`, `--dry-run`,
-`--force` (generate despite errors), `--byte-order big`, `--address-map addresses.json`.
+Useful options: `--prefix device` (renames the shared files, and rewrites the component
+headers with them since each one includes `<prefix>_types.h`), `--no-a2l`, `--dry-run`
+(reports what would be written and exits `0` either way, so it is not a staleness gate on
+its own), `--force` (generate despite errors - the files are written using the producing
+component's definition, but the command still reports every finding and still exits `1`),
+`--byte-order big`, `--address-map addresses.json`.
 
 ## A2L support
 
@@ -407,7 +416,10 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 * a linear conversion becomes `RAT_FUNC` with `COEFFS 0 1 -offset 0 0 factor`, which is the
   a2l way of writing `raw = (physical - offset) / factor`
 * an identity conversion without unit uses `NO_COMPU_METHOD`
-* arrays get a `MATRIX_DIM`
+* a measurement or a value block with dimensions gets a `MATRIX_DIM`, listing the fastest
+  running index **first** - the reverse of the c declaration, so `uint8_t T[2][3]` becomes
+  `MATRIX_DIM 3 2 1`.  A curve and a map carry none: their shape is already given by the
+  point counts of the axes they refer to
 * a curve or map points at its axes with an `AXIS_DESCR` of attribute `COM_AXIS` plus an
   `AXIS_PTS_REF`; an axis referenced this way is always exported, because a dangling
   `AXIS_PTS_REF` would make the file invalid
@@ -454,7 +466,14 @@ one command whose stdout is *itself* the payload, so there the diagnostics go to
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format.
 
-Exit codes: `0` clean, `1` findings, `2` wrong usage.
+Exit codes: `0` clean, `1` findings, `2` wrong usage.  `1` means at least one finding was
+reported **as an error**: a run with only warnings exits `0`, which is what `--strict` is
+for.  Two commands differ on purpose: `ddd complete` always exits `0`, and `ddd name` exits
+`2` when the convention itself cannot be read, `1` when a name does not fit it.
+
+In the text format the findings, the summary and the verdict line all go to **stderr**, so
+that `ddd dump > baseline.json` and `ddd list | ...` carry only the payload.  With
+`--format json` the report is the payload and goes to stdout.
 
 ## CMake integration
 
@@ -530,6 +549,8 @@ docker compose run --rm cmake            # build examples/cmake through cmake/Dd
 docker compose run --rm test             # pytest with the coverage gate
 docker compose run --rm coverage         # same, plus an html report
 docker compose run --rm lint             # ruff + mypy
+docker compose run --rm docs             # the html documentation, into build/docs/html
+docker compose run --rm shell            # an interactive shell in the image
 docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 ```
 

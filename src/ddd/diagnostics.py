@@ -82,7 +82,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("local-conflict", Severity.ERROR,
                "a component local variable is also used by another component"),
         _check("definition-mismatch", Severity.ERROR,
-               "components disagree on datatype, unit, scaling, dimensions or limits"),
+               "components disagree on kind, datatype, unit, scaling, shape, stated limits "
+               "or referenced axes"),
         _check("enum-conflict", Severity.ERROR,
                "the same enum name is defined with different enumerators"),
         _check("unknown-reference", Severity.ERROR,
@@ -92,7 +93,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("init-invalid", Severity.ERROR,
                "an initial value does not fit the datatype of the variable"),
         _check("storage-mismatch", Severity.WARNING,
-               "components disagree on init value or volatile; the producer wins"),
+               "components disagree on the init value, on volatile or on the a2l block; "
+               "the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
                "declarations of one variable use different preprocessor conditions"),
         _check("unused-output", Severity.WARNING, "an output variable is read by no component"),

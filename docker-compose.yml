@@ -74,6 +74,16 @@ services:
     <<: *ddd
     command: ["sh", "-c", "ruff check . && ruff format --check . && mypy"]
 
+  # Builds the html documentation into build/docs/html. The shared documentation image
+  # (see ci-build.sh) is what CI uses and is the only one carrying LaTeX for the pdf; this
+  # service builds the html alone, out of the same sources, without that image.
+  docs:
+    <<: *ddd
+    command:
+      - sh
+      - -c
+      - pip install --quiet -e ".[docs]" && sphinx-build -b html docs build/docs/html -W --keep-going
+
   shell:
     <<: *ddd
     command: ["bash"]

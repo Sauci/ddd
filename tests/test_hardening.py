@@ -424,6 +424,35 @@ class TestVerdictsThatWereWrong:
         compare(guarded, third, both)
         assert "builds it is present in have changed" in messages(both)
 
+    def test_changed_a2l_names_only_what_differs(self, tree: Path) -> None:
+        """Rendering the whole record made one change read as several."""
+        from ddd.compare import compare
+
+        def delivery(where: str, **a2l: object) -> object:
+            dictionary, _ = run_analysis(
+                tree / where,
+                {
+                    "project.ddd.json": project("P", "a.ddd.json"),
+                    "a.ddd.json": component(
+                        "A", declare("local", "Gain", "uint8", **({"a2l": a2l} if a2l else {}))
+                    ),
+                },
+            )
+            return dictionary
+
+        plain = delivery("one")
+        named = delivery("two", display_identifier="FiltGain")
+        assert plain is not None and named is not None
+
+        bag = DiagnosticBag()
+        compare(plain, named, bag)
+        assert "display_identifier: none -> 'FiltGain'" in messages(bag)
+        assert "export" not in messages(bag)  # it did not change, so it is not mentioned
+
+        back = DiagnosticBag()
+        compare(named, plain, back)
+        assert "display_identifier: 'FiltGain' -> none" in messages(back)
+
     def test_findings_of_one_file_are_ordered_by_declaration(self) -> None:
         location = Location(Path("a.ddd.json"), "component.declarations[{}]")
         bag = DiagnosticBag()
@@ -592,6 +621,58 @@ class TestInputTheToolMustSurvive:
         assert "a2l-unrepresentable" in checks(bag)
 
 
+class TestWhatABuildSystemIsTold:
+    def test_a_rejected_file_is_still_a_source(self, tree: Path) -> None:
+        """A file read and then rejected still belongs to the dependency list.
+
+        Otherwise the build never re-runs DDD when somebody fixes it, and the fix appears to
+        change nothing.
+        """
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "c/*.ddd.json"),
+                "c/a.ddd.json": component("Same", declare("output", "X")),
+                "c/b.ddd.json": component("Same", declare("input", "X")),
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None
+        assert "duplicate-component" in checks(bag)  # b was read, and rejected
+        names = {path.name for path in workspace.sources()}
+        assert names == {"project.ddd.json", "a.ddd.json", "b.ddd.json"}
+
+    def test_a_file_that_is_not_even_json_is_still_a_source(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "c/*.ddd.json"),
+                "c/broken.ddd.json": "{ not json",
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None
+        assert "broken.ddd.json" in {path.name for path in workspace.sources()}
+
+
+class TestOneMistakeIsOneFinding:
+    def test_a_list_emptied_by_a_rejected_entry_is_not_reported_as_well(self, tree: Path) -> None:
+        """pydantic drops the bad entry and then calls the list too short; one mistake."""
+        write_tree(tree, {"c.ddd.json": {"naming": {"name": "c", "segments": [{"name": "r"}]}}})
+        bag = DiagnosticBag()
+        assert load_convention(tree / "c.ddd.json", bag) is None
+        assert len(bag) == 1
+        assert "needs either tokens or a pattern" in messages(bag)
+
+    def test_a_list_that_was_written_empty_still_reports_itself(self, tree: Path) -> None:
+        write_tree(tree, {"c.ddd.json": {"naming": {"name": "c", "segments": []}}})
+        bag = DiagnosticBag()
+        assert load_convention(tree / "c.ddd.json", bag) is None
+        assert "at least 1 item" in messages(bag)
+
+
 class TestTheArchivedDictionary:
     def test_a_newer_format_is_refused_rather_than_misread(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
@@ -608,6 +689,50 @@ class TestTheArchivedDictionary:
         bag = DiagnosticBag()
         assert load_dictionary(tree / "baseline.json", bag) is None
         assert "use a newer DDD" in messages(bag)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "{ not json at all",
+            "[1, 2, 3]",
+            '{"format": "two", "name": "P"}',
+            '{"format": true, "name": "P"}',
+        ],
+        ids=["unparseable", "not-an-object", "format-not-a-number", "format-is-a-bool"],
+    )
+    def test_the_version_peek_judges_only_the_version(self, tree: Path, payload: str) -> None:
+        """Anything else wrong with the document is left to the real validation.
+
+        The peek runs before pydantic and on unvalidated json, so it has to keep its hands
+        off everything it is not there to decide: a document that is not json, or not an
+        object, or whose ``format`` is not a number it recognises, must come back with
+        pydantic's located finding rather than with a complaint about the version.
+        """
+        (tree / "bad.json").write_text(payload, encoding="utf-8")
+        bag = DiagnosticBag()
+        load_dictionary(tree / "bad.json", bag)
+        assert "use a newer DDD" not in messages(bag)
+
+    def test_the_version_is_read_before_the_document_is_validated(self, tree: Path) -> None:
+        """A newer dump carries unknown fields, and the contract forbids those.
+
+        Validating first would answer 'extra inputs are not permitted', which says nothing
+        about what actually happened.
+        """
+        (tree / "future.json").write_text(
+            json.dumps(
+                {
+                    "format": DICTIONARY_FORMAT + 1,
+                    "name": "P",
+                    "objects": [{"name": "X", "kind": "measurement", "future_field": 1}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        bag = DiagnosticBag()
+        assert load_dictionary(tree / "future.json", bag) is None
+        assert "use a newer DDD" in messages(bag)
+        assert "Extra inputs are not permitted" not in messages(bag)
 
     def test_the_current_format_round_trips(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
@@ -644,13 +769,52 @@ class TestTheRestOfTheEdges:
         assert "limits: [0, 50] != [0, 100]" in messages(bag)
 
     def test_a_path_the_system_cannot_represent(self, tree: Path) -> None:
+        """Where such a path is refused differs by platform; the finding must not.
+
+        linux rejects a NUL byte already in ``resolve()`` while Windows carries it as far as
+        the read, so the loader has to survive both and report the same thing.
+        """
         bag = DiagnosticBag()
         assert load_workspace(tree / "a\x00b.ddd.json", bag) is None
         assert "cannot read" in messages(bag)
 
-        other = DiagnosticBag()
-        assert load_workspace(tree / "in<val>id.ddd.json", other) is None
-        assert "cannot read" in messages(other)
+    def test_a_path_refused_by_resolve_itself(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other half of the platform split, forced so that both are tested everywhere.
+
+        linux raises inside ``resolve()`` for a NUL byte and Windows does not, so whichever
+        platform runs the suite would otherwise leave one of the two paths unexercised.
+        """
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            msg = "lstat: embedded null character in path"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a\x00b.ddd.json", bag) is None
+        assert "cannot read" in messages(bag)
+
+    def test_a_file_the_filesystem_refuses_to_open(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Permissions, a device that went away, a name this platform will not have.
+
+        Forced rather than provoked with an odd file name: which names are illegal is itself
+        platform specific, and this is about the handler, not about the name.
+        """
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> str:
+            msg = "Input/output error"
+            raise OSError(5, msg)
+
+        monkeypatch.setattr(Path, "read_text", refuse)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert "cannot read" in messages(bag)
+        assert "Input/output error" in messages(bag)
 
     def test_a_pattern_the_platform_refuses_to_expand(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch

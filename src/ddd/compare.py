@@ -8,8 +8,12 @@ Two questions are asked with the same machinery but are not the same question:
   directional ("can the candidate replace the baseline?") and graded, because growing a
   limit is harmless while rescaling a conversion silently falsifies every reading.
 
-Only the primitive - a field, how to read it, how to phrase it - is shared. The two field
-sets deliberately differ, and :class:`TestComparisonTables` in the test suite records why.
+Only the idea is shared - a field, how to read it, how to phrase it - not the code: each
+module keeps its own table, because the same property lands in different places. ``limits``
+is a field here but a directional branch there; ``a2l`` is a table field there but its own
+check here; ``local`` exists only here. Those differences are decisions, and
+``TestComparisonTables`` in ``tests/test_comparison_tables.py`` records each one, next to the
+guard that stops either table from silently falling behind its models.
 """
 
 from __future__ import annotations
@@ -198,7 +202,7 @@ def _compare_object(
     if old.a2l != new.a2l:
         bag.add(
             "changed-a2l",
-            f"'{old.name}': the a2l entry changed ({_describe_a2l(old)} -> {_describe_a2l(new)})",
+            f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
             location,
         )
 
@@ -222,12 +226,27 @@ def _condition_consequence(old: ResolvedObject, new: ResolvedObject) -> str:
     return "the builds it is present in have changed"
 
 
-def _describe_a2l(entry: ResolvedObject) -> str:
-    a2l = entry.a2l
-    parts = [f"export={str(a2l.export).lower()}"]
-    parts += [
-        f"{key}='{value}'"
-        for key, value in (("format", a2l.format), ("display_identifier", a2l.display_identifier))
-        if value is not None
-    ]
-    return ", ".join(parts)
+_A2L_PROPERTIES = ("export", "format", "display_identifier")
+
+
+def _a2l_difference(old: ResolvedObject, new: ResolvedObject) -> str:
+    """Name only the a2l properties that actually differ.
+
+    Rendering the whole record on both sides made a change to one property read as a change
+    to all of them: adding a display identifier reported ``export=true -> export=true,
+    display_identifier='FiltGain'``, which invites the reader to go looking for what happened
+    to ``export``.
+    """
+    return ", ".join(
+        f"{name}: {_a2l_value(getattr(old.a2l, name))} -> {_a2l_value(getattr(new.a2l, name))}"
+        for name in _A2L_PROPERTIES
+        if getattr(old.a2l, name) != getattr(new.a2l, name)
+    )
+
+
+def _a2l_value(value: object) -> str:
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return str(value).lower()
+    return f"'{value}'"

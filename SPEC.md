@@ -154,7 +154,7 @@ Attributes common to every kind:
 | `description` | `""` | doxygen comment in the c code, long identifier in the a2l |
 | `unit` | `""` | physical unit |
 | `conversion` | identity | raw to physical conversion, section 3.4 |
-| `limits` | derived | physical `min`/`max`; derived from datatype and conversion when omitted |
+| `limits` | derived | physical `min`/`max`; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | `export`, `format`, `display_identifier` |
 
@@ -169,15 +169,18 @@ Kind specific attributes:
 | `curve` | `axis` | `const` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
 | `map` | `x_axis`, `y_axis` | `const` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
-* `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`.
+* `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`. In the a2l the
+  same object is described by a `MATRIX_DIM` listing the fastest running index first, i.e.
+  in the reverse order - describing it in c order would state a transposed object.
 * `init` is a scalar or a nested list matching the shape of the object. A scalar given for an
   array shaped object initialises every element.
 * `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (a2l `COM_AXIS`).
 * `input` names the measurement that indexes an axis (a2l input quantity); when omitted the
   a2l uses `NO_INPUT_QUANTITY`.
-* Calibration objects (everything except `measurement`) are never `volatile` and are always
-  generated `const`, so that they are placed in read only memory.
+* Calibration objects (everything except `measurement`) are always generated `const`, so
+  that they are placed in read only memory. `volatile` is not merely ignored on them: it
+  is a key of `measurement` alone, so a calibration object carrying it is rejected.
 
 ### 3.4 Conversions
 
@@ -195,18 +198,21 @@ Kind specific attributes:
 ### 3.5 Naming convention
 
 A project may point at a naming convention with its `"naming"` key. The convention is a
-`*.ddd.json` file whose top level key is `"naming"`, and it describes a name as an ordered
-sequence of *segments* joined by a separator. Each segment carries either a controlled
-vocabulary of tokens with their meanings, or a regular expression for a free position. A
-segment may be marked optional (only at the end) or repeatable (only one), so that a name
-always splits unambiguously.
+file whose top level key is `"naming"` - named `*.ddd.json` like every other description
+file, though only project and component files are checked for that extension - and it
+describes a name as an ordered sequence of *segments* joined by a separator. Each segment
+carries either a controlled vocabulary of tokens with their meanings, or a regular expression
+for a free position. A segment may be marked optional (only at the end) or repeatable (only
+one), so that a name always splits unambiguously.
 
 The segmented form is required rather than a single expression for the whole name, because it
 is what lets the tool report *which part* of a name is wrong and *what may follow* a partially
 typed one. Both shall be offered: names shall be validated with the position of the offending
 part, and the valid continuations of a prefix shall be printable for a shell completion. Every
 declared name shall be checked against the convention as part of checking the project
-(`naming`). Component names are not subject to it.
+(`naming`). Component names are not subject to it. Only the convention of the *root*
+project applies: a sub-project cannot impose one on the project that includes it, so the
+verdict on a name does not depend on which file the run started from.
 
 ### 3.6 Memory placement *(planned)*
 
@@ -228,7 +234,9 @@ Errors:
 * `multiple-producers` - a variable is written by more than one component
 * `missing-producer` - an input variable is written by nobody
 * `local-conflict` - a component local variable is used by another component
-* `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape or limits
+* `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
+  referenced axes, or on limits where both of them state limits: a declaration that omits
+  them defers to the producer rather than disagreeing with it
 * `duplicate-declaration` - a component declares the same variable more than once
 * `duplicate-component` - two files declare the same component name
 * `enum-conflict` - one enum name is used with different enumerators
@@ -248,7 +256,8 @@ Errors:
 
 Warnings:
 
-* `storage-mismatch` - components disagree on the initial value or on `volatile`; the producer wins
+* `storage-mismatch` - components disagree on the initial value, on `volatile` or on the
+  `a2l` block; the producer wins
 * `condition-mismatch` - declarations of one variable use different preprocessor conditions
 * `unused-output` - an output is read by nobody
 * `limits-out-of-range` - limits exceed what the datatype can represent
@@ -293,7 +302,11 @@ Information:
 * `added-object` - the candidate declares an object the baseline did not
 
 Widening a limit shall be silent, since every value the baseline allowed still fits. Limits
-that got tighter as a consequence of a changed interface shall not be reported twice.
+that got tighter shall not be reported on an object whose interface changed as well: the
+interface change is the finding to act on, and the narrowing would only bury it. This is
+deliberately coarser than "tighter *as a consequence of* the interface change", which
+nothing can decide - an independent narrowing of the same object is therefore also held
+back until the interface change is resolved.
 
 ## 5 Generated artefacts
 
@@ -344,8 +357,10 @@ resolved data objects,
 writing out the data dictionary itself, validating and explaining names against the naming
 convention and completing partially typed ones, printing the json schema of the file formats
 and of the dictionary, listing the available checks, and reporting where its build system
-integration lives. Every command can produce machine readable json, and the exit code
-distinguishes clean runs, findings and usage errors.
+integration lives. Every command that reports findings can produce machine readable
+json, and the exit code distinguishes clean runs, findings and usage errors. A findings exit
+is reserved for findings reported *as errors*: a run whose findings are all warnings is a
+clean run unless `--strict` says otherwise.
 
 The data dictionary shall be writable and readable as json, so that a generator DDD does not
 ship can consume it without depending on the implementation.

@@ -151,7 +151,7 @@ Include cycles are reported instead of hanging.
 | `name` | required | c identifier of the object |
 | `kind` | `measurement` | see the next section |
 | `datatype` | required | `bool`, `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float32`, `float64` |
-| `description` | `""` | becomes a doxygen comment and the a2l long identifier |
+| `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
 | `unit` | `""` | physical unit; components sharing a variable must agree on it |
 | `conversion` | identity | raw to physical conversion, see below |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
@@ -359,28 +359,46 @@ reports both.
 
 ## Generated files
 
-`ddd generate -o DIR` writes, and rewrites only what actually changed, so unchanged output
-does not trigger a rebuild:
+**The c templates belong to the project.** What the generated sources look like - the comment
+convention, the banner, the include guards, whether a variable is commented at all - is a
+house style that does not follow from the data, so DDD renders jinja2 templates the project
+supplies and `--template-dir` is required.  `ddd templates-dir` prints a working set to copy
+and adapt; nothing falls back to it.
 
-| file | content |
-| --- | --- |
-| `ddd_types.h` | `<stdint.h>`/`<stdbool.h>` and one `typedef enum` per enum conversion |
-| `ddd_globals.h` | `extern` declaration of every variable, for `ddd_globals.c` only |
-| `ddd_globals.c` | the single definition of every global variable, grouped by owner |
-| `<Component>.h` | the interface of one component: nothing else is visible |
-| `<Project>.a2l` | the calibration description |
+The templates also decide what the files are *called*, which is why there is no prefix
+option: every `*.jinja2` in the directory renders to a file named like it without that
+extension, a name starting with `_` is a helper that renders nothing on its own, and a name
+containing `{component}` renders once per component.  Renaming a template renames its output.
+
+With the example templates, `ddd generate -o DIR -t DIR` writes - and rewrites only what
+actually changed, so unchanged output does not trigger a rebuild:
+
+| file | from | content |
+| --- | --- | --- |
+| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>` and one `typedef enum` per enum conversion |
+| `ddd_globals.h` | `ddd_globals.h.jinja2` | `extern` declaration of every variable, for `ddd_globals.c` only |
+| `ddd_globals.c` | `ddd_globals.c.jinja2` | the single definition of every global variable, grouped by owner |
+| `<Component>.h` | `{component}.h.jinja2` | the interface of one component: nothing else is visible |
+| `<Project>.a2l` | built in | the calibration description |
+
+The a2l is the exception: its structure is dictated by ASAM MCD-2 MC rather than by a project,
+and a malformed one is refused by the calibration tool, so that generator stays inside DDD.
 
 ```c
-/* ddd_globals.c */
-/** Measurement used as the input quantity of AxisA [Hz] */
+/* ddd_globals.c, as the example templates render it */
+/* Measurement used as the input quantity of AxisA [Hz] */
 volatile uint16_t ValueE = 0U;
-/** Signed measurement with a fixed point conversion [degC] */
+/* Signed measurement with a fixed point conversion [degC] */
 int16_t ValueF = -400;
 #if defined(FEATURE_X)
-/** Measurement that only exists when FEATURE_X is defined [V] */
+/* Measurement that only exists when FEATURE_X is defined [V] */
 uint16_t ValueG = 1000U;
 #endif /* defined(FEATURE_X) */
 ```
+
+How that reads is the *example* templates' choice, not DDD's: a project that wants a
+different comment convention, a different banner, or no comments at all, says so in its own
+copy.
 
 ```c
 /* UserInterface.h - only what UserInterface declared */
@@ -399,8 +417,7 @@ compile.  The definition in `ddd_globals.c` stays non-const, which is a constrai
 in strict c but is accepted by the usual embedded toolchains; that is why the option is
 opt-in.
 
-Useful options: `--prefix device` (renames the shared files, and rewrites the component
-headers with them since each one includes `<prefix>_types.h`), `--no-a2l`, `--dry-run`
+Useful options: `--no-a2l`, `--dry-run`
 (reports what would be written and exits `0` either way, so it is not a staleness gate on
 its own), `--force` (generate despite errors - the files are written using the producing
 component's definition, but the command still reports every finding and still exits `1`),
@@ -453,6 +470,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd checks` | list the checks and their default severity |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
+| `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 
 `FILE` may be a project or a single component file, which makes it possible to check a
 component on its own before integrating it - add `-W missing-producer=ignore` in that case,
@@ -527,9 +545,9 @@ the same components: their generated headers differ, so only one image may hand 
 to the components automatically - the second call has to opt out and be wired explicitly.
 DDD refuses the ambiguous case rather than letting an include order decide it.
 
-Only `<prefix>_globals.c`, `<prefix>_globals.h`, `<prefix>_types.h` and the a2l are declared
-as outputs of the generator; the per-component headers are written next to them but their
-names live inside the description files, so they are unknown at configure time.  That is why
+The declared outputs are derived from the template names, and the a2l; a `{component}`
+template is left out because its outputs are named after the components, which are only known
+once the description files have been read.  That is why
 consumers depend on `firmware_ddd_headers` rather than on an individual header path.
 
 ## Compiling the generated code (docker / WSL)

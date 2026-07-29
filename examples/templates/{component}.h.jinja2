@@ -1,4 +1,4 @@
-{% import "macros.jinja" as macros %}
+{% import "_macros.jinja2" as macros %}
 {{- macros.banner(filename, model) }}
 /*
  * Interface of software component '{{ header.name }}'.
@@ -13,7 +13,7 @@
 #ifndef {{ header.guard }}
 #define {{ header.guard }}
 
-#include "{{ model.options.types_header }}"
+#include "ddd_types.h"
 {% if header.outputs %}
 
 /* outputs - written by {{ header.name }}, read by other components */

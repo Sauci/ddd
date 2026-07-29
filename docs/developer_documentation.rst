@@ -36,11 +36,20 @@ Layers
      - **the contract**: the resolved data dictionary
      - how it is rendered
    * - ``src/ddd/backends/c/``
-     - ``uint16_t``, literals, include guards, templates
-     - a2l, the loader, the checks
+     - ``uint16_t``, literals, include guards, rendering the project's templates
+     - a2l, the loader, the checks, what the generated files are called
    * - ``src/ddd/backends/a2l/``
-     - ``UWORD``, compu methods, record layouts, templates
+     - ``UWORD``, compu methods, record layouts, its own templates
      - c, the loader, the checks
+
+The last two rows are deliberately not symmetric. The a2l backend carries its own templates,
+because ASAP2 is a format ASAM defines and a project has nothing to decide about it; the c
+backend carries none, because what generated c looks like is a house style. It is constructed
+with the template directory ``--template-dir`` names, works out what to render from the file
+names it finds there, and therefore does not know before a run which files that run produces.
+Those naming rules are part of the interface a project depends on: :doc:`templates` documents
+them, and the module docstring of ``src/ddd/backends/c/backend.py`` states them again next to
+the code that implements them.
 
 Four smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
@@ -101,13 +110,13 @@ described by the protocol in ``src/ddd/backends/base.py``:
            """Render every artefact of this backend; nothing is written to disk."""
            ...
 
-That signature carries two decisions worth knowing. First, a backend receives the resolved
+That signature carries two decisions worth knowing. First, ``generate`` receives the resolved
 :class:`ddd.ir.DataDictionary` and nothing else: no workspace, no diagnostic bag, no command
-line arguments. Anything it needs has to be a field of the contract, which is what stops one
-output format from acquiring its own private view of what a project means. Second, a backend
-*renders* but does not *write*. It returns fully rendered ``GeneratedFile`` objects, and the
-driver decides what happens to them, which is what makes three things possible in one place
-rather than in every backend:
+line arguments. Anything it needs about the project has to be a field of the contract, which
+is what stops one output format from acquiring its own private view of what a project means.
+Second, a backend *renders* but does not *write*. It returns fully rendered ``GeneratedFile``
+objects, and the driver decides what happens to them, which is what makes three things
+possible in one place rather than in every backend:
 
 * two artefacts claiming the same path are refused with a message naming the backends
   involved, instead of one silently overwriting the other,
@@ -115,6 +124,25 @@ rather than in every backend:
   trigger a rebuild of everything downstream,
 * ``--dry-run`` is a parameter of the writing step rather than a flag every backend has to
   honour correctly.
+
+What a backend needs about the *run* rather than about the project is settled when it is
+constructed, and the constructor is a backend's own business. That is where the two differ:
+
+.. code-block:: python
+
+   class CBackend:
+       def __init__(
+           self, template_dir: Path, options: COptions | None = None, generator: str = "ddd"
+       ) -> None: ...
+
+   class A2lBackend:
+       def __init__(self, options: A2lOptions | None = None, generator: str = "ddd") -> None: ...
+
+The template directory comes first for the c backend because it is the one argument that has
+no default: a run without ``--template-dir`` is a usage error of ``ddd generate``, never a
+fallback to a built-in set of templates, and there is nothing for the constructor to fall back
+to either. The a2l backend takes no such argument at all, since its templates are part of the
+package.
 
 Adding an output format
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -125,11 +153,14 @@ the existing two and touching nothing else:
 #. Create ``src/ddd/backends/<format>/`` with a class exposing ``name`` and ``generate``.
    Follow the shape of the existing two: a ``model.py`` that turns the dictionary into
    whatever the templates want to iterate over, a ``types.py`` mapping every
-   ``ddd.models.Datatype`` to the spelling of that format, an ``options.py`` for what
-   the command line can tune, and a ``templates/`` directory. Use
-   ``ddd.backends.base.make_environment`` and ``render_template`` so the jinja settings -
-   in particular ``StrictUndefined``, which turns a typo in a template into an error rather
-   than into an empty string - are the same as everywhere else.
+   ``ddd.models.Datatype`` to the spelling of that format, and an ``options.py`` for what
+   the command line can tune. Then decide where the templates come from, which is the one
+   design question a new backend has to answer for itself: ship a ``templates/`` directory
+   inside the package if the format is specified elsewhere, as a2l is, or take a template
+   directory as the first constructor argument if the format is a house style, as c is. Use
+   ``ddd.backends.base.make_environment`` and ``render_template`` either way, so the jinja
+   settings - in particular ``StrictUndefined``, which turns a typo in a template into an
+   error rather than into an empty string - are the same as everywhere else.
 #. Export it from ``src/ddd/backends/__init__.py``.
 #. Add it to the list of backends that ``_command_generate`` in ``src/ddd/cli.py`` builds,
    together with the option that selects or configures it.
@@ -205,7 +236,7 @@ Running the checks
 
 ``mypy`` runs in strict mode over ``src/ddd`` with the pydantic plugin; ``ruff`` lints the
 sources, the tests and the documentation configuration with a line length of 100. The suite
-is 508 tests and runs in a few seconds, so there is no reason to run anything less than all
+is 544 tests and runs in a few seconds, so there is no reason to run anything less than all
 of it.
 
 The repository also ships a small linux image, which is what the generated c code is
@@ -230,7 +261,10 @@ everything with ``-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshado
 ``nm`` against ``ddd list --format json`` so that every variable DDD promised is defined
 exactly once and nothing else is. The last three steps run twice, once plain and once with
 the conditional declarations enabled, so both states of a ``#if`` guarded variable are
-covered.
+covered. It renders the example templates, which is what makes them evidence rather than a
+sketch: the set a project starts from is the set a compiler has accepted. ``TEMPLATES`` points
+the service at any other directory, so a project can put its own templates through the same
+treatment.
 
 Building this documentation
 ---------------------------

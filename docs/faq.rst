@@ -150,6 +150,7 @@ overrides:
 .. code-block:: cmake
 
    ddd_generate(firmware.elf NAME DemoDevice
+                TEMPLATE_DIRECTORY "${templates}"
                 SEVERITY unused-output=ignore)
 
 Two components disagree - whose definition is generated?
@@ -225,10 +226,10 @@ Why does DDD refuse my enum name?
 ---------------------------------
 
 An enum conversion does not stay inside the description file: it becomes a ``typedef enum``
-in the shared types header, and its enumerators become ordinary c identifiers in the single
-namespace c has for them. Three rules follow from that, and all three are checked before any
-code is generated, so that the finding names the declaration instead of a compiler naming a
-line in a generated file nobody wrote.
+in the generated c code, wherever the templates put it, and its enumerators become ordinary c
+identifiers in the single namespace c has for them. Three rules follow from that, and all
+three are checked before any code is generated, so that the finding names the declaration
+instead of a compiler naming a line in a generated file nobody wrote.
 
 The name may not be one that the c language, or a header DDD includes, has already claimed.
 ``reserved-identifier`` covers the C11 and C23 keywords, everything ``<stdint.h>`` declares,
@@ -352,7 +353,7 @@ from the linker output by whatever already parses it in your build:
 
 .. code-block:: text
 
-   $ ddd generate demo.ddd.json -o gen --address-map addresses.json
+   $ ddd generate demo.ddd.json -o gen -t templates --address-map addresses.json
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
          UWORD CM_LIN_HZ 0 0 0 8000
@@ -367,7 +368,7 @@ wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:
 
 .. code-block:: text
 
-   $ ddd generate demo.ddd.json -o gen --address-map bad.json
+   $ ddd generate demo.ddd.json -o gen -t templates --address-map bad.json
    ddd: bad.json: address of 'ValueE' is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 
 The other route needs no map at all: ``SYMBOL_LINK`` is written for every object, always, so
@@ -423,10 +424,10 @@ only a 1.7 reader understands, and says so:
 
 .. code-block:: text
 
-   $ ddd generate buffers.ddd.json -o gen
+   $ ddd generate buffers.ddd.json -o gen -t templates
    buffers.ddd.json#component.declarations[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
-   wrote       gen/ddd_types.h (created)
+   wrote       gen/ddd_globals.c (created)
    ...
 
 The dimensions are also reversed with respect to the c declaration, because ASAP2 lists the
@@ -449,17 +450,17 @@ shipping a calibration description for variables the software does not contain.
 
 .. code-block:: text
 
-   $ ddd generate sensor_only.ddd.json -o build/sensor -W unused-output=ignore
-   wrote       build/sensor/ddd_types.h (created)
-   wrote       build/sensor/ddd_globals.h (created)
+   $ ddd generate sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
    wrote       build/sensor/ddd_globals.c (created)
+   wrote       build/sensor/ddd_globals.h (created)
+   wrote       build/sensor/ddd_types.h (created)
    wrote       build/sensor/SensorHub.h (created)
    wrote       build/sensor/SensorOnly.a2l (created)
 
-   $ ddd generate full.ddd.json -o build/full -W unused-output=ignore -W missing-producer=ignore
-   wrote       build/full/ddd_types.h (created)
-   wrote       build/full/ddd_globals.h (created)
+   $ ddd generate full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
    wrote       build/full/ddd_globals.c (created)
+   wrote       build/full/ddd_globals.h (created)
+   wrote       build/full/ddd_types.h (created)
    wrote       build/full/Controller.h (created)
    wrote       build/full/SensorHub.h (created)
    wrote       build/full/UserInterface.h (created)
@@ -487,28 +488,29 @@ Why does regenerating not retrigger my build?
 ----------------------------------------------
 
 Because nothing changed, and DDD goes out of its way to make that visible to the build
-system. The generated files carry no time stamp and no user or host name, so the same inputs
-render byte for byte identical output; and every rendered file is compared against what is
-already on disk and written only when the bytes differ. An unchanged file therefore keeps its
-modification time, and make, ninja or any other timestamp driven tool correctly concludes
-that nothing depending on it needs rebuilding:
+system. Nothing it hands a template varies from run to run - there is no time stamp, no user
+name and no host name anywhere in the model - so the same inputs render byte for byte
+identical output; and every rendered file is compared against what is already on disk and
+written only when the bytes differ. An unchanged file therefore keeps its modification time,
+and make, ninja or any other timestamp driven tool correctly concludes that nothing depending
+on it needs rebuilding:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check
-   wrote       build/docs-check/ddd_types.h (created)
-   wrote       build/docs-check/ddd_globals.h (created)
+   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
    wrote       build/docs-check/ddd_globals.c (created)
+   wrote       build/docs-check/ddd_globals.h (created)
+   wrote       build/docs-check/ddd_types.h (created)
    wrote       build/docs-check/Controller.h (created)
    wrote       build/docs-check/SensorHub.h (created)
    wrote       build/docs-check/UserInterface.h (created)
    wrote       build/docs-check/EventLogger.h (created)
    wrote       build/docs-check/DemoDevice.a2l (created)
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check
-   unchanged   build/docs-check/ddd_types.h
-   unchanged   build/docs-check/ddd_globals.h
+   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
    unchanged   build/docs-check/ddd_globals.c
+   unchanged   build/docs-check/ddd_globals.h
+   unchanged   build/docs-check/ddd_types.h
    unchanged   build/docs-check/Controller.h
    unchanged   build/docs-check/SensorHub.h
    unchanged   build/docs-check/UserInterface.h
@@ -521,7 +523,8 @@ prints the same report as ``would write`` and writes nothing, which is the hones
 out what a change would do to the generated tree before letting it happen.
 
 .. warning::
-   Byte identical means *for the same inputs and the same tool*. The banner of every generated
-   file names the version that wrote it, so upgrading DDD rewrites the whole generated tree
-   and does retrigger the build - deliberately, because a new generator is a change to the
-   sources of the image.
+   Byte identical means *for the same inputs, the same templates and the same tool*. Editing a
+   template rewrites the file it renders, and ``model.generator`` carries the version of the
+   tool, so a banner that prints it - as the example templates do - makes an upgrade rewrite
+   the whole generated tree and retrigger the build. Both are deliberate: a new template and a
+   new generator are changes to the sources of the image.

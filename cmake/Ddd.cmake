@@ -184,7 +184,7 @@ endfunction()
 #              [PROJECT <file>]              # use this project description instead of collecting the link closure
 #              [NAME <name>]                 # project name in the a2l, defaults to the image name
 #              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
-#              [PREFIX <prefix>]             # base name of the shared files, defaults to ddd
+#              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
 #              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
@@ -211,7 +211,7 @@ endfunction()
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
-                          "PROJECT;NAME;OUTPUT_DIRECTORY;PREFIX;ADDRESS_MAP;BYTE_ORDER"
+                          "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
@@ -233,10 +233,13 @@ function(ddd_generate image)
     if(NOT arg_OUTPUT_DIRECTORY)
         set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ddd/${image}")
     endif()
-    if(NOT arg_PREFIX)
-        set(arg_PREFIX "ddd")
-    endif()
     cmake_path(ABSOLUTE_PATH arg_OUTPUT_DIRECTORY BASE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" NORMALIZE)
+    if(NOT arg_TEMPLATE_DIRECTORY)
+        message(FATAL_ERROR "ddd_generate: TEMPLATE_DIRECTORY is required. The c sources are rendered from jinja2 "
+                            "templates the project provides, so that their house style is the project's own; "
+                            "\"ddd templates-dir\" prints a working set to copy from.")
+    endif()
+    _ddd_absolute_input(arg_TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
     if(arg_ADDRESS_MAP)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
     endif()
@@ -301,10 +304,45 @@ function(ddd_generate image)
         list(APPEND generate_options --address-map "${arg_ADDRESS_MAP}")
     endif()
 
-    set(definition_file "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_globals.c")
-    set(generated_outputs "${definition_file}"
-                          "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_globals.h"
-                          "${arg_OUTPUT_DIRECTORY}/${arg_PREFIX}_types.h")
+    # The templates are collected with a glob which the build system re-evaluates
+    # (CONFIGURE_DEPENDS), so that adding or removing a template is noticed without a manual
+    # re-configuration.
+    file(GLOB template_files CONFIGURE_DEPENDS "${arg_TEMPLATE_DIRECTORY}/*.jinja2")
+    if(NOT template_files)
+        message(FATAL_ERROR "ddd_generate: no *.jinja2 template in \"${arg_TEMPLATE_DIRECTORY}\". The c sources are "
+                            "rendered from templates the project provides; \"ddd templates-dir\" prints a set to "
+                            "copy from.")
+    endif()
+
+    # Each template renders to a file named like it without the .jinja2 extension, so the
+    # templates are the single source of truth for what is generated. Two of them produce no
+    # output that can be named here: a helper (leading underscore) renders nothing at all,
+    # and a {component} template renders once per component - names that are only known once
+    # the description files have been read, which is why the per-component headers reach
+    # their consumers through the interface library below rather than as declared outputs.
+    set(generated_outputs "")
+    set(definition_files "")
+    foreach(template_file IN LISTS template_files)
+        cmake_path(GET template_file FILENAME generated_name)
+        if(generated_name MATCHES "^_" OR generated_name MATCHES "{component}")
+            continue()
+        endif()
+        cmake_path(REMOVE_EXTENSION generated_name LAST_ONLY)
+        list(APPEND generated_outputs "${arg_OUTPUT_DIRECTORY}/${generated_name}")
+        if(generated_name MATCHES "\\.c$")
+            list(APPEND definition_files "${arg_OUTPUT_DIRECTORY}/${generated_name}")
+        endif()
+    endforeach()
+    if(NOT generated_outputs)
+        message(FATAL_ERROR "ddd_generate: every template in \"${arg_TEMPLATE_DIRECTORY}\" is a helper or a "
+                            "{component} template, so no file can be declared as an output of the generation.")
+    endif()
+    if(NOT definition_files)
+        message(FATAL_ERROR "ddd_generate: no template in \"${arg_TEMPLATE_DIRECTORY}\" renders a .c file. The "
+                            "definitions of the global variables have to be compiled into the image, so one "
+                            "template must produce a source file (for example ddd_globals.c.jinja2).")
+    endif()
+
     if(NOT arg_NO_A2L)
         set(a2l_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.a2l")
         list(APPEND generated_outputs "${a2l_file}")
@@ -313,9 +351,10 @@ function(ddd_generate image)
 
     add_custom_command(OUTPUT ${generated_outputs}
                        COMMAND ${DDD_EXECUTABLE} generate "${project_file}"
-                               --output-dir "${arg_OUTPUT_DIRECTORY}" --prefix "${arg_PREFIX}" ${generate_options}
+                               --output-dir "${arg_OUTPUT_DIRECTORY}"
+                               --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
                        DEPENDS "${project_file}" ${descriptions} ${arg_ADDRESS_MAP} ${arg_DEPENDS}
-                               "${DDD_EXECUTABLE}"
+                               ${template_files} "${DDD_EXECUTABLE}"
                        COMMENT "Generating the data dictionary of ${image}"
                        COMMAND_EXPAND_LISTS
                        VERBATIM)
@@ -333,7 +372,7 @@ function(ddd_generate image)
     # The single definition file is compiled as an object library, so that every variable really ends up in the
     # image: a static library would drop the members whose symbols nobody references, and a measurement written only
     # by the calibration tool has no referencing code at all.
-    add_library(${image_stem}_ddd_globals OBJECT "${definition_file}")
+    add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
     if(arg_LINK_LIBRARIES)
         target_link_libraries(${image_stem}_ddd_globals PRIVATE ${arg_LINK_LIBRARIES})
     endif()

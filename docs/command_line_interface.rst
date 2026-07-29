@@ -17,15 +17,15 @@ say about it.
 
 For a job that files findings rather than reads them, seven commands understand
 ``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``name`` and
-``checks``. That leaves out ``schema`` and ``cmake-dir``, whose output is machine readable
-already, ``complete``, which prints one candidate per line because that is what a shell
-expects, and ``sources``, whose output is a plain list of paths a makefile or a ninja file
-consumes as it stands. In json the diagnostics become part of the document the command prints,
-next to whatever else it has to report:
+``checks``. That leaves out ``schema``, ``cmake-dir`` and ``templates-dir``, whose output is
+machine readable already, ``complete``, which prints one candidate per line because that is
+what a shell expects, and ``sources``, whose output is a plain list of paths a makefile or a
+ninja file consumes as it stands. In json the diagnostics become part of the document the
+command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen --format json
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
    {
      "diagnostics": [],
      "summary": {
@@ -35,7 +35,7 @@ next to whatever else it has to report:
      },
      "generated": [
        {
-         "path": "build/gen/ddd_types.h",
+         "path": "build/gen/ddd_globals.c",
          "status": "created"
        },
        {
@@ -68,10 +68,11 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        ``ddd name`` also exits ``1`` when a name does not fit its convention, and
        ``ddd sources`` when the file it was pointed at cannot be read at all.
    * - ``2``
-     - the invocation itself was wrong: an unknown command or option, an unknown check
-       identifier or severity, an attempt to relax a check that cannot be relaxed, a naming
-       convention that does not exist, an output directory that cannot be written into. The
-       project was never examined, so the absence of findings means nothing here.
+     - the invocation itself was wrong: an unknown command or option, a required option left
+       out, an unknown check identifier or severity, an attempt to relax a check that cannot
+       be relaxed, a naming convention that does not exist, an output directory that cannot be
+       written into. The project was never examined, so the absence of findings means nothing
+       here.
 
 The commands
 ------------
@@ -89,10 +90,12 @@ The commands
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
        an archived dictionary or a project description.
-   * - ``ddd generate FILE -o DIR``
+   * - ``ddd generate FILE -o DIR -t TEMPLATES``
      - check the project and, if it is consistent, write the c sources and the a2l file into
-       ``DIR``. ``--dry-run`` reports what would be written without writing anything,
-       ``--force`` generates in spite of errors.
+       ``DIR``. ``-t`` names the directory of jinja2 templates the c sources are rendered
+       from; it is required and has no default, because which files the project wants and
+       what they look like is not something DDD can guess. ``--dry-run`` reports what would be
+       written without writing anything, ``--force`` generates in spite of errors.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, producer and
        consumers - the quickest answer to "who writes this?".
@@ -119,10 +122,44 @@ The commands
    * - ``ddd cmake-dir``
      - print the directory holding ``Ddd.cmake``, so that a ``CMakeLists.txt`` finds the
        integration module of the installation it is actually using.
+   * - ``ddd templates-dir``
+     - print the directory holding the example c templates, to copy into a project as a
+       starting point for its own. They are an example and not a default: no run of
+       ``generate`` falls back to them.
 
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists, dumps and generates on its own, which is what lets a
 supplier verify a component long before an integrator ever sees it.
+
+The ``-t`` of ``generate`` has no default at all: an invocation that leaves it out is refused
+rather than falling back to templates of DDD's own.
+
+.. code-block:: text
+
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen
+   usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
+                       -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
+                       [--byte-order {little,big}] [--address-map ADDRESS_MAP]
+                       [--dry-run] [--force]
+                       project
+   ddd generate: error: the following arguments are required: -t/--template-dir
+
+A default would have to be somebody's house style, and a project that inherited one without
+choosing it would find out which one only by reading the generated code; :doc:`templates`
+makes that case at length. The a2l is unaffected, since its structure is ASAM's rather than
+the project's: the a2l backend is internal and there is no template directory to give it.
+
+``cmake-dir`` and ``templates-dir`` exist for a related reason. Neither the cmake module nor
+the example templates have a fixed path once DDD is installed - a wheel, an editable install
+and a source checkout put them in three different places - so a project asks the tool it is
+actually running where they are instead of hard-coding a guess:
+
+.. code-block:: text
+
+   $ ddd templates-dir
+   /home/you/ddd/examples/templates
+
+How both directories are used from a ``CMakeLists.txt`` is in :doc:`build_integration`.
 
 Severity options
 ----------------

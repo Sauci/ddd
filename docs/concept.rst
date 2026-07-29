@@ -44,10 +44,11 @@ measurement and calibration tools.
 Principles
 ----------
 
-Three principles decide everything else in the tool. They are worth reading before the file
+Four principles decide everything else in the tool. They are worth reading before the file
 formats, because most of the questions that come up later - "why can I not just declare it in
 my own header?", "why does DDD refuse two writers?", "why is the producer's definition the one
-that wins?" - are answered by one of them.
+that wins?", "why does DDD not decide what my generated header is called?" - are answered by
+one of them.
 
 Every component declares its data interface explicitly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -81,10 +82,10 @@ DDD can compare it against the declaration made by every other component, which 
 half of the job and the subject of :doc:`consistency_checks`.
 
 The description is also the only place the information is written down. The same declaration
-produces the c definition, the doxygen comment above it, the ``extern`` declaration in each
-consumer's header and the ``MEASUREMENT`` entry of the a2l, so those four cannot disagree with
-each other. Changing the scaling is one edit in one file, and everything that depends on it
-follows on the next build.
+produces the c definition, the comment above it, the ``extern`` declaration in each consumer's
+header and the ``MEASUREMENT`` entry of the a2l, so those four cannot disagree with each other.
+Changing the scaling is one edit in one file, and everything that depends on it follows on the
+next build.
 
 Exactly one component owns each variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -194,6 +195,34 @@ because an ``AXIS_PTS_REF`` without the ``AXIS_PTS`` it points at would not be a
 and the calibration tool would reject the whole thing. In both cases the rule is carried by
 what comes out of the generator, not by a sentence in a document that somebody has to have
 read.
+
+DDD owns the data, the project owns the presentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+What the generated c *says* follows from the declarations. What it *looks like* does not: the
+comment style, the banner, the include guards, the section headings and the names of the files
+themselves are house style, they differ between projects, and nothing in a description file
+decides them. A generator that imposed its own would either be argued with or be worked around
+with a post-processing script, so DDD does not: the c sources are rendered from jinja2
+templates the project provides. ``ddd generate`` requires ``--template-dir`` and falls back to
+nothing, ``ddd templates-dir`` prints a working set of examples to copy into a project and
+change, and a project renames a generated file by renaming the template that produces it. Even
+the file names above are the example templates': ``ddd_globals.h`` is called that because a
+template is called ``ddd_globals.h.jinja2``. :doc:`templates` describes the rules in full.
+
+Owning the presentation is not owning the rules. A component template is handed the
+declarations of its own component - already grouped by scope, already spelled in c, already
+qualified ``const`` where ``--const-inputs`` says so - and the ownership, the visibility and
+the datatypes are settled before any template runs. The example templates write plain c
+comments because a comment convention is exactly the kind of decision this principle leaves to
+the project; one that documents its generated code differently, or not at all, changes the
+comment in the template and nothing else.
+
+The a2l file is the exception that proves the point. Its structure is dictated by ASAM rather
+than by a house style: a measurement and calibration tool rejects a ``COMPU_METHOD`` in the
+wrong place no matter whose coding standard produced it. There is nothing for a project to
+decide there, so there is no template option for the a2l either - that backend carries its own
+templates and stays internal.
 
 
 Vocabulary
@@ -329,16 +358,16 @@ explains most of what the build system integration does.
 
 The first run happens before anything is compiled. It reads the project description, follows
 the includes, resolves the declarations of all components into one data dictionary, runs the
-consistency checks and - only if they pass - writes the c sources and a first a2l file. From
-then on the compiler has both the definitions of every global variable and one header per
-component:
+consistency checks and - only if they pass - renders the project's c templates and writes a
+first a2l file. From then on the compiler has both the definitions of every global variable
+and one header per component:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   wrote       build/gen/ddd_types.h (created)
-   wrote       build/gen/ddd_globals.h (created)
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (created)
+   wrote       build/gen/ddd_globals.h (created)
+   wrote       build/gen/ddd_types.h (created)
    wrote       build/gen/Controller.h (created)
    wrote       build/gen/SensorHub.h (created)
    wrote       build/gen/UserInterface.h (created)
@@ -359,10 +388,10 @@ with the addresses written in decimal or hexadecimal:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
-   unchanged   build/gen/ddd_types.h
-   unchanged   build/gen/ddd_globals.h
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map build/addresses.json
    unchanged   build/gen/ddd_globals.c
+   unchanged   build/gen/ddd_globals.h
+   unchanged   build/gen/ddd_types.h
    unchanged   build/gen/Controller.h
    unchanged   build/gen/SensorHub.h
    unchanged   build/gen/UserInterface.h
@@ -396,6 +425,7 @@ have the symbol names in the file:
    folder "software repository" as repository {
        collections "component descriptions\n(*.ddd.json)" as component_files
        file "project description\n(demo.ddd.json)" as project_file
+       collections "c templates\n(*.jinja2)" as templates
        collections "hand written\nc sources" as c_sources
    }
 
@@ -403,7 +433,7 @@ have the symbol names in the file:
    component "ddd generate\n--address-map" as ddd_second
    component "compiler / linker" as toolchain
 
-   artifact "ddd_types.h, ddd_globals.h,\nddd_globals.c, one header\nper component" as generated_c
+   artifact "ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component" as generated_c
    artifact "project a2l\n(addresses 0x00000000)" as provisional_a2l
    artifact "firmware image" as image
    file "addresses.json\n(symbol to address)" as address_map
@@ -413,6 +443,7 @@ have the symbol names in the file:
 
    component_files --> project_file: collected through\nthe includes key
    project_file --> ddd_first: the consistency\nchecks run here
+   templates --> ddd_first: --template-dir: the c files\nand their names come from here
    ddd_first --> generated_c
    ddd_first --> provisional_a2l
 
@@ -422,6 +453,7 @@ have the symbol names in the file:
    image --> address_map: symbol addresses taken\nfrom the linker output
 
    project_file --> ddd_second
+   templates --> ddd_second
    address_map --> ddd_second
    ddd_second --> final_a2l: the c sources are\nregenerated unchanged
    final_a2l --> mc_tool: measure and calibrate\nthe built software
@@ -453,6 +485,11 @@ anywhere. The backends consume it, and never touch a description file, a glob or
 c backend knows what a ``uint16_t`` is and has never heard of a ``COMPU_METHOD``; the a2l
 backend knows what a ``UWORD`` is and has never heard of an include guard.
 
+The two differ in where their templates come from, and that difference is the fourth principle
+in code. The c backend is handed a template directory and renders whatever it finds there, so
+the shape of the generated c is outside the tool; the a2l backend is self-contained, because
+the shape of an a2l file is outside the *project*.
+
 .. uml::
 
    package "front end - knows no output format" as front_end {
@@ -464,10 +501,11 @@ backend knows what a ``UWORD`` is and has never heard of an include guard.
    component "ddd.ir.DataDictionary\nthe contract: every object with\nits owner, consumers,\nshape and limits" as dictionary
 
    package "backends - one output format each" as backends {
-       component "ddd.backends.c\nuint16_t, literals,\ninclude guards, templates" as c_backend
-       component "ddd.backends.a2l\nUWORD, compu methods,\nrecord layouts, templates" as a2l_backend
+       component "ddd.backends.c\nuint16_t, literals, include\nguards; renders the\nproject's templates" as c_backend
+       component "ddd.backends.a2l\nUWORD, compu methods,\nrecord layouts; carries\nits own templates" as a2l_backend
    }
 
+   folder "c templates of the project\n(*.jinja2, --template-dir)" as c_templates
    artifact "ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component" as c_files
    artifact "project a2l" as a2l_file
 
@@ -476,6 +514,7 @@ backend knows what a ``UWORD`` is and has never heard of an include guard.
    analysis --> dictionary: resolves ownership\nand agreement into
    dictionary --> c_backend
    dictionary --> a2l_backend
+   c_templates --> c_backend: name and render\nthe c files
    c_backend --> c_files
    a2l_backend --> a2l_file
 

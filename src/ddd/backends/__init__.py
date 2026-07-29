@@ -13,7 +13,7 @@ from ddd.backends.base import (
     render,
     write,
 )
-from ddd.backends.c import CBackend, COptions
+from ddd.backends.c import CBackend, COptions, example_template_directory
 
 __all__ = [
     "A2lBackend",
@@ -25,6 +25,7 @@ __all__ = [
     "GeneratedFile",
     "WriteResult",
     "WriteStatus",
+    "example_template_directory",
     "load_address_map",
     "render",
     "write",

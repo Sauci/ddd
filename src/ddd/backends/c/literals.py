@@ -72,7 +72,11 @@ def initializer_of(entry: ResolvedObject) -> str | None:
 
 
 def doc_comment(entry: ResolvedObject) -> str | None:
-    """A single line doxygen comment describing the object, or ``None``."""
+    """One line describing the object, or ``None`` when there is nothing to say.
+
+    The text only, without any comment marker: whether it ends up in a plain comment, a
+    documented one, or nowhere at all is for the template to decide.
+    """
     parts: list[str] = []
     if entry.description:
         parts.append(sanitize_comment(entry.description))

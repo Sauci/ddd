@@ -60,6 +60,11 @@ links the result back into the image. It has to be called in the ``CMakeLists.tx
 defines the image, and after the components have been added, because it hands the generated
 headers to the components registered up to that point.
 
+Besides the image it needs one thing: ``TEMPLATE_DIRECTORY``, the directory of jinja2 templates
+the generated c code is rendered from. It is required and has no default, because the
+alternative would be a build whose generated sources change the day the tool is upgraded. What
+that code looks like belongs to the project, so the project says where the templates are.
+
 The example below is ``examples/cmake/CMakeLists.txt`` from the source distribution, with its
 comments removed; it is what the ``cmake`` compose service configures and builds:
 
@@ -76,6 +81,8 @@ comments removed; it is what the ``cmake`` compose service configures and builds
    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
    set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
+
+   set(templates "${CMAKE_CURRENT_SOURCE_DIR}/../templates")
 
    add_library(sensor_hub STATIC components/sensor_hub.c)
    ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json")
@@ -94,16 +101,54 @@ comments removed; it is what the ``cmake`` compose service configures and builds
    add_executable(firmware.elf main.c)
    target_link_libraries(firmware.elf PRIVATE user_interface event_logger)
 
-   ddd_generate(firmware.elf NAME DemoDevice)
+   ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${templates}")
 
 ``sensor_hub.c`` then writes ``#include "SensorHub.h"`` and nothing else: the header DDD
 generated for that component is the only one on its include path, so a component cannot reach
 a variable it never declared. The include directory travels to the components automatically,
 which is what keeps the integration down to two lines per component.
 
+The templates this example points at are the ones DDD ships as examples, since it sits next to
+them in the source tree. A real project keeps its own under version control, next to its
+sources, and starts them off as a copy of that set.
+
 The project description that ties the collected components together is written into the output
 directory as ``<NAME>.ddd.json``. It is an ordinary project file, so what an image was
 generated from can be read afterwards, and checked, dumped or compared like any other.
+
+What the template directory decides
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A build system has to know which files a step produces before it runs it, and now that the
+templates come from the project, that list is written down in the project as well. The module
+reads the template directory at configure time and derives everything it declares from the
+names it finds there. The directory has to exist by then; ``ddd templates-dir`` prints a
+working set to copy into a project that has none yet, and :doc:`templates` describes what the
+templates receive. There is no equivalent option for the a2l, and that asymmetry is deliberate:
+the structure of an a2l is dictated by ASAM rather than by a house style, so that generator
+stays internal.
+
+The templates are collected with ``file(GLOB ... CONFIGURE_DEPENDS "<dir>/*.jinja2")``, so a
+template added or removed is noticed by the build itself instead of by whoever remembers to
+re-run cmake. The same files are dependencies of the generation step, which makes a template
+behave like any other source: change the banner of ``ddd_globals.c.jinja2`` and the next build
+regenerates the file and recompiles it.
+
+The names of the templates are then turned into the declared outputs, minus the two kinds that
+cannot be named at configure time. A helper - a name starting with an underscore, such as
+``_macros.jinja2`` - renders nothing of its own, and a ``{component}`` template renders once
+per component, under names that only exist once the description files have been read. That
+second case is exactly why the per-component headers reach their consumers through the
+interface library rather than as declared outputs. Everything else contributes one output
+named like its template without the ``.jinja2`` extension, and every output ending in ``.c``
+is compiled into the object library that ends up in the image - so a project splitting its
+definitions over two source templates gets both of them compiled, without saying so anywhere.
+
+Three arrangements are refused with a message rather than with a confusing failure later on: a
+directory holding no ``*.jinja2`` file at all, a directory holding nothing but helpers and
+``{component}`` templates, from which no output could be declared, and a directory in which no
+template produces a ``.c`` file - the definitions of the global variables have to be compiled
+into the image, so one template must produce a source file.
 
 Collection follows the link graph
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,7 +209,7 @@ usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers`
        depending on the generation. Every registered component links it, so a component
        includes its interface header without knowing where the image put it.
    * - ``<image>_ddd_globals``
-     - object library compiling the single definition file, linked into the image. It is an
+     - object library compiling every generated ``.c`` file, linked into the image. It is an
        object library on purpose: a static library would drop the members whose symbols
        nobody references, and a measurement that only the calibration tool ever reads has no
        referencing code at all.
@@ -175,11 +220,10 @@ usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers`
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
-Only ``<prefix>_globals.c``, ``<prefix>_globals.h``, ``<prefix>_types.h`` and the a2l are
-declared as outputs of the generator. The per-component headers are written next to them, but
-their names come from inside the description files and are therefore unknown at configure
-time - which is precisely why a consumer depends on ``<image>_ddd_headers`` rather than on an
-individual header path.
+The outputs declared for the generator are the files the template names already give away, plus
+the a2l. The per-component headers are written next to them, but their names come from inside
+the description files and are therefore unknown at configure time - which is precisely why a
+consumer depends on ``<image>_ddd_headers`` rather than on an individual header path.
 
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
@@ -211,8 +255,10 @@ Options
        name ends up as the a2l project and module name. Ignored together with ``PROJECT``.
    * - ``OUTPUT_DIRECTORY <dir>``
      - where the generated files go; defaults to ``${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>``.
-   * - ``PREFIX <prefix>``
-     - base name of the shared files; defaults to ``ddd``, giving ``ddd_globals.c``.
+   * - ``TEMPLATE_DIRECTORY <dir>``
+     - **required**: the jinja2 templates the c sources are rendered from. Their names decide
+       which files are generated, and renaming a template is how a project renames a generated
+       file.
    * - ``ADDRESS_MAP <file>``
      - the symbol to address map filling the addresses into the a2l.
    * - ``BYTE_ORDER little|big``
@@ -294,8 +340,9 @@ What the compile service proves
 ``compile`` runs ``docker/compile.sh``, which is deliberately more suspicious than a plain
 build:
 
-#. it generates the demo project into ``build/gen`` and writes the variable list next to it
-   with ``ddd list --format json``;
+#. it generates the demo project into ``build/gen`` with the templates named by ``TEMPLATES``,
+   the examples shipped with the tool unless the caller says otherwise, and writes the variable
+   list next to it with ``ddd list --format json``;
 #. it writes one translation unit per generated header which includes that header **twice**,
    which proves both that every header is self contained - it compiles with nothing included
    before it - and that its include guard works;
@@ -317,12 +364,20 @@ declarations are covered in both of their states.
 
 The script takes the project and the output directory as arguments, so it also runs on a real
 project rather than only on the demo, and the environment variables ``CDEFS``, ``GENFLAGS``,
-``CFLAGS`` and ``CC`` change the defines, the ``ddd generate`` flags, the warning set and the
-compiler:
+``TEMPLATES``, ``CFLAGS`` and ``CC`` change the defines, the ``ddd generate`` flags, the
+templates, the warning set and the compiler:
 
 .. code-block:: bash
 
    docker compose run --rm compile ddd-compile path/to/project.ddd.json build/mine
+   docker compose run --rm -e TEMPLATES=path/to/templates compile \
+       ddd-compile path/to/project.ddd.json build/mine
+
+``TEMPLATES`` defaults to the output of ``ddd templates-dir``, which is what makes the plain
+invocation work at all - the generator itself has no templates to fall back on. The second form
+is the interesting one for a real project: it answers whether the code that project is about to
+ship compiles, links and defines every symbol it promised, and that is a question the example
+templates cannot answer on its behalf.
 
 .. warning::
    The container runs as root, so files it writes under ``build/`` belong to root when the

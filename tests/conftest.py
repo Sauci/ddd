@@ -90,9 +90,18 @@ def tree(tmp_path: Path) -> Path:
     return tmp_path
 
 
+TEMPLATES = EXAMPLES / "templates"
+"""The example c templates, which the tests render with unless one says otherwise.
+
+The tool ships no default templates - a project provides its own - so the suite has to name
+a directory the same way a project does. Using the shipped examples means the tests also
+keep those examples working.
+"""
+
+
 def build_backends(**options: Any) -> list[Backend]:
     """The backend list a `ddd generate` run with these options would use."""
-    prefix = options.pop("prefix", "ddd")
+    template_dir = options.pop("template_dir", TEMPLATES)
     const_inputs = options.pop("const_inputs", False)
     emit_a2l = options.pop("emit_a2l", True)
     byte_order = options.pop("byte_order", ByteOrder.LITTLE)
@@ -100,7 +109,7 @@ def build_backends(**options: Any) -> list[Backend]:
     if options:
         msg = f"unknown backend option(s): {sorted(options)}"
         raise TypeError(msg)
-    backends: list[Backend] = [CBackend(COptions(prefix=prefix, const_inputs=const_inputs))]
+    backends: list[Backend] = [CBackend(template_dir, COptions(const_inputs=const_inputs))]
     if emit_a2l:
         backends.append(A2lBackend(A2lOptions(byte_order=byte_order, addresses=addresses or {})))
     return backends

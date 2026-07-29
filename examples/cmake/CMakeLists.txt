@@ -18,6 +18,11 @@ add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
 set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
 
+# A real project keeps its own c templates under version control, next to its sources, because what the generated
+# code looks like is its house style. This example borrows the ones DDD ships as an example, which is also what
+# `ddd templates-dir` prints.
+set(templates "${CMAKE_CURRENT_SOURCE_DIR}/../templates")
+
 add_library(sensor_hub STATIC components/sensor_hub.c)
 ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json")
 
@@ -37,4 +42,4 @@ target_link_libraries(firmware.elf PRIVATE user_interface event_logger)
 
 # Collects sensor_hub, controller, user_interface and event_logger through the link graph, generates
 # ddd_globals.c/.h, ddd_types.h, one header per component and DemoDevice.a2l, and links the definitions in.
-ddd_generate(firmware.elf NAME DemoDevice)
+ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${templates}")

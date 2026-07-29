@@ -22,6 +22,7 @@ from ddd.backends import (
     CBackend,
     COptions,
     WriteStatus,
+    example_template_directory,
     load_address_map,
     render,
     write,
@@ -131,9 +132,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="directory the generated files are written to",
     )
     generate.add_argument(
-        "--prefix",
-        default="ddd",
-        help="base name of the shared files, default: %(default)s",
+        "-t",
+        "--template-dir",
+        type=Path,
+        required=True,
+        # No reStructuredText inline markup in this text: the documentation inserts every
+        # help string into a page as markup, where a lone asterisk opens an emphasis that
+        # never closes. See test_no_help_string_carries_markup_characters.
+        help=(
+            "directory holding the jinja2 templates of the c sources. Every file in it "
+            "ending in .jinja2 is rendered to a file named like the template without that "
+            "extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting with "
+            "an underscore is a helper that renders nothing on its own, and a name "
+            "containing {component} is rendered once per component. 'ddd templates-dir' "
+            "prints a set of example templates to copy from"
+        ),
     )
     generate.add_argument(
         "--const-inputs",
@@ -228,6 +241,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cmake.set_defaults(handler=_command_cmake_dir)
 
+    templates = subparsers.add_parser(
+        "templates-dir",
+        help="print the directory containing the example c templates",
+        description=(
+            "The c sources are rendered from templates the project provides, so that their "
+            "house style is the project's own. The templates printed here are a working set "
+            "to copy into a project and change, not a default: nothing falls back to them."
+        ),
+    )
+    templates.set_defaults(handler=_command_templates_dir)
+
     return parser
 
 
@@ -302,7 +326,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
 
     backends: list[Backend] = [
-        CBackend(COptions(prefix=args.prefix, const_inputs=args.const_inputs), GENERATOR)
+        CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
     ]
     if not args.no_a2l:
         backends.append(
@@ -477,6 +501,16 @@ def _command_cmake_dir(args: argparse.Namespace) -> int:
     directory = cmake_module_directory()
     if directory is None:
         print("ddd: the cmake integration module is not part of this installation", file=sys.stderr)
+        return EXIT_USAGE
+    print(directory.as_posix())
+    return EXIT_OK
+
+
+def _command_templates_dir(args: argparse.Namespace) -> int:
+    """Print the directory holding the example templates, to copy into a project."""
+    directory = example_template_directory()
+    if directory is None:
+        print("ddd: the example templates are not part of this installation", file=sys.stderr)
         return EXIT_USAGE
     print(directory.as_posix())
     return EXIT_OK

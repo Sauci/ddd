@@ -86,7 +86,8 @@ class ComponentHeaderView:
     name: str
     description: str
     guard: str
-    filename: str
+    """A normalised include guard offered to the template, which may ignore it."""
+
     outputs: tuple[DeclarationView, ...]
     inputs: tuple[DeclarationView, ...]
     locals: tuple[DeclarationView, ...]
@@ -127,13 +128,14 @@ class CodeModel:
     needs_stdint: bool
     needs_stdbool: bool
 
-    @property
-    def types_guard(self) -> str:
-        return guard_name(self.options.prefix, "types")
+    def guard(self, *parts: str) -> str:
+        """An include guard built out of ``parts``, e.g. ``model.guard('ddd', 'globals')``.
 
-    @property
-    def globals_guard(self) -> str:
-        return guard_name(self.options.prefix, "globals")
+        Offered rather than imposed: a template that wants a guard of its own writes one, and
+        this only spares it the normalisation - upper casing, replacing what is not a letter
+        or a digit, and keeping a leading digit out of the macro name.
+        """
+        return guard_name(*parts)
 
 
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
@@ -251,8 +253,7 @@ def _header(
         # 'component' keeps this guard out of the space of the shared headers: without it a
         # component named 'types' would define DDD_TYPES_H before including ddd_types.h,
         # and the whole types header would preprocess away.
-        guard=guard_name(options.prefix, "component", component.name),
-        filename=options.component_header(component.name),
+        guard=guard_name("ddd", "component", component.name),
         outputs=tuple(buckets[Scope.OUTPUT]),
         inputs=tuple(buckets[Scope.INPUT]),
         locals=tuple(buckets[Scope.LOCAL]),

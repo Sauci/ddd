@@ -204,11 +204,12 @@ an object carrying ``enumerators`` cannot be anything else.
 What it generates
 ~~~~~~~~~~~~~~~~~
 
-In c, each distinct enum becomes one ``typedef enum`` in ``ddd_types.h``, with the
-descriptions as doxygen comments. The variable itself keeps its declared datatype, so the
-storage is exactly the ``uint8`` that was asked for rather than whatever width the compiler
-would pick for an enum; the generated type is there for the application code to use for the
-constants and in its switch statements.
+In c, each distinct enum reaches the templates as one entry of ``model.enums``, and the
+example templates turn it into one ``typedef enum`` with the descriptions as comments on the
+enumerators. The variable itself keeps its declared datatype, so the storage is exactly the
+``uint8`` that was asked for rather than whatever width the compiler would pick for an enum;
+the generated type is there for the application code to use for the constants and in its
+switch statements.
 
 .. code-block:: c
 
@@ -259,8 +260,8 @@ that the difference does not have to be hunted for:
        note: a.ddd.json#component.declarations[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
    1 error
 
-Two components declaring the **same** set of values are fine, and only one ``typedef enum`` is
-generated for them. Where they differ only in how well they are documented, the better
+Two components declaring the **same** set of values are fine, and only one entry reaches the
+templates for them. Where they differ only in how well they are documented, the better
 documented spelling is the one that reaches the generated code - so a consumer that spelled
 the enum out with descriptions improves the header for everybody, and a producer that used the
 short form loses nothing:

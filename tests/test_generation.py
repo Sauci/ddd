@@ -136,9 +136,10 @@ class TestTypesHeader:
         assert "#include <stdbool.h>" in only_bool
 
     def test_include_guard(self, tree: Path) -> None:
-        files = generate(tree, simple(declare("local", "A")), prefix="proj")
-        assert "#ifndef PROJ_TYPES_H" in files["proj_types.h"]
-        assert "#endif /* PROJ_TYPES_H */" in files["proj_types.h"]
+        """The template writes its own guard; the model only normalises the spelling."""
+        files = generate(tree, simple(declare("local", "A")))
+        assert "#ifndef DDD_TYPES_H" in files["ddd_types.h"]
+        assert "#endif /* DDD_TYPES_H */" in files["ddd_types.h"]
 
 
 class TestComponentHeaders:

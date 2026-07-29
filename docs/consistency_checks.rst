@@ -20,7 +20,7 @@ with ``--force``:
 
 .. code-block:: text
 
-   $ ddd generate examples/inconsistent/project.ddd.json -o build/gen
+   $ ddd generate examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
    ...
    4 errors, 1 warning
    $ echo $?

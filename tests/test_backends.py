@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DEMO, component, declare, project, run_analysis
+from conftest import DEMO, TEMPLATES, component, declare, project, run_analysis
 from ddd.backends import A2lBackend, Backend, CBackend, GeneratedFile, render
 from ddd.backends.a2l.types import A2L_TYPE
 from ddd.backends.c.types import C_TYPE
@@ -68,7 +68,7 @@ class TestLayering:
             assert not [m for m in imported_modules(path) if m.startswith("ddd.backends.c")]
 
     def test_both_backends_satisfy_the_protocol(self) -> None:
-        assert isinstance(CBackend(), Backend)
+        assert isinstance(CBackend(TEMPLATES), Backend)
         assert isinstance(A2lBackend(), Backend)
 
     def test_every_datatype_is_spelled_by_every_backend(self) -> None:
@@ -119,8 +119,8 @@ class TestContract:
         )
         assert dictionary is not None
         reloaded = DataDictionary.model_validate(json.loads(dictionary.model_dump_json()))
-        direct = _contents(render(dictionary, [CBackend(), A2lBackend()], tree / "a"))
-        indirect = _contents(render(reloaded, [CBackend(), A2lBackend()], tree / "b"))
+        direct = _contents(render(dictionary, [CBackend(TEMPLATES), A2lBackend()], tree / "a"))
+        indirect = _contents(render(reloaded, [CBackend(TEMPLATES), A2lBackend()], tree / "b"))
         assert direct == indirect
 
     def test_everything_is_resolved_for_the_backends(self, tree: Path) -> None:
@@ -166,7 +166,7 @@ class TestDriver:
             },
         )
         assert dictionary is not None
-        c_only = _names(render(dictionary, [CBackend()], tree / "gen"))
+        c_only = _names(render(dictionary, [CBackend(TEMPLATES)], tree / "gen"))
         a2l_only = _names(render(dictionary, [A2lBackend()], tree / "gen"))
         assert not [name for name in c_only if name.endswith(".a2l")]
         assert a2l_only == {"P.a2l"}
@@ -211,7 +211,7 @@ class TestDriver:
         )
         assert dictionary is not None
         with pytest.raises(ValueError, match="would both write"):
-            render(dictionary, [CBackend(), Greedy()], tree / "gen")
+            render(dictionary, [CBackend(TEMPLATES), Greedy()], tree / "gen")
 
 
 def _contents(files: list[GeneratedFile]) -> dict[str, str]:

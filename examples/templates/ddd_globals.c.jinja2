@@ -1,6 +1,6 @@
-{% import "macros.jinja" as macros %}
+{% import "_macros.jinja2" as macros %}
 {{- macros.banner(filename, model) }}
-#include "{{ model.options.globals_header }}"
+#include "ddd_globals.h"
 
 /*
  * Definition of every global variable of the project.  Compile and link this

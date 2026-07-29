@@ -1,7 +1,7 @@
-{% import "macros.jinja" as macros %}
+{% import "_macros.jinja2" as macros %}
 {{- macros.banner(filename, model) }}
-#ifndef {{ model.types_guard }}
-#define {{ model.types_guard }}
+#ifndef {{ model.guard("ddd", "types") }}
+#define {{ model.guard("ddd", "types") }}
 
 {% if model.needs_stdint %}
 #include <stdint.h>
@@ -20,4 +20,4 @@ typedef enum
 } {{ enum.name }};
 {% endfor %}
 
-#endif /* {{ model.types_guard }} */
+#endif /* {{ model.guard("ddd", "types") }} */

@@ -55,7 +55,8 @@ selected is rejected rather than ignored.
        ``uint32``, ``int32``, ``uint64``, ``int64``, ``float32`` or ``float64``.
    * - ``description``
      - ``""``
-     - Free text. It becomes the doxygen comment above the generated declaration and the long
+     - Free text. It is offered to the c templates as the text of the comment above the
+       generated declaration - what surrounds it is theirs to decide - and it is the long
        identifier of the a2l object, so it is the sentence a calibration engineer reads next
        to the value. An object without one gets its own name as the a2l long identifier,
        which is legal and useless.
@@ -159,11 +160,12 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - ``FLOAT64_IEEE``
      - the IEEE 754 double range
 
-The c spellings come from ``<stdint.h>`` and ``<stdbool.h>``, which ``ddd_types.h`` includes
-- and only the ones that are needed: a project without a ``bool`` gets no ``<stdbool.h>``.
-Literals are written with the suffix the type asks for, so the generated code survives
-``-Wconversion``: ``0U`` for the unsigned types, ``1.5F`` for ``float32``,
-``18446744073709551615ULL`` for ``uint64``.
+The c spellings come from ``<stdint.h>`` and ``<stdbool.h>``. The model tells the templates
+which of the two a project actually needs - ``model.needs_stdbool`` is false for a project
+without a ``bool`` - so the example templates include neither header for nothing. Literals are
+written with the suffix the type asks for, so the generated code survives ``-Wconversion``:
+``0U`` for the unsigned types, ``1.5F`` for ``float32``, ``18446744073709551615ULL`` for
+``uint64``.
 
 Names, and what a name may not be
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -303,7 +305,7 @@ it, and a project generating no a2l can ignore it entirely.
 
 ``export: false`` is the right setting for a component internal scratch variable that would
 only clutter the measurement list. The demo uses it twice, on ``ValueD`` and ``ValueK``; both
-are defined in ``ddd_globals.c`` like everything else and neither appears anywhere in
+reach the c templates like every other object, and neither appears anywhere in
 ``DemoDevice.a2l``, not even in the ``GROUP`` of the component that owns them.
 
 .. warning::
@@ -370,7 +372,8 @@ between sessions.
      - ``CHARACTERISTIC ... MAP``
 
 Every example below is taken from ``examples/demo/``, and every generated fragment is what
-``ddd generate examples/demo/demo.ddd.json -o build/gen`` actually writes.
+``ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates`` actually
+writes - the c ones as the example templates render them, the a2l ones as DDD writes them.
 
 measurement
 ~~~~~~~~~~~

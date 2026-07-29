@@ -23,7 +23,7 @@ from conftest import (
     run_analysis,
     write_tree,
 )
-from ddd.backends import COptions, load_address_map
+from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.ir import DICTIONARY_FORMAT
@@ -139,10 +139,23 @@ class TestGeneratedArtefactsAreCorrect:
         assert "#ifndef DDD_COMPONENT_TYPES_H" in files["types.h"]
         assert "#ifndef DDD_TYPES_H" in files["ddd_types.h"]
 
-    def test_a_prefix_cannot_escape_the_output_directory(self) -> None:
-        for bad in ("../evil", "", "a b"):
-            with pytest.raises(ValueError, match="not usable as a file name"):
-                COptions(prefix=bad)
+    def test_a_template_directory_that_renders_nothing_is_refused(self, tree: Path) -> None:
+        """Silence would look like a project with no variables; it is a missing template."""
+        from ddd.backends import CBackend
+
+        empty = tree / "templates"
+        empty.mkdir()
+        (empty / "_helper.jinja2").write_text("{% macro noop() %}{% endmacro %}", encoding="utf-8")
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        with pytest.raises(ValueError, match="no template to render"):
+            CBackend(empty).generate(dictionary, tree / "gen")
 
 
 class TestNamesThatWouldNotCompile:

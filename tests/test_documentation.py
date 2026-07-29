@@ -84,6 +84,7 @@ class TestCommands:
             "schema",
             "checks",
             "cmake-dir",
+            "templates-dir",
             "name",
             "complete",
             "sources",
@@ -175,3 +176,32 @@ class TestPackaging:
             if line.strip() and not line.startswith("#")
         }
         assert listed == {"pydantic", "jinja2"}
+
+
+class TestCommandLineHelp:
+    """The help strings become markup, so they have to be safe as markup."""
+
+    def test_no_help_string_carries_markup_characters(self) -> None:
+        """autoprogram inserts every help string into the reference page as rST.
+
+        A lone asterisk opens an emphasis that never closes, a backtick opens an
+        interpreted role, and a pipe opens a substitution: each is a build warning, and the
+        documentation image builds with -W, so each fails the build. The text is prose meant
+        for a terminal, so the rule is simply to keep those characters out of it.
+        """
+        offenders = []
+
+        def walk(parser: argparse.ArgumentParser, prefix: str) -> None:
+            for action in parser._actions:
+                if action.help and re.search(r"[*`|]", action.help):
+                    name = " ".join(action.option_strings) or action.dest
+                    offenders.append(f"{prefix} {name}")
+                if isinstance(action, argparse._SubParsersAction):
+                    for command, sub in action.choices.items():
+                        walk(sub, f"{prefix} {command}")
+
+        walk(_build_parser(), "ddd")
+        assert not offenders, (
+            f"help text carrying reStructuredText inline markup: {offenders}. Rewrite it "
+            f"without * ` or |, which the generated command line reference cannot escape."
+        )

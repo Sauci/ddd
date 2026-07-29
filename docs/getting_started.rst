@@ -84,8 +84,9 @@ prescribed; it merely lets the project file collect its members with a single pa
    thermostat/
    +- thermostat.ddd.json          the project
    +- components/
-      +- sensor_hub.ddd.json       the component that produces
-      +- controller.ddd.json       the component that consumes
+   |  +- sensor_hub.ddd.json       the component that produces
+   |  +- controller.ddd.json       the component that consumes
+   +- templates/                   the c templates, copied in a moment
 
 The project description
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -236,6 +237,54 @@ what it actually contains, which is the view a newcomer to an existing project w
    CabinTemperature   measurement  int16     degC  -      SensorHub           Controller
    HeaterOnThreshold  parameter    int16     degC  -      Controller (local)  -
 
+Getting the templates
+~~~~~~~~~~~~~~~~~~~~~
+
+Before anything can be generated, the project has to say what the generated c should look
+like. Which comment style, which banner, how the include guards are spelled, whether a
+variable is commented at all - none of that follows from the data, all of it is a
+house style, and it differs from one project to the next. DDD therefore renders the c sources
+from jinja2 templates the project provides, and asks for them with ``-t``: a required option,
+with no default and no fallback, so nothing is ever generated from templates the project did
+not choose.
+
+.. code-block:: text
+
+   $ ddd generate thermostat.ddd.json -o gen
+   usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
+                       -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
+                       [--byte-order {little,big}] [--address-map ADDRESS_MAP]
+                       [--dry-run] [--force]
+                       project
+   ddd generate: error: the following arguments are required: -t/--template-dir
+
+A project that has no templates yet starts from the set DDD ships as an example.
+``ddd templates-dir`` prints where that set is installed - inside the package in a normal
+installation, ``examples/templates`` in a source checkout - so copying it needs no path
+written by hand:
+
+.. code-block:: text
+
+   $ cp -r "$(ddd templates-dir)" templates
+   $ ls templates
+   _macros.jinja2
+   ddd_globals.c.jinja2
+   ddd_globals.h.jinja2
+   ddd_types.h.jinja2
+   {component}.h.jinja2
+
+Those five names are the whole configuration. Every ``*.jinja2`` file in the directory is
+rendered to a file named like it without that extension, so ``ddd_globals.c.jinja2`` produces
+``ddd_globals.c`` and renaming a template is how a generated file gets renamed. A name
+starting with an underscore is a helper: ``_macros.jinja2`` holds the banner the other
+templates import and produces no file of its own. A name containing ``{component}`` is
+rendered once per component, with the placeholder replaced by the component name, which is how
+one template produces both ``SensorHub.h`` and ``Controller.h``.
+
+None of this touches the a2l. Its structure is dictated by ASAM and read by tools that expect
+exactly that structure, so there is nothing in it for a project to style: the a2l generator is
+internal and takes no templates at all.
+
 Generating the code
 ~~~~~~~~~~~~~~~~~~~
 
@@ -244,10 +293,10 @@ given with ``-o``, which is normally somewhere in the build tree rather than in 
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen
-   wrote       gen/ddd_types.h (created)
-   wrote       gen/ddd_globals.h (created)
+   $ ddd generate thermostat.ddd.json -o gen -t templates
    wrote       gen/ddd_globals.c (created)
+   wrote       gen/ddd_globals.h (created)
+   wrote       gen/ddd_types.h (created)
    wrote       gen/Controller.h (created)
    wrote       gen/SensorHub.h (created)
    wrote       gen/Thermostat.a2l (created)
@@ -256,10 +305,10 @@ Run it a second time without touching the description files and nothing is writt
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen
-   unchanged   gen/ddd_types.h
-   unchanged   gen/ddd_globals.h
+   $ ddd generate thermostat.ddd.json -o gen -t templates
    unchanged   gen/ddd_globals.c
+   unchanged   gen/ddd_globals.h
+   unchanged   gen/ddd_types.h
    unchanged   gen/Controller.h
    unchanged   gen/SensorHub.h
    unchanged   gen/Thermostat.a2l
@@ -272,6 +321,10 @@ and a full one.
 
 What the generated files are for
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The names of the five c files come from the templates - three of them are a template name
+without its ``.jinja2``, the two component headers come from the ``{component}`` one - and only
+the a2l is named by DDD itself, after the project:
 
 .. list-table::
    :header-rows: 1
@@ -318,13 +371,13 @@ than written by hand so that no variable can be defined twice or defined by the 
    /* ---------------------------------------------------------------------------
     * Controller - Decides when to heat, from the cabin temperature
     * ------------------------------------------------------------------------ */
-   /** Temperature below which the heater is switched on [degC] (calibration parameter) */
+   /* Temperature below which the heater is switched on [degC] (calibration parameter) */
    const int16_t HeaterOnThreshold = 180;
 
    /* ---------------------------------------------------------------------------
     * SensorHub - Reads the sensors and publishes their conditioned values
     * ------------------------------------------------------------------------ */
-   /** Temperature measured in the cabin [degC] */
+   /* Temperature measured in the cabin [degC] */
    volatile int16_t CabinTemperature = 0;
 
 The two component headers are where the access rules become physical. ``SensorHub.h`` contains
@@ -356,7 +409,7 @@ path:
    #include "ddd_types.h"
 
    /* outputs - written by SensorHub, read by other components */
-   /** Temperature measured in the cabin [degC] */
+   /* Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;
 
    #endif /* DDD_COMPONENT_SENSORHUB_H */
@@ -389,11 +442,11 @@ description files. The local parameter appears in its own section, and only here
    #include "ddd_types.h"
 
    /* inputs - produced elsewhere, Controller may only read them */
-   /** Temperature measured in the cabin [degC] */
+   /* Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;  /* produced by SensorHub */
 
    /* locals - owned exclusively by Controller */
-   /** Temperature below which the heater is switched on [degC] (calibration parameter) */
+   /* Temperature below which the heater is switched on [degC] (calibration parameter) */
    extern const int16_t HeaterOnThreshold;
 
    #endif /* DDD_COMPONENT_CONTROLLER_H */
@@ -405,7 +458,15 @@ rather than being caught in review. It is opt-in because the definition in ``ddd
 stays non-const, which strict c calls a constraint violation even though the usual embedded
 toolchains accept it.
 
-The fourth artefact is the a2l, generated from the very same declarations, so the calibration
+Everything about the shape of those files - the banner, the plain c comments, the section
+headings, the note naming the producer - comes from the templates copied into the project a
+moment ago, and they are now the project's to change. Renaming ``ddd_globals.c.jinja2`` renames
+the definition file; a project that wants its generated code documented differently writes
+that into its own templates rather than asking DDD for an option; and a
+project that wants one more generated file adds one more template. What the templates are given
+to work with is the subject of :doc:`templates`.
+
+The last artefact is the a2l, generated from the very same declarations, so the calibration
 tool sees the physical values the description promised rather than raw counts:
 
 .. code-block:: text
@@ -448,8 +509,8 @@ editor could jump to that means anything on its own, whereas that path is exactl
 offending value sits. Then comes the severity and the identifier of the check,
 ``definition-mismatch``: the identifier is part of the public interface of the tool and does
 not change within a major version, so a build script can raise or lower this particular check
-with ``-W definition-mismatch=warning`` without becoming sensitive to the wording. Then the message names both components and, in brackets, the single
-attribute that differs.
+with ``-W definition-mismatch=warning`` without becoming sensitive to the wording. Then the
+message names both components and, in brackets, the single attribute that differs.
 
 The **note** on the second line is the other half of the diagnostic. A disagreement has two
 sides, and printing only one of them would leave the reader to guess where the other
@@ -469,7 +530,7 @@ agreed on are worse than no sources:
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen2
+   $ ddd generate thermostat.ddd.json -o gen2 -t templates
    components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != int16)
        note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
    components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
@@ -493,6 +554,11 @@ Where to go next
 component, a declaration and a scope are, what the data dictionary is and why the producer is
 the authority on a definition. It is the page to read before designing the description files
 of a real project.
+
+:doc:`templates` is the reference for the templates this page copied without looking inside
+them: the data model they render, the naming rules that decide which file each of them
+produces, and what a project changes first when the generated code has to look like the rest of
+its sources.
 
 :doc:`file_formats/index` is the reference for everything a description file may contain. The
 thermostat used measurements and a parameter; the file formats also cover value blocks, curves,

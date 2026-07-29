@@ -7,7 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DEMO, INCONSISTENT, component, declare, project, write_tree
+from conftest import (
+    DEMO,
+    INCONSISTENT,
+    TEMPLATES,
+    component,
+    declare,
+    project,
+    write_tree,
+)
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 
 
@@ -85,7 +93,7 @@ class TestCheck:
 class TestGenerate:
     def test_writes_every_artefact(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
-        assert main(["generate", str(DEMO), "-o", str(output)]) == EXIT_OK
+        assert main(["generate", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)]) == EXIT_OK
         names = sorted(path.name for path in output.iterdir())
         assert names == [
             "Controller.h",
@@ -100,52 +108,97 @@ class TestGenerate:
 
     def test_is_idempotent(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = tmp_path / "gen"
-        main(["generate", str(DEMO), "-o", str(output)])
+        main(["generate", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         capsys.readouterr()
-        main(["generate", str(DEMO), "-o", str(output)])
+        main(["generate", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         assert "unchanged" in capsys.readouterr().err
 
     def test_refuses_an_inconsistent_project(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
-        assert main(["generate", str(INCONSISTENT), "-o", str(output)]) == EXIT_FINDINGS
+        assert (
+            main(["generate", str(INCONSISTENT), "-o", str(output), "-t", str(TEMPLATES)])
+            == EXIT_FINDINGS
+        )
         assert not output.exists()
 
     def test_force_generates_anyway(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
-        assert main(["generate", str(INCONSISTENT), "-o", str(output), "--force"]) == EXIT_FINDINGS
+        assert (
+            main(
+                ["generate", str(INCONSISTENT), "-o", str(output), "-t", str(TEMPLATES), "--force"]
+            )
+            == EXIT_FINDINGS
+        )
         assert (output / "ddd_globals.c").is_file()
 
     def test_dry_run(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = tmp_path / "gen"
-        assert main(["generate", str(DEMO), "-o", str(output), "--dry-run"]) == EXIT_OK
+        assert (
+            main(["generate", str(DEMO), "-o", str(output), "-t", str(TEMPLATES), "--dry-run"])
+            == EXIT_OK
+        )
         assert "would write" in capsys.readouterr().err
         assert not output.exists()
 
-    def test_prefix_and_no_a2l(self, tmp_path: Path) -> None:
+    def test_the_templates_decide_what_the_files_are_called(self, tmp_path: Path) -> None:
+        """Renaming a template renames what it generates; there is no prefix option."""
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        (templates / "device_globals.c.jinja2").write_text(
+            "/* {{ model.project }} */\n", encoding="utf-8"
+        )
         output = tmp_path / "gen"
-        main(["generate", str(DEMO), "-o", str(output), "--prefix", "device", "--no-a2l"])
+        main(["generate", str(DEMO), "-o", str(output), "-t", str(templates), "--no-a2l"])
         assert (output / "device_globals.c").is_file()
+        assert not (output / "ddd_globals.c").exists()
         assert not list(output.glob("*.a2l"))
+
+    def test_a_template_directory_with_nothing_to_render(self, tmp_path: Path) -> None:
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        (templates / "_helper.jinja2").write_text("{% macro x() %}{% endmacro %}", encoding="utf-8")
+        arguments = ["generate", str(DEMO), "-o", str(tmp_path / "gen"), "-t", str(templates)]
+        assert main(arguments) == EXIT_USAGE
 
     def test_address_map(self, tmp_path: Path) -> None:
         addresses = tmp_path / "addresses.json"
         addresses.write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
         output = tmp_path / "gen"
-        main(["generate", str(DEMO), "-o", str(output), "--address-map", str(addresses)])
+        main(
+            [
+                "generate",
+                str(DEMO),
+                "-o",
+                str(output),
+                "-t",
+                str(TEMPLATES),
+                "--address-map",
+                str(addresses),
+            ]
+        )
         assert "ECU_ADDRESS 0x20001000" in (output / "DemoDevice.a2l").read_text(encoding="utf-8")
 
     def test_broken_address_map(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         addresses = tmp_path / "addresses.json"
         addresses.write_text('{"ValueE": "nowhere"}', encoding="utf-8")
         code = main(
-            ["generate", str(DEMO), "-o", str(tmp_path / "gen"), "--address-map", str(addresses)]
+            [
+                "generate",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "-t",
+                str(TEMPLATES),
+                "--address-map",
+                str(addresses),
+            ]
         )
         assert code == EXIT_USAGE
         assert "is not a number" in capsys.readouterr().err
 
     def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = tmp_path / "gen"
-        main(["generate", str(DEMO), "-o", str(output), "--format", "json"])
+        main(["generate", str(DEMO), "-o", str(output), "-t", str(TEMPLATES), "--format", "json"])
         payload = json.loads(capsys.readouterr().out)
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
 
@@ -208,7 +261,14 @@ class TestSingleComponent:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         write_tree(tmp_path, {"p.ddd.json": project("Empty")})
-        arguments = ["generate", str(tmp_path / "p.ddd.json"), "-o", str(tmp_path / "gen")]
+        arguments = [
+            "generate",
+            str(tmp_path / "p.ddd.json"),
+            "-o",
+            str(tmp_path / "gen"),
+            "-t",
+            str(TEMPLATES),
+        ]
         assert main(arguments) == EXIT_OK
         source = (tmp_path / "gen" / "ddd_globals.c").read_text(encoding="utf-8")
         assert "does not define any global variable" in source
@@ -292,7 +352,14 @@ class TestOutputDirectory:
     ) -> None:
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "X"))})
         (tmp_path / "blocked").write_text("not a directory", encoding="utf-8")
-        arguments = ["generate", str(tmp_path / "a.ddd.json"), "-o", str(tmp_path / "blocked")]
+        arguments = [
+            "generate",
+            str(tmp_path / "a.ddd.json"),
+            "-o",
+            str(tmp_path / "blocked"),
+            "-t",
+            str(TEMPLATES),
+        ]
         assert main(arguments) == EXIT_USAGE
         assert "cannot write into" in capsys.readouterr().err
 
@@ -311,3 +378,41 @@ class TestVersion:
             main([flag])
         assert exit_code.value.code == EXIT_OK
         assert capsys.readouterr().out.strip() == f"ddd {__version__}"
+
+
+class TestTemplatesDir:
+    """The example templates are a starting point to copy, never a fallback."""
+
+    def test_it_prints_a_directory_holding_templates(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["templates-dir"]) == EXIT_OK
+        directory = Path(capsys.readouterr().out.strip())
+        assert directory.is_dir()
+        rendered = sorted(p.name for p in directory.glob("*.jinja2"))
+        assert "ddd_globals.c.jinja2" in rendered
+        assert "{component}.h.jinja2" in rendered
+        assert "_macros.jinja2" in rendered  # the helper travels with them
+
+    def test_the_printed_directory_really_generates(self, tmp_path: Path) -> None:
+        """Whatever the command prints has to be usable as it stands."""
+        import contextlib
+        import io
+
+        from ddd.cli import main as run
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            run(["templates-dir"])
+        directory = out.getvalue().strip()
+        assert run(["generate", str(DEMO), "-o", str(tmp_path / "gen"), "-t", directory]) == EXIT_OK
+        assert (tmp_path / "gen" / "ddd_globals.c").is_file()
+
+    def test_an_installation_without_the_examples(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from ddd import cli
+
+        monkeypatch.setattr(cli, "example_template_directory", lambda: None)
+        assert main(["templates-dir"]) == EXIT_USAGE
+        assert "not part of this installation" in capsys.readouterr().err

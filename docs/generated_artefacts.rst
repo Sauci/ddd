@@ -5,21 +5,32 @@ Generated artefacts
 dictionary to the backends, because generating from a project whose components disagree
 would produce code that compiles and links and is nevertheless wrong; ``--force`` overrides
 that refusal for the case where somebody needs to look at the output of a project that is
-still being assembled. What comes out is c code - the single definition of every global
-variable, plus one interface header per component - and the a2l description that measurement
+still being assembled. What comes out is c code - the definition of every global variable and
+the declarations each component is allowed to see - and the a2l description that measurement
 and calibration tools read. The two backends never see each other: the c backend does not
 know that a2l exists, the a2l backend does not know what a ``uint16_t`` is called, and both
 consume the same :doc:`data dictionary </data_dictionary>`.
 
+The two artefacts are not produced the same way, and that asymmetry is deliberate. How many c
+files there are, what they are called, which comment marker documents a variable and which
+include guard protects a header is a house style that follows from nothing in the data, so
+the c sources are rendered from templates the project provides and points ``--template-dir``
+at; the argument and the mechanism are on the :doc:`templates` page. An a2l is the opposite
+case. Its structure is dictated by ASAM and its reader is a measurement and calibration tool
+nobody in the project controls, so there is nothing left for a house style to decide: the a2l
+generator is internal, takes no template directory, and writes the same shape of file for
+everybody.
+
 Everything on this page is the output of the demonstration project shipped in
-``examples/demo``, generated with:
+``examples/demo``. Its c files are the ones the example templates in ``examples/templates``
+produce, which is what every transcript below hands to ``--template-dir``:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   wrote       build/gen/ddd_types.h (created)
-   wrote       build/gen/ddd_globals.h (created)
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (created)
+   wrote       build/gen/ddd_globals.h (created)
+   wrote       build/gen/ddd_types.h (created)
    wrote       build/gen/Controller.h (created)
    wrote       build/gen/SensorHub.h (created)
    wrote       build/gen/UserInterface.h (created)
@@ -34,62 +45,89 @@ throughout this page.
 c code
 ------
 
-The files
-~~~~~~~~~
+The files come from the templates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Four kinds of file come out of the c backend. Three of them are shared by the whole project
-and are named after a prefix, which is ``ddd`` unless ``--prefix`` says otherwise; the fourth
-is written once per component and is named after the component.
+``--template-dir`` is required and has no default, because there is no set of files DDD could
+sensibly fall back to. Every ``*.jinja2`` file directly inside that directory is rendered, and
+the name of the generated file is the name of its template without that extension, so the
+template directory alone says what a run will write. The rest of the mechanism - the names
+that mean something special, what a template may import, and what the data model offers it -
+is on the :doc:`templates` page; the point here is that the list below is a property of the
+example templates and not of the tool.
+
+Those examples are a working set to copy and change rather than a default, and nothing falls
+back to them. ``ddd templates-dir`` prints where they are, in the installed package or in a
+source checkout:
+
+.. code-block:: text
+
+   $ ddd templates-dir
+   /home/you/ddd/examples/templates
+
+Five templates live there, and four of them produce a file:
 
 .. list-table::
    :header-rows: 1
    :widths: 26 74
 
-   * - file
-     - what it is for
-   * - ``<prefix>_types.h``
-     - The types the generated declarations are written in: ``<stdint.h>``, ``<stdbool.h>``
-       when the project declares a ``bool``, and one ``typedef enum`` per enum conversion.
-       Every other generated header includes this one and nothing else, so a component that
-       includes its own interface header needs no further include to compile.
-   * - ``<prefix>_globals.h``
-     - An ``extern`` declaration of *every* object of the project, grouped by owning
-       component. It exists for one reader only, ``<prefix>_globals.c``, so that the
+   * - template
+     - what it renders
+   * - ``_macros.jinja2``
+     - Nothing on its own: a name starting with an underscore is a helper. It holds the
+       banner the other four import, which is how the same header comment appears on every
+       generated file without being written five times.
+   * - ``ddd_types.h.jinja2``
+     - ``ddd_types.h``, the types the generated declarations are written in: ``<stdint.h>``,
+       ``<stdbool.h>`` when the project declares a ``bool``, and one ``typedef enum`` per enum
+       conversion. Every other generated header includes this one and nothing else, so a
+       component that includes its own interface header needs no further include to compile.
+   * - ``ddd_globals.h.jinja2``
+     - ``ddd_globals.h``, an ``extern`` declaration of *every* object of the project, grouped
+       by owning component. It exists for one reader only, ``ddd_globals.c``, so that the
        definition file is compiled against declarations and a typo cannot silently create a
        second object. Software components are not meant to include it.
-   * - ``<prefix>_globals.c``
-     - The single definition of every global variable of the project. Compile and link it
-       exactly once; from that point on DDD owns the storage of every declared object and a
-       duplicate definition elsewhere fails at link time.
-   * - ``<Component>.h``
-     - The interface of one component: the objects that component declared, and nothing
-       else. This is the file a component includes, and it is where the access rules are
-       enforced.
+   * - ``ddd_globals.c.jinja2``
+     - ``ddd_globals.c``, the single definition of every global variable of the project.
+       Compile and link it exactly once; from that point on DDD owns the storage of every
+       declared object and a duplicate definition elsewhere fails at link time.
+   * - ``{component}.h.jinja2``
+     - One header per component - ``Controller.h``, ``SensorHub.h``, ``UserInterface.h`` and
+       ``EventLogger.h`` for the demo - carrying the objects that component declared and
+       nothing else. This is the file a component includes, and it is where the access rules
+       are enforced.
 
-``--prefix`` renames the three shared files, their include guards and the includes that
-point at them; the component headers keep their names, because those names come from the
-component names in the description files. Generating the demo with ``--prefix device``
-therefore produces ``device_types.h``, ``device_globals.h``, ``device_globals.c``, the guard
-``DEVICE_TYPES_H``, and component headers whose first include line reads
-``#include "device_types.h"``.
+No option renames any of this, and none is needed: a project that wants ``device_globals.c``
+renames ``ddd_globals.c.jinja2``, and the ``#include`` line and the include guard that mention
+the old name are in the templates next to it. The component headers are the one name a project
+does not spell out, since ``{component}`` is filled in from the description files - renaming
+that template to ``{component}_if.h.jinja2`` yields ``Controller_if.h`` and the rest without
+listing a single component anywhere.
 
 .. note::
    ``ddd generate`` accepts a single component description as well as a project. In that
    case the component name is used where a project name would be, so a component called
-   ``Demo`` generates ``Demo.h`` next to ``ddd_globals.c`` and an a2l file called
-   ``Demo.a2l``. Add ``-W missing-producer=ignore``, since the components producing the
+   ``Controller`` generates ``Controller.h`` next to the shared files and an a2l file called
+   ``Controller.a2l``. Add ``-W missing-producer=ignore``, since the components producing the
    inputs are by definition not part of the file.
 
 The type header
 ~~~~~~~~~~~~~~~
 
 An enum conversion is the one part of a description that has to become a c type rather than
-just a c declaration, and it is emitted here so that every component sharing the enum sees
-the same definition:
+just a c declaration, and the example templates emit it in a header of its own so that every
+component sharing the enum sees the same definition:
 
 .. code-block:: c
 
-   /* ddd_types.h */
+   /*
+    * ddd_types.h
+    *
+    * Global variable data dictionary of project 'DemoDevice'.
+    * Generated from 'demo.ddd.json' by ddd 0.1.0.
+    *
+    * DO NOT EDIT - every change is lost the next time DDD runs.
+    */
    #ifndef DDD_TYPES_H
    #define DDD_TYPES_H
 
@@ -118,9 +156,10 @@ enum name never carries two different sets of enumerators across the project.
 The definition file
 ~~~~~~~~~~~~~~~~~~~
 
-``ddd_globals.c`` is where the memory is. It is grouped by owning component, and inside a
-component the measurements come before the calibration data, so that a diff of the file
-after a description change points at the component that changed:
+``ddd_globals.c`` is where the memory is. The model hands the templates one group per owning
+component, with the measurements and the calibration data of a component in two separate
+lists, and the example template writes them in that order so that a diff of the file after a
+description change points at the component that changed:
 
 .. code-block:: c
 
@@ -159,10 +198,15 @@ after a description change points at the component that changed:
    /** Single calibratable constant [Hz] (calibration parameter) */
    const uint16_t ParameterA = 3200U;
 
-Several details of that excerpt are deliberate. The doxygen comment is assembled from the
-``description``, the ``unit`` in square brackets and, for calibration data, a note saying
-what the object is and what it is dimensioned by, so that a reader of the c file does not
-have to open the json to find out that ``CurveA`` is indexed by ``AxisA``. Every literal
+Several details of that excerpt are deliberate, and they fall on both sides of the split
+between the data and its presentation. The text of the comment is DDD's: it is assembled from
+the ``description``, the ``unit`` in square brackets and, for calibration data, a note saying
+what the object is and what it is dimensioned by, so that a reader of the c file does not have
+to open the json to find out that ``CurveA`` is indexed by ``AxisA``. What surrounds that text
+is the template's, and the examples put it in an ordinary ``/* ... */`` comment; whether the
+generated code should instead be documented in the form a documentation generator reads is a
+decision about the project's sources rather than about its data, and it is made by writing the
+markers that generator expects in the template. The values are DDD's again: every literal
 carries the suffix its datatype asks for, in upper case as the coding standards common in the
 industry require: ``U`` for ``uint8``, ``uint16`` and ``uint32``, ``ULL`` and ``LL`` for the
 64 bit types, ``F`` for ``float32``, nothing for the signed narrow types and for
@@ -175,11 +219,12 @@ say the same thing at greater length.
 Access rules are a visibility problem
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The point of the per-component headers is that a component cannot write a variable that
-belongs to somebody else. That is enforced by not letting it *see* the variable in the first
-place: a component includes its own header, the header declares the objects that component
-declared, and a reference to any other global is an undeclared identifier that the compiler
-rejects. The header of ``UserInterface`` looks like this:
+The point of rendering a header per component, rather than one for the whole project, is that
+a component cannot write a variable that belongs to somebody else. That is enforced by not
+letting it *see* the variable in the first place: a component includes its own header, the
+header declares the objects that component declared, and a reference to any other global is an
+undeclared identifier that the compiler rejects. The header of ``UserInterface`` looks like
+this:
 
 .. code-block:: c
 
@@ -229,14 +274,17 @@ rejects. The header of ``UserInterface`` looks like this:
    #endif /* DDD_COMPONENT_USERINTERFACE_H */
 
 The three sections mirror the three scopes and each one is labelled with what the component
-is allowed to do with it. Every input carries the name of the component that produces it as
-a trailing comment, which is the piece of information a developer reading unfamiliar code
-usually wants next: not only *what* the value is, but *who* is responsible for it. The
-locals of ``UserInterface`` appear in this header and in no other, which is exactly what
-``local`` means - and it is worth stressing that ``local`` is a statement about c visibility
-only. A local object still lives in the shared ``ddd_globals.c`` and still appears in the
-a2l, because a calibration engineer has to be able to tune ``CurveB`` whether or not another
-component may read it.
+is allowed to do with it. The guard is one the model offers ready made per component - hence
+the ``COMPONENT`` in the middle, which keeps a component called ``types`` from defining
+``DDD_TYPES_H`` and preprocessing the types header away - and a template that would rather
+write its own is free to, as :doc:`templates` describes. Every input carries the name of the
+component that produces it as a trailing comment, which is the piece of information a
+developer reading unfamiliar code usually wants next: not only *what* the value is, but *who*
+is responsible for it. The locals of ``UserInterface`` appear in this header and in no other,
+which is exactly what ``local`` means - and it is worth stressing that ``local`` is a
+statement about c visibility only. A local object still lives in the shared ``ddd_globals.c``
+and still appears in the a2l, because a calibration engineer has to be able to tune ``CurveB``
+whether or not another component may read it.
 
 .. note::
    The enforcement is against accident, not against determination. All these objects have
@@ -254,11 +302,14 @@ component may read it.
 Visibility stops a component from touching a variable it never declared, but it does not
 stop it from writing to one it declared as an ``input``. ``--const-inputs`` closes that gap
 by adding ``const`` to the input declarations of the consumer headers, which turns an
-assignment into a diagnostic the compiler issues at the offending line:
+assignment into a diagnostic the compiler issues at the offending line. It is the one c
+option left on the command line rather than in a template, because it changes what is
+declared and not how it is written: the qualifier is part of the declaration the model hands
+over, so any template that prints those declarations honours it. Generating the demo with
+``--const-inputs`` opens the inputs section of ``UserInterface.h`` like this:
 
 .. code-block:: c
 
-   /* UserInterface.h, generated with --const-inputs */
    /* inputs - produced elsewhere, UserInterface may only read them */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern const volatile uint16_t ValueE;  /* produced by Controller */
@@ -266,6 +317,7 @@ assignment into a diagnostic the compiler issues at the offending line:
    extern const int16_t ValueF;  /* produced by Controller */
    /** Floating point measurement without a conversion [degC] */
    extern const float ValueC;  /* produced by SensorHub */
+   ...
 
 Note that ``volatile`` survives the transformation: ``const volatile`` is the correct
 qualification for a value that this translation unit may not write but that something else -
@@ -290,9 +342,10 @@ calibration data, are left alone; a second ``const`` does not compile.
 Conditional declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-A declaration may carry a ``condition``, a c preprocessor expression, and DDD wraps the
-generated line in it wherever that line appears - in the definition file, in the shared
-declaration header and in the header of every component that declares the object:
+A declaration may carry a ``condition``, a c preprocessor expression, and the condition
+travels with the object into every place it is written - the definition file, the shared
+declaration header and the header of every component that declares it - so that the example
+templates emit the same ``#if`` around all of them:
 
 .. code-block:: c
 
@@ -301,11 +354,11 @@ declaration header and in the header of every component that declares the object
    uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
 
-The condition is repeated in the ``#endif`` comment because these guards are frequently
+They repeat the condition in the ``#endif`` comment because these guards are frequently
 nested inside the hand-written ``#if`` blocks of a component, and an unlabelled ``#endif``
 several dozen lines below its ``#if`` is a well known way to lose an hour. DDD does not
 evaluate the expression and does not need to: it is the compiler that decides whether the
-object exists, and because every generated file uses the same condition for the same object,
+object exists, and because the same condition reaches every file that mentions the object,
 the definition and all its declarations appear or disappear together. What DDD does check is
 that the components declaring one object agree on the condition - a disagreement is the
 ``condition-mismatch`` warning, since it means one component expects the variable in a build
@@ -354,9 +407,11 @@ anything.
 Regeneration is stable
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Generated files carry no time stamp, no host name and no user name. The banner names the
-project, the description file it was generated from and the version of the tool, and nothing
-else:
+Nothing DDD hands a template varies from run to run: there is no time stamp, no host name and
+no user name anywhere in the data model, so a project can write a banner that names the
+project, the description file it was generated from and the version of the tool, and be sure
+that it says the same thing tomorrow. The example templates put exactly that at the top of
+every file they render:
 
 .. code-block:: c
 
@@ -376,10 +431,10 @@ exit code is unaffected:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   unchanged   build/gen/ddd_types.h
-   unchanged   build/gen/ddd_globals.h
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
    unchanged   build/gen/ddd_globals.c
+   unchanged   build/gen/ddd_globals.h
+   unchanged   build/gen/ddd_types.h
    unchanged   build/gen/Controller.h
    unchanged   build/gen/SensorHub.h
    unchanged   build/gen/UserInterface.h
@@ -387,7 +442,7 @@ exit code is unaffected:
    unchanged   build/gen/DemoDevice.a2l
 
 This matters because of what a build system does with modification times. DDD sits at the
-very bottom of the include graph - ``ddd_types.h`` is included by every generated header,
+very bottom of the include graph - here ``ddd_types.h`` is included by every generated header,
 which is included by every component - so a generator that rewrites its output on every run
 invalidates the whole tree on every run, and an incremental build of a large image
 degenerates into a full rebuild. With the comparison in place, only what genuinely changed is
@@ -395,10 +450,10 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   unchanged   build/gen/ddd_types.h
-   wrote       build/gen/ddd_globals.h (updated)
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (updated)
+   wrote       build/gen/ddd_globals.h (updated)
+   unchanged   build/gen/ddd_types.h
    unchanged   build/gen/Controller.h
    wrote       build/gen/SensorHub.h (updated)
    unchanged   build/gen/UserInterface.h
@@ -407,8 +462,10 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 
 ``Controller.h`` and ``UserInterface.h`` were left alone because neither component declares
 that variable, so neither of those components has to be recompiled. ``EventLogger.h`` was
-rewritten because ``EventLogger`` reads it and the description text appears in the doxygen
-comment of its declaration.
+rewritten because ``EventLogger`` reads it and the description text appears in the comment on
+its declaration. This granularity is a property of the templates as much as of the tool: a
+project that renders one header for everybody instead of one per component gets a correct
+build and a coarser one, and that trade is its to make.
 
 ``--dry-run`` performs the whole comparison and writes nothing, which answers the question a
 ci job asks when the generated code is committed to the repository: is what is checked in
@@ -419,10 +476,10 @@ than the status. Here the output directory did not exist yet, which is why every
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen --dry-run
-   would write build/gen/ddd_types.h (created)
-   would write build/gen/ddd_globals.h (created)
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
    would write build/gen/ddd_globals.c (created)
+   would write build/gen/ddd_globals.h (created)
+   would write build/gen/ddd_types.h (created)
    would write build/gen/Controller.h (created)
    would write build/gen/SensorHub.h (created)
    would write build/gen/UserInterface.h (created)
@@ -638,8 +695,8 @@ Enumerations
 An enum conversion becomes a verbal table, so that the calibration tool shows
 ``STATE_DEGRADED`` where the target holds a 3. The table is a ``COMPU_VTAB``, referenced by a
 ``COMPU_METHOD`` of type ``TAB_VERB``, and it pairs each raw value with the name of its
-enumerator - the same names that became the members of ``StateA_t`` in ``ddd_types.h``, so
-that the identifier the c code uses and the text the calibration tool displays are one and
+enumerator - the same names that became the members of ``StateA_t`` in the generated c code,
+so that the identifier the c code uses and the text the calibration tool displays are one and
 the same string:
 
 .. code-block:: text
@@ -709,10 +766,10 @@ the situation rather than silently truncating:
 
 .. code-block:: text
 
-   $ ddd generate cube.ddd.json -o build/gen -W unused-output=ignore
+   $ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
    cube.ddd.json#component.declarations[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
-   wrote       build/gen/ddd_types.h (created)
+   wrote       build/gen/ddd_globals.c (created)
    ...
 
 The record that comes out of it carries all four dimensions, again reversed, which is what a
@@ -824,8 +881,8 @@ x axis, four rows along the y axis, deposited ``ROW_DIR``.
 
    ``{"export": false}`` is therefore a request rather than an instruction, and it is honoured
    exactly when honouring it leaves a valid file behind. It never affects the c code: an
-   object kept out of the a2l is still defined in ``ddd_globals.c`` and still declared in the
-   header of its component.
+   object kept out of the a2l is still defined and still declared everywhere the c templates
+   put it.
 
 One group per component
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -927,7 +984,7 @@ outside the range an a2l can hold, on the other hand, is refused before anything
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen --address-map bad.json
+   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
    ddd: bad.json: address of 'ValueE' is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
    $ echo $?
    2

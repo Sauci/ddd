@@ -176,9 +176,11 @@ What the scope does to the generated code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Checks catch a wrong description; visibility catches wrong code. Every variable of the project
-is defined exactly once, in ``ddd_globals.c``, but each component gets a header containing
-only what *it* declared, grouped by scope and annotated with who produces what. This is
-``Controller.h`` from the demo, shortened to the parts that matter:
+is defined exactly once, in the definition file, but each component gets a header containing
+only what *it* declared, grouped by scope and annotated with who produces what. Those files
+are the project's own templates rendered - the example ones call them ``ddd_globals.c`` and
+``<Component>.h``, and :doc:`templates </templates>` explains how a project changes that. This
+is ``Controller.h`` from the demo, shortened to the parts that matter:
 
 .. code-block:: c
 
@@ -205,10 +207,11 @@ way of naming a variable that belongs to ``SensorHub`` and was not declared as o
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
 input is possible by construction, since that is what an input is; *writing* one still
 compiles here, because the declaration is not ``const``. ``ddd generate --const-inputs``
-declares inputs ``extern const`` instead, which stops that too, at the cost of a definition in
-``ddd_globals.c`` that stays non-const - strictly a constraint violation, accepted by the usual
-embedded toolchains, and therefore opt-in. The whole picture is on the
-:doc:`generated artefacts </generated_artefacts>` page.
+declares inputs ``extern const`` instead, which stops that too, at the cost of a definition
+that stays non-const - strictly a constraint violation, accepted by the usual embedded
+toolchains, and therefore opt-in. It is an option rather than a matter for the templates
+because it changes what is declared and not how the declaration is written. The whole picture
+is on the :doc:`generated artefacts </generated_artefacts>` page.
 
 condition
 ---------
@@ -233,9 +236,10 @@ produces. ``condition`` carries that, as a c preprocessor expression:
      }
    }
 
-The expression is emitted verbatim, around the definition in ``ddd_globals.c`` and around the
-declaration in every header that carries the variable, with the condition repeated in a comment
-on the ``#endif`` so that a long guarded region stays readable:
+The expression travels with the object into every place it is written - the definition and the
+declaration in every header that carries the variable - and is emitted verbatim, so that the
+example templates can put the same guard around all of them, with the condition repeated in a
+comment on the ``#endif`` so that a long guarded region stays readable:
 
 .. code-block:: c
 

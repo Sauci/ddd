@@ -258,10 +258,10 @@ is where a consumer starts, is this:
 ``additionalProperties`` is ``false`` here as it is everywhere else in DDD, so a consumer
 validating against the schema finds a key it was not expecting instead of skipping it.
 ``enums`` carries the distinct enumerations the objects use, so a consumer that wants to
-emit a type per enumeration - which is what the c backend does with its ``ddd_types.h`` -
-does not have to walk every object and de-duplicate them itself. The conversions themselves
-are the same models the description files use, and they are documented with the other
-:doc:`data contracts <data_contracts>`.
+emit a type per enumeration - which is what the c backend offers its templates as
+``model.enums`` - does not have to walk every object and de-duplicate them itself. The
+conversions themselves are the same models the description files use, and they are documented
+with the other :doc:`data contracts <data_contracts>`.
 
 Reference
 ---------

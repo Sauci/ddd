@@ -27,7 +27,16 @@ services:
 
   generate:
     <<: *ddd
-    command: ["ddd", "generate", "examples/demo/demo.ddd.json", "-o", "build/gen"]
+    # The c templates come from the project, so the directory is not optional. This uses the
+    # ones shipped as an example, which is also what `ddd templates-dir` prints.
+    command:
+      - ddd
+      - generate
+      - examples/demo/demo.ddd.json
+      - -o
+      - build/gen
+      - --template-dir
+      - examples/templates
 
   # Generates the demo project and compiles, links and inspects the result,
   # once without and once with the optional feature switched on.

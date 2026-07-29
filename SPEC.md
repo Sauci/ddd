@@ -151,7 +151,7 @@ Attributes common to every kind:
 | `name` | required | c identifier of the object |
 | `kind` | `measurement` | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
 | `datatype` | required | `bool`, `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float32`, `float64` |
-| `description` | `""` | doxygen comment in the c code, long identifier in the a2l |
+| `description` | `""` | offered to the c templates as the text of a comment, long identifier in the a2l |
 | `unit` | `""` | physical unit |
 | `conversion` | identity | raw to physical conversion, section 3.4 |
 | `limits` | derived | physical `min`/`max`; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
@@ -312,16 +312,29 @@ back until the interface change is resolved.
 
 ### 5.1 C code
 
-| file | content |
-| --- | --- |
-| `<prefix>_types.h` | `<stdint.h>`/`<stdbool.h>` and one `typedef enum` per enum conversion |
-| `<prefix>_globals.h` | declaration of every object of the project, for the definition file |
-| `<prefix>_globals.c` | the single definition of every object, grouped by owning component |
-| `<Component>.h` | the interface of one component and nothing else |
+The c sources shall be rendered from templates the *project* provides, and DDD shall ship no
+default set. What the generated code looks like - the comment convention, the banner, the
+include guards, whether an object is commented and in which form - does not follow
+from the declared data: it is the house style of the software the code is generated into, it
+differs between projects, and a generator that fixes it imposes one project's habits on every
+other. DDD therefore owns the data and the project owns its presentation. Example templates
+shall be shipped and locatable, as a starting point to copy rather than as a fallback.
 
-Measurements are emitted as writable variables, calibration objects as `const`. A declaration
-that carries a condition is wrapped in `#if` / `#endif`. Optionally, input objects are
-declared `const` in the consumer header so that a write access does not compile.
+The set of generated files shall follow from the template directory alone, so that a build
+system can declare its outputs without running the generator first:
+
+| template | renders to |
+| --- | --- |
+| `<name>.jinja2` | `<name>`, once per project |
+| `_<name>.jinja2` | nothing; a helper the other templates may import |
+| `{component}<rest>.jinja2` | `<Component><rest>`, once per component |
+
+A template in a subdirectory of the template directory is importable but never rendered.
+
+Whatever the templates spell, the *data* they are given is fixed: measurements are writable
+variables and calibration objects are `const`, a declaration that carries a condition is
+offered with that condition so it can be wrapped in `#if` / `#endif`, and input objects are
+optionally marked `const` for the consumer header so that a write access does not compile.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 
@@ -357,7 +370,7 @@ resolved data objects,
 writing out the data dictionary itself, validating and explaining names against the naming
 convention and completing partially typed ones, printing the json schema of the file formats
 and of the dictionary, listing the available checks, and reporting where its build system
-integration lives. Every command that reports findings can produce machine readable
+integration and its example templates live. Every command that reports findings can produce machine readable
 json, and the exit code distinguishes clean runs, findings and usage errors. A findings exit
 is reserved for findings reported *as errors*: a run whose findings are all warnings is a
 clean run unless `--strict` says otherwise.
@@ -384,7 +397,7 @@ component and generating for an image shall each take one call.
 | 3.5 naming convention | implemented (`ddd name`, `ddd complete`, `naming` check) |
 | 3.6 memory placement | planned |
 | 4 consistency checks | implemented |
-| 5.1 c code generation | implemented, per-file assignment planned |
+| 5.1 c code generation from project templates | implemented (`--template-dir`, `ddd templates-dir`); per-file assignment planned |
 | 5.2 a2l generation | implemented for 1.6.1; other versions, `FUNCTION`, `IF_DATA`, import planned |
 | 4.1 comparing two deliveries | implemented (`ddd compare`, `ddd check --baseline`) |
 | 6 address information | json map implemented, ELF/DWARF import planned |

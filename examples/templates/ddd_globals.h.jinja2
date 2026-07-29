@@ -1,14 +1,14 @@
-{% import "macros.jinja" as macros %}
+{% import "_macros.jinja2" as macros %}
 {{- macros.banner(filename, model) }}
-#ifndef {{ model.globals_guard }}
-#define {{ model.globals_guard }}
+#ifndef {{ model.guard("ddd", "globals") }}
+#define {{ model.guard("ddd", "globals") }}
 
-#include "{{ model.options.types_header }}"
+#include "ddd_types.h"
 
 /*
  * Declarations of every global variable of the project.  Software components
  * shall include their own interface header instead of this file; it exists so
- * that {{ model.options.globals_source }} can be compiled with full prototype checking.
+ * that ddd_globals.c can be compiled with full prototype checking.
  */
 {% for group in model.groups %}
 
@@ -29,4 +29,4 @@
 {% endfor %}
 {% endfor %}
 
-#endif /* {{ model.globals_guard }} */
+#endif /* {{ model.guard("ddd", "globals") }} */

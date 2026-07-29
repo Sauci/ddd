@@ -8,6 +8,7 @@
 #   CDEFS    extra preprocessor defines, compiled as a second variant
 #            (e.g. CDEFS="-DFEATURE_X")
 #   GENFLAGS extra flags for 'ddd generate' (e.g. GENFLAGS="--const-inputs")
+#   TEMPLATES  directory of the c templates, defaulting to the examples shipped with DDD
 #   CFLAGS   override the default warning set
 #   CC       override the compiler
 set -euo pipefail
@@ -18,12 +19,13 @@ CC="${CC:-gcc}"
 CFLAGS="${CFLAGS:--std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual -Wstrict-prototypes}"
 CDEFS="${CDEFS:-}"
 GENFLAGS="${GENFLAGS:-}"
+TEMPLATES="${TEMPLATES:-$(ddd templates-dir)}"
 
 log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 log "generate  $PROJECT -> $OUTPUT ${GENFLAGS}"
 read -r -a generate_flags <<<"$GENFLAGS"
-ddd generate "$PROJECT" -o "$OUTPUT" "${generate_flags[@]}"
+ddd generate "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" "${generate_flags[@]}"
 # The severity overrides in GENFLAGS apply here too: pointed at a single component file,
 # 'ddd list' would otherwise exit 1 on the missing producers that the generate step was
 # explicitly told to tolerate, and take the whole run down with it.

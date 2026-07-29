@@ -37,6 +37,12 @@ class Part:
 
     problem: str | None = None
     suggestions: tuple[str, ...] = ()
+    canonical: str | None = None
+    """The token this part matched, as the convention spells it.
+
+    Only differs from ``text`` under a case insensitive convention, and exists so that the
+    meaning of a token is still found when the author typed it in another case.
+    """
 
     @property
     def ok(self) -> bool:
@@ -46,7 +52,7 @@ class Part:
     def meaning(self) -> str:
         if self.segment is None:
             return ""
-        return self.segment.meaning_of(self.text)
+        return self.segment.meaning_of(self.canonical or self.text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,19 +89,13 @@ class Inspection:
 def inspect(name: str, convention: NamingConvention) -> Inspection:
     """Split ``name`` and judge every part against the segment at its position."""
     texts = _split(name, convention)
-    plan = _positions(len(texts), convention)
-
-    parts: list[Part] = []
-    offset = 0
-    for index, text in enumerate(texts):
-        segment = plan[index] if index < len(plan) else None
-        parts.append(_judge(text, offset, segment, convention))
-        offset += len(text) + len(convention.separator)
-
-    # A repeatable segment still has to appear at least once: "repeatable" widens how many
-    # parts it may take, it does not make it optional.
-    required = [segment for segment in convention.segments[len(plan) :] if not segment.optional]
-    return Inspection(name=name, convention=convention, parts=tuple(parts), missing=tuple(required))
+    plan, missing = _best_plan(texts, convention)
+    return Inspection(
+        name=name,
+        convention=convention,
+        parts=tuple(_judge_all(texts, plan, convention)),
+        missing=missing,
+    )
 
 
 def explain(name: str, convention: NamingConvention) -> Inspection:
@@ -107,24 +107,38 @@ def complete(prefix: str, convention: NamingConvention) -> list[str]:
     """The names that ``prefix`` could grow into, one segment further.
 
     A prefix ending in the separator asks for the next segment; otherwise the last piece is
-    treated as partially typed and filtered on. A free (pattern) segment has nothing to offer,
-    so the result is empty - the caller keeps typing.
+    treated as partially typed and filtered on. Only positions that are reachable *given the
+    parts already typed* are offered, so a completion never proposes a name the same
+    convention would then reject.
+
+    A free (pattern) position has no vocabulary of its own. Once what stands there is
+    acceptable, the offer moves on to what may follow it, which is what makes
+    ``val_Inlet<TAB>`` propose the qualifiers rather than nothing at all.
     """
     ends_open = prefix.endswith(convention.separator)
     head = prefix[: -len(convention.separator)] if ends_open else prefix
     pieces = _split(head, convention) if head else []
     typed = "" if ends_open else (pieces.pop() if pieces else "")
 
-    index = len(pieces)
-    plan = _positions(index + 1, convention)
-    if index >= len(plan):
-        return []
-    segment = plan[index]
-
     stem = convention.separator.join([*pieces, ""]) if pieces else ""
     matcher = _fold(typed, convention)
-    candidates = [value for value in segment.values if _fold(value, convention).startswith(matcher)]
-    return [f"{stem}{value}" for value in candidates]
+    here = [
+        value
+        for value in _vocabulary_at(pieces, convention)
+        if _fold(value, convention).startswith(matcher)
+    ]
+    if here:
+        # The token is offered as the convention spells it, which under a case insensitive
+        # convention also teaches the canonical spelling of what was typed.
+        return [f"{stem}{value}" for value in here]
+
+    if typed and _accepts(pieces, typed, convention):
+        separator = convention.separator
+        return [
+            f"{stem}{typed}{separator}{value}"
+            for value in _vocabulary_at([*pieces, typed], convention)
+        ]
+    return []
 
 
 def check_names(
@@ -138,7 +152,7 @@ def check_names(
         for part in inspection.problems:
             message = part.problem or ""
             if part.suggestions:
-                message += f" - did you mean {' or '.join(part.suggestions)}?"
+                message += f" - did you mean {or_list(part.suggestions)}?"
             bag.add("naming", message, location, notes=[(inspection.underline(), None)])
         for segment in inspection.missing:
             bag.add(
@@ -149,29 +163,106 @@ def check_names(
             )
 
 
-# -- the walk ---------------------------------------------------------------
+def or_list(values: tuple[str, ...]) -> str:
+    """``'val' or 'flg'``: the quotes are presentation, so they are added at the end."""
+    return " or ".join(f"'{value}'" for value in values)
 
 
 def _split(name: str, convention: NamingConvention) -> list[str]:
     return name.split(convention.separator) if name else []
 
 
-def _positions(count: int, convention: NamingConvention) -> list[Segment]:
-    """The segment that governs each of ``count`` positions.
+def _layouts(count: int, convention: NamingConvention) -> list[list[Segment]]:
+    """Every way the convention can spread exactly ``count`` parts over its segments.
 
-    A repeatable segment stretches to swallow the pieces the fixed ones do not need, which is
-    how a convention allows a multi word descriptive part without listing every length.
+    Two things vary: how many of the trailing optional segments a name uses, and how many
+    parts the repeatable one swallows. Both are enumerated instead of decided in advance,
+    because deciding greedily gets ``val_Inlet_Temperature`` wrong - the last subject is
+    handed to the qualifier, which then rejects a name the convention allows. The caller
+    keeps the layout the name actually fits.
+
+    Layouts with more optional segments come first, so that when a part could be read either
+    as a vocabulary token or as free text, the vocabulary wins and the explanation of the
+    name says what it means.
     """
-    segments = list(convention.segments)
-    repeatable = next((s for s in segments if s.repeatable), None)
-    if repeatable is None:
-        return segments[:count]
+    required = [segment for segment in convention.segments if not segment.optional]
+    optional = [segment for segment in convention.segments if segment.optional]
 
-    index = segments.index(repeatable)
-    after = len(segments) - index - 1
-    stretch = max(1, count - index - after)
-    plan = segments[:index] + [repeatable] * stretch + segments[index + 1 :]
-    return plan[:count]
+    layouts: list[list[Segment]] = []
+    for used in range(len(optional), -1, -1):
+        included = required + optional[:used]
+        position = next((i for i, s in enumerate(included) if s.repeatable), None)
+        if position is None:
+            if len(included) == count:
+                layouts.append(included)
+            continue
+        stretch = count - len(included) + 1
+        if stretch >= 1:
+            repeated = [included[position]] * stretch
+            layouts.append(included[:position] + repeated + included[position + 1 :])
+    return layouts
+
+
+def _judge_all(texts: list[str], plan: list[Segment], convention: NamingConvention) -> list[Part]:
+    parts: list[Part] = []
+    offset = 0
+    for index, text in enumerate(texts):
+        segment = plan[index] if index < len(plan) else None
+        parts.append(_judge(text, offset, segment, convention))
+        offset += len(text) + len(convention.separator)
+    return parts
+
+
+def _best_plan(
+    texts: list[str], convention: NamingConvention
+) -> tuple[list[Segment], tuple[Segment, ...]]:
+    """The layout that fits ``texts``, or the one that explains best why none does."""
+    best: tuple[int, list[Segment]] | None = None
+    for plan in _layouts(len(texts), convention):
+        problems = sum(1 for part in _judge_all(texts, plan, convention) if not part.ok)
+        if problems == 0:
+            return plan, ()
+        if best is None or problems < best[0]:
+            best = (problems, plan)
+    if best is not None:
+        return best[1], ()
+
+    # The name is too short for any layout: report the required segments it stops before.
+    # A repeatable segment still has to appear at least once - "repeatable" widens how many
+    # parts it may take, it does not make it optional.
+    required = [segment for segment in convention.segments if not segment.optional]
+    return required[: len(texts)], tuple(required[len(texts) :])
+
+
+def _vocabulary_at(pieces: list[str], convention: NamingConvention) -> list[str]:
+    """The tokens that may stand after ``pieces``, under every layout they still fit."""
+    index = len(pieces)
+    values: list[str] = []
+    seen: set[str] = set()
+    for count in range(index + 1, index + 1 + len(convention.segments)):
+        for plan in _layouts(count, convention):
+            if not _fits(pieces, plan, convention):
+                continue
+            for value in plan[index].values:
+                if value not in seen:
+                    seen.add(value)
+                    values.append(value)
+    return values
+
+
+def _fits(pieces: list[str], plan: list[Segment], convention: NamingConvention) -> bool:
+    """Whether the already typed parts are all acceptable under ``plan``."""
+    return all(part.ok for part in _judge_all(pieces, plan, convention))
+
+
+def _accepts(pieces: list[str], text: str, convention: NamingConvention) -> bool:
+    """Whether ``text`` is acceptable right after ``pieces`` under some layout."""
+    candidate = [*pieces, text]
+    return any(
+        _fits(candidate, plan, convention)
+        for count in range(len(candidate), len(candidate) + len(convention.segments))
+        for plan in _layouts(count, convention)
+    )
 
 
 def _judge(text: str, offset: int, segment: Segment | None, convention: NamingConvention) -> Part:
@@ -199,8 +290,10 @@ def _judge(text: str, offset: int, segment: Segment | None, convention: NamingCo
         return Part(text, offset, segment)
 
     values = segment.values
-    if _fold(text, convention) in {_fold(value, convention) for value in values}:
-        return Part(text, offset, segment)
+    folded = {_fold(value, convention): value for value in values}
+    matched = folded.get(_fold(text, convention))
+    if matched is not None:
+        return Part(text, offset, segment, canonical=matched)
     return Part(
         text,
         offset,
@@ -211,11 +304,16 @@ def _judge(text: str, offset: int, segment: Segment | None, convention: NamingCo
 
 
 def _closest(text: str, values: tuple[str, ...], convention: NamingConvention) -> tuple[str, ...]:
+    """The tokens closest to what was typed, as bare values.
+
+    Unquoted on purpose: this is data, and the json output carries it verbatim. The quotes
+    belong to the sentence the text renderer builds around it.
+    """
     folded = {_fold(value, convention): value for value in values}
     matches = difflib.get_close_matches(
         _fold(text, convention), folded, n=_MAX_SUGGESTIONS, cutoff=0.6
     )
-    return tuple(f"'{folded[match]}'" for match in matches)
+    return tuple(folded[match] for match in matches)
 
 
 def _listing(values: tuple[str, ...], limit: int = 8) -> str:

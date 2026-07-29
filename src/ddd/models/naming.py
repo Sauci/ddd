@@ -15,6 +15,7 @@ point.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -74,6 +75,21 @@ class Segment(_Frozen):
         return self
 
     @model_validator(mode="after")
+    def _pattern_compiles(self) -> Segment:
+        """A pattern is compiled while the file is read, not while a name is judged.
+
+        Left to the first name, a typo in the expression would surface as a crash in the
+        middle of a check run rather than as a located finding about the convention.
+        """
+        if self.pattern is not None:
+            try:
+                re.compile(self.pattern)
+            except re.error as error:
+                msg = f"segment '{self.name}' has an invalid pattern: {error}"
+                raise ValueError(msg) from None
+        return self
+
+    @model_validator(mode="after")
     def _tokens_are_unique(self) -> Segment:
         seen: set[str] = set()
         for token in self.tokens:
@@ -116,6 +132,25 @@ class NamingConvention(_Frozen):
                     f"name could not be split unambiguously"
                 )
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _tokens_avoid_the_separator(self) -> NamingConvention:
+        """A token containing the separator could never match.
+
+        A name is split on the separator before its parts are judged, so such a token would
+        be offered by the completion and rejected by the check - the tool contradicting
+        itself. The rule lives here rather than on the token because only the convention
+        knows what the separator is.
+        """
+        for segment in self.segments:
+            for token in segment.tokens:
+                if self.separator in token.value:
+                    msg = (
+                        f"token '{token.value}' of segment '{segment.name}' contains the "
+                        f"separator '{self.separator}', so no name could ever match it"
+                    )
+                    raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

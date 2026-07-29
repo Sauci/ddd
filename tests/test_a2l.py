@@ -52,9 +52,19 @@ class TestMeasurements:
         assert "ECU_ADDRESS 0x00000000" in content
         assert 'SYMBOL_LINK "X" 0' in content
 
-    def test_matrix_dim_for_arrays(self, tree: Path) -> None:
+    def test_matrix_dim_lists_the_fastest_index_first(self, tree: Path) -> None:
+        """``uint16_t X[2][3]`` is three columns per row, and a2l names that dimension first.
+
+        Emitting the c order would describe the transposed object, and a calibration tool
+        computing ``x + y * xDim`` would then read and write the wrong element.
+        """
         content = a2l(tree, declare("local", "X", dimensions=[2, 3]))
-        assert "MATRIX_DIM 2 3" in content
+        assert "MATRIX_DIM 3 2 1" in content
+
+    def test_matrix_dim_pads_a_one_dimensional_array(self, tree: Path) -> None:
+        """ASAP2 1.6.1 always spells out three dimensions; the unused ones are 1."""
+        content = a2l(tree, declare("local", "X", dimensions=[4]))
+        assert "MATRIX_DIM 4 1 1" in content
 
     def test_export_can_be_disabled(self, tree: Path) -> None:
         content = a2l(

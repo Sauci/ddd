@@ -2,11 +2,10 @@
 
 from ddd.models.common import (
     C_IDENTIFIER_PATTERN,
-    C_KEYWORDS,
+    IDENTIFIER_MAX_LENGTH,
     Datatype,
     Identifier,
     format_number,
-    is_reserved_identifier,
 )
 from ddd.models.component import Component, ComponentFile, Declaration, Scope
 from ddd.models.conversion import (
@@ -40,10 +39,12 @@ from ddd.models.objects import (
     format_shape,
 )
 from ddd.models.project import Project, ProjectFile
+from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
 
 __all__ = [
     "C_IDENTIFIER_PATTERN",
     "C_KEYWORDS",
+    "IDENTIFIER_MAX_LENGTH",
     "IDENTITY",
     "A2lObjectOptions",
     "AnyDataObject",

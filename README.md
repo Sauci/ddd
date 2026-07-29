@@ -28,18 +28,30 @@ The front end never mentions c or a2l; a backend never touches the loader or the
 Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes it out and
 `ddd schema dictionary` publishes its schema.
 
+`ddd --version` prints the release. The check identifiers, the command names and the json
+file formats are the tool's public interface and do not change within a major version; the
+generated a2l is ASAP2 1.6.1. Licence terms are in [LICENSE](LICENSE), and problems belong
+in the [issue tracker](https://github.com/Sauci/ddd/issues).
+
 ## Installation
 
-Requires Python 3.12 or newer.
+Requires Python 3.12 or newer; the only runtime dependencies are pydantic and jinja2.
 
 ```bash
-pip install -e .          # runtime deps: pydantic, jinja2
-pip install -e ".[dev]"   # plus pytest, ruff, mypy
+pip install ddd-tool                 # from the index
+pip install ./ddd_tool-0.1.0-py3-none-any.whl   # from a delivered wheel, no network
+ddd --version
 ```
 
-Without installing, the tool also runs straight from the sources:
+The distribution is called `ddd-tool` because `ddd` was taken; the command, the importable
+package and the `*.ddd.json` files are all still `ddd`.
+
+The examples used below are part of the source distribution rather than the wheel. To follow
+along, clone the repository or unpack the sdist, and from there the tool also runs without
+being installed at all:
 
 ```bash
+git clone https://github.com/Sauci/ddd && cd ddd
 PYTHONPATH=src python -m ddd --help
 ```
 
@@ -196,7 +208,9 @@ omitted when the shape is unambiguous.
 
 `ddd checks` lists all of them.  Every check has an identifier and a default severity that
 can be changed with `-W check=error|warning|info|ignore`; `--strict` turns all warnings into
-errors.  The five load time checks (`json-syntax`, `schema`, ...) cannot be relaxed.
+errors.  Five of them cannot be relaxed, because a file that cannot be read has nothing
+further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `include-cycle`.
+`ddd checks` marks them `(fixed)`.
 
 | severity | check | reported when |
 | --- | --- | --- |
@@ -210,7 +224,8 @@ errors.  The five load time checks (`json-syntax`, `schema`, ...) cannot be rela
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
-| error | `reserved-identifier` | a name collides with a c keyword |
+| error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
+| error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `naming` | a name does not follow the naming convention of the project |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-empty`, `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read |
@@ -220,6 +235,7 @@ errors.  The five load time checks (`json-syntax`, `schema`, ...) cannot be rela
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
+| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
 | info | `empty-component` | a component declares no variable |
 
 When components disagree, the declaration of the **producing** component is the reference:
@@ -326,6 +342,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |
 | warning | `changed-a2l` | the a2l entry changed |
+| warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | info | `added-object` | the candidate declares something new |
 
 Two details worth knowing. **Widening a limit is silent** - every value the baseline allowed
@@ -353,10 +370,12 @@ does not trigger a rebuild:
 
 ```c
 /* ddd_globals.c */
-/** A measurement of the device [Hz] */
+/** Measurement used as the input quantity of AxisA [Hz] */
 volatile uint16_t ValueE = 0U;
+/** Signed measurement with a fixed point conversion [degC] */
+int16_t ValueF = -400;
 #if defined(FEATURE_X)
-/** A measurement that only exists with FEATURE_X [V] */
+/** Measurement that only exists when FEATURE_X is defined [V] */
 uint16_t ValueG = 1000U;
 #endif /* defined(FEATURE_X) */
 ```
@@ -365,6 +384,7 @@ uint16_t ValueG = 1000U;
 /* UserInterface.h - only what UserInterface declared */
 /* inputs - produced elsewhere, UserInterface may only read them */
 extern volatile uint16_t ValueE;  /* produced by Controller */
+extern int16_t ValueF;  /* produced by Controller */
 ```
 
 Access rules are enforced by visibility: a component can only reach a variable whose
@@ -393,7 +413,15 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
   `AXIS_PTS_REF` would make the file invalid
 * the address of an object is `0x00000000` unless `--address-map` provides the linker
   addresses (`ECU_ADDRESS` is simply the keyword the format uses);
-  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking
+  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
+  The map is a flat json object of symbol to address, decimal or hexadecimal, produced from
+  the linker output after the first build; a symbol that is not in it keeps address 0, and
+  an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
+
+  ```json
+  { "ValueE": "0x20000100", "AxisA": "0x08004000", "Kp": 134234112 }
+  ```
+
 * a2l has no notion of preprocessor conditions, so a conditional variable is exported with a
   comment stating the condition
 * `"a2l": {"export": false}` keeps a variable out of the file
@@ -410,15 +438,23 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd schema project\|component\|naming\|dictionary` | json schema of the file formats and of the contract |
 | `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
 | `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
+| `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd checks` | list the checks and their default severity |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 
 `FILE` may be a project or a single component file, which makes it possible to check a
 component on its own before integrating it - add `-W missing-producer=ignore` in that case,
 because the components producing the inputs are by definition not part of the file.
-`--format json` is available everywhere and
-prints machine readable diagnostics for a ci job.  Exit codes: `0` clean, `1` findings,
-`2` wrong usage.
+
+`--format json` prints machine readable diagnostics for a ci job. It is available on every
+command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `name` and
+`checks` - which leaves out only `schema` and `cmake-dir`, whose output is machine readable
+already, and `complete`, which prints one candidate per line for a shell. `ddd dump` is the
+one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
+`--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
+in either format.
+
+Exit codes: `0` clean, `1` findings, `2` wrong usage.
 
 ## CMake integration
 
@@ -485,7 +521,7 @@ speaks linux containers:
 
 ```bash
 wsl -d Ubuntu
-cd /mnt/c/git/ac11/ddd
+cd /mnt/c/path/to/ddd        # the working tree, seen from inside WSL
 
 docker compose build
 docker compose run --rm compile          # generate + compile + link + verify
@@ -514,10 +550,10 @@ declarations are covered in both states:
 
 ```text
 == symbols   [base]
-12 of 13 declared variables are defined
+19 of 20 declared variables are defined
   conditional, absent : ValueG
 == symbols   [defines]
-13 of 13 declared variables are defined
+20 of 20 declared variables are defined
   conditional, present: ValueG
 ```
 

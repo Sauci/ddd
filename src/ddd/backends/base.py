@@ -61,10 +61,13 @@ def render(
         for file in backend.generate(dictionary, output_dir):
             previous = produced_by.get(file.path)
             if previous is not None:
-                msg = (
-                    f"the {backend.name} and {previous} backends would both write "
-                    f"'{file.path.name}'; rename the component or choose a different prefix"
+                who = (
+                    f"the {backend.name} backend would write '{file.path.name}' twice"
+                    if previous == backend.name
+                    else f"the {backend.name} and {previous} backends would both write "
+                    f"'{file.path.name}'"
                 )
+                msg = f"{who}; rename the component or choose a different prefix"
                 raise ValueError(msg)
             produced_by[file.path] = backend.name
             files.append(file)

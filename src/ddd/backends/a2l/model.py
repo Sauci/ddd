@@ -37,6 +37,9 @@ from ddd.models import (
 NO_COMPU_METHOD = "NO_COMPU_METHOD"
 NO_INPUT_QUANTITY = "NO_INPUT_QUANTITY"
 
+A2L_MATRIX_DIM_RANK = 3
+"""Number of dimensions ``MATRIX_DIM`` carries in ASAP2 1.6.1."""
+
 _CHARACTERISTIC_TYPE = {
     ObjectKind.PARAMETER: "VALUE",
     ObjectKind.VALUE_BLOCK: "VAL_BLK",
@@ -157,166 +160,186 @@ class A2lModel:
 
 
 def build_a2l_model(dictionary: DataDictionary, options: A2lOptions, generator: str) -> A2lModel:
-    """Turn the dictionary into the flat structures used by the a2l template.
+    """Turn the dictionary into the flat structures used by the a2l template."""
+    return _A2lModelBuilder(dictionary, options).build(generator)
 
-    An axis referenced by an exported curve or map is always exported, even when its own
-    ``a2l.export`` is false: an ``AXIS_PTS_REF`` without the ``AXIS_PTS`` it points at would
-    not be a valid a2l file.
+
+class _A2lModelBuilder:
+    """Builds the whole a2l model of one dictionary.
+
+    The compu methods and record layouts are *accumulated* while the objects are walked -
+    every object may contribute one, and identical ones are shared - so they are state of
+    the run rather than something each record can be handed separately. The set of exported
+    names and the options belong to the same run, which is why they live here too.
     """
-    by_name = dictionary.by_name
-    exported = _exported(dictionary)
-    methods = _CompuMethodBuilder()
-    layouts = _RecordLayoutBuilder()
 
-    measurements: list[MeasurementView] = []
-    characteristics: list[CharacteristicView] = []
-    axis_pts: list[AxisPtsView] = []
+    def __init__(self, dictionary: DataDictionary, options: A2lOptions) -> None:
+        self._dictionary = dictionary
+        self._options = options
+        self._by_name = dictionary.by_name
+        self._exported = self._resolve_exported()
+        self._methods = _CompuMethodBuilder()
+        self._layouts = _RecordLayoutBuilder()
 
-    for entry in dictionary.objects:
-        if entry.name not in exported:
-            continue
-        if entry.kind is ObjectKind.MEASUREMENT:
-            measurements.append(_measurement(entry, methods, options))
-        elif entry.kind is ObjectKind.AXIS:
-            axis_pts.append(_axis_pts(entry, methods, layouts, options))
-        else:
-            characteristics.append(_characteristic(entry, by_name, methods, layouts, options))
+    def build(self, generator: str) -> A2lModel:
+        dictionary = self._dictionary
+        measurements: list[MeasurementView] = []
+        characteristics: list[CharacteristicView] = []
+        axis_pts: list[AxisPtsView] = []
 
-    groups = [
-        group
-        for group in (_group(component, exported, by_name) for component in dictionary.components)
-        if group is not None
-    ]
+        for entry in dictionary.objects:
+            if entry.name not in self._exported:
+                continue
+            if entry.kind is ObjectKind.MEASUREMENT:
+                measurements.append(self._measurement(entry))
+            elif entry.kind is ObjectKind.AXIS:
+                axis_pts.append(self._axis_pts(entry))
+            else:
+                characteristics.append(self._characteristic(entry))
 
-    return A2lModel(
-        project=dictionary.name,
-        description=dictionary.description or dictionary.name,
-        module=dictionary.name,
-        generator=generator,
-        version=options.version,
-        byte_order=options.byte_order.a2l,
-        compu_methods=methods.methods(),
-        compu_vtabs=methods.vtabs(),
-        record_layouts=layouts.layouts(),
-        measurements=tuple(measurements),
-        characteristics=tuple(characteristics),
-        axis_pts=tuple(axis_pts),
-        groups=tuple(groups),
-    )
+        groups = [
+            group
+            for group in (self._group(component) for component in dictionary.components)
+            if group is not None
+        ]
 
+        return A2lModel(
+            project=dictionary.name,
+            description=dictionary.description or dictionary.name,
+            module=dictionary.name,
+            generator=generator,
+            version=self._options.version,
+            byte_order=self._options.byte_order.a2l,
+            compu_methods=self._methods.methods(),
+            compu_vtabs=self._methods.vtabs(),
+            record_layouts=self._layouts.layouts(),
+            measurements=tuple(measurements),
+            characteristics=tuple(characteristics),
+            axis_pts=tuple(axis_pts),
+            groups=tuple(groups),
+        )
 
-def _exported(dictionary: DataDictionary) -> set[str]:
-    """Names that end up in the a2l, including axes pulled in by curves and maps."""
-    names = {entry.name for entry in dictionary.objects if entry.a2l.export}
-    for entry in dictionary.objects:
-        if entry.name in names and entry.kind in (ObjectKind.CURVE, ObjectKind.MAP):
-            names.update(entry.references.values())
-    return names
+    def _resolve_exported(self) -> set[str]:
+        """Names that end up in the a2l, including what an exported object refers to.
 
+        Every reference an exported record makes has to resolve inside the same file: an
+        ``AXIS_PTS_REF`` to an axis that was kept out, or an input quantity naming a
+        measurement that was, is a dangling reference and makes the file invalid rather than
+        smaller. An object is therefore pulled back in by whoever points at it, transitively -
+        a curve pulls its axis, and that axis pulls the measurement it is indexed by.
+        """
+        by_name = self._by_name
+        names = {entry.name for entry in self._dictionary.objects if entry.a2l.export}
+        pending = list(names)
+        while pending:
+            # Everything in `names` is a key of `by_name`: the initial set comes from the
+            # objects themselves, and the only other way in is the membership test below.
+            entry = by_name[pending.pop()]
+            for referenced in entry.references.values():
+                if referenced not in names and referenced in by_name:
+                    names.add(referenced)
+                    pending.append(referenced)
+        return names
 
-def _measurement(
-    entry: ResolvedObject, methods: _CompuMethodBuilder, options: A2lOptions
-) -> MeasurementView:
-    return MeasurementView(
-        name=entry.name,
-        description=entry.description or entry.name,
-        datatype=A2L_TYPE[entry.datatype],
-        compu_method=methods.reference(entry),
-        lower=format_number(entry.limits.min),
-        upper=format_number(entry.limits.max),
-        address=options.address_of(entry.name),
-        matrix_dim=_matrix_dim(entry),
-        format=entry.a2l.format,
-        display_identifier=entry.a2l.display_identifier,
-        component=entry.owner or "",
-        condition=entry.condition,
-    )
+    def _measurement(self, entry: ResolvedObject) -> MeasurementView:
+        return MeasurementView(
+            name=entry.name,
+            description=entry.description or entry.name,
+            datatype=A2L_TYPE[entry.datatype],
+            compu_method=self._methods.reference(entry),
+            lower=format_number(entry.limits.min),
+            upper=format_number(entry.limits.max),
+            address=self._options.address_of(entry.name),
+            matrix_dim=_matrix_dim(entry),
+            format=entry.a2l.format,
+            display_identifier=entry.a2l.display_identifier,
+            component=entry.owner or "",
+            condition=entry.condition,
+        )
 
+    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
+        references = entry.references
+        axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
+        return CharacteristicView(
+            name=entry.name,
+            description=entry.description or entry.name,
+            type=_CHARACTERISTIC_TYPE[entry.kind],
+            address=self._options.address_of(entry.name),
+            deposit=self._layouts.values(entry.datatype),
+            compu_method=self._methods.reference(entry),
+            lower=format_number(entry.limits.min),
+            upper=format_number(entry.limits.max),
+            matrix_dim=_matrix_dim(entry) if entry.kind is ObjectKind.VALUE_BLOCK else None,
+            format=entry.a2l.format,
+            display_identifier=entry.a2l.display_identifier,
+            axis_descrs=tuple(
+                descr
+                for name in axes
+                if (descr := self._axis_descr(self._by_name.get(name), name)) is not None
+            ),
+            condition=entry.condition,
+        )
 
-def _characteristic(
-    entry: ResolvedObject,
-    by_name: dict[str, ResolvedObject],
-    methods: _CompuMethodBuilder,
-    layouts: _RecordLayoutBuilder,
-    options: A2lOptions,
-) -> CharacteristicView:
-    references = entry.references
-    axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
-    return CharacteristicView(
-        name=entry.name,
-        description=entry.description or entry.name,
-        type=_CHARACTERISTIC_TYPE[entry.kind],
-        address=options.address_of(entry.name),
-        deposit=layouts.values(entry.datatype),
-        compu_method=methods.reference(entry),
-        lower=format_number(entry.limits.min),
-        upper=format_number(entry.limits.max),
-        matrix_dim=_matrix_dim(entry) if entry.kind is ObjectKind.VALUE_BLOCK else None,
-        format=entry.a2l.format,
-        display_identifier=entry.a2l.display_identifier,
-        axis_descrs=tuple(
-            descr
-            for name in axes
-            if (descr := _axis_descr(by_name.get(name), name, methods)) is not None
-        ),
-        condition=entry.condition,
-    )
+    def _axis_descr(self, axis: ResolvedObject | None, name: str) -> AxisDescrView | None:
+        if axis is None:
+            return None
+        return AxisDescrView(
+            attribute="COM_AXIS",
+            input_quantity=axis.references.get("input") or NO_INPUT_QUANTITY,
+            compu_method=self._methods.reference(axis),
+            max_points=axis.shape[0] if axis.shape else 0,
+            lower=format_number(axis.limits.min),
+            upper=format_number(axis.limits.max),
+            axis_ref=name,
+        )
 
+    def _axis_pts(self, entry: ResolvedObject) -> AxisPtsView:
+        return AxisPtsView(
+            name=entry.name,
+            description=entry.description or entry.name,
+            address=self._options.address_of(entry.name),
+            input_quantity=entry.references.get("input") or NO_INPUT_QUANTITY,
+            deposit=self._layouts.axis(entry.datatype),
+            compu_method=self._methods.reference(entry),
+            max_points=entry.shape[0] if entry.shape else 0,
+            lower=format_number(entry.limits.min),
+            upper=format_number(entry.limits.max),
+            format=entry.a2l.format,
+            display_identifier=entry.a2l.display_identifier,
+            condition=entry.condition,
+        )
 
-def _axis_descr(
-    axis: ResolvedObject | None, name: str, methods: _CompuMethodBuilder
-) -> AxisDescrView | None:
-    if axis is None:
-        return None
-    return AxisDescrView(
-        attribute="COM_AXIS",
-        input_quantity=axis.references.get("input") or NO_INPUT_QUANTITY,
-        compu_method=methods.reference(axis),
-        max_points=axis.shape[0] if axis.shape else 0,
-        lower=format_number(axis.limits.min),
-        upper=format_number(axis.limits.max),
-        axis_ref=name,
-    )
-
-
-def _axis_pts(
-    entry: ResolvedObject,
-    methods: _CompuMethodBuilder,
-    layouts: _RecordLayoutBuilder,
-    options: A2lOptions,
-) -> AxisPtsView:
-    return AxisPtsView(
-        name=entry.name,
-        description=entry.description or entry.name,
-        address=options.address_of(entry.name),
-        input_quantity=entry.references.get("input") or NO_INPUT_QUANTITY,
-        deposit=layouts.axis(entry.datatype),
-        compu_method=methods.reference(entry),
-        max_points=entry.shape[0] if entry.shape else 0,
-        lower=format_number(entry.limits.min),
-        upper=format_number(entry.limits.max),
-        format=entry.a2l.format,
-        display_identifier=entry.a2l.display_identifier,
-        condition=entry.condition,
-    )
-
-
-def _group(
-    component: ResolvedComponent, exported: set[str], by_name: dict[str, ResolvedObject]
-) -> GroupView | None:
-    names = [entry.name for entry in component.declarations if entry.name in exported]
-    if not names:
-        return None
-    return GroupView(
-        name=component.name,
-        description=component.description or component.name,
-        measurements=tuple(n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT),
-        characteristics=tuple(n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT),
-    )
+    def _group(self, component: ResolvedComponent) -> GroupView | None:
+        by_name = self._by_name
+        names = [entry.name for entry in component.declarations if entry.name in self._exported]
+        if not names:
+            return None
+        return GroupView(
+            name=component.name,
+            description=component.description or component.name,
+            measurements=tuple(n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT),
+            characteristics=tuple(
+                n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT
+            ),
+        )
 
 
 def _matrix_dim(entry: ResolvedObject) -> str | None:
-    return " ".join(str(dim) for dim in entry.shape) if entry.shape else None
+    """``MATRIX_DIM x y z``, where ``x`` is the index that runs fastest.
+
+    The dictionary carries the shape in c declaration order, in which the *last* index runs
+    fastest: ``uint8_t t[2][3]`` is two rows of three. ASAP2 lists the fastest index first,
+    so the dimensions are reversed here - emitting them unchanged would describe a
+    transposed object and every calibration tool would address the wrong element. 1.6.1
+    wants exactly three values, so the unused dimensions are filled with 1; an object with
+    more than three dimensions keeps all of them, which only 1.7 can read (the analysis
+    reports it as ``a2l-unrepresentable``).
+    """
+    if not entry.shape:
+        return None
+    dims = list(reversed(entry.shape))
+    dims += [1] * (A2L_MATRIX_DIM_RANK - len(dims))
+    return " ".join(str(dim) for dim in dims)
 
 
 class _RecordLayoutBuilder:
@@ -470,5 +493,13 @@ def _slug(unit: str) -> str:
 
 
 def a2l_string(text: str) -> str:
-    """Escape a string for an a2l double quoted literal."""
-    return text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+    """Escape a string for an a2l double quoted literal.
+
+    Backslash and quote are escaped, and every control character - carriage return and tab
+    as much as newline - becomes a space: a literal that spans a line makes some parsers
+    stop mid-file and others read the rest of the record as text.
+    """
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return "".join(
+        " " if character < " " or character == "\x7f" else character for character in escaped
+    )

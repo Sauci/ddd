@@ -34,8 +34,13 @@ class TestLayering:
     """The split is only real if the import graph enforces it."""
 
     def test_the_core_contracts_know_no_output_format(self) -> None:
+        # reserved.py is the documented exception: which names a c compiler claims is a
+        # property of the input contract, because generating c is not optional. It is a file
+        # of its own precisely so that this guard stays strict about everything else.
         text = "\n".join(
-            path.read_text(encoding="utf-8") for path in (SOURCE / "models").glob("*.py")
+            path.read_text(encoding="utf-8")
+            for path in (SOURCE / "models").glob("*.py")
+            if path.name != "reserved.py"
         )
         # Spellings that belong to one output format only. "measurement" is not among them:
         # that is DDD's own word for an online value and part of the input file format - the
@@ -141,6 +146,7 @@ class TestContract:
         schema = DataDictionary.model_json_schema()
         assert schema["additionalProperties"] is False
         assert set(schema["properties"]) == {
+            "format",
             "name",
             "description",
             "source",

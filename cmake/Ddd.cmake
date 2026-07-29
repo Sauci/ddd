@@ -41,6 +41,48 @@ function(_ddd_require_transitive_properties context)
     endif()
 endfunction()
 
+# Asks the tool which files a project description is built out of. A hand written project pulls its components in
+# through "includes" - possibly with wildcards - so the project file alone is a wholly insufficient dependency: edit a
+# component and the build would happily link yesterday's globals and a2l. The list is resolved at configure time and
+# also registered with CMAKE_CONFIGURE_DEPENDS, so that adding a component to an "includes" wildcard re-runs configure
+# and picks up the new file as well.
+#
+# Tolerant on purpose: if the tool is missing or the project cannot be read yet, the result is empty and the build
+# falls back to depending on the project file alone, rather than failing to configure at all.
+function(_ddd_project_sources variable project_file)
+    execute_process(COMMAND "${DDD_EXECUTABLE}" sources "${project_file}"
+                    OUTPUT_VARIABLE output
+                    RESULT_VARIABLE status
+                    ERROR_VARIABLE error
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT status EQUAL 0)
+        message(STATUS "ddd_generate: cannot resolve the sources of \"${project_file}\" yet "
+                       "(${error}); the generation will depend on that file alone.")
+        set(${variable} "" PARENT_SCOPE)
+        return()
+    endif()
+    string(REPLACE "\r" "" output "${output}")
+    string(REPLACE "\n" ";" sources "${output}")
+    list(REMOVE_ITEM sources "")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${sources})
+    set(${variable} "${sources}" PARENT_SCOPE)
+endfunction()
+
+# The a2l is named after the project name *inside* the description, which is not necessarily what NAME says. Reading it
+# here keeps the declared OUTPUT and the file the tool actually writes in agreement - otherwise the build re-runs the
+# generator on every ninja invocation and DDD_A2L points at a file that never appears.
+function(_ddd_description_name variable description)
+    file(READ "${description}" content)
+    string(JSON name ERROR_VARIABLE error GET "${content}" "project" "name")
+    if(error)
+        string(JSON name ERROR_VARIABLE error GET "${content}" "component" "name")
+    endif()
+    if(error)
+        message(FATAL_ERROR "ddd_generate: \"${description}\" has neither a project nor a component name: ${error}")
+    endif()
+    set(${variable} "${name}" PARENT_SCOPE)
+endfunction()
+
 # Turns a path into an absolute one and refuses a source file that does not exist. A file below the binary directory
 # is accepted unconditionally: it may well be generated later during the build.
 function(_ddd_absolute_input variable base context)
@@ -205,6 +247,10 @@ function(ddd_generate image)
     # The helper targets are named after the image without its file extension: an image is typically named like its
     # artifact (firmware.elf), and firmware_ddd_headers is what a consumer naturally writes.
     cmake_path(GET image STEM LAST_ONLY image_stem)
+    if(arg_NAME AND arg_PROJECT)
+        message(STATUS "ddd_generate: NAME is ignored with PROJECT - the a2l is named after the project name inside "
+                       "\"${arg_PROJECT}\".")
+    endif()
     if(NOT arg_NAME)
         # The project name ends up as the a2l project and module name, which DDD requires to be a c identifier.
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" arg_NAME "${image_stem}")
@@ -215,6 +261,10 @@ function(ddd_generate image)
     if(arg_PROJECT)
         _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
         set(project_file "${arg_PROJECT}")
+        # A hand written project includes its components itself, so the files to watch have to be asked for.
+        _ddd_project_sources(descriptions "${project_file}")
+        # The tool names the a2l after the project name in the description; NAME does not rename it.
+        _ddd_description_name(arg_NAME "${project_file}")
     else()
         # The component descriptions travel through the link graph as a transitive property (see
         # ddd_add_component). The property is resolved at generate time, when the link graph is known but nothing is
@@ -293,6 +343,10 @@ function(ddd_generate image)
     # Every component registered so far gets the generated headers, which is what makes the integration a two-liner
     # on the component side: add the library, register its description, include "<Component>.h". Components
     # registered after this call are not reached - call ddd_generate() last.
+    #
+    # "Registered so far" is wider than the link closure of this image: a component that this image does not link
+    # still receives the include directory. That is harmless for a single image - an unused include path changes
+    # nothing - and it is why a second image has to opt out rather than being silently merged into the first.
     if(NOT arg_NO_PROPAGATE_HEADERS)
         # Two images would hand two different sets of headers to the same components: a component's interface header
         # depends on the link closure it was generated for, so whichever include directory came first would silently
@@ -302,8 +356,10 @@ function(ddd_generate image)
             message(FATAL_ERROR
                     "ddd_generate: the components already compile against the headers generated for "
                     "\"${propagated_by}\"; \"${image}\" cannot hand them a second set without making their include "
-                    "order ambiguous. Give NO_PROPAGATE_HEADERS to \"${image}\" and link the wanted "
-                    "<image>_ddd_headers into each component explicitly.")
+                    "order ambiguous. Give NO_PROPAGATE_HEADERS to *both* \"${propagated_by}\" and \"${image}\", and "
+                    "link the wanted <image>_ddd_headers into each component explicitly - propagating from only one "
+                    "of the two leaves that same ambiguity in place, because the automatic set still reaches every "
+                    "registered component rather than the ones this image links.")
         endif()
         set_property(GLOBAL PROPERTY DDD_HEADERS_PROPAGATED "${image}")
         get_property(component_targets GLOBAL PROPERTY DDD_COMPONENT_TARGETS)

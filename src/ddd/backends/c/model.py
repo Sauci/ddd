@@ -10,6 +10,7 @@ from ddd.backends.c.literals import (
     doc_comment,
     guard_name,
     initializer_of,
+    sanitize_comment,
 )
 from ddd.backends.c.options import COptions
 from ddd.backends.c.types import needs_stdbool, needs_stdint
@@ -96,6 +97,23 @@ class ComponentHeaderView:
 
 
 @dataclass(frozen=True, slots=True)
+class EnumeratorView:
+    """One enumerator, with its documentation already safe to put in a comment."""
+
+    name: str
+    value: int
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class EnumView:
+    """One ``typedef enum`` of the generated types header."""
+
+    name: str
+    enumerators: tuple[EnumeratorView, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CodeModel:
     """Everything the c templates need."""
 
@@ -103,7 +121,7 @@ class CodeModel:
     source: str
     generator: str
     options: COptions
-    enums: tuple[EnumConversion, ...]
+    enums: tuple[EnumView, ...]
     groups: tuple[ComponentGroup, ...]
     headers: tuple[ComponentHeaderView, ...]
     needs_stdint: bool
@@ -149,11 +167,28 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         source=dictionary.source,
         generator=generator,
         options=options,
-        enums=dictionary.enums,
+        enums=tuple(_enum_view(enum) for enum in dictionary.enums),
         groups=tuple(groups),
         headers=tuple(_header(component, views, options) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
         needs_stdbool=needs_stdbool(dictionary.datatypes),
+    )
+
+
+def _enum_view(enum: EnumConversion) -> EnumView:
+    return EnumView(
+        name=enum.name,
+        enumerators=tuple(
+            EnumeratorView(
+                name=enumerator.name,
+                value=enumerator.value,
+                # Every text that reaches a comment is defused here rather than in the
+                # template: a '*/' in a description would otherwise end the comment and
+                # leave the rest of it as code.
+                description=sanitize_comment(enumerator.description),
+            )
+            for enumerator in enum.enumerators
+        ),
     )
 
 
@@ -168,7 +203,7 @@ def _group(
     ordered = sorted(owned, key=lambda entry: entry.name)
     return ComponentGroup(
         name=name,
-        description=description,
+        description=sanitize_comment(description),
         measurements=tuple(
             views[entry.name] for entry in ordered if entry.kind is ObjectKind.MEASUREMENT
         ),
@@ -212,8 +247,11 @@ def _header(
         )
     return ComponentHeaderView(
         name=component.name,
-        description=component.description,
-        guard=guard_name(options.prefix, component.name),
+        description=sanitize_comment(component.description),
+        # 'component' keeps this guard out of the space of the shared headers: without it a
+        # component named 'types' would define DDD_TYPES_H before including ddd_types.h,
+        # and the whole types header would preprocess away.
+        guard=guard_name(options.prefix, "component", component.name),
         filename=options.component_header(component.name),
         outputs=tuple(buckets[Scope.OUTPUT]),
         inputs=tuple(buckets[Scope.INPUT]),

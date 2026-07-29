@@ -96,7 +96,7 @@ class TestInspection:
         assert part.text == "vl"
         assert part.start == 0
         assert "is not a known role" in (part.problem or "")
-        assert part.suggestions == ("'val'",)
+        assert part.suggestions == ("val",)  # bare values; the quotes are added when rendered
 
     def test_a_pattern_violation_is_located(self) -> None:
         result = inspect("val_inlet", convention())
@@ -302,7 +302,7 @@ class TestCommandLine:
         payload = json.loads(capsys.readouterr().out)
         assert payload[0]["ok"] is False
         assert payload[0]["parts"][0]["start"] == 0
-        assert payload[0]["parts"][0]["suggestions"] == ["'val'"]
+        assert payload[0]["parts"][0]["suggestions"] == ["val"]
 
     def test_an_unreadable_convention_is_a_usage_error(
         self, capsys: pytest.CaptureFixture[str]

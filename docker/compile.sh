@@ -24,7 +24,11 @@ log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 log "generate  $PROJECT -> $OUTPUT ${GENFLAGS}"
 read -r -a generate_flags <<<"$GENFLAGS"
 ddd generate "$PROJECT" -o "$OUTPUT" "${generate_flags[@]}"
-ddd list "$PROJECT" --format json >"$OUTPUT/variables.json"
+# The severity overrides in GENFLAGS apply here too: pointed at a single component file,
+# 'ddd list' would otherwise exit 1 on the missing producers that the generate step was
+# explicitly told to tolerate, and take the whole run down with it.
+read -r -a policy_flags <<<"$(printf '%s\n' "$GENFLAGS" | grep -oE -- '(-W [^ ]+|--strict)' | tr '\n' ' ')"
+ddd list "$PROJECT" --format json "${policy_flags[@]}" >"$OUTPUT/variables.json"
 
 compile_variant() {
     local label="$1"

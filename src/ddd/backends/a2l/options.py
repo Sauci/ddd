@@ -33,25 +33,46 @@ class A2lOptions:
         return f"0x{self.addresses.get(symbol, 0):08X}"
 
 
+ADDRESS_MAX = 0xFFFFFFFF
+"""Widest address the ``ECU_ADDRESS`` field of a2l holds: it is an unsigned 32 bit value."""
+
+
 def load_address_map(path: Path) -> dict[str, int]:
-    """Read a ``{"Symbol": "0x20000100"}`` json file produced by the build."""
+    """Read a ``{"Symbol": "0x20000100"}`` json file produced by the build.
+
+    Every entry is range checked here rather than at formatting time. A negative value would
+    otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal, and either makes
+    the whole a2l unreadable - from a file that a linker script or a patch tool wrote, where
+    a wrong entry is exactly the kind of thing that happens unnoticed.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         msg = f"{path}: expected a json object mapping symbol names to addresses"
         raise ValueError(msg)
     addresses: dict[str, int] = {}
     for symbol, value in data.items():
-        if isinstance(value, bool) or not isinstance(value, int | str):
-            msg = f"{path}: address of '{symbol}' is not a number: {value!r}"
-            raise ValueError(msg)
-        if isinstance(value, int):
-            addresses[symbol] = value
-            continue
+        addresses[symbol] = _address(path, symbol, value)
+    return addresses
+
+
+def _address(path: Path, symbol: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        msg = f"{path}: address of '{symbol}' is not a number: {value!r}"
+        raise ValueError(msg)
+    if isinstance(value, int):
+        number = value
+    else:
         text = value.strip()
         base = 16 if text.lower().startswith(("0x", "-0x")) else 10
         try:
-            addresses[symbol] = int(text, base)
+            number = int(text, base)
         except ValueError:
             msg = f"{path}: address of '{symbol}' is not a number: {value!r}"
             raise ValueError(msg) from None
-    return addresses
+    if not 0 <= number <= ADDRESS_MAX:
+        msg = (
+            f"{path}: address of '{symbol}' is {number}, outside the range "
+            f"0 .. 0x{ADDRESS_MAX:08X} that an a2l address can hold"
+        )
+        raise ValueError(msg)
+    return number

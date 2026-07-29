@@ -10,6 +10,7 @@ from ddd.models import Datatype, InitValue, Shape, broadcast
 
 _MAX_VALUES_PER_LINE = 8
 _INDENT = "    "
+_INT64_MIN = -(2**63)
 
 
 def c_literal(value: bool | int | float, datatype: Datatype) -> str:
@@ -20,7 +21,15 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
         # repr of a float always carries a '.' or an exponent, so the literal is never
         # mistaken for an integer one.
         return repr(float(value)) + LITERAL_SUFFIX[datatype]
-    return f"{int(value)}{LITERAL_SUFFIX[datatype]}"
+    number = int(value)
+    suffix = LITERAL_SUFFIX[datatype]
+    if number == _INT64_MIN:
+        # There is no negative literal in c: '-9223372036854775808' is the negation of a
+        # literal too large for any signed type, which is a constraint violation rather than
+        # the value it looks like. Every <stdint.h> spells INT64_MIN this way for the same
+        # reason, and the extra parentheses keep it safe in any surrounding expression.
+        return f"(-9223372036854775807{suffix} - 1)"
+    return f"{number}{suffix}"
 
 
 def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:

@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import DataDictionary
+from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.models import (
     AnyDataObject,
     Component,
@@ -35,6 +35,17 @@ _GLOB_CHARACTERS = frozenset("*?[")
 
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
+
+
+def _reject_constant(name: str) -> float:
+    """Refuse ``NaN``, ``Infinity`` and ``-Infinity``, which python's json reader accepts.
+
+    They are not json, and none of them is a value DDD can carry through to its outputs: a
+    limit of NaN compares false against everything, so every range check silently passes,
+    and the a2l would end up with a token no calibration tool can parse.
+    """
+    msg = f"'{name}' is not valid json; DDD has no representation for it"
+    raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +96,21 @@ class Workspace:
     naming: NamingConvention | None = None
     """The convention the root project points at, if it points at one."""
 
+    naming_path: Path | None = None
+    """Where that convention was read from; part of what the project is built out of."""
+
+    def sources(self) -> tuple[Path, ...]:
+        """Every file that was read to build this workspace, sorted and without duplicates.
+
+        What a build system needs in order to know when to run DDD again: the root file
+        alone is not enough, because a project pulls its components in through ``includes``.
+        """
+        paths = {self.root, *(item.path for item in self.projects)}
+        paths.update(item.path for item in self.components)
+        if self.naming_path is not None:
+            paths.add(self.naming_path)
+        return tuple(sorted(paths))
+
 
 def load_convention(path: Path, bag: DiagnosticBag) -> NamingConvention | None:
     """Read a naming convention description."""
@@ -109,10 +135,21 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     if text is None:
         return None
     try:
-        return DataDictionary.model_validate_json(text)
+        dictionary = DataDictionary.model_validate_json(text)
     except ValidationError as error:
         _report_validation_error(path, error, bag)
         return None
+    if dictionary.format > DICTIONARY_FORMAT:
+        # Reading it anyway would compare against fields this version does not know about
+        # and quietly report them as unchanged.
+        bag.add(
+            "schema",
+            f"this dictionary is in format {dictionary.format}, and this DDD understands up "
+            f"to {DICTIONARY_FORMAT}; use a newer DDD to read it",
+            Location(path, "format"),
+        )
+        return None
+    return dictionary
 
 
 def load_workspace(path: Path, bag: DiagnosticBag) -> Workspace | None:
@@ -132,8 +169,6 @@ class _Loader:
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
         self._seen_paths: set[Path] = set()
-
-    # -- entry point --------------------------------------------------------
 
     def load(self, path: Path) -> Workspace | None:
         root = _resolve(path)
@@ -160,23 +195,22 @@ class _Loader:
         project = self._load_project(root, data, parents=(), stack=())
         if project is None:
             return None
+        naming_path = self._naming_path(project)
         return Workspace(
             root=root,
             name=project.name,
             description=project.project.description,
             components=tuple(self._components),
             projects=tuple(self._projects),
-            naming=self._load_naming(project),
+            naming=load_convention(naming_path, self._bag) if naming_path else None,
+            naming_path=naming_path,
         )
 
-    def _load_naming(self, project: LoadedProject) -> NamingConvention | None:
+    def _naming_path(self, project: LoadedProject) -> Path | None:
         """The convention of the root project; a sub-project cannot impose one on its parent."""
         if project.project.naming is None:
             return None
-        path = project.path.parent / project.project.naming
-        return load_convention(_resolve(path), self._bag)
-
-    # -- file handling ------------------------------------------------------
+        return _resolve(project.path.parent / project.project.naming)
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
         text = _read_text(path, self._bag, origin)
@@ -184,13 +218,21 @@ class _Loader:
             return None
 
         try:
-            data = json.loads(text)
+            data = json.loads(text, parse_constant=_reject_constant)
         except json.JSONDecodeError as error:
             self._bag.add(
                 "json-syntax",
                 error.msg,
                 Location(path, line=error.lineno, column=error.colno),
             )
+            return None
+        except RecursionError:
+            # A document nested thousands of levels deep. Python gives up on it, and it has
+            # to give up as a finding rather than as a traceback.
+            self._bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
+            return None
+        except ValueError as error:
+            self._bag.add("json-syntax", str(error), Location(path))
             return None
 
         if not isinstance(data, dict):
@@ -240,8 +282,6 @@ class _Loader:
         )
         return None
 
-    # -- components ---------------------------------------------------------
-
     def _load_component(
         self, path: Path, data: dict[str, Any], parents: tuple[str, ...]
     ) -> LoadedComponent | None:
@@ -265,8 +305,6 @@ class _Loader:
         self._components.append(loaded)
         return loaded
 
-    # -- projects -----------------------------------------------------------
-
     def _load_project(
         self,
         path: Path,
@@ -285,25 +323,42 @@ class _Loader:
 
         child_parents = (*parents, loaded.name)
         child_stack = (*stack, path)
+        # A wildcard next to the project file also matches the convention that project points
+        # at. It is not an include, and the layout the manual shows puts it exactly there, so
+        # it is skipped rather than reported as a file of the wrong kind.
+        naming = model.project.naming
+        excluded = {path} | ({_resolve(path.parent / naming)} if naming else set())
         for index, pattern in enumerate(model.project.includes):
             origin = Location(path, f"project.includes[{index}]")
-            for included in self._expand(path, pattern, origin):
+            for included in self._expand(path, pattern, origin, excluded):
                 self._load_include(included, origin, child_parents, child_stack)
         return loaded
 
-    def _expand(self, source: Path, pattern: str, origin: Location) -> list[Path]:
+    def _expand(
+        self, source: Path, pattern: str, origin: Location, excluded: set[Path]
+    ) -> list[Path]:
         """Resolve one include entry into a list of existing files."""
         raw = Path(pattern)
         if not any(character in pattern for character in _GLOB_CHARACTERS):
             candidate = raw if raw.is_absolute() else source.parent / raw
             return [_resolve(candidate)]
 
-        base = Path(raw.anchor) if raw.is_absolute() else source.parent
-        relative = raw.relative_to(raw.anchor) if raw.is_absolute() else raw
+        # The anchor decides where a pattern starts, not is_absolute(): on Windows both the
+        # rooted '/shared/*.ddd.json' and the drive relative 'C:*.ddd.json' carry an anchor
+        # while reporting is_absolute() as false, and handing either to Path.glob unchanged
+        # makes pathlib refuse a non-relative pattern.
+        anchor = raw.anchor
+        base = Path(anchor) if anchor else source.parent
+        relative = raw.relative_to(anchor) if anchor else raw
+        try:
+            found = list(base.glob(relative.as_posix()))
+        except (OSError, ValueError, NotImplementedError) as error:
+            self._bag.add("include-empty", f"cannot expand pattern '{pattern}': {error}", origin)
+            return []
         matches = sorted(
-            _resolve(match)
-            for match in base.glob(relative.as_posix())
-            if match.is_file() and _resolve(match) != source
+            resolved
+            for match in found
+            if match.is_file() and (resolved := _resolve(match)) not in excluded
         )
         if not matches:
             self._bag.add("include-empty", f"pattern '{pattern}' matches no file", origin)
@@ -335,26 +390,49 @@ class _Loader:
         elif kind == "project":
             self._load_project(path, data, parents, stack)
 
-    # -- error reporting ----------------------------------------------------
-
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)
 
 
 def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str | None:
-    """Read a file, reporting anything the filesystem refuses instead of raising."""
+    """Read a file, reporting anything that stops it instead of raising.
+
+    Every failure has to come back as a located finding: the loader's promise is that one
+    run reports as much as it can, and an exception escaping from here would end the run
+    with a bare python message and throw away everything already collected.
+
+    ``utf-8-sig`` rather than ``utf-8``: a byte order mark is what several Windows editors
+    and PowerShell redirection put in front of a file, and refusing those would be pedantry
+    about a file that is otherwise perfectly good json.
+    """
+    where = origin or Location(path)
     try:
-        return path.read_text(encoding="utf-8")
+        if path.is_dir():
+            bag.add(
+                "file-not-found",
+                f"'{path.as_posix()}' is a directory, not a description file",
+                where,
+            )
+            return None
+        return path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
+        bag.add("file-not-found", f"file '{path.as_posix()}' does not exist", where)
+    except UnicodeDecodeError as error:
         bag.add(
-            "file-not-found", f"file '{path.as_posix()}' does not exist", origin or Location(path)
+            "json-syntax",
+            f"'{path.as_posix()}' is not valid utf-8 (byte {error.start}): DDD description "
+            f"files are utf-8, so save it in that encoding",
+            where,
         )
     except OSError as error:
         bag.add(
             "file-not-found",
             f"cannot read '{path.as_posix()}': {error.strerror or error}",
-            origin or Location(path),
+            where,
         )
+    except ValueError as error:
+        # A path the operating system cannot even represent, e.g. one with a NUL byte in it.
+        bag.add("file-not-found", f"cannot read '{path.as_posix()}': {error}", where)
     return None
 
 

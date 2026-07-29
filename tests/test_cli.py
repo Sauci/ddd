@@ -212,3 +212,86 @@ class TestSingleComponent:
         assert main(arguments) == EXIT_OK
         source = (tmp_path / "gen" / "ddd_globals.c").read_text(encoding="utf-8")
         assert "does not define any global variable" in source
+
+
+class TestSources:
+    """What a build system asks for when it needs to know whether to run DDD again."""
+
+    def test_every_included_file_is_listed(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["sources", str(DEMO)]) == EXIT_OK
+        listed = capsys.readouterr().out.split()
+        assert str(DEMO.as_posix()) in listed
+        # The components are the point: the project file alone would never go out of date.
+        assert any(name.endswith("controller.ddd.json") for name in listed)
+        assert any(name.endswith("event_logger.ddd.json") for name in listed)
+
+    def test_the_naming_convention_counts_as_a_source(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        naming = DEMO.parent.parent / "naming" / "project.ddd.json"
+        assert main(["sources", str(naming)]) == EXIT_OK
+        assert "convention.ddd.json" in capsys.readouterr().out
+
+    def test_an_unreadable_root_is_reported(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["sources", str(tmp_path / "absent.ddd.json")]) == EXIT_FINDINGS
+        assert "does not exist" in capsys.readouterr().err
+
+
+class TestBaselineIsolation:
+    """The findings of a past delivery are not findings of this run."""
+
+    def test_the_baseline_findings_are_not_reported_twice(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        project_file = str(tmp_path / "p.ddd.json")
+        assert main(["dump", project_file]) == EXIT_OK
+        (tmp_path / "base.json").write_text(capsys.readouterr().out, encoding="utf-8")
+
+        # Comparing the project against a dictionary of itself: one clean verdict, and the
+        # project's own warnings are not doubled by the baseline being analysed as well.
+        assert main(["check", project_file, "--baseline", str(tmp_path / "base.json")]) == EXIT_OK
+
+    def test_a_baseline_that_cannot_be_read_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+                # The baseline reads fine but does not resolve: two producers of Y is the
+                # error, and neither output is read, which is a warning. Only the error is
+                # carried over - a warning about a past delivery is nobody's problem now.
+                "bad.ddd.json": project("B", "one.ddd.json", "two.ddd.json"),
+                "one.ddd.json": component("First", declare("output", "Y")),
+                "two.ddd.json": component("Second", declare("output", "Y")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tmp_path / "p.ddd.json"),
+            "--baseline",
+            str(tmp_path / "bad.ddd.json"),
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "in the baseline:" in capsys.readouterr().err
+
+
+class TestOutputDirectory:
+    def test_an_output_directory_that_is_a_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "X"))})
+        (tmp_path / "blocked").write_text("not a directory", encoding="utf-8")
+        arguments = ["generate", str(tmp_path / "a.ddd.json"), "-o", str(tmp_path / "blocked")]
+        assert main(arguments) == EXIT_USAGE
+        assert "cannot write into" in capsys.readouterr().err

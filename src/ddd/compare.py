@@ -56,8 +56,6 @@ def _describe_references(entry: ResolvedObject) -> str:
     return ", ".join(f"{key}={value}" for key, value in sorted(entry.references.items()))
 
 
-# -- what makes a candidate incompatible with its baseline -------------------
-
 # Change any of these and the consumers of the object are wrong, whether or not they still
 # compile: a widened datatype breaks the abi, a rescaled conversion falsifies every value,
 # and an object turning local takes itself out of reach.
@@ -94,6 +92,18 @@ def compare(
     The comparison is directional: everything the baseline offered has to still be there and
     still mean the same thing, while anything the candidate adds is its own business.
     """
+    if baseline.name != candidate.name:
+        # Two deliveries of one project share its name, so a mismatch usually means the
+        # wrong archived dump was picked up - and the report that follows would otherwise be
+        # a confident, fully formed list of hundreds of removals that means nothing.
+        bag.add(
+            "project-mismatch",
+            f"the baseline describes project '{baseline.name}' and the candidate describes "
+            f"'{candidate.name}'; the comparison below only makes sense if that rename was "
+            f"intended",
+            location,
+        )
+
     was = baseline.by_name
     now = candidate.by_name
 
@@ -181,18 +191,43 @@ def _compare_object(
         bag.add(
             "changed-condition",
             f"'{old.name}': condition {_condition(old.condition)} became "
-            f"{_condition(new.condition)}, so the object may be present in other builds now",
+            f"{_condition(new.condition)}, so {_condition_consequence(old, new)}",
             location,
         )
 
     if old.a2l != new.a2l:
         bag.add(
             "changed-a2l",
-            f"'{old.name}': the a2l entry changed "
-            f"({old.a2l.model_dump(mode='json')} -> {new.a2l.model_dump(mode='json')})",
+            f"'{old.name}': the a2l entry changed ({_describe_a2l(old)} -> {_describe_a2l(new)})",
             location,
         )
 
 
 def _condition(condition: str | None) -> str:
     return f"'{condition}'" if condition else "none"
+
+
+def _condition_consequence(old: ResolvedObject, new: ResolvedObject) -> str:
+    """What the change of a condition costs, which depends on its direction.
+
+    Wrapping an object that was always there is the damaging direction and has to say so:
+    every build where the new condition is false loses the object, its consumers stop
+    linking and a calibration dataset loses the label. The message used to describe every
+    direction as a widening, which read as reassurance exactly when it was least warranted.
+    """
+    if old.condition is None:
+        return "it is now absent from every build where that condition is false"
+    if new.condition is None:
+        return "it is now present in every build"
+    return "the builds it is present in have changed"
+
+
+def _describe_a2l(entry: ResolvedObject) -> str:
+    a2l = entry.a2l
+    parts = [f"export={str(a2l.export).lower()}"]
+    parts += [
+        f"{key}='{value}'"
+        for key, value in (("format", a2l.format), ("display_identifier", a2l.display_identifier))
+        if value is not None
+    ]
+    return ", ".join(parts)

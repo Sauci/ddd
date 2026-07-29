@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -37,7 +38,7 @@ from ddd.diagnostics import (
 from ddd.ir import DataDictionary
 from ddd.loading import load_convention, load_dictionary, load_workspace
 from ddd.models import ComponentFile, NamingFile, ProjectFile, format_shape
-from ddd.naming import Inspection, complete, inspect
+from ddd.naming import Inspection, complete, inspect, or_list
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -52,8 +53,24 @@ def cmake_module_directory() -> Path | None:
     return next((path for path in candidates if (path / "Ddd.cmake").is_file()), None)
 
 
+def _write_utf8(stream: Any) -> None:
+    """Make a stream carry utf-8, whatever the console happens to be set to.
+
+    A description may hold any unit or any language, and on Windows a redirected stdout
+    defaults to the ANSI codepage: a degree sign in a unit would end the run with a codec
+    error instead of a listing. The generated files are utf-8 too, so this only makes the
+    terminal agree with them.
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:  # pragma: no branch - absent only on a replaced stream
+        with contextlib.suppress(OSError, ValueError):
+            reconfigure(encoding="utf-8")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``ddd`` command; returns the process exit code."""
+    _write_utf8(sys.stdout)
+    _write_utf8(sys.stderr)
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
@@ -65,9 +82,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError) as error:
         print(f"ddd: {error}", file=sys.stderr)
         return EXIT_USAGE
-
-
-# -- argument parsing -------------------------------------------------------
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -192,6 +206,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     complete_parser.set_defaults(handler=_command_complete)
 
+    sources = subparsers.add_parser(
+        "sources",
+        help="list every description file a project is built out of",
+        description=(
+            "Prints one absolute path per line: the project file, every file it includes "
+            "however deeply, and the naming convention. A build system needs exactly this "
+            "to know when the generated files are out of date, because a project pulls its "
+            "components in through 'includes' and none of them is named on the command line."
+        ),
+    )
+    sources.add_argument("project", type=Path, help="project or component description file")
+    sources.set_defaults(handler=_command_sources)
+
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
     checks.add_argument("--format", choices=["text", "json"], default="text", help="output format")
     checks.set_defaults(handler=_command_checks)
@@ -222,15 +249,12 @@ def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--format", choices=["text", "json"], default="text", help="output format")
 
 
-# -- commands ---------------------------------------------------------------
-
-
 def _command_check(args: argparse.Namespace) -> int:
     dictionary, bag = _analyze(args)
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
     if dictionary is not None and args.baseline is not None:
-        baseline = _read_dictionary(args.baseline, bag)
+        baseline = _read_baseline(args.baseline, bag)
         if baseline is not None:
             compare(baseline, dictionary, bag, location=Location(args.project))
     _report(bag, args.format)
@@ -250,7 +274,10 @@ def _command_check(args: argparse.Namespace) -> int:
 def _command_compare(args: argparse.Namespace) -> int:
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
-    baseline = _read_dictionary(args.baseline, bag)
+    # The baseline is a delivery that has already gone out; its own findings are not this
+    # run's business. The candidate's are, which is why only it shares the bag - checking a
+    # project description and comparing it are both reported by one `ddd compare`.
+    baseline = _read_baseline(args.baseline, bag)
     candidate = _read_dictionary(args.candidate, bag)
     if baseline is None or candidate is None:
         _report(bag, args.format)
@@ -288,7 +315,13 @@ def _command_generate(args: argparse.Namespace) -> int:
             )
         )
     files = render(dictionary, backends, args.output_dir)
-    results = write(files, dry_run=args.dry_run)
+    try:
+        results = write(files, dry_run=args.dry_run)
+    except OSError as error:
+        # The output directory is the one thing a caller gets wrong regularly - a path that
+        # is a file, or one nothing may be written to. Naming it beats the bare errno text.
+        msg = f"cannot write into '{args.output_dir.as_posix()}': {error.strerror or error}"
+        raise OSError(msg) from None
 
     if args.format == "json":
         payload = _diagnostics_payload(bag)
@@ -337,14 +370,19 @@ def _command_list(args: argparse.Namespace) -> int:
 
 
 def _command_dump(args: argparse.Namespace) -> int:
-    """Emit the data dictionary itself, so that another tool can generate from it."""
+    """Emit the data dictionary itself, so that another tool can generate from it.
+
+    stdout carries the dictionary and nothing else, in both formats: ``ddd dump > baseline.json``
+    is the documented way to archive a delivery, so a second json document must not appear
+    there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
+    stderr - where they also stay out of the way of a pipe.
+    """
     dictionary, bag = _analyze(args)
+    if dictionary is not None:
+        print(dictionary.model_dump_json(indent=2))
+    _report(bag, args.format, stream=sys.stderr)
     if dictionary is None:
-        _report(bag, "text")
         return EXIT_FINDINGS
-    print(dictionary.model_dump_json(indent=2))
-    if args.format != "json":
-        _report(bag, "text")
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -393,7 +431,7 @@ def _print_inspection(inspection: Inspection) -> None:
         return
     print(inspection.underline())
     for part in inspection.problems:
-        suggestion = f" - did you mean {' or '.join(part.suggestions)}?" if part.suggestions else ""
+        suggestion = f" - did you mean {or_list(part.suggestions)}?" if part.suggestions else ""
         print(f"  {part.problem}{suggestion}")
     for segment in inspection.missing:
         print(f"  the {segment.name} part is missing: {segment.description or 'required'}")
@@ -424,7 +462,10 @@ def _command_schema(args: argparse.Namespace) -> int:
     text = json.dumps(model.model_json_schema(), indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(text + "\n", encoding="utf-8")
+        # newline="" keeps the line endings as written on every platform, the same discipline
+        # the generated sources follow: a schema checked in from Windows must not differ from
+        # the same schema checked in from linux.
+        args.output.write_text(text + "\n", encoding="utf-8", newline="")
         print(f"wrote {args.output.as_posix()}", file=sys.stderr)
     else:
         print(text)
@@ -438,6 +479,23 @@ def _command_cmake_dir(args: argparse.Namespace) -> int:
         print("ddd: the cmake integration module is not part of this installation", file=sys.stderr)
         return EXIT_USAGE
     print(directory.as_posix())
+    return EXIT_OK
+
+
+def _command_sources(args: argparse.Namespace) -> int:
+    """The files the project is made of, for the dependency list of a build system.
+
+    Deliberately tolerant: a project whose interfaces disagree still has a well defined set
+    of source files, and a build system asking what to watch should get an answer even while
+    the project does not check out. Only a root file that cannot be read at all is fatal.
+    """
+    bag = DiagnosticBag()
+    workspace = load_workspace(args.project, bag)
+    if workspace is None:
+        _report(bag, "text")
+        return EXIT_FINDINGS
+    for path in workspace.sources():
+        print(path.as_posix())
     return EXIT_OK
 
 
@@ -468,9 +526,6 @@ def _command_checks(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-# -- shared helpers ---------------------------------------------------------
-
-
 def _analyze(args: argparse.Namespace) -> tuple[DataDictionary | None, DiagnosticBag]:
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
@@ -494,6 +549,31 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     return load_dictionary(path, bag)
 
 
+def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+    """Resolve the baseline side of a comparison, in a bag of its own.
+
+    A baseline given as a project description has to be analysed to become a dictionary, and
+    that analysis produces findings about *that* delivery: files that are not part of the
+    project under check, an output nobody read two releases ago. Reported here they would be
+    attributed to this run, printed twice when both sides are the same tree, and would fail a
+    clean project because of its predecessor. Only the errors that stop the baseline from
+    being read at all are carried over, because those explain a comparison that cannot happen.
+    """
+    own = DiagnosticBag(bag.policy)
+    dictionary = _read_dictionary(path, own)
+    if dictionary is not None and not own.has_errors:
+        return dictionary
+    for diagnostic in own.sorted:
+        if diagnostic.severity is Severity.ERROR:
+            bag.add(
+                diagnostic.check,
+                f"in the baseline: {diagnostic.message}",
+                diagnostic.location,
+                diagnostic.notes,
+            )
+    return None
+
+
 def _holds_a_description(path: Path) -> bool:
     """True for a project or component file; a broken file is left to the reader to report."""
     try:
@@ -513,9 +593,10 @@ def _diagnostics_payload(bag: DiagnosticBag) -> dict[str, Any]:
     }
 
 
-def _report(bag: DiagnosticBag, output_format: str) -> None:
+def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
+    """Print the findings; ``stream`` overrides where the machine readable form goes."""
     if output_format == "json":
-        print(json.dumps(_diagnostics_payload(bag), indent=2))
+        print(json.dumps(_diagnostics_payload(bag), indent=2), file=stream)
         return
     root = Path.cwd()
     for diagnostic in bag.sorted:

@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from ddd.models.common import Datatype, Identifier, format_number
+from ddd.models.common import Datatype, Identifier, Real, format_number
 
 
 class _Frozen(BaseModel):
@@ -63,8 +63,8 @@ class LinearConversion(_Frozen):
     """``physical = raw * factor + offset``, the scaling of a fixed point value."""
 
     kind: Literal["linear"] = "linear"
-    factor: float = Field(default=1.0)
-    offset: float = 0.0
+    factor: Real = 1.0
+    offset: Real = 0.0
 
     @model_validator(mode="after")
     def _factor_not_zero(self) -> LinearConversion:

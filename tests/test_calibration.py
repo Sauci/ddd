@@ -319,7 +319,8 @@ class TestA2l:
             tree, declare("local", "V", "uint8", kind="value_block", dimensions=[2, 3])
         )
         assert "VAL_BLK 0x00000000 RL_VALUES_UBYTE" in content
-        assert "MATRIX_DIM 2 3" in content
+        # The c declaration is [2][3]; a2l lists the fastest running index first.
+        assert "MATRIX_DIM 3 2 1" in content
 
     def test_axis_becomes_axis_pts(self, tree: Path) -> None:
         content = self.a2l(tree, declare("local", "Speed", "uint16"), axis("Ax", 5, input="Speed"))

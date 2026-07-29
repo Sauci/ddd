@@ -92,12 +92,16 @@ class TestLoadingFailures:
         assert "got:" not in messages(bag)
 
     def test_a_directory_in_place_of_a_description_file(self, tree: Path) -> None:
-        """Anything the filesystem refuses is reported, not raised."""
+        """Anything the filesystem refuses is reported, not raised.
+
+        A directory is named as one, rather than surfacing as the 'permission denied' the
+        operating system happens to raise for it on Windows.
+        """
         (tree / "adirectory.ddd.json").mkdir()
         bag = DiagnosticBag()
         assert load_workspace(tree / "adirectory.ddd.json", bag) is None
         assert checks(bag) == ["file-not-found"]
-        assert "cannot read" in messages(bag)
+        assert "is a directory" in messages(bag)
 
 
 class TestDiagnosticRendering:
@@ -353,17 +357,26 @@ class TestCommandLineEdges:
         assert '"name": "X"' in captured.out
         assert "unused-output" in captured.err
 
-    def test_dump_in_json_format_prints_nothing_else(
+    def test_dump_puts_only_the_dictionary_on_stdout(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """`ddd dump > baseline.json` has to archive the dictionary and nothing else.
+
+        stdout therefore carries one json document in both formats, and --format json
+        selects how the diagnostics are written on stderr.
+        """
         import json
 
         from ddd.cli import EXIT_OK, main
 
         assert main(["dump", str(DEMO), "--format", "json"]) == EXIT_OK
         captured = capsys.readouterr()
-        json.loads(captured.out)
-        assert captured.err == ""
+        assert json.loads(captured.out)["name"] == "DemoDevice"
+        assert json.loads(captured.err)["summary"]["error"] == 0
+
+        assert main(["dump", str(DEMO)]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["name"] == "DemoDevice"
 
     def test_cmake_dir_without_the_packaged_module(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

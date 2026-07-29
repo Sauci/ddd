@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -56,7 +57,6 @@ def _check(
 CHECKS: Final[dict[str, CheckInfo]] = {
     check.identifier: check
     for check in (
-        # -- loading -------------------------------------------------------
         _check("file-not-found", Severity.ERROR, "a referenced file does not exist",
                overridable=False),
         _check("json-syntax", Severity.ERROR, "a file is not valid json", overridable=False),
@@ -71,8 +71,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("include-empty", Severity.ERROR, "an include pattern matches no file"),
         _check("duplicate-component", Severity.ERROR,
                "two different files declare the same component name"),
-        # -- interface consistency ----------------------------------------
         _check("reserved-identifier", Severity.ERROR, "a name collides with a c keyword"),
+        _check("name-collision", Severity.ERROR,
+               "two generated names collide in the same c namespace or file name"),
         _check("duplicate-declaration", Severity.ERROR,
                "a component declares the same variable more than once"),
         _check("multiple-producers", Severity.ERROR,
@@ -101,10 +102,11 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "the physical limits exceed what the datatype can represent"),
         _check("name-similar", Severity.WARNING,
                "two variables differ only in upper/lower case"),
+        _check("a2l-unrepresentable", Severity.WARNING,
+               "an object cannot be described by the a2l version that is generated"),
         _check("naming", Severity.ERROR,
                "a name does not follow the naming convention of the project"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
-        # -- comparing two deliveries (ddd compare) ------------------------
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it"),
         _check("changed-interface", Severity.ERROR,
@@ -120,10 +122,23 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("changed-condition", Severity.WARNING,
                "the preprocessor condition of an object changed"),
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed"),
+        _check("project-mismatch", Severity.WARNING,
+               "the two sides of a comparison describe differently named projects"),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
                "did not"),
     )
 }  # fmt: skip
+
+
+def _pointer_order(pointer: str) -> tuple[int | str, ...]:
+    """Sort key for a json pointer, with the indices ordered as numbers.
+
+    Sorted as plain text, ``declarations[10]`` comes before ``declarations[2]`` and the
+    findings of one file are listed in an order that has nothing to do with the file.
+    """
+    return tuple(
+        int(part) if part.isdigit() else part for part in re.split(r"\[(\d+)\]", pointer) if part
+    )
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -172,12 +187,12 @@ class Diagnostic:
     """Additional ``(text, location)`` hints, e.g. the conflicting declaration site."""
 
     @property
-    def sort_key(self) -> tuple[int, str, str, str]:
+    def sort_key(self) -> tuple[int, str, tuple[int | str, ...], str]:
         location = self.location
         return (
             self.severity.rank,
             location.path.as_posix() if location else "",
-            location.pointer if location else "",
+            _pointer_order(location.pointer) if location else (),
             self.check,
         )
 

@@ -7,10 +7,10 @@ from typing import Annotated, Any, Literal, get_args
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt, model_validator
 
-from ddd.models.common import Datatype, Identifier, format_number
+from ddd.models.common import A2lFormat, Datatype, Identifier, Number, Real, format_number
 from ddd.models.conversion import IDENTITY, Conversion, EnumConversion, conversion_range
 
-type InitValue = bool | int | float | tuple[InitValue, ...]
+type InitValue = bool | int | Real | tuple[InitValue, ...]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object."""
 
 type Shape = tuple[int, ...]
@@ -50,8 +50,8 @@ class _Frozen(BaseModel):
 class Limits(_Frozen):
     """Physical lower/upper limit of a data object."""
 
-    min: float
-    max: float
+    min: Number
+    max: Number
 
     @model_validator(mode="after")
     def _ordered(self) -> Limits:
@@ -70,8 +70,8 @@ class A2lObjectOptions(_Frozen):
     export: bool = True
     """Set to ``false`` to keep the object out of the a2l file."""
 
-    format: str | None = None
-    """a2l ``FORMAT`` string, e.g. ``"%8.3"``."""
+    format: A2lFormat | None = None
+    """a2l ``FORMAT`` string, e.g. ``"%8.3"``: total width, then decimal places."""
 
     display_identifier: Identifier | None = None
     """Alternative name shown by the calibration tool."""
@@ -98,8 +98,6 @@ class DataObject(_Frozen):
 
     a2l: A2lObjectOptions = A2lObjectOptions()
 
-    # -- kind ---------------------------------------------------------------
-
     kind: ObjectKind
 
     @property
@@ -125,8 +123,6 @@ class DataObject(_Frozen):
         """Names of other data objects this one refers to, keyed by the field name."""
         return {}
 
-    # -- validation ---------------------------------------------------------
-
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> DataObject:
         if isinstance(self.conversion, EnumConversion) and not self.datatype.is_integer:
@@ -146,8 +142,6 @@ class DataObject(_Frozen):
             if problem is not None:
                 raise ValueError(problem)
         return self
-
-    # -- derived ------------------------------------------------------------
 
     def physical_limits(self) -> Limits:
         """Explicit limits, or the full range implied by datatype and conversion."""
@@ -263,9 +257,6 @@ AnyDataObject = Annotated[
     BeforeValidator(_default_kind),
 ]
 """Any data object; the discriminator ``kind`` defaults to ``measurement``."""
-
-
-# -- shape helpers ----------------------------------------------------------
 
 
 def format_shape(shape: Shape) -> str:

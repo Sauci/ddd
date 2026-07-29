@@ -21,10 +21,16 @@ _ddd_complete() {
     local current="${COMP_WORDS[COMP_CWORD]}"
     local candidates
     candidates="$(ddd complete --convention "$convention" -- "$current" 2>/dev/null)" || return 0
+    [ -n "$candidates" ] || return 0
 
+    # Read as data, never as shell words. `compgen -W` would re-parse the list and perform
+    # command substitution on it, so a token from somebody else's convention file would run
+    # in this shell the moment TAB is pressed. `ddd complete` already filters on the prefix,
+    # so there is nothing compgen would add.
+    #
     # -o nospace: a completed segment is rarely the end of a name, so leaving the cursor glued
     # to the separator lets the next TAB carry on where this one stopped.
-    mapfile -t COMPREPLY < <(compgen -W "$candidates" -- "$current")
+    mapfile -t COMPREPLY <<< "$candidates"
 }
 
 complete -o nospace -o default -F _ddd_complete ddd

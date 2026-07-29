@@ -10,16 +10,27 @@ version = "0.1.0"
 description = "Data Dictionary for global variables in component based embedded software projects"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
-authors = [{ name = "DDD contributors" }]
+license = { file = "LICENSE" }
+authors = [{ name = "Killian Daly" }]
 keywords = ["embedded", "firmware", "a2l", "code-generation", "data-dictionary"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
     "Topic :: Software Development :: Code Generators",
     "Topic :: Software Development :: Embedded Systems",
 ]
 dependencies = ["pydantic>=2.7", "jinja2>=3.1"]
+
+[project.urls]
+Homepage = "https://github.com/Sauci/ddd"
+Documentation = "https://github.com/Sauci/ddd/blob/master/README.md"
+Specification = "https://github.com/Sauci/ddd/blob/master/SPEC.md"
+Issues = "https://github.com/Sauci/ddd/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.10"]
@@ -30,12 +41,24 @@ ddd = "ddd.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ddd"]
 
-# Shipped inside the package so that `ddd cmake-dir` finds it after a plain pip install.
+# Shipped inside the package so that `ddd cmake-dir` and the documented completion setup
+# find them after a plain pip install, not only in a source checkout.
 [tool.hatch.build.targets.wheel.force-include]
 "cmake/Ddd.cmake" = "ddd/cmake/Ddd.cmake"
+"completion/ddd.bash" = "ddd/completion/ddd.bash"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/ddd", "cmake", "tests", "examples", "SPEC.md", "README.md"]
+include = [
+    "src/ddd",
+    "cmake",
+    "completion",
+    "docker",
+    "examples",
+    "tests",
+    "LICENSE",
+    "README.md",
+    "SPEC.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

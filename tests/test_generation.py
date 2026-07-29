@@ -255,5 +255,6 @@ class TestWriting:
         assert not any(name.endswith(".a2l") for name in files)
 
     def test_a_component_may_not_overwrite_a_shared_file(self, tree: Path) -> None:
-        with pytest.raises(ValueError, match="would both write"):
+        """A component named after a shared file is refused, and the message says who by."""
+        with pytest.raises(ValueError, match=r"c backend would write 'ddd_types\.h' twice"):
             generate(tree, simple(declare("local", "A"), name="ddd_types"))

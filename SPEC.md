@@ -234,10 +234,17 @@ Errors:
 * `enum-conflict` - one enum name is used with different enumerators
 * `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
 * `unknown-reference`, `reference-kind` - a curve, map or axis refers to an object that does not exist or has the wrong kind
-* `reserved-identifier` - a name collides with a c keyword
+* `reserved-identifier` - a name collides with a c keyword or with an identifier one of the
+  headers the generated code includes already declares
+* `name-collision` - two names that are distinct in the description files become the same
+  c identifier or the same generated file: enumerators of different enums, an enumerator and
+  a variable, or two component names differing only in case
 * `naming` - a declared name does not follow the naming convention of the project
 * `file-extension` - a description file is not named `*.ddd.json`
-* `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`, `include-empty` - the file tree cannot be read
+* `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
+  cannot be read; these five are the ones whose severity cannot be changed
+* `include-empty` - an include pattern matches no file; relaxable, because a pattern that is
+  legitimately empty in one variant of a project is a normal thing to allow
 
 Warnings:
 
@@ -247,6 +254,9 @@ Warnings:
 * `limits-out-of-range` - limits exceed what the datatype can represent
 * `enum-duplicate-value` - two enumerators share a value
 * `name-similar` - two variables differ only in upper/lower case
+* `a2l-unrepresentable` - an object cannot be fully described by the a2l version DDD writes;
+  today that is an array of more than three dimensions, which `MATRIX_DIM` of 1.6.1 cannot
+  carry
 
 Information:
 
@@ -275,6 +285,8 @@ Warnings - behaviour or tooling changes, but no consumer becomes wrong:
 * `changed-owner` - another component produces the object now
 * `changed-condition` - the preprocessor condition changed
 * `changed-a2l` - the a2l entry changed
+* `project-mismatch` - the two dictionaries name different projects, so the baseline is
+  probably not the predecessor of this candidate
 
 Information:
 
@@ -358,8 +370,9 @@ component and generating for an image shall each take one call.
 | 3.6 memory placement | planned |
 | 4 consistency checks | implemented |
 | 5.1 c code generation | implemented, per-file assignment planned |
-| 5.2 a2l generation | implemented for 1.6; versions, `FUNCTION`, `IF_DATA`, import planned |
-| 7 data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
+| 5.2 a2l generation | implemented for 1.6.1; other versions, `FUNCTION`, `IF_DATA`, import planned |
 | 4.1 comparing two deliveries | implemented (`ddd compare`, `ddd check --baseline`) |
 | 6 address information | json map implemented, ELF/DWARF import planned |
 | 7 command line interface | implemented |
+| 7 data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
+| 7.1 build system integration | implemented (`cmake/Ddd.cmake`, `ddd cmake-dir`) |

@@ -94,8 +94,21 @@ class ResolvedObject(_Frozen):
         return self.kind.is_calibration
 
 
+DICTIONARY_FORMAT = 1
+"""Version of the dictionary format itself.
+
+A dumped dictionary is meant to be archived next to a delivery and read back by a later
+version of DDD, possibly years on. Stamping the format is what lets that later version say
+"this file is newer than I understand" instead of misreading it or rejecting it for a
+missing field. It changes only when the shape of the document changes, not with the tool.
+"""
+
+
 class DataDictionary(_Frozen):
     """The resolved data of one project."""
+
+    format: int = DICTIONARY_FORMAT
+    """Version of the document itself, see :data:`DICTIONARY_FORMAT`."""
 
     name: Identifier
     description: str = ""

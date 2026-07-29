@@ -2,7 +2,16 @@
 #
 # Built and used through docker compose from a WSL shell:
 #   wsl -d Ubuntu
-#   cd /mnt/c/git/ac11/ddd && docker compose run --rm compile
+#   cd /mnt/c/path/to/ddd && docker compose run --rm compile
+#
+# This image exists to prove that the generated c compiles, and that proof is only worth
+# something if it is the same toolchain tomorrow. The tag below still floats: pin it to a
+# digest before relying on the result for a release, with
+#
+#   docker pull python:3.12-slim-bookworm
+#   docker inspect --format='{{index .RepoDigests 0}}' python:3.12-slim-bookworm
+#
+# and replace the tag with the "python@sha256:..." it prints.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -25,9 +34,10 @@ RUN apt-get update \
 RUN pip install --no-cache-dir "cmake>=3.30"
 
 WORKDIR /opt/ddd
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY cmake ./cmake
+COPY completion ./completion
 RUN pip install --no-cache-dir ".[dev]"
 
 COPY docker/compile.sh docker/verify_symbols.py /opt/ddd/bin/

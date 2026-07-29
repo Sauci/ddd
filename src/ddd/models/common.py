@@ -3,11 +3,7 @@
 This module is deliberately free of any output format: a datatype knows how many bytes it
 occupies and which values it can hold, not what a c compiler or a calibration tool calls it.
 Those mappings belong to the backend that needs them (:mod:`ddd.backends.c.types`,
-:mod:`ddd.backends.a2l.types`).
-
-The one exception is the identifier rule below. Names have to be usable as c identifiers
-because generating c is not optional - it is the reason DDD exists (SPEC 1.3) - so this is a
-property of the input contract rather than of a backend that may or may not run.
+:mod:`ddd.backends.a2l.types`), and the names c reserves live in :mod:`ddd.models.reserved`.
 """
 
 from __future__ import annotations
@@ -16,33 +12,51 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Final
 
-from pydantic import StringConstraints
+from pydantic import Field, StringConstraints
 
 C_IDENTIFIER_PATTERN: Final = r"^[A-Za-z_][A-Za-z0-9_]*$"
 
+IDENTIFIER_MAX_LENGTH: Final = 128
+"""Longest identifier DDD accepts.
+
+ASAP2 1.6.1 limits an identifier to 128 characters, and a name DDD cannot put into the a2l
+is of no use in a project that generates one.  C compilers are more generous, so this is the
+tighter of the two rules.
+"""
+
 Identifier = Annotated[
     str,
-    StringConstraints(pattern=C_IDENTIFIER_PATTERN, min_length=1, max_length=255),
+    StringConstraints(pattern=C_IDENTIFIER_PATTERN, min_length=1, max_length=IDENTIFIER_MAX_LENGTH),
 ]
-"""A string that is usable as a c identifier."""
+"""A string that is usable as a c identifier and as an a2l identifier."""
 
+A2L_FORMAT_PATTERN: Final = r"^%\d*\.\d+$"
 
-# Keywords of C11/C23 plus the identifiers introduced by <stdbool.h>.  A global
-# variable named like one of these produces code that does not compile, so DDD
-# rejects them early instead of letting the compiler complain about generated code.
-C_KEYWORDS: Final[frozenset[str]] = frozenset(
-    {
-        "alignas", "alignof", "auto", "bool", "break", "case", "char", "const",
-        "constexpr", "continue", "default", "do", "double", "else", "enum", "extern",
-        "false", "float", "for", "goto", "if", "inline", "int", "long", "nullptr",
-        "register", "restrict", "return", "short", "signed", "sizeof", "static",
-        "static_assert", "struct", "switch", "thread_local", "true", "typedef",
-        "typeof", "union", "unsigned", "void", "volatile", "while",
-        "_Alignas", "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal32",
-        "_Decimal64", "_Decimal128", "_Generic", "_Imaginary", "_Noreturn",
-        "_Static_assert", "_Thread_local",
-    }
-)  # fmt: skip
+A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]
+"""An a2l ``FORMAT`` string: ``%`` then the total width, a dot, and the decimal places.
+
+Constrained rather than passed through, because the value is written into a quoted a2l
+literal: a quote or a backslash in it would unbalance the string and no calibration tool
+would parse the file at all - a whole delivery lost to one typo in one description.
+"""
+
+Real = Annotated[float, Field(allow_inf_nan=False)]
+"""A finite number.
+
+Infinity and NaN are refused wherever a number is read. Neither survives the trip to an
+output - there is no c literal and no a2l number for them - and NaN is worse than useless
+on the way there, because every comparison against it is false: a NaN limit passes every
+range check in silence instead of failing one.
+"""
+
+Number = int | Real
+"""A finite number that keeps whole values exact.
+
+``int`` first on purpose: the range of a 64 bit datatype does not survive a float, and a
+limit rendered as 18446744073709551616 - one more than uint64 can hold - is a value the
+calibration tool would refuse.
+"""
+
 
 FLOAT32_MAX: Final = 3.4028234663852886e38
 FLOAT64_MAX: Final = 1.7976931348623157e308
@@ -115,17 +129,6 @@ _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
     Datatype.FLOAT32: DatatypeInfo(4, True, True, -FLOAT32_MAX, FLOAT32_MAX),
     Datatype.FLOAT64: DatatypeInfo(8, True, True, -FLOAT64_MAX, FLOAT64_MAX),
 }
-
-
-def is_reserved_identifier(name: str) -> bool:
-    """Return ``True`` for names a c compiler reserves for itself."""
-    if name in C_KEYWORDS:
-        return True
-    # C11 7.1.3: identifiers starting with an underscore followed by an uppercase
-    # letter, or containing a double underscore, are reserved for the implementation.
-    if name.startswith("__") or "__" in name:
-        return True
-    return len(name) >= 2 and name[0] == "_" and name[1].isupper()
 
 
 def format_number(value: float | int) -> str:

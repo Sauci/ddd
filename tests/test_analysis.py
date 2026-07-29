@@ -163,7 +163,7 @@ class TestValueChecks:
         _, bag = run_analysis(
             tree, two_components(a=[declare("local", "X", init=1.5)], b=[declare("local", "Y")])
         )
-        assert "is not an integer" in messages(bag)
+        assert "written as a fractional number" in messages(bag)
 
     def test_float_init_is_accepted_for_a_float(self, tree: Path) -> None:
         _, bag = run_analysis(

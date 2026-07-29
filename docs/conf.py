@@ -25,6 +25,7 @@ version = __version__
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.graphviz",  # draws the entity relationship figures erdantic emits
     "sphinx.ext.viewcode",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.autoprogram",
@@ -72,6 +73,9 @@ autodoc_typehints = "description"
 # The file formats are pydantic models, so the reference pages are generated from the
 # contract itself: a field that changes cannot leave its documentation behind.
 autodoc_pydantic_model_show_json = True
+
+autodoc_pydantic_model_erdantic_figure = True
+autodoc_pydantic_model_erdantic_figure_collapsed = False
 autodoc_pydantic_model_show_config_summary = False
 autodoc_pydantic_model_show_validator_summary = False
 autodoc_pydantic_model_show_validator_members = False

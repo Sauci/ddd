@@ -43,6 +43,7 @@ docs = [
     "sphinxcontrib-autoprogram>=0.1.9",
     "autodoc-pydantic>=2.1",
     "sphinxcontrib-plantuml>=0.30",
+    "erdantic>=1.0",
 ]
 
 [project.scripts]

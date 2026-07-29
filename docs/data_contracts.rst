@@ -176,9 +176,13 @@ in from linux.
 Reference
 ---------
 
-The following is generated from the contracts themselves. Each model lists its fields and
-the json schema fragment it validates against, so the exact pattern, length and range every
-field is held to is visible with it.
+The following is generated from the contracts themselves. Each model carries three things,
+which answer three different questions. The **field list** says what may be written and what
+it means. The **json schema** says exactly what a validator will accept - the precise
+pattern, length and range every field is held to - and is the fragment an editor uses. The
+**entity relationship diagram** says how the models fit together, which neither of the other
+two shows: that a ``Declaration`` holds exactly one of the six kinds of data object, and that
+the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them.
 
 .. Models carrying an identifier field switch the rendered constraint list off. The
    constraint would be written into the page as ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``,

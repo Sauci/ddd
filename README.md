@@ -28,6 +28,12 @@ The front end never mentions c or a2l; a backend never touches the loader or the
 Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes it out and
 `ddd schema dictionary` publishes its schema.
 
+The **full documentation is at <https://sauci.github.io/ddd/>** - a guided introduction, the
+reference for every command, every check and every json field, and the reasoning behind the
+design. It is generated from these sources and published on every change to `master`, so it
+describes the current release rather than whatever was true when somebody last wrote it down.
+This README is the short version.
+
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
 while the major version is `0`. The check identifiers, the command names and the json file

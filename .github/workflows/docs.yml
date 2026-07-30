@@ -1,0 +1,70 @@
+name: Documentation
+
+# The documentation is generated out of the sources - the command line reference from the
+# argument parser, the file formats from the pydantic contracts - so it is built on every
+# change and published from master. Warnings are errors, which is what makes that generation
+# trustworthy: a reference that stops resolving fails the build instead of quietly
+# disappearing from the page.
+#
+# This builds the html with the tools apt provides rather than in the shared documentation
+# image ci-build.sh uses: that image lives on an internal registry a GitHub hosted runner
+# cannot reach. The pdf, which needs a LaTeX distribution, stays with that image.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The published site is one shared resource, so runs against master queue instead of racing,
+# and a deployment is never cancelled half way. Superseding a pull request build is free.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          # What `.[docs]` resolves to: the metadata hook reads both files.
+          cache-dependency-path: requirements*.txt
+
+      # graphviz draws the entity relationship figures erdantic emits, and plantuml draws the
+      # `.. uml::` diagrams, bringing the headless jre it runs on with it. docs/conf.py uses
+      # the `plantuml` launcher on the PATH when no jar is pointed at, which is the one here.
+      - name: Install the diagram tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends graphviz plantuml
+
+      - run: pip install -e ".[docs]"
+      - run: sphinx-build -b html docs build/docs/html -W --keep-going
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/docs/html
+
+  # Publishing needs Pages set to build from GitHub Actions once, in the repository settings:
+  # the token below may deploy to the site but may not create it.
+  deploy:
+    needs: build
+    # Never from a feature branch, and never from a pull request, which on a fork would mean
+    # publishing somebody else's revision of the documentation as the product's own.
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write # deploy to the Pages site
+      id-token: write # the deployment authenticates with an OIDC token, not a stored secret
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

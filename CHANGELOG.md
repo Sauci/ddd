@@ -70,7 +70,9 @@ a `sint16` is still `int16_t` in c and `SWORD` in the a2l.
 * `-v` as a short form of `--version`,
 * `name-collision`, `a2l-unrepresentable` and `project-mismatch` checks,
 * archived dictionaries carry a `format` version, so a dump from a newer DDD is refused
-  rather than misread.
+  rather than misread,
+* the documentation is published at <https://sauci.github.io/ddd/>, rebuilt from the sources
+  on every change rather than written out by hand.
 
 ### Fixed
 

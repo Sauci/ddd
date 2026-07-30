@@ -32,7 +32,7 @@ dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/Sauci/ddd"
-Documentation = "https://github.com/Sauci/ddd/blob/master/README.md"
+Documentation = "https://sauci.github.io/ddd/"
 Specification = "https://github.com/Sauci/ddd/blob/master/SPEC.md"
 Issues = "https://github.com/Sauci/ddd/issues"
 

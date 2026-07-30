@@ -23,6 +23,8 @@ from ddd.models import Datatype, ObjectKind
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
+DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
+DOCS_URL = "https://sauci.github.io/ddd/"
 
 
 def commands() -> list[str]:
@@ -309,3 +311,48 @@ class TestPackagedResources:
         )
         assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
+
+
+class TestPublishedDocumentation:
+    """The documentation is a deliverable with an address, published by ci.
+
+    The two properties pinned here are the ones that fail silently. Everything else about
+    ``docs.yml`` announces itself: a build that cannot find its input, or an upload of a
+    directory that was never written, is a red run.
+    """
+
+    def test_the_published_address_is_the_same_everywhere(self) -> None:
+        """A customer reaches the documentation through the package metadata on the index.
+
+        Nothing resolves that url at build time, so a wrong one is a 404 with the product's
+        name on it, found by whoever was trying to read the manual.
+        """
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        developer_documentation = (ROOT / "docs" / "developer_documentation.rst").read_text(
+            encoding="utf-8"
+        )
+        assert metadata["project"]["urls"]["Documentation"] == DOCS_URL
+        assert DOCS_URL in README
+        assert DOCS_URL in developer_documentation
+
+    def test_the_published_build_treats_warnings_as_errors(self) -> None:
+        """Dropping ``-W`` costs nothing visible and quietly ends the guarantee.
+
+        The reference pages are generated from the sources, so a renamed option or a removed
+        field turns into a warning about a reference that no longer resolves. With warnings as
+        errors that is a failed run; without it the page is published with the section simply
+        missing, which nobody notices, because the documentation still builds.
+        """
+        command = next(line for line in DOCS_WORKFLOW.splitlines() if "sphinx-build" in line)
+        assert "-W" in command.split(), (
+            f"the published documentation is built without -W: {command.strip()}"
+        )
+
+    def test_only_master_is_ever_published(self) -> None:
+        """The deploy job is conditional on the branch rather than only on the event.
+
+        A pull request from a fork proposes arbitrary content and runs on this workflow
+        definition. Guarding the deployment by event alone would leave opening one enough to
+        publish somebody else's revision as the product's documentation.
+        """
+        assert "if: github.ref == 'refs/heads/master'" in DOCS_WORKFLOW

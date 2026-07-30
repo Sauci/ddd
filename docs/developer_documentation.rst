@@ -281,6 +281,38 @@ renamed option or a changed field cannot leave its documentation behind, and a r
 that no longer resolves fails the build instead of quietly disappearing from the page. The
 ``.. uml::`` diagrams need a plantuml installation; the documentation image ships one.
 
+Two other programs have to be there for a complete build, and each fails visibly rather than
+silently dropping a figure: ``dot`` from graphviz draws the entity relationship diagram of
+every model on the :doc:`file format pages <file_formats/index>`, and ``plantuml`` draws the
+``.. uml::`` diagrams. Without a plantuml installation, ``docs/conf.py`` still names one, so
+the build reports a warning per diagram - which under ``-W`` is a failure.
+
+Publishing this documentation
+-----------------------------
+
+``.github/workflows/docs.yml`` builds the html and publishes it to
+`GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and on a push
+to ``master`` it also deploys, so what is published is the documentation of the current
+``master`` rather than of the last release. The deployment authenticates the same way the
+release upload does, with a short lived OIDC token rather than a stored secret.
+
+The workflow installs graphviz and plantuml from apt instead of using the documentation image
+of ``ci-build.sh``: that image is on an internal registry, which a GitHub hosted runner cannot
+reach. Only the html is published this way. The pdf needs a LaTeX distribution, which is a
+gigabyte of apt packages, and stays with the image.
+
+Two things are worth knowing before the first run.
+
+**Pages has to be switched on by hand, once.** In *Settings* → *Pages*, set *Source* to
+*GitHub Actions*. The workflow's token may deploy to a site but may not create one, so until
+that setting is made the deployment step fails with a message about a missing Pages site.
+There is nothing to change in the repository to fix it: correct the setting and re-run.
+
+**A pull request builds but never deploys.** The deploy job is conditional on the branch, not
+merely on the event, because a pull request from a fork proposes arbitrary content: without
+that condition, opening one would be enough to publish somebody else's revision as the
+product's documentation.
+
 Publishing a release
 --------------------
 

@@ -79,7 +79,7 @@ Five templates live there, and four of them produce a file:
        generated file without being written five times.
    * - ``ddd_types.h.jinja2``
      - ``ddd_types.h``, the types the generated declarations are written in: ``<stdint.h>``,
-       ``<stdbool.h>`` when the project declares a ``bool``, and one ``typedef enum`` per enum
+       ``<stdbool.h>`` when the project declares a ``boolean``, and one ``typedef enum`` per enum
        conversion. Every other generated header includes this one and nothing else, so a
        component that includes its own interface header needs no further include to compile.
    * - ``ddd_globals.h.jinja2``
@@ -597,7 +597,7 @@ is none, so the free text written once in the json is what the calibration engin
 the tool. Resolution and accuracy are written as ``0`` because DDD describes the conversion
 exactly and has nothing approximate to declare. The limits are the physical ``limits`` of the
 object, either as the description gave them or derived from the datatype and the conversion
-when it did not - ``ValueF`` is an ``int16`` scaled by ``0.1``, and the description restricts
+when it did not - ``ValueF`` is an ``sint16`` scaled by ``0.1``, and the description restricts
 it to -40 .. 150 degC. ``FORMAT`` and ``DISPLAY_IDENTIFIER`` are added when the description
 asks for them under its ``a2l`` key:
 

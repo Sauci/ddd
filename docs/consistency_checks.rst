@@ -3,7 +3,7 @@ Consistency checks
 
 The global variables of a component based project are declared in as many files as there are
 components, and nothing in the c language ties those declarations together: a component that
-reads ``SharedValue`` as an unscaled ``uint16`` and a component that writes it as an ``int16``
+reads ``SharedValue`` as an unscaled ``uint16`` and a component that writes it as an ``sint16``
 in percent with a factor of 0.5 compile perfectly well, link without a word, and produce a
 value that is wrong by a factor of two - or by 65536, once the sign bit travels. The
 disagreement is invisible to the compiler because each translation unit only ever sees its own
@@ -524,7 +524,7 @@ collects them:
      }
    }
 
-``ComponentA`` writes ``SharedValue`` as an ``int16`` in percent with a factor of 0.5, writes
+``ComponentA`` writes ``SharedValue`` as an ``sint16`` in percent with a factor of 0.5, writes
 ``UnusedSignal``, and keeps a ``local`` variable ``Scratch``. ``ComponentB`` writes
 ``SharedValue`` as well. ``ComponentC`` reads ``SharedValue`` as an unscaled ``uint16``, reads
 a ``MissingValue`` nobody writes, and reads ``ComponentA``'s ``Scratch``. Checking the project

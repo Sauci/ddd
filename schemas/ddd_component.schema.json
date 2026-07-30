@@ -315,15 +315,15 @@
     "Datatype": {
       "description": "The base datatypes DDD can allocate storage for.",
       "enum": [
-        "bool",
+        "boolean",
         "uint8",
-        "int8",
+        "sint8",
         "uint16",
-        "int16",
+        "sint16",
         "uint32",
-        "int32",
+        "sint32",
         "uint64",
-        "int64",
+        "sint64",
         "float32",
         "float64"
       ],

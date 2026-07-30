@@ -67,7 +67,7 @@ class TestBreakingChanges:
         ("field", "was", "now"),
         [
             ("datatype", "uint16", "uint32"),
-            ("datatype", "int32", "int16"),
+            ("datatype", "sint32", "sint16"),
             ("unit", "Hz", "V"),
         ],
     )

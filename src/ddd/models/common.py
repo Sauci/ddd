@@ -103,13 +103,13 @@ class Datatype(StrEnum):
     """
 
     UINT8 = "uint8"
-    INT8 = "int8"
+    SINT8 = "sint8"
     UINT16 = "uint16"
-    INT16 = "int16"
+    SINT16 = "sint16"
     UINT32 = "uint32"
-    INT32 = "int32"
+    SINT32 = "sint32"
     UINT64 = "uint64"
-    INT64 = "int64"
+    SINT64 = "sint64"
     FLOAT32 = "float32"
     FLOAT64 = "float64"
 
@@ -144,13 +144,13 @@ class Datatype(StrEnum):
 _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
     Datatype.BOOLEAN: DatatypeInfo(1, False, False, 0, 1),
     Datatype.UINT8: DatatypeInfo(1, False, False, 0, 255),
-    Datatype.INT8: DatatypeInfo(1, False, True, -128, 127),
+    Datatype.SINT8: DatatypeInfo(1, False, True, -128, 127),
     Datatype.UINT16: DatatypeInfo(2, False, False, 0, 65535),
-    Datatype.INT16: DatatypeInfo(2, False, True, -32768, 32767),
+    Datatype.SINT16: DatatypeInfo(2, False, True, -32768, 32767),
     Datatype.UINT32: DatatypeInfo(4, False, False, 0, 4294967295),
-    Datatype.INT32: DatatypeInfo(4, False, True, -2147483648, 2147483647),
+    Datatype.SINT32: DatatypeInfo(4, False, True, -2147483648, 2147483647),
     Datatype.UINT64: DatatypeInfo(8, False, False, 0, 18446744073709551615),
-    Datatype.INT64: DatatypeInfo(8, False, True, -9223372036854775808, 9223372036854775807),
+    Datatype.SINT64: DatatypeInfo(8, False, True, -9223372036854775808, 9223372036854775807),
     Datatype.FLOAT32: DatatypeInfo(4, True, True, -FLOAT32_MAX, FLOAT32_MAX),
     Datatype.FLOAT64: DatatypeInfo(8, True, True, -FLOAT64_MAX, FLOAT64_MAX),
 }

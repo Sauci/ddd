@@ -10,7 +10,7 @@
           "name": "SharedValue",
           "kind": "measurement",
           "description": "Value shared between components",
-          "datatype": "int16",
+          "datatype": "sint16",
           "unit": "%",
           "conversion": { "factor": 0.5 }
         }

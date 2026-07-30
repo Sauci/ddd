@@ -12,13 +12,13 @@ from ddd.models import Datatype
 A2L_TYPE: Final[dict[Datatype, str]] = {
     Datatype.BOOLEAN: "UBYTE",
     Datatype.UINT8: "UBYTE",
-    Datatype.INT8: "SBYTE",
+    Datatype.SINT8: "SBYTE",
     Datatype.UINT16: "UWORD",
-    Datatype.INT16: "SWORD",
+    Datatype.SINT16: "SWORD",
     Datatype.UINT32: "ULONG",
-    Datatype.INT32: "SLONG",
+    Datatype.SINT32: "SLONG",
     Datatype.UINT64: "A_UINT64",
-    Datatype.INT64: "A_INT64",
+    Datatype.SINT64: "A_INT64",
     Datatype.FLOAT32: "FLOAT32_IEEE",
     Datatype.FLOAT64: "FLOAT64_IEEE",
 }

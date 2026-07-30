@@ -90,7 +90,7 @@ class TestMeasurements:
         assert "ECU_ADDRESS 0x20000100" in content
 
     def test_limits_are_physical(self, tree: Path) -> None:
-        content = a2l(tree, declare("local", "X", "int16", conversion={"factor": 0.1}))
+        content = a2l(tree, declare("local", "X", "sint16", conversion={"factor": 0.1}))
         assert "SWORD CM_LIN_NONE 0 0 -3276.8 3276.7" in content
 
 
@@ -98,7 +98,7 @@ class TestCompuMethods:
     def test_rat_func_coefficients(self, tree: Path) -> None:
         content = a2l(
             tree,
-            declare("local", "X", "int16", unit="degC", conversion={"factor": 0.5, "offset": -40}),
+            declare("local", "X", "sint16", unit="degC", conversion={"factor": 0.5, "offset": -40}),
         )
         assert '/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.5 + -40"' in content
         assert 'RAT_FUNC "%8.3" "degC"' in content

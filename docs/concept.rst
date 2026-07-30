@@ -26,7 +26,7 @@ survives compilation and linking: two components both decide that they are the o
 consumers observe depends on the order in which the two producers happen to run. Nothing in
 the build reports it, and the symptom appears months later as an intermittent fault.
 
-**Silent drift** is the slowest of the three. A component declares ``ValueF`` as an ``int16``
+**Silent drift** is the slowest of the three. A component declares ``ValueF`` as an ``sint16``
 scaled by 0.1 degC per bit; six months later its author rescales it to 0.01, and the consumer
 - which declared its own ``extern int16_t ValueF`` in its own header, because that is how c
 works - keeps multiplying by 0.1. The software compiles, links, runs, and reports every

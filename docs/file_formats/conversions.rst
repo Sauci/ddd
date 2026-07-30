@@ -305,7 +305,7 @@ storage, run through the conversion:
 
 A **negative factor swaps the two ends**, and DDD swaps them back: the conversion of the
 smallest raw value is then the largest physical value, and limits with ``min`` above ``max``
-would be rejected by the very validation that keeps hand-written limits sane. An ``int8`` with
+would be rejected by the very validation that keeps hand-written limits sane. An ``sint8`` with
 ``factor -0.25, offset 10`` runs from raw -128, which is 42, down to raw 127, which is -21.75,
 and the derived limits come out in the order a reader expects:
 
@@ -333,7 +333,7 @@ and the derived limits come out in the order a reader expects:
 
 Derived limits are what most of ``examples/demo/`` relies on for its calibration data:
 ``CurveA`` is a ``uint16`` scaled by 0.01 and gets ``0 655.35``, ``CurveB`` is a ``uint8``
-scaled by 0.5 and gets ``0 127.5``, ``MapA`` is an ``int8`` scaled by 0.5 and gets
+scaled by 0.5 and gets ``0 127.5``, ``MapA`` is an ``sint8`` scaled by 0.5 and gets
 ``-64 63.5``. Writing the limits out by hand is worth doing when the *intended* range is
 narrower than what the storage can hold - ``ParameterA`` is a ``uint16`` scaled by 0.25 and
 could reach 16383.75, but the project means it to stay between 500 and 1500 Hz, and only the

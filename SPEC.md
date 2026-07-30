@@ -156,7 +156,7 @@ Attributes common to every kind:
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
 | `kind` | `measurement` | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
-| `datatype` | required | `bool`, `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float32`, `float64` |
+| `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
 | `description` | `""` | offered to the c templates as the text of a comment, long identifier in the a2l |
 | `unit` | `""` | physical unit |
 | `conversion` | identity | raw to physical conversion, section 3.4 |

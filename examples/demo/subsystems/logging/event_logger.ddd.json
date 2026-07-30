@@ -54,7 +54,7 @@
           "name": "ValueK",
           "kind": "measurement",
           "description": "Two dimensional component local array",
-          "datatype": "int8",
+          "datatype": "sint8",
           "dimensions": [3, 4],
           "init": [
             [0, 0, 0, 0],

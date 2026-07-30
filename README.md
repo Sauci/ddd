@@ -188,7 +188,7 @@ Include cycles are reported instead of hanging.
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
 | `kind` | required | see the next section |
-| `datatype` | required | `bool`, `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float32`, `float64` |
+| `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
 | `unit` | `""` | physical unit; components sharing a variable must agree on it |
 | `conversion` | identity | raw to physical conversion, see below |

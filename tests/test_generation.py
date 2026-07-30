@@ -44,12 +44,12 @@ class TestGlobalDefinitionFile:
         files = generate(
             tree,
             simple(
-                declare("local", "A", "int16", init=-400),
+                declare("local", "A", "sint16", init=-400),
                 declare("local", "B", "float32", init=1.5),
                 declare("local", "C", "float64", init=2),
                 declare("local", "D", "boolean", init=True),
                 declare("local", "E", "uint64", init=5),
-                declare("local", "F", "int64", init=-5),
+                declare("local", "F", "sint64", init=-5),
             ),
         )
         source = files["ddd_globals.c"]
@@ -72,7 +72,7 @@ class TestGlobalDefinitionFile:
 
     def test_two_dimensional_array(self, tree: Path) -> None:
         files = generate(
-            tree, simple(declare("local", "A", "int8", dimensions=[2, 2], init=[[1, 2], [3, 4]]))
+            tree, simple(declare("local", "A", "sint8", dimensions=[2, 2], init=[[1, 2], [3, 4]]))
         )
         assert "int8_t A[2][2] = {\n    { 1, 2 },\n    { 3, 4 }\n};" in files["ddd_globals.c"]
 

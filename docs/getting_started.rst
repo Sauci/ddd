@@ -491,7 +491,7 @@ When the components disagree
 ----------------------------
 
 So far the two components agreed, which is the uninteresting case. Change the ``datatype`` of
-``CabinTemperature`` in ``components/controller.ddd.json`` from ``int16`` to ``uint16`` - the
+``CabinTemperature`` in ``components/controller.ddd.json`` from ``sint16`` to ``uint16`` - the
 kind of change that happens when a signal is reworked in one component and the other one is not
 told - and check the project again:
 
@@ -543,7 +543,7 @@ agreed on are worse than no sources:
    between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely
    so that a pipeline which ignores it has to say so explicitly.
 
-Put ``int16`` back and the project is clean again. That loop - describe, check, generate - is
+Put ``sint16`` back and the project is clean again. That loop - describe, check, generate - is
 the whole daily workflow; everything else DDD offers is either a different question about the
 same descriptions or a way of hooking this loop into a build system.
 

@@ -34,9 +34,9 @@ class TestDatatype:
         [
             (Datatype.BOOLEAN, 1),
             (Datatype.UINT8, 1),
-            (Datatype.INT16, 2),
+            (Datatype.SINT16, 2),
             (Datatype.UINT32, 4),
-            (Datatype.INT64, 8),
+            (Datatype.SINT64, 8),
             (Datatype.FLOAT32, 4),
             (Datatype.FLOAT64, 8),
         ],
@@ -51,7 +51,7 @@ class TestDatatype:
     def test_ranges(self) -> None:
         assert Datatype.UINT8.raw_min == 0
         assert Datatype.UINT8.raw_max == 255
-        assert Datatype.INT16.raw_min == -32768
+        assert Datatype.SINT16.raw_min == -32768
         assert Datatype.BOOLEAN.is_integer is False
         assert Datatype.FLOAT32.is_float is True
 
@@ -122,7 +122,12 @@ class TestConversions:
 class TestLimits:
     def test_derived_from_datatype_and_conversion(self) -> None:
         limits = Measurement.model_validate(
-            {"kind": "measurement", "name": "X", "datatype": "int16", "conversion": {"factor": 0.1}}
+            {
+                "kind": "measurement",
+                "name": "X",
+                "datatype": "sint16",
+                "conversion": {"factor": 0.1},
+            }
         ).physical_limits()
         assert limits.min == pytest.approx(-3276.8)
         assert limits.max == pytest.approx(3276.7)

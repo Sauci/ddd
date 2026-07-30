@@ -24,7 +24,7 @@
           "name": "ValueF",
           "kind": "measurement",
           "description": "Signed measurement with a fixed point conversion",
-          "datatype": "int16",
+          "datatype": "sint16",
           "unit": "degC",
           "conversion": { "kind": "linear", "factor": 0.1 },
           "limits": { "min": -40, "max": 150 },

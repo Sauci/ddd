@@ -51,8 +51,8 @@ selected is rejected rather than ignored.
        definition is a name and a datatype.
    * - ``datatype``
      - required
-     - The storage the target uses: ``bool``, ``uint8``, ``int8``, ``uint16``, ``int16``,
-       ``uint32``, ``int32``, ``uint64``, ``int64``, ``float32`` or ``float64``.
+     - The storage the target uses: ``boolean``, ``uint8``, ``sint8``, ``uint16``, ``sint16``,
+       ``uint32``, ``sint32``, ``uint64``, ``sint64``, ``float32`` or ``float64``.
    * - ``description``
      - ``""``
      - Free text. It is offered to the c templates as the text of the comment above the
@@ -104,7 +104,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - c
      - a2l
      - raw range
-   * - ``bool``
+   * - ``boolean``
      - 1
      - ``bool``
      - ``UBYTE``
@@ -114,7 +114,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - ``uint8_t``
      - ``UBYTE``
      - 0 .. 255
-   * - ``int8``
+   * - ``sint8``
      - 1
      - ``int8_t``
      - ``SBYTE``
@@ -124,7 +124,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - ``uint16_t``
      - ``UWORD``
      - 0 .. 65535
-   * - ``int16``
+   * - ``sint16``
      - 2
      - ``int16_t``
      - ``SWORD``
@@ -134,7 +134,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - ``uint32_t``
      - ``ULONG``
      - 0 .. 4294967295
-   * - ``int32``
+   * - ``sint32``
      - 4
      - ``int32_t``
      - ``SLONG``
@@ -144,7 +144,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
      - ``uint64_t``
      - ``A_UINT64``
      - 0 .. 18446744073709551615
-   * - ``int64``
+   * - ``sint64``
      - 8
      - ``int64_t``
      - ``A_INT64``
@@ -162,7 +162,7 @@ same description generates a2l as well. Each one maps to a c type and to an ASAP
 
 The c spellings come from ``<stdint.h>`` and ``<stdbool.h>``. The model tells the templates
 which of the two a project actually needs - ``model.needs_stdbool`` is false for a project
-without a ``bool`` - so the example templates include neither header for nothing. Literals are
+without a ``boolean`` - so the example templates include neither header for nothing. Literals are
 written with the suffix the type asks for, so the generated code survives ``-Wconversion``:
 ``0U`` for the unsigned types, ``1.5F`` for ``float32``, ``18446744073709551615ULL`` for
 ``uint64``.
@@ -664,7 +664,7 @@ the init data reads exactly like the table it is:
 
 The two ``AXIS_DESCR`` blocks are in x, y order, which is the a2l's convention and the
 opposite of the c subscripts - one more reason not to have written the shape by hand. The
-limits ``-64 63.5`` are derived, as ``MapA`` gives none: an ``int8`` scaled by 0.5 covers
+limits ``-64 63.5`` are derived, as ``MapA`` gives none: an ``sint8`` scaled by 0.5 covers
 -64 to 63.5.
 
 References between objects

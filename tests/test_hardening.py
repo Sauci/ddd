@@ -63,8 +63,8 @@ class TestGeneratedArtefactsAreCorrect:
 
     def test_int64_min_is_written_as_a_valid_literal(self) -> None:
         """'-9223372036854775808LL' negates a literal too large for any signed type."""
-        assert c_literal(-(2**63), Datatype.INT64) == "(-9223372036854775807LL - 1)"
-        assert c_literal(-(2**63) + 1, Datatype.INT64) == "-9223372036854775807LL"
+        assert c_literal(-(2**63), Datatype.SINT64) == "(-9223372036854775807LL - 1)"
+        assert c_literal(-(2**63) + 1, Datatype.SINT64) == "-9223372036854775807LL"
 
     def test_a_64_bit_limit_keeps_every_digit(self, tree: Path) -> None:
         dictionary, _ = run_analysis(

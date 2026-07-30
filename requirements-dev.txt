@@ -2,3 +2,6 @@ pytest>=8.0
 pytest-cov>=5.0
 ruff>=0.6
 mypy>=1.10
+# Validates the committed schemas against the examples the way an editor would. Not optional:
+# a test that skips when a tool is missing reports success without having run.
+jsonschema>=4.0

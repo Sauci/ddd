@@ -6,9 +6,9 @@ name: Documentation
 # trustworthy: a reference that stops resolving fails the build instead of quietly
 # disappearing from the page.
 #
-# This builds the html with the tools apt provides rather than in the shared documentation
-# image ci-build.sh uses: that image lives on an internal registry a GitHub hosted runner
-# cannot reach. The pdf, which needs a LaTeX distribution, stays with that image.
+# The two diagram programs come from apt rather than from a prepared image, so that this needs
+# nothing but a stock runner to reproduce. Only html is built: a pdf would want a LaTeX
+# distribution, roughly a gigabyte of packages, and nothing asks for one.
 on:
   push:
     branches: [master]

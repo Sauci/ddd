@@ -13,6 +13,7 @@ import re
 import tomllib
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from ddd import __version__
@@ -280,8 +281,12 @@ class TestCommittedSchemas:
         assert bound, "no examples were checked; has the layout changed?"
 
     def test_the_examples_validate_against_their_own_schemas(self) -> None:
-        """What an editor does with the binding, done here so it cannot silently break."""
-        jsonschema = pytest.importorskip("jsonschema")
+        """What an editor does with the binding, done here so it cannot silently break.
+
+        jsonschema is a development dependency rather than something this skips without, which
+        is the whole point: skipping is how a check that guards an integration stops running
+        without anybody deciding that it should.
+        """
         for path in sorted((ROOT / "examples").rglob("*.ddd.json")):
             document = json.loads(path.read_text(encoding="utf-8"))
             schema = json.loads((path.parent / document["$schema"]).read_text(encoding="utf-8"))
@@ -311,6 +316,30 @@ class TestPackagedResources:
         )
         assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
         assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"
+
+
+class TestContinuousIntegration:
+    """The classifiers are a public claim about what this package runs on."""
+
+    def test_every_advertised_python_version_is_tested(self) -> None:
+        """A version advertised on the index but absent from the matrix is untested support.
+
+        Adding a classifier costs one line and nothing checks it, so the claim and the
+        evidence drift apart silently - in the direction of claiming more.
+        """
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        advertised = {
+            classifier.rsplit("::", 1)[1].strip()
+            for classifier in metadata["project"]["classifiers"]
+            if classifier.startswith("Programming Language :: Python ::")
+        }
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        listed = re.search(r"python-version: \[([^]]*)\]", workflow)
+        assert listed is not None, "the ci matrix no longer lists the python versions"
+        tested = set(re.findall(r"\d+\.\d+", listed.group(1)))
+        assert tested == advertised, (
+            f"ci tests python {sorted(tested)} but the package advertises {sorted(advertised)}"
+        )
 
 
 class TestPublishedDocumentation:

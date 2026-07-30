@@ -1,0 +1,64 @@
+name: CI
+
+# Runs on every push to master and on every pull request. A branch with an open pull request
+# is deliberately not built twice: the pull request build is the one that matters, and
+# workflow_dispatch covers running any other branch on demand.
+#
+# The release pipeline in publish.yml runs the suite again before it builds. That is not
+# redundant - a release can be cut from a commit, or with a version bump, that this workflow
+# never saw, and an upload to an index cannot be taken back.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The package claims python 3.12 and 3.13, and claims to be os independent. This is what
+    # turns both into tested claims: a path handling bug that appeared only on linux has
+    # already reached a user of this project once, having passed everything on windows.
+    strategy:
+      fail-fast: false # one cell failing must not hide whether the others do
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      # Installing the project rather than running it out of `src` is the point of this step:
+      # it exercises the packaging metadata, which fails nothing locally - the tests import
+      # from `src` - and so otherwise breaks first for whoever installs the distribution.
+      - run: pip install -e ".[dev]"
+
+      # The coverage gate lives in pyproject.toml, so it applies here without being restated.
+      - run: pytest
+
+  lint:
+    # Style and types do not vary by platform or interpreter, so once is enough. mypy runs the
+    # pydantic plugin and type checks against the real contracts, hence the same install.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy

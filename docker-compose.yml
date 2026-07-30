@@ -83,9 +83,9 @@ services:
     <<: *ddd
     command: ["sh", "-c", "ruff check . && ruff format --check . && mypy"]
 
-  # Builds the html documentation into build/docs/html. The shared documentation image
-  # (see ci-build.sh) is what CI uses and is the only one carrying LaTeX for the pdf; this
-  # service builds the html alone, out of the same sources, without that image.
+  # Builds the html documentation into build/docs/html, out of the same sources and with the
+  # same warnings-as-errors gate as the ci job that publishes it to GitHub Pages. This service
+  # is the local equivalent of that job, for working on the documentation without pushing.
   docs:
     <<: *ddd
     command:

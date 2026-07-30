@@ -21,12 +21,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # gcc compiles the generated sources and binutils (nm) verifies that every variable DDD
 # promised really ends up in the object file exactly once; cmake and ninja build the
 # example that integrates the tool through cmake/Ddd.cmake.
+#
+# graphviz and plantuml draw the figures of the documentation, which builds with warnings as
+# errors: without them the `docs` service fails rather than dropping a diagram. plantuml brings
+# a headless jre with it, which is most of what these two add to the image.
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes \
         gcc \
         libc6-dev \
         binutils \
         ninja-build \
+        graphviz \
+        plantuml \
     && rm -rf /var/lib/apt/lists/*
 
 # cmake/Ddd.cmake needs the TRANSITIVE_LINK_PROPERTIES feature of CMake 3.30; debian bookworm

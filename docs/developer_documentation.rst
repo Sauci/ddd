@@ -236,8 +236,12 @@ Running the checks
 
 ``mypy`` runs in strict mode over ``src/ddd`` with the pydantic plugin; ``ruff`` lints the
 sources, the tests and the documentation configuration with a line length of 100. The suite
-is 544 tests and runs in a few seconds, so there is no reason to run anything less than all
-of it.
+runs in a few seconds, so there is no reason to run anything less than all of it.
+
+Nothing in the suite skips. A test that skips when a tool is absent reports success without
+having run, and the one place that used to do it - validating the examples against the
+committed schemas, which needs ``jsonschema`` - was skipping everywhere except on the machine
+of whoever happened to have it installed. It is a development dependency instead.
 
 The repository also ships a small linux image, which is what the generated c code is
 actually compiled with - a generator whose output no compiler has ever accepted is a
@@ -266,6 +270,29 @@ sketch: the set a project starts from is the set a compiler has accepted. ``TEMP
 the service at any other directory, so a project can put its own templates through the same
 treatment.
 
+Continuous integration
+----------------------
+
+``.github/workflows/ci.yml`` runs exactly the commands above - the suite with its coverage
+gate, ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request.
+
+The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
+four combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
+for its own sake: a path handling defect that only appeared on linux has already reached a
+user of this project, having passed the whole suite on windows first. A test in
+``tests/test_documentation.py`` keeps the matrix and those classifiers in agreement, so
+advertising a new interpreter without testing it fails.
+
+Each job installs the project with ``pip install -e ".[dev]"`` rather than running it out of
+``src``. That is deliberate too, and it is the cheapest check in the file: it exercises the
+packaging metadata, which the tests themselves never touch, so a dependency list that no
+longer builds fails here rather than for whoever installs the distribution.
+
+Style and types are checked once rather than per platform, since neither varies by platform.
+``publish.yml`` runs the suite again before it builds a release, which is not redundant: a
+release can be cut from a commit this workflow never saw, and an upload to an index is
+permanent.
+
 Building this documentation
 ---------------------------
 
@@ -278,14 +305,15 @@ Warnings are errors, which matters more here than in most projects: the referenc
 are generated from the sources - ``autoprogram`` renders the command line from the argument
 parser itself, ``autodoc_pydantic`` renders the file formats from the contracts - so a
 renamed option or a changed field cannot leave its documentation behind, and a reference
-that no longer resolves fails the build instead of quietly disappearing from the page. The
-``.. uml::`` diagrams need a plantuml installation; the documentation image ships one.
+that no longer resolves fails the build instead of quietly disappearing from the page.
 
-Two other programs have to be there for a complete build, and each fails visibly rather than
-silently dropping a figure: ``dot`` from graphviz draws the entity relationship diagram of
-every model on the :doc:`file format pages <file_formats/index>`, and ``plantuml`` draws the
-``.. uml::`` diagrams. Without a plantuml installation, ``docs/conf.py`` still names one, so
-the build reports a warning per diagram - which under ``-W`` is a failure.
+Two programs have to be on the path as well, and each fails visibly rather than silently
+dropping a figure: ``dot`` from graphviz draws the entity relationship diagram of every model
+on the :doc:`file format pages <file_formats/index>`, and ``plantuml`` draws the ``.. uml::``
+diagrams. Without a plantuml installation, ``docs/conf.py`` still names one, so the build
+reports a warning per diagram - which under ``-W`` is a failure. Both are apt packages, and
+both are in the image behind ``docker compose run --rm docs``, which is the way to build the
+documentation without installing either.
 
 Publishing this documentation
 -----------------------------
@@ -296,10 +324,11 @@ to ``master`` it also deploys, so what is published is the documentation of the 
 ``master`` rather than of the last release. The deployment authenticates the same way the
 release upload does, with a short lived OIDC token rather than a stored secret.
 
-The workflow installs graphviz and plantuml from apt instead of using the documentation image
-of ``ci-build.sh``: that image is on an internal registry, which a GitHub hosted runner cannot
-reach. Only the html is published this way. The pdf needs a LaTeX distribution, which is a
-gigabyte of apt packages, and stays with the image.
+The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
+runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf
+would want a LaTeX distribution, roughly a gigabyte of packages, and nothing asks for one -
+``docs/conf.py`` still carries the LaTeX settings, so ``sphinx-build -M latexpdf docs output``
+produces one for whoever does.
 
 Two things are worth knowing before the first run.
 

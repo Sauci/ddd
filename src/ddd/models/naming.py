@@ -20,11 +20,11 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ddd.models.common import Identifier
+from ddd.models.common import FileRoot, Identifier
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
 
 class Token(_Frozen):
@@ -171,7 +171,7 @@ class NamingConvention(_Frozen):
         return tuple(segment.name for segment in self.segments)
 
 
-class NamingFile(_Frozen):
+class NamingFile(FileRoot):
     """Root object of a ``*.ddd.json`` naming convention description."""
 
     naming: NamingConvention

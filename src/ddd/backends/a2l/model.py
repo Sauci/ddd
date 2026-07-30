@@ -465,7 +465,7 @@ def _conversion_key(conversion: Conversion, unit: str) -> object:
 
 
 def _default_format(datatype: Datatype, conversion: Conversion) -> str:
-    integral = datatype.is_integer or datatype is Datatype.BOOL
+    integral = datatype.is_integer or datatype is Datatype.BOOLEAN
     if isinstance(conversion, LinearConversion):
         integral = integral and conversion.factor.is_integer() and conversion.offset.is_integer()
     return "%8.0" if integral else "%8.3"

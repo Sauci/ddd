@@ -68,6 +68,31 @@ function(_ddd_project_sources variable project_file)
     set(${variable} "${sources}" PARENT_SCOPE)
 endfunction()
 
+# Writes the json schemas of the description file formats into a directory of the project's choosing, at configure
+# time, so that an editor can validate a *.ddd.json while it is being written. The project decides where they go and
+# points the "$schema" key of each description at the matching file - the same division as everywhere else here: DDD
+# owns what the data means, the project owns where things live.
+#
+# Configure time rather than build time on purpose: the schemas describe the *installed* DDD, so regenerating them
+# whenever the build is configured is what keeps them from describing a version that is no longer there. The flip side
+# is that they only exist once the project has been configured at least once, which is why a project whose developers
+# expect editor support straight after cloning commits them instead and runs "ddd schema all -o <dir>" by hand after
+# an upgrade. Both are supported; SCHEMA_DIRECTORY is the choice that cannot go stale.
+function(_ddd_write_schemas directory)
+    cmake_path(ABSOLUTE_PATH directory BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
+    execute_process(COMMAND "${DDD_EXECUTABLE}" schema all --output "${directory}"
+                    RESULT_VARIABLE status
+                    ERROR_VARIABLE error
+                    OUTPUT_QUIET)
+    if(NOT status EQUAL 0)
+        # status carries the reason when the tool could not be started at all, in which case
+        # stderr is empty and the message would otherwise say nothing.
+        message(FATAL_ERROR "ddd_generate: cannot write the json schemas into \"${directory}\" "
+                            "using \"${DDD_EXECUTABLE}\" (${status}): ${error}")
+    endif()
+    message(STATUS "ddd_generate: wrote the json schemas into \"${directory}\".")
+endfunction()
+
 # The a2l is named after the project name *inside* the description, which is not necessarily what NAME says. Reading it
 # here keeps the declared OUTPUT and the file the tool actually writes in agreement - otherwise the build re-runs the
 # generator on every ninja invocation and DDD_A2L points at a file that never appears.
@@ -185,6 +210,7 @@ endfunction()
 #              [NAME <name>]                 # project name in the a2l, defaults to the image name
 #              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
 #              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
+#              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
 #              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
@@ -211,7 +237,7 @@ endfunction()
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
-                          "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
+                          "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
@@ -240,6 +266,9 @@ function(ddd_generate image)
                             "\"ddd templates-dir\" prints a working set to copy from.")
     endif()
     _ddd_absolute_input(arg_TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+    if(arg_SCHEMA_DIRECTORY)
+        _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}")
+    endif()
     if(arg_ADDRESS_MAP)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
     endif()

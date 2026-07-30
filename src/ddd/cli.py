@@ -183,9 +183,26 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_arguments(dump)
     dump.set_defaults(handler=_command_dump)
 
-    schema = subparsers.add_parser("schema", help="print the json schema of a file format")
-    schema.add_argument("kind", choices=sorted(_SCHEMA_MODELS))
-    schema.add_argument("-o", "--output", type=Path, help="write to this file instead of stdout")
+    schema = subparsers.add_parser(
+        "schema",
+        help="print the json schema of a file format",
+        description=(
+            "Prints the json schema of one file format, or writes every schema into a "
+            "directory with 'all'. Committing those files and pointing the '$schema' key of "
+            "each description at the matching one is what gives an editor completion, hover "
+            "documentation and validation while a description file is being written."
+        ),
+    )
+    schema.add_argument("kind", choices=[*sorted(_SCHEMA_MODELS), SCHEMA_ALL])
+    schema.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help=(
+            "write to this file instead of stdout; with 'all' it is the directory the "
+            f"schemas are written into, each named '{SCHEMA_FILENAME.format(kind='<kind>')}'"
+        ),
+    )
     schema.set_defaults(handler=_command_schema)
 
     name_parser = subparsers.add_parser(
@@ -417,6 +434,12 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "dictionary": DataDictionary,
 }
 
+SCHEMA_ALL = "all"
+"""``ddd schema all -o DIR`` writes every schema at once, for a project to commit."""
+
+SCHEMA_FILENAME = "ddd_{kind}.schema.json"
+"""How ``all`` names each file, so that a ``$schema`` path is predictable and stable."""
+
 
 def _command_name(args: argparse.Namespace) -> int:
     bag = DiagnosticBag()
@@ -481,18 +504,41 @@ def _inspection_payload(inspection: Inspection) -> dict[str, Any]:
     }
 
 
+def schema_text(kind: str) -> str:
+    """The json schema of one file format, as it is written out.
+
+    One function so that a file on disk and the answer to ``ddd schema`` can never differ -
+    which is what lets a test tell a project its committed schemas have gone stale.
+    """
+    # by_alias so that the key is '$schema' rather than the python attribute name.
+    return json.dumps(_SCHEMA_MODELS[kind].model_json_schema(by_alias=True), indent=2) + "\n"
+
+
+def _write_schema(path: Path, kind: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # newline="" keeps the line endings as written on every platform, the same discipline the
+    # generated sources follow: a schema committed from Windows must not differ from the same
+    # schema committed from linux.
+    path.write_text(schema_text(kind), encoding="utf-8", newline="")
+    print(f"wrote {path.as_posix()}", file=sys.stderr)
+
+
 def _command_schema(args: argparse.Namespace) -> int:
-    model = _SCHEMA_MODELS[args.kind]
-    text = json.dumps(model.model_json_schema(), indent=2)
+    if args.kind == SCHEMA_ALL:
+        if args.output is None:
+            msg = (
+                f"'{SCHEMA_ALL}' writes several files, so it needs a directory: "
+                f"ddd schema {SCHEMA_ALL} -o schemas"
+            )
+            raise ValueError(msg)
+        for kind in sorted(_SCHEMA_MODELS):
+            _write_schema(args.output / SCHEMA_FILENAME.format(kind=kind), kind)
+        return EXIT_OK
+
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        # newline="" keeps the line endings as written on every platform, the same discipline
-        # the generated sources follow: a schema checked in from Windows must not differ from
-        # the same schema checked in from linux.
-        args.output.write_text(text + "\n", encoding="utf-8", newline="")
-        print(f"wrote {args.output.as_posix()}", file=sys.stderr)
+        _write_schema(args.output, args.kind)
     else:
-        print(text)
+        print(schema_text(args.kind), end="")
     return EXIT_OK
 
 

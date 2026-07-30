@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/ddd_component.schema.json",
   "component": {
     "name": "ComponentA",
     "description": "Writes the shared value",
@@ -7,6 +8,7 @@
         "scope": "output",
         "definition": {
           "name": "SharedValue",
+          "kind": "measurement",
           "description": "Value shared between components",
           "datatype": "int16",
           "unit": "%",
@@ -17,6 +19,7 @@
         "scope": "output",
         "definition": {
           "name": "UnusedSignal",
+          "kind": "measurement",
           "datatype": "uint8"
         }
       },
@@ -24,6 +27,7 @@
         "scope": "local",
         "definition": {
           "name": "Scratch",
+          "kind": "measurement",
           "datatype": "uint8"
         }
       }

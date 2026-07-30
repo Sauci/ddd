@@ -42,4 +42,11 @@ target_link_libraries(firmware.elf PRIVATE user_interface event_logger)
 
 # Collects sensor_hub, controller, user_interface and event_logger through the link graph, generates
 # ddd_globals.c/.h, ddd_types.h, one header per component and DemoDevice.a2l, and links the definitions in.
-ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${templates}")
+# SCHEMA_DIRECTORY is what a real project would use: the schemas are rewritten every time the build is configured,
+# so they always describe the installed DDD rather than whichever version wrote them last. This example points it at
+# the build tree, because the schemas this repository commits under schemas/ are the ones its examples are bound to and
+# must not be overwritten by configuring.
+ddd_generate(firmware.elf
+             NAME DemoDevice
+             TEMPLATE_DIRECTORY "${templates}"
+             SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")

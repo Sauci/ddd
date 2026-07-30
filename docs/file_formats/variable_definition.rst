@@ -378,8 +378,8 @@ writes - the c ones as the example templates render them, the a2l ones as DDD wr
 measurement
 ~~~~~~~~~~~
 
-A measurement is a value the software computes and writes. It is the default kind, so a
-definition without ``kind`` is one. Two keys are its own: ``dimensions``, a list of array
+A measurement is a value the software computes and writes, declared with
+``"kind": "measurement"`` like every other kind. Two keys are its own: ``dimensions``, a list of array
 dimensions that is empty for a scalar, and ``volatile``, which puts the c keyword of the same
 name on the definition for a value written by an interrupt or by another task, so that the
 compiler does not cache it in a register.

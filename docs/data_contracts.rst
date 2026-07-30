@@ -211,9 +211,11 @@ Software component description
 Data objects
 ~~~~~~~~~~~~
 
-The ``definition`` of a declaration is a tagged union discriminated on ``kind``. A definition
-that omits ``kind`` is read as a measurement, which is what the original file format did and
-what the majority of declarations are. :class:`ddd.models.DataObject` holds what all six
+The ``definition`` of a declaration is a tagged union discriminated on ``kind``, and ``kind``
+is required on every definition - a measurement states ``"kind": "measurement"`` like every
+other. A defaulted discriminator would leave a bare definition matching more than one variant
+in the published schema, which an editor validating the file reports as an ambiguity; stating
+it keeps the schema and the loader in agreement. :class:`ddd.models.DataObject` holds what all six
 kinds have in common, and the six models after it document only what their own kind adds;
 the json schema shown with each of them is nevertheless the complete document a declaration
 of that kind is validated against. Where a field carries an alias, the alias is the key that

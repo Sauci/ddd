@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/ddd_component.schema.json",
   "component": {
     "name": "EventLogger",
     "description": "Counts events; lives in a sub project of its own",
@@ -7,6 +8,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueE",
+          "kind": "measurement",
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
           "unit": "Hz",
@@ -20,8 +22,9 @@
         "scope": "input",
         "definition": {
           "name": "FlagA",
+          "kind": "measurement",
           "description": "Boolean measurement",
-          "datatype": "bool",
+          "datatype": "boolean",
           "init": false
         }
       },
@@ -29,6 +32,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueI",
+          "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
           "init": 0
@@ -38,6 +42,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueJ",
+          "kind": "measurement",
           "description": "Counter written by the event logger",
           "datatype": "uint8",
           "init": 0
@@ -47,6 +52,7 @@
         "scope": "local",
         "definition": {
           "name": "ValueK",
+          "kind": "measurement",
           "description": "Two dimensional component local array",
           "datatype": "int8",
           "dimensions": [3, 4],

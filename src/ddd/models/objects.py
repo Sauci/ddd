@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Any, Literal, get_args
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from ddd.models.common import A2lFormat, Datatype, Identifier, Number, Real, format_number
 from ddd.models.conversion import IDENTITY, Conversion, EnumConversion, conversion_range
@@ -44,14 +44,17 @@ class ObjectKind(StrEnum):
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
 
 class Limits(_Frozen):
     """Physical lower/upper limit of a data object."""
 
     min: Number
+    """Smallest physical value the object may take."""
+
     max: Number
+    """Largest physical value the object may take; at least ``min``."""
 
     @model_validator(mode="after")
     def _ordered(self) -> Limits:
@@ -81,8 +84,14 @@ class DataObject(_Frozen):
     """Attributes shared by every kind of data object."""
 
     name: Identifier
+    """C identifier of the object; also its name in the a2l."""
+
     datatype: Datatype
+    """Storage type of one element, ``bool``, ``uint8`` .. ``float64``."""
+
     description: str = ""
+    """What the object is, offered to the c templates and used as the a2l long identifier."""
+
     unit: str = ""
     """Physical unit, e.g. ``"Hz"``.  Free text, but must match between components."""
 
@@ -93,12 +102,16 @@ class DataObject(_Frozen):
     """
 
     conversion: Conversion = IDENTITY
+    """How a raw value maps to a physical one: identity, linear scaling or an enumeration."""
+
     limits: Limits | None = None
     """Physical limits; derived from ``datatype`` and ``conversion`` when omitted."""
 
     a2l: A2lObjectOptions = A2lObjectOptions()
+    """Per object a2l tuning; see :class:`A2lObjectOptions`."""
 
     kind: ObjectKind
+    """Which sort of object this is; stated on every definition."""
 
     @property
     def is_calibration(self) -> bool:
@@ -160,11 +173,12 @@ class DataObject(_Frozen):
 class Measurement(DataObject):
     """An online value: written by the software, only measured by the calibration tool."""
 
-    kind: Literal[ObjectKind.MEASUREMENT] = ObjectKind.MEASUREMENT
+    kind: Literal[ObjectKind.MEASUREMENT]
     dimensions: tuple[PositiveInt, ...] = ()
     """Array dimensions; empty for a scalar."""
 
     is_volatile: Annotated[bool, Field(alias="volatile")] = False
+    """Generate the variable ``volatile``, for values written by an interrupt or by hardware."""
 
     @property
     def volatile(self) -> bool:
@@ -178,14 +192,15 @@ class Measurement(DataObject):
 class Parameter(DataObject):
     """A single calibratable constant."""
 
-    kind: Literal[ObjectKind.PARAMETER] = ObjectKind.PARAMETER
+    kind: Literal[ObjectKind.PARAMETER]
 
 
 class ValueBlock(DataObject):
     """An array of calibratable constants."""
 
-    kind: Literal[ObjectKind.VALUE_BLOCK] = ObjectKind.VALUE_BLOCK
+    kind: Literal[ObjectKind.VALUE_BLOCK]
     dimensions: Annotated[tuple[PositiveInt, ...], Field(min_length=1)]
+    """Array dimensions in c declaration order; a value block is never a scalar."""
 
     @property
     def declared_shape(self) -> Shape:
@@ -195,7 +210,7 @@ class ValueBlock(DataObject):
 class Axis(DataObject):
     """Shared axis points; several curves and maps may be interpolated over one axis."""
 
-    kind: Literal[ObjectKind.AXIS] = ObjectKind.AXIS
+    kind: Literal[ObjectKind.AXIS]
     size: PositiveInt
     """Number of axis points."""
 
@@ -214,7 +229,7 @@ class Axis(DataObject):
 class Curve(DataObject):
     """A one dimensional calibratable table."""
 
-    kind: Literal[ObjectKind.CURVE] = ObjectKind.CURVE
+    kind: Literal[ObjectKind.CURVE]
     axis: Identifier
     """Name of the axis object the curve is interpolated over."""
 
@@ -230,9 +245,12 @@ class Curve(DataObject):
 class Map(DataObject):
     """A two dimensional calibratable table, stored as ``[y][x]``."""
 
-    kind: Literal[ObjectKind.MAP] = ObjectKind.MAP
+    kind: Literal[ObjectKind.MAP]
     x_axis: Identifier
+    """Name of the axis whose index runs fastest; the last dimension of the c array."""
+
     y_axis: Identifier
+    """Name of the axis selecting the row; the first dimension of the c array."""
 
     @property
     def declared_shape(self) -> None:
@@ -243,20 +261,18 @@ class Map(DataObject):
         return {"x_axis": self.x_axis, "y_axis": self.y_axis}
 
 
-def _default_kind(data: Any) -> Any:
-    """A definition without ``kind`` is a measurement, as in the original file format."""
-    if isinstance(data, dict) and "kind" not in data:
-        data = dict(data)
-        data["kind"] = ObjectKind.MEASUREMENT.value
-    return data
-
-
 AnyDataObject = Annotated[
     Measurement | Parameter | ValueBlock | Curve | Map | Axis,
     Field(discriminator="kind"),
-    BeforeValidator(_default_kind),
 ]
-"""Any data object; the discriminator ``kind`` defaults to ``measurement``."""
+"""Any data object, told apart by its required ``kind``.
+
+``kind`` is stated on every definition rather than defaulting to ``measurement``: the default
+made a bare ``{"name", "datatype"}`` match two variants at once, which a strict json schema
+validator - the editor binding a file to ``ddd schema`` - reports as an ambiguity. Requiring
+it keeps the published schema and the loader in agreement, at the cost of one more line on a
+measurement.
+"""
 
 
 def format_shape(shape: Shape) -> str:
@@ -307,5 +323,10 @@ def discriminator_tags(*unions: Any) -> frozenset[str]:
     for union in unions:
         annotated, *_ = get_args(union)
         for variant in get_args(annotated):
-            tags.add(str(variant.model_fields["kind"].default))
+            # The tag is the single value of the variant's ``Literal[...]`` discriminator,
+            # read from the annotation rather than a default so it does not depend on the
+            # field carrying one - the data object kinds are required, the conversion kinds
+            # default.
+            (literal,) = get_args(variant.model_fields["kind"].annotation)
+            tags.add(str(literal))
     return frozenset(tags)

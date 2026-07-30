@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/ddd_project.schema.json",
   "project": {
     "name": "BrokenProject",
     "description": "Deliberately inconsistent project, used to demonstrate the checks",

@@ -416,3 +416,34 @@ class TestTemplatesDir:
         monkeypatch.setattr(cli, "example_template_directory", lambda: None)
         assert main(["templates-dir"]) == EXIT_USAGE
         assert "not part of this installation" in capsys.readouterr().err
+
+
+class TestSchemaAll:
+    """One command for a project setting up its editor, rather than one per file format."""
+
+    def test_it_writes_every_schema_into_a_directory(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+
+        output = tmp_path / "schemas"
+        assert main(["schema", "all", "-o", str(output)]) == EXIT_OK
+        assert "wrote" in capsys.readouterr().err
+        for kind in _SCHEMA_MODELS:
+            path = output / SCHEMA_FILENAME.format(kind=kind)
+            assert path.read_text(encoding="utf-8") == schema_text(kind)
+
+    def test_it_needs_a_directory(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Several files cannot go to stdout, and silently writing one would be worse."""
+        assert main(["schema", "all"]) == EXIT_USAGE
+        assert "needs a directory" in capsys.readouterr().err
+
+    def test_a_written_schema_is_what_the_printed_one_is(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`-o` and stdout must not drift; the committed schemas depend on it."""
+        assert main(["schema", "component"]) == EXIT_OK
+        printed = capsys.readouterr().out
+        target = tmp_path / "one.json"
+        assert main(["schema", "component", "-o", str(target)]) == EXIT_OK
+        assert target.read_text(encoding="utf-8") == printed

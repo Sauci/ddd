@@ -229,3 +229,48 @@ def test_a_missing_file_is_not_also_reported_as_badly_named(tree: Path) -> None:
     bag = DiagnosticBag()
     assert load_workspace(tree / "absent.json", bag) is None
     assert checks(bag) == ["file-not-found"]
+
+
+class TestSchemaBinding:
+    """The one unknown-looking key that has to be allowed: the editor's schema binding."""
+
+    def test_every_hand_written_file_kind_accepts_a_schema_key(self, tree: Path) -> None:
+        """`$schema` is how an editor binds a file to `ddd schema -o` output.
+
+        Rejecting it would block completion and as-you-type validation - the cheap version
+        of every authoring aid - while accepting any other unknown key would let typos
+        through. So exactly this key is modelled, and DDD ignores its value.
+        """
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": {
+                    "$schema": "./schemas/project.schema.json",
+                    "project": {"name": "P", "includes": ["a.ddd.json"], "naming": "c.ddd.json"},
+                },
+                "a.ddd.json": {
+                    "$schema": "./schemas/component.schema.json",
+                    **component("A", declare("local", "val")),
+                },
+                "c.ddd.json": {
+                    "$schema": "./schemas/naming.schema.json",
+                    "naming": {
+                        "name": "c",
+                        "segments": [{"name": "role", "tokens": [{"value": "val"}]}],
+                    },
+                },
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None
+        assert not bag.has_errors, [d.render() for d in bag]
+
+    def test_any_other_unknown_key_is_still_a_typo(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {"a.ddd.json": {"schema": "./x.json", **component("A", declare("local", "X"))}},
+        )
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert "Extra inputs are not permitted" in messages(bag)

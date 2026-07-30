@@ -12,7 +12,25 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Final
 
-from pydantic import Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+
+class FileRoot(BaseModel):
+    """Base of the three hand-written file roots: project, component and naming.
+
+    The one thing they share is the ``$schema`` key. Editors use it to bind a json file to
+    its schema, and that binding is what turns the published contract into completion,
+    hover documentation and as-you-type validation - so the key has to be *allowed*, even
+    though ``extra="forbid"`` rightly rejects everything else it does not know. DDD itself
+    ignores the value: which schema file a team points at, and where they keep it, is their
+    editor setup, not project data.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+
+    schema_reference: str | None = Field(default=None, alias="$schema")
+    """Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD."""
+
 
 C_IDENTIFIER_PATTERN: Final = r"^[A-Za-z_][A-Za-z0-9_]*$"
 
@@ -76,7 +94,14 @@ class DatatypeInfo:
 class Datatype(StrEnum):
     """The base datatypes DDD can allocate storage for."""
 
-    BOOL = "bool"
+    BOOLEAN = "boolean"
+    """A truth value.
+
+    Spelled ``boolean`` rather than ``bool`` because this module names datatypes without
+    reference to any output format: ``bool`` is what c calls it, and the c backend is where
+    that spelling belongs.
+    """
+
     UINT8 = "uint8"
     INT8 = "int8"
     UINT16 = "uint16"
@@ -103,7 +128,7 @@ class Datatype(StrEnum):
 
     @property
     def is_integer(self) -> bool:
-        return not self.info.is_float and self is not Datatype.BOOL
+        return not self.info.is_float and self is not Datatype.BOOLEAN
 
     @property
     def raw_min(self) -> float:
@@ -117,7 +142,7 @@ class Datatype(StrEnum):
 
 
 _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
-    Datatype.BOOL: DatatypeInfo(1, False, False, 0, 1),
+    Datatype.BOOLEAN: DatatypeInfo(1, False, False, 0, 1),
     Datatype.UINT8: DatatypeInfo(1, False, False, 0, 255),
     Datatype.INT8: DatatypeInfo(1, False, True, -128, 127),
     Datatype.UINT16: DatatypeInfo(2, False, False, 0, 65535),

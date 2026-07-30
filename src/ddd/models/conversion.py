@@ -16,7 +16,7 @@ from ddd.models.common import Datatype, Identifier, Real, format_number
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
 
 @runtime_checkable
@@ -40,8 +40,13 @@ class Enumerator(_Frozen):
     """One named value of an :class:`EnumConversion`."""
 
     name: Identifier
+    """C identifier of the enumerator; enumerators of all enums share one c namespace."""
+
     value: int
+    """The raw value; every enumerator of one enum needs a value of its own."""
+
     description: str = ""
+    """What the value means; documentation, not interface."""
 
 
 class IdentityConversion(_Frozen):
@@ -64,7 +69,10 @@ class LinearConversion(_Frozen):
 
     kind: Literal["linear"] = "linear"
     factor: Real = 1.0
+    """Scaling; must not be zero, or nothing could be converted back."""
+
     offset: Real = 0.0
+    """What raw zero stands for, in the physical unit."""
 
     @model_validator(mode="after")
     def _factor_not_zero(self) -> LinearConversion:
@@ -98,7 +106,10 @@ class EnumConversion(_Frozen):
 
     kind: Literal["enum"] = "enum"
     name: Identifier
+    """C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""
+
     enumerators: Annotated[tuple[Enumerator, ...], Field(min_length=1)]
+    """The named values, either as objects or as a ``{"NAME": value}`` mapping."""
 
     @model_validator(mode="before")
     @classmethod

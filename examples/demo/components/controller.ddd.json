@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../schemas/ddd_component.schema.json",
   "component": {
     "name": "Controller",
     "description": "Consumes the raw values and produces the derived ones",
@@ -7,6 +8,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueA",
+          "kind": "measurement",
           "description": "Scalar measurement with a linear conversion",
           "datatype": "uint8",
           "unit": "%",
@@ -19,6 +21,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueB",
+          "kind": "measurement",
           "description": "Array measurement with four elements",
           "datatype": "uint16",
           "unit": "V",
@@ -32,6 +35,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueE",
+          "kind": "measurement",
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
           "unit": "Hz",
@@ -45,6 +49,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueF",
+          "kind": "measurement",
           "description": "Signed measurement with a fixed point conversion",
           "datatype": "int16",
           "unit": "degC",
@@ -57,6 +62,7 @@
         "scope": "output",
         "definition": {
           "name": "StateA",
+          "kind": "measurement",
           "description": "Measurement with a verbal conversion table",
           "datatype": "uint8",
           "conversion": {
@@ -78,6 +84,7 @@
         "condition": "defined(FEATURE_X)",
         "definition": {
           "name": "ValueG",
+          "kind": "measurement",
           "description": "Measurement that only exists when FEATURE_X is defined",
           "datatype": "uint16",
           "unit": "V",
@@ -90,6 +97,7 @@
         "scope": "local",
         "definition": {
           "name": "ValueH",
+          "kind": "measurement",
           "description": "Component local measurement of the controller",
           "datatype": "int16",
           "unit": "%",

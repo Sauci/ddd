@@ -1,0 +1,527 @@
+{
+  "$defs": {
+    "A2lObjectOptions": {
+      "additionalProperties": false,
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.",
+      "properties": {
+        "export": {
+          "default": true,
+          "description": "Set to ``false`` to keep the object out of the a2l file.",
+          "title": "Export",
+          "type": "boolean"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "pattern": "^%\\d*\\.\\d+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.",
+          "title": "Format"
+        },
+        "display_identifier": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alternative name shown by the calibration tool.",
+          "title": "Display Identifier"
+        }
+      },
+      "title": "A2lObjectOptions",
+      "type": "object"
+    },
+    "ComponentDeclaration": {
+      "additionalProperties": false,
+      "description": "One entry of a component interface, in the order the component declared it.",
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Condition"
+        }
+      },
+      "required": [
+        "name",
+        "scope"
+      ],
+      "title": "ComponentDeclaration",
+      "type": "object"
+    },
+    "Datatype": {
+      "description": "The base datatypes DDD can allocate storage for.",
+      "enum": [
+        "bool",
+        "uint8",
+        "int8",
+        "uint16",
+        "int16",
+        "uint32",
+        "int32",
+        "uint64",
+        "int64",
+        "float32",
+        "float64"
+      ],
+      "title": "Datatype",
+      "type": "string"
+    },
+    "EnumConversion": {
+      "additionalProperties": false,
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "properties": {
+        "kind": {
+          "const": "enum",
+          "default": "enum",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "C identifier of the generated ``typedef enum``; shared enums must agree everywhere.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "enumerators": {
+          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
+          "items": {
+            "$ref": "#/$defs/Enumerator"
+          },
+          "minItems": 1,
+          "title": "Enumerators",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "enumerators"
+      ],
+      "title": "EnumConversion",
+      "type": "object"
+    },
+    "Enumerator": {
+      "additionalProperties": false,
+      "description": "One named value of an :class:`EnumConversion`.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The raw value; every enumerator of one enum needs a value of its own.",
+          "title": "Value",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "What the value means; documentation, not interface.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "Enumerator",
+      "type": "object"
+    },
+    "IdentityConversion": {
+      "additionalProperties": false,
+      "description": "``physical == raw``; the default for every variable.",
+      "properties": {
+        "kind": {
+          "const": "identity",
+          "default": "identity",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "IdentityConversion",
+      "type": "object"
+    },
+    "InitValue": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/InitValue"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "Physical lower/upper limit of a data object.",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Smallest physical value the object may take.",
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Largest physical value the object may take; at least ``min``.",
+          "title": "Max"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "LinearConversion": {
+      "additionalProperties": false,
+      "description": "``physical = raw * factor + offset``, the scaling of a fixed point value.",
+      "properties": {
+        "kind": {
+          "const": "linear",
+          "default": "linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "factor": {
+          "default": 1.0,
+          "description": "Scaling; must not be zero, or nothing could be converted back.",
+          "title": "Factor",
+          "type": "number"
+        },
+        "offset": {
+          "default": 0.0,
+          "description": "What raw zero stands for, in the physical unit.",
+          "title": "Offset",
+          "type": "number"
+        }
+      },
+      "title": "LinearConversion",
+      "type": "object"
+    },
+    "ObjectKind": {
+      "description": "What sort of data object a definition describes.",
+      "enum": [
+        "measurement",
+        "parameter",
+        "value_block",
+        "curve",
+        "map",
+        "axis"
+      ],
+      "title": "ObjectKind",
+      "type": "string"
+    },
+    "ResolvedComponent": {
+      "additionalProperties": false,
+      "description": "A component and the objects it declares.",
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "source": {
+          "default": "",
+          "description": "Path of the description file, for reference in generated comments.",
+          "title": "Source",
+          "type": "string"
+        },
+        "declarations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ComponentDeclaration"
+          },
+          "title": "Declarations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ResolvedComponent",
+      "type": "object"
+    },
+    "ResolvedObject": {
+      "additionalProperties": false,
+      "description": "One data object, with every derived property already worked out.",
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ObjectKind"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits",
+          "description": "Always present: the explicit limits, or the range the datatype and conversion imply."
+        },
+        "shape": {
+          "default": [],
+          "description": "Storage shape, empty for a scalar; for a curve or a map it comes from its axes.\n\nEvery dimension is at least one, like the ``dimensions`` and ``size`` it derives from.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "volatile": {
+          "default": false,
+          "title": "Volatile",
+          "type": "boolean"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preprocessor condition of the producing declaration, if any.",
+          "title": "Condition"
+        },
+        "references": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Other objects this one refers to, keyed by field name (``axis``, ``x_axis``, ...).",
+          "title": "References",
+          "type": "object"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Component owning the object; ``None`` only when the project is inconsistent.",
+          "title": "Owner"
+        },
+        "consumers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Consumers",
+          "type": "array"
+        },
+        "local": {
+          "default": false,
+          "description": "Owned exclusively by ``owner``; no other component may declare it.",
+          "title": "Local",
+          "type": "boolean"
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "What the author asked for in the ``a2l`` block. Only the a2l backend interprets it."
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "datatype",
+        "conversion",
+        "limits"
+      ],
+      "title": "ResolvedObject",
+      "type": "object"
+    },
+    "Scope": {
+      "description": "Direction of a variable with respect to the declaring component.",
+      "enum": [
+        "input",
+        "output",
+        "local"
+      ],
+      "title": "Scope",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The resolved data of one project.",
+  "properties": {
+    "format": {
+      "default": 1,
+      "description": "Version of the document itself, see :data:`DICTIONARY_FORMAT`.",
+      "title": "Format",
+      "type": "integer"
+    },
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "source": {
+      "default": "",
+      "description": "Name of the root description file, for reference in generated comments.",
+      "title": "Source",
+      "type": "string"
+    },
+    "components": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ResolvedComponent"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "objects": {
+      "default": [],
+      "description": "Sorted by name, so that every backend produces a stable output.",
+      "items": {
+        "$ref": "#/$defs/ResolvedObject"
+      },
+      "title": "Objects",
+      "type": "array"
+    },
+    "enums": {
+      "default": [],
+      "description": "Distinct enumerations used by the objects, sorted by name.",
+      "items": {
+        "$ref": "#/$defs/EnumConversion"
+      },
+      "title": "Enums",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "DataDictionary",
+  "type": "object"
+}

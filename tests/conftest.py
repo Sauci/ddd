@@ -40,9 +40,11 @@ def component(name: str, *declarations: dict[str, Any], **extra: Any) -> dict[st
 def declare(
     scope: str, name: str, datatype: str = "uint8", condition: str | None = None, **definition: Any
 ) -> dict[str, Any]:
+    # kind is required on a definition; a test that does not care is declaring a measurement,
+    # so it is filled in here and overridden by whatever the caller passes in **definition.
     entry: dict[str, Any] = {
         "scope": scope,
-        "definition": {"name": name, "datatype": datatype, **definition},
+        "definition": {"name": name, "datatype": datatype, "kind": "measurement", **definition},
     }
     if condition is not None:
         entry["condition"] = condition

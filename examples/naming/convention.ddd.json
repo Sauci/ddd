@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/ddd_naming.schema.json",
   "naming": {
     "name": "demo-convention",
     "description": "Names are <role>_<Subject>[_<Subject>...][_<qualifier>]",

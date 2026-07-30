@@ -15,7 +15,7 @@ _INT64_MIN = -(2**63)
 
 def c_literal(value: bool | int | float, datatype: Datatype) -> str:
     """Render one raw value as a c literal of ``datatype``."""
-    if datatype is Datatype.BOOL:
+    if datatype is Datatype.BOOLEAN:
         return "true" if value else "false"
     if datatype.is_float:
         # repr of a float always carries a '.' or an exponent, so the literal is never

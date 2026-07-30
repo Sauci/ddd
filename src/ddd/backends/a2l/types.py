@@ -10,7 +10,7 @@ from typing import Final
 from ddd.models import Datatype
 
 A2L_TYPE: Final[dict[Datatype, str]] = {
-    Datatype.BOOL: "UBYTE",
+    Datatype.BOOLEAN: "UBYTE",
     Datatype.UINT8: "UBYTE",
     Datatype.INT8: "SBYTE",
     Datatype.UINT16: "UWORD",

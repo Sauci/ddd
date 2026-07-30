@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/ddd_component.schema.json",
   "component": {
     "name": "Sensing",
     "description": "Every name here is <role>_<Subject>[_<qualifier>]",
@@ -7,6 +8,7 @@
         "scope": "local",
         "definition": {
           "name": "val_InletTemperature_raw",
+          "kind": "measurement",
           "description": "Unconditioned reading of the inlet sensor",
           "datatype": "uint16",
           "unit": "degC",
@@ -17,6 +19,7 @@
         "scope": "local",
         "definition": {
           "name": "val_InletTemperature_flt",
+          "kind": "measurement",
           "description": "Filtered inlet temperature",
           "datatype": "int16",
           "unit": "degC",
@@ -28,8 +31,9 @@
         "scope": "local",
         "definition": {
           "name": "flg_InletSensorValid",
+          "kind": "measurement",
           "description": "The inlet reading is plausible",
-          "datatype": "bool",
+          "datatype": "boolean",
           "init": false
         }
       },
@@ -37,6 +41,7 @@
         "scope": "local",
         "definition": {
           "name": "cnt_InletSensorFaults",
+          "kind": "measurement",
           "description": "Number of implausible readings seen so far",
           "datatype": "uint16",
           "init": 0

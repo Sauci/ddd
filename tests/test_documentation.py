@@ -8,6 +8,7 @@ README and the SPEC describing a previous version of DDD.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -205,3 +206,81 @@ class TestCommandLineHelp:
             f"help text carrying reStructuredText inline markup: {offenders}. Rewrite it "
             f"without * ` or |, which the generated command line reference cannot escape."
         )
+
+
+class TestPublishedSchemas:
+    """The schemas are the editor integration, so what they carry is a promise."""
+
+    def test_the_file_roots_allow_the_editor_binding(self) -> None:
+        from ddd.models import ComponentFile, NamingFile, ProjectFile
+
+        for model in (ProjectFile, ComponentFile, NamingFile):
+            schema = model.model_json_schema(by_alias=True)
+            assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
+
+    def test_every_authored_field_carries_hover_documentation(self) -> None:
+        """A field without a description is a blank tooltip in every editor.
+
+        The discriminator ``kind`` is exempt: it is a fixed value per variant, so the value
+        itself is the documentation.
+        """
+        from ddd.models import ComponentFile
+
+        schema = ComponentFile.model_json_schema(by_alias=True)
+        undocumented = [
+            f"{name}.{field}"
+            for name, definition in schema["$defs"].items()
+            for field, spec in definition.get("properties", {}).items()
+            if "description" not in spec and field != "kind"
+        ]
+        assert not undocumented, (
+            f"fields with a blank editor tooltip: {undocumented}. Add an attribute "
+            f"docstring; use_attribute_docstrings carries it into the schema."
+        )
+
+
+class TestCommittedSchemas:
+    """The schemas in ``schemas/`` are generated, committed and pointed at by the examples.
+
+    Committing a derived artefact is a deliberate exception to how the rest of this
+    repository works, and it is made for one reason: an editor cannot bind a description
+    file to a schema that is not there, so cloning the project or unpacking the sdist has to
+    be enough to get completion and validation on the examples. The price of the exception is
+    that it can go stale, which is what these tests are for.
+    """
+
+    def test_every_committed_schema_is_current(self) -> None:
+        from ddd.cli import _SCHEMA_MODELS, SCHEMA_FILENAME, schema_text
+
+        for kind in sorted(_SCHEMA_MODELS):
+            path = ROOT / "schemas" / SCHEMA_FILENAME.format(kind=kind)
+            assert path.is_file(), f"{path.name} is missing; run: ddd schema all -o schemas"
+            assert path.read_text(encoding="utf-8") == schema_text(kind), (
+                f"{path.name} is out of date with the models. Regenerate it with "
+                f"'ddd schema all -o schemas' and commit the result."
+            )
+
+    def test_every_example_points_at_a_schema_that_exists(self) -> None:
+        """A dangling ``$schema`` is worse than none: the editor reports it on every open."""
+        bound = 0
+        for path in sorted((ROOT / "examples").rglob("*.ddd.json")):
+            document = json.loads(path.read_text(encoding="utf-8"))
+            reference = document.get("$schema")
+            assert reference is not None, f"{path.name} carries no $schema binding"
+            target = (path.parent / reference).resolve()
+            assert target.is_file(), f"{path.name} points at {reference}, which does not exist"
+            # and it points at the schema of the kind it actually is
+            kind = next(key for key in ("project", "component", "naming") if key in document)
+            assert target.name == f"ddd_{kind}.schema.json", (
+                f"{path.name} is a {kind} file but points at {target.name}"
+            )
+            bound += 1
+        assert bound, "no examples were checked; has the layout changed?"
+
+    def test_the_examples_validate_against_their_own_schemas(self) -> None:
+        """What an editor does with the binding, done here so it cannot silently break."""
+        jsonschema = pytest.importorskip("jsonschema")
+        for path in sorted((ROOT / "examples").rglob("*.ddd.json")):
+            document = json.loads(path.read_text(encoding="utf-8"))
+            schema = json.loads((path.parent / document["$schema"]).read_text(encoding="utf-8"))
+            jsonschema.validate(document, schema)

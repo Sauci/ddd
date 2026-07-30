@@ -6,7 +6,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from ddd.models.common import Identifier
+from ddd.models.common import FileRoot, Identifier
 from ddd.models.objects import AnyDataObject
 
 
@@ -30,13 +30,16 @@ class Scope(StrEnum):
 class Declaration(BaseModel):
     """One entry of the ``declarations`` list of a component."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
     scope: Scope
+    """Direction of the declaration: ``input``, ``output`` or ``local``."""
+
     condition: str | None = None
     """C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``."""
 
     definition: AnyDataObject
+    """The data object being declared."""
 
     @field_validator("condition")
     @classmethod
@@ -68,16 +71,19 @@ class Declaration(BaseModel):
 class Component(BaseModel):
     """The interface specification of one software component."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
     name: Identifier
+    """Name of the component; every component of a project needs a distinct one."""
+
     description: str = ""
+    """Free text describing the component, offered to the c templates."""
+
     declarations: tuple[Declaration, ...] = ()
+    """The data interface: everything the component produces, consumes or keeps to itself."""
 
 
-class ComponentFile(BaseModel):
+class ComponentFile(FileRoot):
     """Root object of a ``*.json`` software component description."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     component: Component

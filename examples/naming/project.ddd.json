@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/ddd_project.schema.json",
   "project": {
     "name": "NamedDevice",
     "description": "A project whose names follow a convention, checked on every run",

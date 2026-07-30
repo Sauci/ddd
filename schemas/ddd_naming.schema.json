@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "NamingConvention": {
+      "additionalProperties": false,
+      "description": "The rules a variable name has to follow.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "separator": {
+          "default": "_",
+          "description": "What joins the segments; also what a name is split on.",
+          "minLength": 1,
+          "title": "Separator",
+          "type": "string"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/Segment"
+          },
+          "minItems": 1,
+          "title": "Segments",
+          "type": "array"
+        },
+        "case_sensitive": {
+          "default": true,
+          "title": "Case Sensitive",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "segments"
+      ],
+      "title": "NamingConvention",
+      "type": "object"
+    },
+    "Segment": {
+      "additionalProperties": false,
+      "description": "One position in a name.\n\nEither ``tokens`` or ``pattern`` has to be given: a segment with neither would accept\nanything, which is the same as not describing it at all.",
+      "properties": {
+        "name": {
+          "description": "What this position means, used in messages and in the explanation of a name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "tokens": {
+          "default": [],
+          "description": "The controlled vocabulary of this position; completions come from here.",
+          "items": {
+            "$ref": "#/$defs/Token"
+          },
+          "title": "Tokens",
+          "type": "array"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A regular expression for a free position, e.g. the descriptive part of a name.",
+          "title": "Pattern"
+        },
+        "optional": {
+          "default": false,
+          "description": "A trailing position that a name may leave out.",
+          "title": "Optional",
+          "type": "boolean"
+        },
+        "repeatable": {
+          "default": false,
+          "description": "The position may be filled more than once, e.g. a multi word descriptive part.",
+          "title": "Repeatable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Segment",
+      "type": "object"
+    },
+    "Token": {
+      "additionalProperties": false,
+      "description": "One allowed value of a segment, with what it stands for.",
+      "properties": {
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Token",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.ddd.json`` naming convention description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "naming": {
+      "$ref": "#/$defs/NamingConvention"
+    }
+  },
+  "required": [
+    "naming"
+  ],
+  "title": "NamingFile",
+  "type": "object"
+}

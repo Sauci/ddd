@@ -12,7 +12,7 @@ from typing import Final
 from ddd.models import Datatype
 
 C_TYPE: Final[dict[Datatype, str]] = {
-    Datatype.BOOL: "bool",
+    Datatype.BOOLEAN: "bool",
     Datatype.UINT8: "uint8_t",
     Datatype.INT8: "int8_t",
     Datatype.UINT16: "uint16_t",
@@ -27,7 +27,7 @@ C_TYPE: Final[dict[Datatype, str]] = {
 
 # Uppercase suffixes, as the coding standards of the industry ask for.
 LITERAL_SUFFIX: Final[dict[Datatype, str]] = {
-    Datatype.BOOL: "",
+    Datatype.BOOLEAN: "",
     Datatype.UINT8: "U",
     Datatype.INT8: "",
     Datatype.UINT16: "U",
@@ -46,4 +46,4 @@ def needs_stdint(datatypes: set[Datatype]) -> bool:
 
 
 def needs_stdbool(datatypes: set[Datatype]) -> bool:
-    return Datatype.BOOL in datatypes
+    return Datatype.BOOLEAN in datatypes

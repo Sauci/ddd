@@ -85,8 +85,45 @@ other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
 The top level key decides what a file is: `project` or `component`.  Unknown keys are
-rejected, so typos are found instead of silently ignored.  The machine readable contract is
-available with `ddd schema project` / `ddd schema component`.
+rejected, so typos are found instead of silently ignored - with one deliberate exception:
+a top level `$schema` key is allowed and ignored, because it is how an editor binds a file
+to its schema.  The machine readable contract is available with `ddd schema project` /
+`ddd schema component`, and writing it out turns the editor into the authoring aid:
+
+```bash
+ddd schema all -o schemas          # writes one file per format, to commit
+```
+
+Then point each description at the schema of its own kind.  The path is relative to the file,
+and it has to be per file rather than an editor wide setting, because a project, a component
+and a convention all end in `*.ddd.json` and only the content says which is which:
+
+```json
+{
+  "$schema": "../../schemas/ddd_component.schema.json",
+  "component": { ... }
+}
+```
+
+With that binding in place the editor completes the keys, offers the datatypes, scopes and
+kinds as dropdowns, shows each field's documentation on hover, and flags an unknown key while
+it is being typed rather than at the next `ddd check`.
+
+There are two ways to keep the schemas there, and the choice is about *when* they have to
+exist:
+
+* **Commit them.** An editor cannot bind to a file that is not there, so a colleague who
+  clones the project finds validation working before building anything.  The cost is that
+  they describe whichever DDD wrote them, so `ddd schema all -o schemas` has to be re-run
+  after an upgrade.
+* **Let the build write them**, with `SCHEMA_DIRECTORY` on `ddd_generate` (see
+  [CMake integration](#cmake-integration)).  They are rewritten every time the project is
+  configured, so they cannot describe a version that is no longer installed - but they only
+  exist after the first configure, so add that directory to `.gitignore` and expect a fresh
+  clone to have no validation until then.
+
+Every file under [examples/](examples/) is bound this way, against the [schemas/](schemas/) of
+this repository, so cloning it is enough to see the effect.
 
 ### Project description
 
@@ -116,7 +153,7 @@ Include cycles are reported instead of hanging.
       {
         "scope": "output",
         "condition": "defined(FEATURE_X)",
-        "definition": { "name": "ValueG", "datatype": "uint16" }
+        "definition": { "kind": "measurement", "name": "ValueG", "datatype": "uint16" }
       }
     ]
   }
@@ -133,6 +170,7 @@ Include cycles are reported instead of hanging.
 
 ```json
 {
+  "kind": "measurement",
   "name": "ValueE",
   "description": "A measurement of the device",
   "datatype": "uint16",
@@ -149,7 +187,7 @@ Include cycles are reported instead of hanging.
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
-| `kind` | `measurement` | see the next section |
+| `kind` | required | see the next section |
 | `datatype` | required | `bool`, `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float32`, `float64` |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
 | `unit` | `""` | physical unit; components sharing a variable must agree on it |
@@ -163,9 +201,11 @@ for an array initialises **every** element, so `"dimensions": [10], "init": 1` i
 
 ### Kinds of data object
 
-`kind` may be omitted, in which case the object is a measurement - an online value that the
-software writes and the calibration tool only reads.  Everything else is calibration data:
-the software never writes it, so it is generated `const` and ends up in read only memory.
+Every definition states its `kind`.  A `measurement` is an online value that the software
+writes and the calibration tool only reads; everything else is calibration data, which the
+software never writes, so it is generated `const` and ends up in read only memory.  (`kind`
+is stated rather than defaulting to `measurement`, so that a file bound to `ddd schema` in an
+editor validates without the ambiguity a defaulted discriminator leaves in the schema.)
 
 | kind | extra keys | generated c | a2l |
 | --- | --- | --- | --- |
@@ -464,7 +504,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema project\|component\|naming\|dictionary` | json schema of the file formats and of the contract |
+| `ddd schema project\|component\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
 | `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
@@ -538,7 +578,8 @@ plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image.
 
-Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `PREFIX`, `ADDRESS_MAP`, `BYTE_ORDER`,
+Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
+`ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so only one image may hand its headers

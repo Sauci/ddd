@@ -47,7 +47,7 @@ class TestGlobalDefinitionFile:
                 declare("local", "A", "int16", init=-400),
                 declare("local", "B", "float32", init=1.5),
                 declare("local", "C", "float64", init=2),
-                declare("local", "D", "bool", init=True),
+                declare("local", "D", "boolean", init=True),
                 declare("local", "E", "uint64", init=5),
                 declare("local", "F", "int64", init=-5),
             ),
@@ -131,7 +131,7 @@ class TestTypesHeader:
 
     def test_stdint_is_included_only_when_needed(self, tree: Path) -> None:
         assert "#include <stdint.h>" in generate(tree, simple(declare("local", "A")))["ddd_types.h"]
-        only_bool = generate(tree, simple(declare("local", "A", "bool")))["ddd_types.h"]
+        only_bool = generate(tree, simple(declare("local", "A", "boolean")))["ddd_types.h"]
         assert "#include <stdint.h>" not in only_bool
         assert "#include <stdbool.h>" in only_bool
 

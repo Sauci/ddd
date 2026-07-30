@@ -180,5 +180,5 @@ class TestComparisonTables:
         assert "shape" in table_names(analysis._INTERFACE_FIELDS)
         assert "shape" in table_names(compare._INTERFACE_FIELDS)
         declared = next(f for f in analysis._INTERFACE_FIELDS if f.name == "shape")
-        curve = Curve(name="C", datatype="uint8", axis="Ax")
+        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax")
         assert declared.value(curve) is None  # not known yet, it comes from the axis

@@ -31,8 +31,19 @@ def generate(tree: Path, *declarations: dict[str, Any], **options: Any) -> dict[
 
 
 class TestContract:
-    def test_kind_defaults_to_measurement(self) -> None:
-        definition = DEFINITION.validate_python({"name": "X", "datatype": "uint8"})
+    def test_kind_is_required(self) -> None:
+        """kind is stated on every definition; omitting it is a schema error, not a default.
+
+        The value the schema can express - required, one of the enum - is unambiguous for an
+        editor validating a file, which a defaulted discriminator was not.
+        """
+        with pytest.raises(ValidationError, match="kind"):
+            DEFINITION.validate_python({"name": "X", "datatype": "uint8"})
+
+    def test_a_measurement_is_named_like_every_other_kind(self) -> None:
+        definition = DEFINITION.validate_python(
+            {"name": "X", "datatype": "uint8", "kind": "measurement"}
+        )
         assert definition.kind is ObjectKind.MEASUREMENT
         assert not definition.is_calibration
 

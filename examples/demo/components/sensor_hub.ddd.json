@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../schemas/ddd_component.schema.json",
   "component": {
     "name": "SensorHub",
     "description": "Produces the raw input values of the device",
@@ -7,11 +8,18 @@
         "scope": "output",
         "definition": {
           "name": "ValueA",
+          "kind": "measurement",
           "description": "Scalar measurement with a linear conversion",
           "datatype": "uint8",
           "unit": "%",
-          "conversion": { "kind": "linear", "factor": 0.5 },
-          "limits": { "min": 0, "max": 100 },
+          "conversion": {
+            "kind": "linear",
+            "factor": 0.5
+          },
+          "limits": {
+            "min": 0,
+            "max": 100
+          },
           "init": 0
         }
       },
@@ -19,11 +27,16 @@
         "scope": "output",
         "definition": {
           "name": "ValueB",
+          "kind": "measurement",
           "description": "Array measurement with four elements",
           "datatype": "uint16",
           "unit": "V",
-          "dimensions": [4],
-          "conversion": { "factor": 0.001 },
+          "dimensions": [
+            4
+          ],
+          "conversion": {
+            "factor": 0.001
+          },
           "init": 0,
           "volatile": true
         }
@@ -32,18 +45,23 @@
         "scope": "output",
         "definition": {
           "name": "ValueC",
+          "kind": "measurement",
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
           "unit": "degC",
-          "limits": { "min": -50, "max": 90 }
+          "limits": {
+            "min": -50,
+            "max": 90
+          }
         }
       },
       {
         "scope": "output",
         "definition": {
           "name": "FlagA",
+          "kind": "measurement",
           "description": "Boolean measurement",
-          "datatype": "bool",
+          "datatype": "boolean",
           "init": false
         }
       },
@@ -51,10 +69,15 @@
         "scope": "local",
         "definition": {
           "name": "ValueD",
+          "kind": "measurement",
           "description": "Component local measurement, kept out of the a2l",
           "datatype": "uint16",
-          "dimensions": [8],
-          "a2l": { "export": false }
+          "dimensions": [
+            8
+          ],
+          "a2l": {
+            "export": false
+          }
         }
       }
     ]

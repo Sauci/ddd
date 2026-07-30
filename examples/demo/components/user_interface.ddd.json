@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../schemas/ddd_component.schema.json",
   "component": {
     "name": "UserInterface",
     "description": "Reads the values of the other components and drives the display",
@@ -7,6 +8,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueE",
+          "kind": "measurement",
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
           "unit": "Hz",
@@ -20,6 +22,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueF",
+          "kind": "measurement",
           "description": "Signed measurement with a fixed point conversion",
           "datatype": "int16",
           "unit": "degC",
@@ -32,6 +35,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueC",
+          "kind": "measurement",
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
           "unit": "degC",
@@ -42,6 +46,7 @@
         "scope": "input",
         "definition": {
           "name": "StateA",
+          "kind": "measurement",
           "description": "Measurement with a verbal conversion table",
           "datatype": "uint8",
           "conversion": {
@@ -62,6 +67,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueB",
+          "kind": "measurement",
           "description": "Array measurement with four elements",
           "datatype": "uint16",
           "unit": "V",
@@ -76,6 +82,7 @@
         "condition": "defined(FEATURE_X)",
         "definition": {
           "name": "ValueG",
+          "kind": "measurement",
           "description": "Measurement that only exists when FEATURE_X is defined",
           "datatype": "uint16",
           "unit": "V",
@@ -88,6 +95,7 @@
         "scope": "input",
         "definition": {
           "name": "ValueJ",
+          "kind": "measurement",
           "description": "Counter written by the event logger",
           "datatype": "uint8",
           "init": 0
@@ -97,6 +105,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueI",
+          "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
           "init": 0

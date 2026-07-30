@@ -21,7 +21,9 @@ from ddd.models import (
 
 
 def definition(**kwargs: object) -> Measurement:
-    return Measurement.model_validate({"name": "X", "datatype": "uint8", **kwargs})
+    return Measurement.model_validate(
+        {"name": "X", "datatype": "uint8", "kind": "measurement", **kwargs}
+    )
 
 
 class TestDatatype:
@@ -30,7 +32,7 @@ class TestDatatype:
     @pytest.mark.parametrize(
         ("datatype", "size"),
         [
-            (Datatype.BOOL, 1),
+            (Datatype.BOOLEAN, 1),
             (Datatype.UINT8, 1),
             (Datatype.INT16, 2),
             (Datatype.UINT32, 4),
@@ -50,7 +52,7 @@ class TestDatatype:
         assert Datatype.UINT8.raw_min == 0
         assert Datatype.UINT8.raw_max == 255
         assert Datatype.INT16.raw_min == -32768
-        assert Datatype.BOOL.is_integer is False
+        assert Datatype.BOOLEAN.is_integer is False
         assert Datatype.FLOAT32.is_float is True
 
 
@@ -104,6 +106,7 @@ class TestConversions:
         with pytest.raises(ValidationError, match="requires an integer datatype"):
             Measurement.model_validate(
                 {
+                    "kind": "measurement",
                     "name": "X",
                     "datatype": "float32",
                     "conversion": {"kind": "enum", "name": "E", "enumerators": {"A": 0}},
@@ -119,7 +122,7 @@ class TestConversions:
 class TestLimits:
     def test_derived_from_datatype_and_conversion(self) -> None:
         limits = Measurement.model_validate(
-            {"name": "X", "datatype": "int16", "conversion": {"factor": 0.1}}
+            {"kind": "measurement", "name": "X", "datatype": "int16", "conversion": {"factor": 0.1}}
         ).physical_limits()
         assert limits.min == pytest.approx(-3276.8)
         assert limits.max == pytest.approx(3276.7)
@@ -184,7 +187,7 @@ class TestContractStrictness:
                         {
                             "scope": "output",
                             "condition": "   ",
-                            "definition": {"name": "X", "datatype": "uint8"},
+                            "definition": {"kind": "measurement", "name": "X", "datatype": "uint8"},
                         }
                     ],
                 }

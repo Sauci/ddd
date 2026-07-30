@@ -421,7 +421,7 @@ class _Analysis:
     def _check_init(self, definition: DataObject, location: Location) -> None:
         datatype = definition.datatype
         for value in definition.scalar_values():
-            if datatype is Datatype.BOOL:
+            if datatype is Datatype.BOOLEAN:
                 if not isinstance(value, bool) and value not in (0, 1):
                     self._bag.add(
                         "init-invalid",

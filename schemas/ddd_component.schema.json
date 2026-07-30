@@ -1,0 +1,1043 @@
+{
+  "$defs": {
+    "A2lObjectOptions": {
+      "additionalProperties": false,
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.",
+      "properties": {
+        "export": {
+          "default": true,
+          "description": "Set to ``false`` to keep the object out of the a2l file.",
+          "title": "Export",
+          "type": "boolean"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "pattern": "^%\\d*\\.\\d+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.",
+          "title": "Format"
+        },
+        "display_identifier": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alternative name shown by the calibration tool.",
+          "title": "Display Identifier"
+        }
+      },
+      "title": "A2lObjectOptions",
+      "type": "object"
+    },
+    "Axis": {
+      "additionalProperties": false,
+      "description": "Shared axis points; several curves and maps may be interpolated over one axis.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "axis",
+          "title": "Kind",
+          "type": "string"
+        },
+        "size": {
+          "description": "Number of axis points.",
+          "exclusiveMinimum": 0,
+          "title": "Size",
+          "type": "integer"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement that indexes the axis; the a2l input quantity.",
+          "title": "Input"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind",
+        "size"
+      ],
+      "title": "Axis",
+      "type": "object"
+    },
+    "Component": {
+      "additionalProperties": false,
+      "description": "The interface specification of one software component.",
+      "properties": {
+        "name": {
+          "description": "Name of the component; every component of a project needs a distinct one.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing the component, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "declarations": {
+          "default": [],
+          "description": "The data interface: everything the component produces, consumes or keeps to itself.",
+          "items": {
+            "$ref": "#/$defs/Declaration"
+          },
+          "title": "Declarations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Component",
+      "type": "object"
+    },
+    "Curve": {
+      "additionalProperties": false,
+      "description": "A one dimensional calibratable table.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "curve",
+          "title": "Kind",
+          "type": "string"
+        },
+        "axis": {
+          "description": "Name of the axis object the curve is interpolated over.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Axis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind",
+        "axis"
+      ],
+      "title": "Curve",
+      "type": "object"
+    },
+    "Datatype": {
+      "description": "The base datatypes DDD can allocate storage for.",
+      "enum": [
+        "bool",
+        "uint8",
+        "int8",
+        "uint16",
+        "int16",
+        "uint32",
+        "int32",
+        "uint64",
+        "int64",
+        "float32",
+        "float64"
+      ],
+      "title": "Datatype",
+      "type": "string"
+    },
+    "Declaration": {
+      "additionalProperties": false,
+      "description": "One entry of the ``declarations`` list of a component.",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope",
+          "description": "Direction of the declaration: ``input``, ``output`` or ``local``."
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.",
+          "title": "Condition"
+        },
+        "definition": {
+          "description": "The data object being declared.",
+          "discriminator": {
+            "mapping": {
+              "axis": "#/$defs/Axis",
+              "curve": "#/$defs/Curve",
+              "map": "#/$defs/Map",
+              "measurement": "#/$defs/Measurement",
+              "parameter": "#/$defs/Parameter",
+              "value_block": "#/$defs/ValueBlock"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Measurement"
+            },
+            {
+              "$ref": "#/$defs/Parameter"
+            },
+            {
+              "$ref": "#/$defs/ValueBlock"
+            },
+            {
+              "$ref": "#/$defs/Curve"
+            },
+            {
+              "$ref": "#/$defs/Map"
+            },
+            {
+              "$ref": "#/$defs/Axis"
+            }
+          ],
+          "title": "Definition"
+        }
+      },
+      "required": [
+        "scope",
+        "definition"
+      ],
+      "title": "Declaration",
+      "type": "object"
+    },
+    "EnumConversion": {
+      "additionalProperties": false,
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "properties": {
+        "kind": {
+          "const": "enum",
+          "default": "enum",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "C identifier of the generated ``typedef enum``; shared enums must agree everywhere.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "enumerators": {
+          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
+          "items": {
+            "$ref": "#/$defs/Enumerator"
+          },
+          "minItems": 1,
+          "title": "Enumerators",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "enumerators"
+      ],
+      "title": "EnumConversion",
+      "type": "object"
+    },
+    "Enumerator": {
+      "additionalProperties": false,
+      "description": "One named value of an :class:`EnumConversion`.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The raw value; every enumerator of one enum needs a value of its own.",
+          "title": "Value",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "What the value means; documentation, not interface.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "Enumerator",
+      "type": "object"
+    },
+    "IdentityConversion": {
+      "additionalProperties": false,
+      "description": "``physical == raw``; the default for every variable.",
+      "properties": {
+        "kind": {
+          "const": "identity",
+          "default": "identity",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "IdentityConversion",
+      "type": "object"
+    },
+    "InitValue": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/InitValue"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "Physical lower/upper limit of a data object.",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Smallest physical value the object may take.",
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Largest physical value the object may take; at least ``min``.",
+          "title": "Max"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "LinearConversion": {
+      "additionalProperties": false,
+      "description": "``physical = raw * factor + offset``, the scaling of a fixed point value.",
+      "properties": {
+        "kind": {
+          "const": "linear",
+          "default": "linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "factor": {
+          "default": 1.0,
+          "description": "Scaling; must not be zero, or nothing could be converted back.",
+          "title": "Factor",
+          "type": "number"
+        },
+        "offset": {
+          "default": 0.0,
+          "description": "What raw zero stands for, in the physical unit.",
+          "title": "Offset",
+          "type": "number"
+        }
+      },
+      "title": "LinearConversion",
+      "type": "object"
+    },
+    "Map": {
+      "additionalProperties": false,
+      "description": "A two dimensional calibratable table, stored as ``[y][x]``.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "map",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x_axis": {
+          "description": "Name of the axis whose index runs fastest; the last dimension of the c array.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "X Axis",
+          "type": "string"
+        },
+        "y_axis": {
+          "description": "Name of the axis selecting the row; the first dimension of the c array.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Y Axis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind",
+        "x_axis",
+        "y_axis"
+      ],
+      "title": "Map",
+      "type": "object"
+    },
+    "Measurement": {
+      "additionalProperties": false,
+      "description": "An online value: written by the software, only measured by the calibration tool.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "measurement",
+          "title": "Kind",
+          "type": "string"
+        },
+        "dimensions": {
+          "default": [],
+          "description": "Array dimensions; empty for a scalar.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "volatile": {
+          "default": false,
+          "description": "Generate the variable ``volatile``, for values written by an interrupt or by hardware.",
+          "title": "Volatile",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind"
+      ],
+      "title": "Measurement",
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "description": "A single calibratable constant.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "parameter",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind"
+      ],
+      "title": "Parameter",
+      "type": "object"
+    },
+    "Scope": {
+      "description": "Direction of a variable with respect to the declaring component.",
+      "enum": [
+        "input",
+        "output",
+        "local"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "ValueBlock": {
+      "additionalProperties": false,
+      "description": "An array of calibratable constants.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the object; also its name in the a2l.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is, offered to the c templates and used as the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": true,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+        },
+        "kind": {
+          "const": "value_block",
+          "title": "Kind",
+          "type": "string"
+        },
+        "dimensions": {
+          "description": "Array dimensions in c declaration order; a value block is never a scalar.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Dimensions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "kind",
+        "dimensions"
+      ],
+      "title": "ValueBlock",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.json`` software component description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "component": {
+      "$ref": "#/$defs/Component"
+    }
+  },
+  "required": [
+    "component"
+  ],
+  "title": "ComponentFile",
+  "type": "object"
+}

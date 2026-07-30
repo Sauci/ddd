@@ -145,7 +145,7 @@ class TestModelEdges:
 
     def test_an_empty_conversion_object_means_identity(self) -> None:
         definition = DEFINITION.validate_python(
-            {"name": "X", "datatype": "uint8", "conversion": {}}
+            {"kind": "measurement", "name": "X", "datatype": "uint8", "conversion": {}}
         )
         assert isinstance(definition.conversion, IdentityConversion)
 
@@ -171,7 +171,13 @@ class TestModelEdges:
         assert check_shape((1, (2, 3)), (2, 2)) is not None
         with pytest.raises(ValueError, match="must be a list of 2 elements"):
             DEFINITION.validate_python(
-                {"name": "X", "datatype": "uint8", "dimensions": [2, 2], "init": [1, [2, 3]]}
+                {
+                    "kind": "measurement",
+                    "name": "X",
+                    "datatype": "uint8",
+                    "dimensions": [2, 2],
+                    "init": [1, [2, 3]],
+                }
             )
 
 
@@ -233,7 +239,7 @@ class TestMismatchMessages:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json"),
-                "a.ddd.json": component("A", declare("local", "X", "bool", init=7)),
+                "a.ddd.json": component("A", declare("local", "X", "boolean", init=7)),
             },
         )
         assert checks(bag) == ["init-invalid"]

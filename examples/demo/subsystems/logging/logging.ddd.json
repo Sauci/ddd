@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/ddd_project.schema.json",
   "project": {
     "name": "Logging",
     "description": "Sub project of its own, developed by a separate team",

@@ -30,7 +30,7 @@ from ddd.models.objects import A2lObjectOptions, InitValue, Limits, ObjectKind
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
 
 class ComponentDeclaration(_Frozen):

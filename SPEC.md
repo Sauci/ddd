@@ -100,8 +100,13 @@ owning component.
 All files used by DDD contain simple json formatting and shall be named `*.ddd.json`, so
 that a description file is recognisable as such in a project that contains json for many
 other purposes. The top level key of a file decides what the file is: `project` or
-`component`. Unknown keys are rejected. The formal contract is published by the tool itself
-as a json schema.
+`component`. Unknown keys are rejected, with one exception: a top level `$schema` key shall
+be accepted and ignored, since it is the standard way an editor binds a json file to its
+schema and thereby turns the published contract into completion, hover documentation and
+as-you-type validation. The formal contract is published by the tool itself as a json
+schema, in one file per format, and every authored field of it shall carry its
+documentation. The binding is per file rather than per directory because the kind of a
+description is in its content and not in its name.
 
 ### 3.1 Project description
 
@@ -140,9 +145,10 @@ Each variable declaration contains:
 
 ### 3.3 Variable definition object
 
-A definition describes one data object. The optional key `"kind"` selects the type of object
-and defaults to `"measurement"`, so a definition without `"kind"` behaves exactly as in
-section 1.1.
+A definition describes one data object. The key `"kind"` selects the type of object and is
+required on every definition, including a `"measurement"`: a defaulted discriminator leaves
+the published json schema unable to say which variant an unmarked definition is, which an
+editor validating a file against that schema reports as an ambiguity.
 
 Attributes common to every kind:
 

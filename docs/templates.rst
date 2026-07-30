@@ -177,7 +177,7 @@ The model
    * - ``model.source``
      - The name of the description file the dictionary was read from, for the banner.
    * - ``model.generator``
-     - The tool and version that produced the file, such as ``ddd 0.1.0``.
+     - The tool and version that produced the file, such as ``ddd 0.2.0``.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.

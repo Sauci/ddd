@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 # `ddd` is taken on PyPI. Only the distribution name differs: the import package, the CLI
 # command and the `*.ddd.json` file convention all stay `ddd`.
 name = "ddd-tool"
-version = "0.1.0"
+version = "0.2.0"
 description = "Data Dictionary for global variables in component based embedded software projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -68,6 +68,7 @@ include = [
     "examples",
     "schemas",
     "tests",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "SPEC.md",

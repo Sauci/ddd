@@ -28,10 +28,12 @@ The front end never mentions c or a2l; a backend never touches the loader or the
 Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes it out and
 `ddd schema dictionary` publishes its schema.
 
-`ddd --version` prints the release. The check identifiers, the command names and the json
-file formats are the tool's public interface and do not change within a major version; the
-generated a2l is ASAP2 1.6.1. Licence terms are in [LICENSE](LICENSE), and problems belong
-in the [issue tracker](https://github.com/Sauci/ddd/issues).
+`ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
+it - including what a migration costs, since a minor release may still change the file format
+while the major version is `0`. The check identifiers, the command names and the json file
+formats are the tool's public interface; the generated a2l is ASAP2 1.6.1. Licence terms are
+in [LICENSE](LICENSE), and problems belong in the
+[issue tracker](https://github.com/Sauci/ddd/issues).
 
 ## Installation
 
@@ -39,7 +41,7 @@ Requires Python 3.12 or newer; the only runtime dependencies are pydantic and ji
 
 ```bash
 pip install ddd-tool                 # from the index
-pip install ./ddd_tool-0.1.0-py3-none-any.whl   # from a delivered wheel, no network
+pip install ./ddd_tool-0.2.0-py3-none-any.whl   # from a delivered wheel, no network
 ddd --version
 ```
 

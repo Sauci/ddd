@@ -284,3 +284,28 @@ class TestCommittedSchemas:
             document = json.loads(path.read_text(encoding="utf-8"))
             schema = json.loads((path.parent / document["$schema"]).read_text(encoding="utf-8"))
             jsonschema.validate(document, schema)
+
+
+class TestPackagedResources:
+    """Paths into the installed package, which a source checkout can hide being wrong.
+
+    ``ddd templates-dir`` and ``ddd cmake-dir`` look for files that are force-included into
+    the wheel. Both fall back to the repository layout, so a miscounted ``parents[n]`` still
+    works in a checkout and fails only once somebody installs the wheel - which is to say,
+    only for a customer.
+    """
+
+    def test_the_package_root_is_the_ddd_package(self) -> None:
+        import ddd
+        from ddd.backends.c.backend import package_root
+
+        assert package_root() == Path(ddd.__file__).resolve().parent
+
+    def test_the_wheel_ships_what_those_commands_look_for(self) -> None:
+        """Each force-included destination has to be where the lookup expects to find it."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        destinations = set(
+            metadata["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"].values()
+        )
+        assert "ddd/templates" in destinations, "ddd templates-dir would find nothing installed"
+        assert "ddd/cmake/Ddd.cmake" in destinations, "ddd cmake-dir would find nothing installed"

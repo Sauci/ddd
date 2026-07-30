@@ -33,15 +33,26 @@ COMPONENT_PLACEHOLDER = "{component}"
 """Marks a template that is rendered once per component rather than once per project."""
 
 
+def package_root() -> Path:
+    """The ``ddd`` package directory, wherever it is installed.
+
+    Named and tested rather than counted inline: this module sits two levels below it, and
+    getting that arithmetic wrong is invisible in a source checkout, where the fallback below
+    finds the templates anyway. See ``test_the_package_root_is_the_ddd_package``.
+    """
+    return Path(__file__).resolve().parents[2]
+
+
 def example_template_directory() -> Path | None:
     """The example templates, inside the installed package or in a source checkout.
 
     A starting point to copy from, not a default: nothing falls back to it, and
     ``ddd templates-dir`` prints the path so that a project can take a copy.
     """
+    root = package_root()
     candidates = (
-        Path(__file__).parents[1] / "templates",
-        Path(__file__).parents[4] / "examples" / "templates",
+        root / "templates",  # a wheel, where they are force-included as ddd/templates
+        root.parents[1] / "examples" / "templates",  # a source checkout: <repo>/examples
     )
     return next(
         (path for path in candidates if path.is_dir() and any(path.glob(f"*{TEMPLATE_SUFFIX}"))),

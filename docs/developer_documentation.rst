@@ -280,3 +280,59 @@ parser itself, ``autodoc_pydantic`` renders the file formats from the contracts 
 renamed option or a changed field cannot leave its documentation behind, and a reference
 that no longer resolves fails the build instead of quietly disappearing from the page. The
 ``.. uml::`` diagrams need a plantuml installation; the documentation image ships one.
+
+Publishing a release
+--------------------
+
+``.github/workflows/publish.yml`` builds, checks and uploads the distribution. It never
+holds an API token: the upload authenticates with `trusted publishing
+<https://docs.pypi.org/trusted-publishers/>`_, where GitHub mints a short lived OIDC token
+and the index decides whether the claims in it match a publisher somebody registered.
+
+Two things follow from that, and both have bitten this project.
+
+**The two indices are separate registrations.** TestPyPI and PyPI are different services with
+different accounts and different publisher configurations. A publisher registered on
+``pypi.org`` has no effect whatsoever on ``test.pypi.org``, even though the pages look
+identical. The workflow uploads to whichever the job names, so each needs its own:
+
+.. list-table::
+   :header-rows: 1
+
+   * - field
+     - ``test.pypi.org`` registration
+     - ``pypi.org`` registration
+   * - PyPI project name
+     - ``ddd-tool``
+     - ``ddd-tool``
+   * - owner
+     - ``Sauci``
+     - ``Sauci``
+   * - repository
+     - ``ddd``
+     - ``ddd``
+   * - workflow name
+     - ``publish.yml``
+     - ``publish.yml``
+   * - environment name
+     - ``testpypi``
+     - ``pypi``
+
+The environment name is the field most easily got wrong, because it is the GitHub
+*deployment environment* of the job rather than anything about the index: the job publishing
+to TestPyPI declares ``environment: name: testpypi``, so the registration has to say
+``testpypi`` too.
+
+Until the project exists on an index, its registration is a **pending** publisher, which is
+also what creates the project on first upload. Note what the page itself warns: a pending
+publisher does not reserve the name, so anybody may take it first. Once the project exists
+the registration becomes an ordinary publisher, and a project that already exists needs the
+publisher configured *on the project* rather than as a pending one.
+
+**The configuration is read at upload time, not at commit time.** A run that failed with
+``invalid-publisher`` will succeed on a plain re-run once the registration is corrected -
+there is nothing to change in the repository and no new commit to push.
+
+A ``workflow_dispatch`` run with ``target: testpypi`` is the dry run; publishing to PyPI
+happens on a published GitHub release tagged ``v<version>``, and the build refuses to go on
+if that tag disagrees with the version in ``pyproject.toml``.

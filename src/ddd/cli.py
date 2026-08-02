@@ -39,6 +39,7 @@ from ddd.diagnostics import (
 from ddd.ir import DataDictionary
 from ddd.loading import load_convention, load_dictionary, load_workspace
 from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile, format_shape
+from ddd.models.schema import PublishedSchema
 from ddd.naming import Inspection, complete, inspect, or_list
 
 EXIT_OK = 0
@@ -511,8 +512,12 @@ def schema_text(kind: str) -> str:
     One function so that a file on disk and the answer to ``ddd schema`` can never differ -
     which is what lets a test tell a project its committed schemas have gone stale.
     """
-    # by_alias so that the key is '$schema' rather than the python attribute name.
-    return json.dumps(_SCHEMA_MODELS[kind].model_json_schema(by_alias=True), indent=2) + "\n"
+    # by_alias so that the key is '$schema' rather than the python attribute name, and
+    # PublishedSchema so that what an editor shows is documentation rather than python.
+    published = _SCHEMA_MODELS[kind].model_json_schema(
+        by_alias=True, schema_generator=PublishedSchema
+    )
+    return json.dumps(published, indent=2) + "\n"
 
 
 def _write_schema(path: Path, kind: str) -> None:

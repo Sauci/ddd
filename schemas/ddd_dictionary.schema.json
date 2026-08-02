@@ -1,8 +1,9 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "A2lObjectOptions": {
       "additionalProperties": false,
-      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.",
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
       "properties": {
         "export": {
           "default": true,
@@ -46,9 +47,10 @@
     },
     "ComponentDeclaration": {
       "additionalProperties": false,
-      "description": "One entry of a component interface, in the order the component declared it.",
+      "description": "One entry of a component interface, in the order the component declared it.\n\nA reference to an object rather than the object itself: the definition lives once, under\n``objects``, and is the one the producing component gave. Two components declaring the\nsame name appear here twice and in ``objects`` once.",
       "properties": {
         "name": {
+          "description": "Name of the declared object; a key into the ``objects`` list of the dictionary.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -56,7 +58,8 @@
           "type": "string"
         },
         "scope": {
-          "$ref": "#/$defs/Scope"
+          "$ref": "#/$defs/Scope",
+          "description": "How this component uses the object: ``input``, ``output`` or ``local``."
         },
         "condition": {
           "anyOf": [
@@ -68,6 +71,7 @@
             }
           ],
           "default": null,
+          "description": "Preprocessor expression this component guarded the declaration with, if any.",
           "title": "Condition"
         }
       },
@@ -79,7 +83,7 @@
       "type": "object"
     },
     "Datatype": {
-      "description": "The base datatypes DDD can allocate storage for.",
+      "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
         "boolean",
         "uint8",
@@ -93,12 +97,25 @@
         "float32",
         "float64"
       ],
+      "enumDescriptions": [
+        "A truth value, 0 or 1; 1 byte of storage.",
+        "Unsigned integer; 1 byte of storage, 0 to 255.",
+        "Signed integer; 1 byte of storage, -128 to 127.",
+        "Unsigned integer; 2 bytes of storage, 0 to 65535.",
+        "Signed integer; 2 bytes of storage, -32768 to 32767.",
+        "Unsigned integer; 4 bytes of storage, 0 to 4294967295.",
+        "Signed integer; 4 bytes of storage, -2147483648 to 2147483647.",
+        "Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.",
+        "Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.",
+        "IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.",
+        "IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308."
+      ],
       "title": "Datatype",
       "type": "string"
     },
     "EnumConversion": {
       "additionalProperties": false,
-      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
       "properties": {
         "kind": {
           "const": "enum",
@@ -133,7 +150,7 @@
     },
     "Enumerator": {
       "additionalProperties": false,
-      "description": "One named value of an :class:`EnumConversion`.",
+      "description": "One named value of an enum conversion, and what that value means.",
       "properties": {
         "name": {
           "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
@@ -258,7 +275,7 @@
       "type": "object"
     },
     "ObjectKind": {
-      "description": "What sort of data object a definition describes.",
+      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes and the calibration tool only reads.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
       "enum": [
         "measurement",
         "parameter",
@@ -266,6 +283,14 @@
         "curve",
         "map",
         "axis"
+      ],
+      "enumDescriptions": [
+        "An online value the software writes and the calibration tool only reads.",
+        "A single calibratable constant.",
+        "An array of calibratable constants.",
+        "A one dimensional calibratable table over one axis.",
+        "A two dimensional calibratable table over two axes.",
+        "Shared axis points a curve or map is interpolated over."
       ],
       "title": "ObjectKind",
       "type": "string"
@@ -275,6 +300,7 @@
       "description": "A component and the objects it declares.",
       "properties": {
         "name": {
+          "description": "Name of the component, unique within the project.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -283,6 +309,7 @@
         },
         "description": {
           "default": "",
+          "description": "Free text from the component description, offered to the templates.",
           "title": "Description",
           "type": "string"
         },
@@ -294,6 +321,7 @@
         },
         "declarations": {
           "default": [],
+          "description": "The interface of the component, in the order it declared it.",
           "items": {
             "$ref": "#/$defs/ComponentDeclaration"
           },
@@ -312,6 +340,7 @@
       "description": "One data object, with every derived property already worked out.",
       "properties": {
         "name": {
+          "description": "Name of the object, unique across the whole project; its c and a2l identifier.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -319,22 +348,27 @@
           "type": "string"
         },
         "kind": {
-          "$ref": "#/$defs/ObjectKind"
+          "$ref": "#/$defs/ObjectKind",
+          "description": "Which sort of object this is, taken from the definition that produced it."
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype"
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element."
         },
         "description": {
           "default": "",
+          "description": "What the object is; the a2l long identifier and the comment in the generated c.",
           "title": "Description",
           "type": "string"
         },
         "unit": {
           "default": "",
+          "description": "Physical unit, as the declaring components agreed on it.",
           "title": "Unit",
           "type": "string"
         },
         "conversion": {
+          "description": "Always present: the declared conversion, or the identity when none was given.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -379,10 +413,12 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Raw initial value, nested to match ``shape``; ``null`` means zero initialised."
         },
         "volatile": {
           "default": false,
+          "description": "Generate the variable ``volatile``; only ever true for a measurement.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -422,6 +458,7 @@
         },
         "consumers": {
           "default": [],
+          "description": "Components declaring the object as an input, sorted; empty when nothing reads it.",
           "items": {
             "type": "string"
           },
@@ -455,26 +492,32 @@
       "type": "object"
     },
     "Scope": {
-      "description": "Direction of a variable with respect to the declaring component.",
+      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
         "input",
         "output",
         "local"
+      ],
+      "enumDescriptions": [
+        "The component reads the variable; another component has to produce it.",
+        "The component writes the variable; exactly one component may do so.",
+        "The component owns the variable exclusively; no other component may use it."
       ],
       "title": "Scope",
       "type": "string"
     }
   },
   "additionalProperties": false,
-  "description": "The resolved data of one project.",
+  "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
       "default": 1,
-      "description": "Version of the document itself, see :data:`DICTIONARY_FORMAT`.",
+      "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"
     },
     "name": {
+      "description": "Name of the project, from the root project description.",
       "maxLength": 128,
       "minLength": 1,
       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -483,6 +526,7 @@
     },
     "description": {
       "default": "",
+      "description": "Free text from the root project description.",
       "title": "Description",
       "type": "string"
     },
@@ -494,6 +538,7 @@
     },
     "components": {
       "default": [],
+      "description": "Every component of the project, including those of its sub-projects.",
       "items": {
         "$ref": "#/$defs/ResolvedComponent"
       },
@@ -522,6 +567,6 @@
   "required": [
     "name"
   ],
-  "title": "DataDictionary",
+  "title": "DDD data dictionary",
   "type": "object"
 }

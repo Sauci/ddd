@@ -1,7 +1,8 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "Datatype": {
-      "description": "The base datatypes DDD can allocate storage for.",
+      "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
         "boolean",
         "uint8",
@@ -14,6 +15,19 @@
         "sint64",
         "float32",
         "float64"
+      ],
+      "enumDescriptions": [
+        "A truth value, 0 or 1; 1 byte of storage.",
+        "Unsigned integer; 1 byte of storage, 0 to 255.",
+        "Signed integer; 1 byte of storage, -128 to 127.",
+        "Unsigned integer; 2 bytes of storage, 0 to 65535.",
+        "Signed integer; 2 bytes of storage, -32768 to 32767.",
+        "Unsigned integer; 4 bytes of storage, 0 to 4294967295.",
+        "Signed integer; 4 bytes of storage, -2147483648 to 2147483647.",
+        "Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.",
+        "Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.",
+        "IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.",
+        "IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308."
       ],
       "title": "Datatype",
       "type": "string"
@@ -32,7 +46,7 @@
         },
         "member": {
           "$ref": "#/$defs/MemberKind",
-          "description": "Which shape this member has: ``value``, ``bits`` or ``struct``."
+          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``kind`` and ``datatype``, and may add ``dimensions``,\n* ``bits`` needs ``kind``, ``datatype`` and ``bits``,\n* ``struct`` needs ``type`` and takes nothing else.\n\nA key belonging to another shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
         },
         "description": {
           "default": "",
@@ -50,7 +64,7 @@
             }
           ],
           "default": null,
-          "description": "Whether the member is measured or calibrated; required unless it is a nested structure."
+          "description": "Whether the member is measured or calibrated; required unless it is a nested structure.\n\nOnly ``measurement`` and ``parameter`` are allowed here. A curve, a map, a value block or\nan axis refers to other objects by name, which a member of a structure cannot do."
         },
         "datatype": {
           "anyOf": [
@@ -62,11 +76,11 @@
             }
           ],
           "default": null,
-          "description": "Storage of a ``value`` or ``bits`` member."
+          "description": "Storage of a ``value`` or ``bits`` member; required on both."
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.",
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.",
           "items": {
             "exclusiveMinimum": 0,
             "type": "integer"
@@ -85,7 +99,7 @@
             }
           ],
           "default": null,
-          "description": "Width of a ``bits`` member, in bits.",
+          "description": "Width of a ``bits`` member, in bits; required on one, refused on the others.\n\nIt has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype\nhas to be an integer, since c allows a bitfield in nothing else.",
           "title": "Bits"
         },
         "type": {
@@ -100,7 +114,7 @@
             }
           ],
           "default": null,
-          "description": "Name of the structure a ``struct`` member nests.\n\nNot an :data:`~ddd.models.common.Identifier` at this level on purpose: an unresolvable or\nmalformed name is reported against the structure that refers to it, with a location, rather\nthan as a pattern violation on a key the author cannot see the context of.",
+          "description": "Name of the structure a ``struct`` member nests; declared anywhere in the project.\n\nThe name is not pattern checked here on purpose. A structure that does not exist, or whose\nname is not a usable identifier, is reported against the structure that refers to it and\nwith a location, which says more than a pattern violation on a key seen out of context.",
           "title": "Type"
         }
       },
@@ -112,17 +126,22 @@
       "type": "object"
     },
     "MemberKind": {
-      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.",
+      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.\n\n* ``value`` - A datatype, scalar or array.\n* ``bits`` - A datatype and a width in bits: a c bitfield.\n* ``struct`` - Another declared structure, nested in this one.",
       "enum": [
         "value",
         "bits",
         "struct"
       ],
+      "enumDescriptions": [
+        "A datatype, scalar or array.",
+        "A datatype and a width in bits: a c bitfield.",
+        "Another declared structure, nested in this one."
+      ],
       "title": "MemberKind",
       "type": "string"
     },
     "ObjectKind": {
-      "description": "What sort of data object a definition describes.",
+      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes and the calibration tool only reads.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
       "enum": [
         "measurement",
         "parameter",
@@ -130,6 +149,14 @@
         "curve",
         "map",
         "axis"
+      ],
+      "enumDescriptions": [
+        "An online value the software writes and the calibration tool only reads.",
+        "A single calibratable constant.",
+        "An array of calibratable constants.",
+        "A one dimensional calibratable table over one axis.",
+        "A two dimensional calibratable table over two axes.",
+        "Shared axis points a curve or map is interpolated over."
       ],
       "title": "ObjectKind",
       "type": "string"
@@ -171,7 +198,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.ddd.json`` structured datatype description.",
+  "description": "Root object of a ``*.ddd.json`` structured datatype description.\n\n``types`` is the top level key that makes this a types file rather than a project, a\ncomponent or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
   "properties": {
     "$schema": {
       "anyOf": [
@@ -199,6 +226,6 @@
   "required": [
     "types"
   ],
-  "title": "TypesFile",
+  "title": "DDD structured datatype description",
   "type": "object"
 }

@@ -140,6 +140,32 @@ class Datatype(StrEnum):
         """Largest value representable in the raw (implementation) domain."""
         return self.info.raw_max
 
+    @property
+    def schema_description(self) -> str:
+        """One line of hover documentation for the published json schema.
+
+        Derived from the table below rather than written out under each member, because what
+        an author needs to know about ``uint16`` is exactly what the table already states -
+        how much storage it costs and which values fit in it. A docstring repeating that
+        would be a second copy of eleven ranges, and the copy that goes wrong is the one
+        somebody reads.
+        """
+        info = self.info
+        storage = f"{info.size} byte{'' if info.size == 1 else 's'}"
+        if self is Datatype.BOOLEAN:
+            return f"A truth value, 0 or 1; {storage} of storage."
+        if info.is_float:
+            precision = "single" if info.size == 4 else "double"
+            return (
+                f"IEEE 754 {precision} precision floating point; {storage} of storage, "
+                f"magnitude up to {format_number(info.raw_max)}."
+            )
+        sign = "Signed" if info.is_signed else "Unsigned"
+        return (
+            f"{sign} integer; {storage} of storage, "
+            f"{format_number(info.raw_min)} to {format_number(info.raw_max)}."
+        )
+
 
 _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
     Datatype.BOOLEAN: DatatypeInfo(1, False, False, 0, 1),

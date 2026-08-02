@@ -37,7 +37,7 @@ class ConversionRule(Protocol):
 
 
 class Enumerator(_Frozen):
-    """One named value of an :class:`EnumConversion`."""
+    """One named value of an enum conversion, and what that value means."""
 
     name: Identifier
     """C identifier of the enumerator; enumerators of all enums share one c namespace."""

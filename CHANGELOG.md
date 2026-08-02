@@ -35,6 +35,29 @@ will be flattened into one a2l object per member rather than described as an a2l
 CANape 15 accepts the native `TYPEDEF_STRUCTURE` form and then displays nothing for it, which is
 recorded under "what the calibration tools actually implement" in the developer documentation.
 
+### The published schemas carry their documentation
+
+`ddd schema` writes the same contract as before - nothing it publishes accepts or rejects a
+file it did not accept or reject previously - and a lot more of what an editor can show while a
+description file is being written:
+
+* every key of every format now has a description, including the 27 in the dictionary and
+  naming schemas that used to hover blank;
+* every value of a closed set has one too.  `uint16` says how much storage it costs and which
+  values fit in it, `"kind": "curve"` says what a curve is as against a value block.  The text
+  is both spelled out in the description of the key and repeated in `enumDescriptions`, the
+  array VS Code reads to document each entry of the completion dropdown;
+* each file states its dialect, `https://json-schema.org/draft/2020-12/schema`, so a validator
+  no longer has to guess which version of json schema it is reading, and is titled for the
+  format it describes rather than for the python class behind it;
+* descriptions are rendered as the markdown an editor shows, so a reference written for the api
+  documentation no longer arrives as the literal characters `` :class:`Foo` `` or points a
+  reader at a python module they do not have.
+
+The rules that span several keys - which keys a `bits` member takes, that a segment has tokens
+or a pattern and not both - are stated in the descriptions rather than as constraints, so a
+validating editor still accepts a few files that `ddd check` rejects.
+
 ## 0.2.0
 
 Breaking changes to the description file format and to `ddd generate`.  Migrating an existing

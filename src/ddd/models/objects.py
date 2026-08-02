@@ -68,7 +68,11 @@ class Limits(_Frozen):
 
 
 class A2lObjectOptions(_Frozen):
-    """What a declaration asks of the a2l backend. Only that backend interprets it."""
+    """What a declaration asks of the a2l backend. Only that backend interprets it.
+
+    Nothing here changes the generated c or the meaning of the object; a project that
+    generates no a2l can leave the whole block out.
+    """
 
     export: bool = True
     """Set to ``false`` to keep the object out of the a2l file."""
@@ -87,31 +91,57 @@ class DataObject(_Frozen):
     """C identifier of the object; also its name in the a2l."""
 
     datatype: Datatype
-    """Storage type of one element, ``bool``, ``uint8`` .. ``float64``."""
+    """Storage type of one element, from ``boolean`` through the integers to ``float64``."""
 
     description: str = ""
     """What the object is, offered to the c templates and used as the a2l long identifier."""
 
     unit: str = ""
-    """Physical unit, e.g. ``"Hz"``.  Free text, but must match between components."""
+    """Physical unit, e.g. ``"Hz"``.
+
+    Free text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only
+    checks that every component declaring this object spells the unit the same way.
+    """
 
     init: InitValue | None = None
-    """Raw initial value.  ``null`` leaves the object zero initialised by the startup code.
+    """Raw initial value, in the stored domain rather than the physical one.
 
-    A scalar given for an array shaped object initialises every element with that value.
+    ``null`` leaves the object zero initialised by the startup code. For an array shaped
+    object, either a nested list matching the shape exactly, or a single scalar, which
+    initialises every element with that value.
     """
 
     conversion: Conversion = IDENTITY
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration."""
+    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+
+    ``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means
+    ``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means
+    ``identity``, which is also what an object without a conversion gets.
+    """
 
     limits: Limits | None = None
-    """Physical limits; derived from ``datatype`` and ``conversion`` when omitted."""
+    """Physical limits of the object, in the unit given by ``unit``.
+
+    Omitted, they are derived from ``datatype`` and ``conversion``: the whole range the
+    storage can hold, converted. State them to say that the software handles less than that,
+    which is what stops a calibration tool offering a value the software cannot take.
+    """
 
     a2l: A2lObjectOptions = A2lObjectOptions()
-    """Per object a2l tuning; see :class:`A2lObjectOptions`."""
+    """What this object asks of the a2l file: whether to export it, how to display it.
+
+    Only the a2l backend reads it, so a project that generates no a2l can leave it out
+    entirely.
+    """
 
     kind: ObjectKind
-    """Which sort of object this is; stated on every definition."""
+    """Which sort of object this is; stated on every definition.
+
+    It also decides which further keys the definition may carry: ``dimensions`` and
+    ``volatile`` on a measurement, ``dimensions`` on a value block, ``size`` and ``input`` on
+    an axis, ``axis`` on a curve, ``x_axis`` and ``y_axis`` on a map, and none of them on a
+    parameter.
+    """
 
     @property
     def is_calibration(self) -> bool:

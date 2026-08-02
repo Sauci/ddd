@@ -69,29 +69,49 @@ class Member(BaseModel):
     """Name of the member, unique within its structure."""
 
     member: MemberKind
-    """Which shape this member has: ``value``, ``bits`` or ``struct``."""
+    """Which shape this member has, and with it which other keys the member may carry.
+
+    * ``value`` needs ``kind`` and ``datatype``, and may add ``dimensions``,
+    * ``bits`` needs ``kind``, ``datatype`` and ``bits``,
+    * ``struct`` needs ``type`` and takes nothing else.
+
+    A key belonging to another shape is refused rather than ignored: ``bits`` together with
+    ``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping
+    one of the two would put a structure in the generated c that this file does not describe.
+    """
 
     description: str = ""
     """Free text describing the member, offered to the c templates."""
 
     kind: ObjectKind | None = None
-    """Whether the member is measured or calibrated; required unless it is a nested structure."""
+    """Whether the member is measured or calibrated; required unless it is a nested structure.
+
+    Only ``measurement`` and ``parameter`` are allowed here. A curve, a map, a value block or
+    an axis refers to other objects by name, which a member of a structure cannot do.
+    """
 
     datatype: Datatype | None = None
-    """Storage of a ``value`` or ``bits`` member."""
+    """Storage of a ``value`` or ``bits`` member; required on both."""
 
     dimensions: tuple[PositiveInt, ...] = ()
-    """Array dimensions of a ``value`` member, in c declaration order; empty for a scalar."""
+    """Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.
+
+    ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.
+    """
 
     bits: PositiveInt | None = None
-    """Width of a ``bits`` member, in bits."""
+    """Width of a ``bits`` member, in bits; required on one, refused on the others.
+
+    It has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype
+    has to be an integer, since c allows a bitfield in nothing else.
+    """
 
     type: str | None = Field(default=None, min_length=1, max_length=128)
-    """Name of the structure a ``struct`` member nests.
+    """Name of the structure a ``struct`` member nests; declared anywhere in the project.
 
-    Not an :data:`~ddd.models.common.Identifier` at this level on purpose: an unresolvable or
-    malformed name is reported against the structure that refers to it, with a location, rather
-    than as a pattern violation on a key the author cannot see the context of.
+    The name is not pattern checked here on purpose. A structure that does not exist, or whose
+    name is not a usable identifier, is reported against the structure that refers to it and
+    with a location, which says more than a pattern violation on a key seen out of context.
     """
 
     @model_validator(mode="after")
@@ -184,7 +204,14 @@ class StructType(BaseModel):
 
 
 class TypesFile(FileRoot):
-    """Root object of a ``*.ddd.json`` structured datatype description."""
+    """Root object of a ``*.ddd.json`` structured datatype description.
+
+    ``types`` is the top level key that makes this a types file rather than a project, a
+    component or a naming file; DDD decides what a file is from that key alone, so exactly one
+    of the four appears here.
+    """
+
+    model_config = ConfigDict(title="DDD structured datatype description")
 
     types: tuple[StructType, ...] = Field(min_length=1)
     """The structures this file declares."""

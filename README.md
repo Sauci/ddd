@@ -92,11 +92,11 @@ script, a linter or an editor match them with one pattern.  A description file w
 other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
-The top level key decides what a file is: `project` or `component`.  Unknown keys are
-rejected, so typos are found instead of silently ignored - with one deliberate exception:
-a top level `$schema` key is allowed and ignored, because it is how an editor binds a file
-to its schema.  The machine readable contract is available with `ddd schema project` /
-`ddd schema component`, and writing it out turns the editor into the authoring aid:
+The top level key decides what a file is: `project`, `component`, `types` or `naming`.
+Unknown keys are rejected, so typos are found instead of silently ignored - with one
+deliberate exception: a top level `$schema` key is allowed and ignored, because it is how an
+editor binds a file to its schema.  The machine readable contract of each kind is available
+with `ddd schema <kind>`, and writing it out turns the editor into the authoring aid:
 
 ```bash
 ddd schema all -o schemas          # writes one file per format, to commit
@@ -114,8 +114,10 @@ and a convention all end in `*.ddd.json` and only the content says which is whic
 ```
 
 With that binding in place the editor completes the keys, offers the datatypes, scopes and
-kinds as dropdowns, shows each field's documentation on hover, and flags an unknown key while
-it is being typed rather than at the next `ddd check`.
+kinds as dropdowns, and flags an unknown key while it is being typed rather than at the next
+`ddd check`.  The documentation comes with it: every key explains itself on hover, and so does
+every value of a dropdown - `uint16` says how much storage it costs and which values fit in
+it, `"kind": "curve"` says what a curve is as against a value block.
 
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:
@@ -515,7 +517,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema project\|component\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
+| `ddd schema project\|component\|types\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
 | `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |

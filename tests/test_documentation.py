@@ -11,10 +11,13 @@ import argparse
 import json
 import re
 import tomllib
+from enum import StrEnum
 from pathlib import Path
+from typing import Any, Literal
 
 import jsonschema
 import pytest
+from pydantic import BaseModel
 
 from ddd import __version__
 from ddd.cli import _build_parser
@@ -211,8 +214,53 @@ class TestCommandLineHelp:
         )
 
 
+def published_kinds() -> list[str]:
+    """The file formats ``ddd schema`` publishes, which is what these tests are about."""
+    from ddd.cli import _SCHEMA_MODELS
+
+    return sorted(_SCHEMA_MODELS)
+
+
+def published(kind: str) -> dict[str, Any]:
+    """One published schema, exactly as ``ddd schema`` writes it."""
+    from ddd.cli import schema_text
+
+    loaded: dict[str, Any] = json.loads(schema_text(kind))
+    return loaded
+
+
+def objects_in(schema: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Every object in a schema that has properties, named for a failure message."""
+    return [("<root>", schema), *schema.get("$defs", {}).items()]
+
+
+def descriptions_in(node: object) -> list[str]:
+    """Every description anywhere in a schema, which is everything an editor will show."""
+    if isinstance(node, dict):
+        found = [node["description"]] if isinstance(node.get("description"), str) else []
+        return found + [text for value in node.values() for text in descriptions_in(value)]
+    if isinstance(node, list):
+        return [text for value in node for text in descriptions_in(value)]
+    return []
+
+
+def enumerations_in(node: object) -> list[dict[str, Any]]:
+    """Every closed set of values in a schema, wherever it sits."""
+    if isinstance(node, dict):
+        found = [node] if isinstance(node.get("enum"), list) else []
+        return found + [entry for value in node.values() for entry in enumerations_in(value)]
+    if isinstance(node, list):
+        return [entry for value in node for entry in enumerations_in(value)]
+    return []
+
+
 class TestPublishedSchemas:
-    """The schemas are the editor integration, so what they carry is a promise."""
+    """The schemas are the editor integration, so what they carry is a promise.
+
+    Everything here is checked against what ``ddd schema`` actually writes rather than against
+    the models, because the file is what an editor reads and the two are only the same for as
+    long as nothing between them drops anything.
+    """
 
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
         from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile
@@ -221,20 +269,27 @@ class TestPublishedSchemas:
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
 
-    @pytest.mark.parametrize("root", ["ComponentFile", "TypesFile"])
-    def test_every_authored_field_carries_hover_documentation(self, root: str) -> None:
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_every_schema_states_the_dialect_it_is_written_in(self, kind: str) -> None:
+        """A contract that does not say which dialect it speaks leaves a validator guessing."""
+        assert published(kind)["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_every_schema_is_titled_for_the_person_reading_it(self, kind: str) -> None:
+        """The title heads the hover, so it names the file format rather than a python class."""
+        title = published(kind)["title"]
+        assert title.startswith("DDD "), f"{kind} is titled {title!r}"
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_every_authored_field_carries_hover_documentation(self, kind: str) -> None:
         """A field without a description is a blank tooltip in every editor.
 
-        The discriminator ``kind`` is exempt: it is a fixed value per variant, so the value
-        itself is the documentation.
+        ``kind`` is exempt only where it is a fixed tag with nothing behind it: the ones that
+        select a data object are documented, and checked below.
         """
-        import ddd.models
-
-        model = getattr(ddd.models, root)
-        schema = model.model_json_schema(by_alias=True)
         undocumented = [
             f"{name}.{field}"
-            for name, definition in schema["$defs"].items()
+            for name, definition in objects_in(published(kind))
             for field, spec in definition.get("properties", {}).items()
             if "description" not in spec and field != "kind"
         ]
@@ -242,6 +297,147 @@ class TestPublishedSchemas:
             f"fields with a blank editor tooltip: {undocumented}. Add an attribute "
             f"docstring; use_attribute_docstrings carries it into the schema."
         )
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_every_enumerated_value_says_what_it_means(self, kind: str) -> None:
+        """A closed set of values is where hover documentation is worth the most.
+
+        Which datatype to pick, or what a curve is as against a value block, is exactly the
+        question an author has while typing - and the answer is already written under the
+        member of the enum, so failing to carry it here throws away documentation that exists.
+        """
+        for enumeration in enumerations_in(published(kind)):
+            values = enumeration["enum"]
+            documented = enumeration.get("enumDescriptions")
+            assert documented is not None, f"{values} is published with no per-value docs"
+            assert len(documented) == len(values), f"{values} and its docs are not parallel"
+            assert all(documented), f"{values} has a blank entry: {documented}"
+            for value, text in zip(values, documented, strict=True):
+                assert f"``{value}`` - {text}" in enumeration["description"], (
+                    f"the description of {values} does not spell out {value!r}; the two "
+                    f"spellings of the value documentation have come apart"
+                )
+
+    def test_every_kind_of_data_object_documents_its_own_tag(self) -> None:
+        """``kind`` decides the shape of the whole definition, so it is the worst blank hover."""
+        from ddd.models import ObjectKind
+
+        schema = published("component")
+        tagged = {
+            definition["properties"]["kind"]["const"]: definition["properties"]["kind"]
+            for definition in schema["$defs"].values()
+            if "const" in definition.get("properties", {}).get("kind", {})
+        }
+        for object_kind in ObjectKind:
+            assert object_kind.value in tagged, f"{object_kind.value} is not a variant"
+            assert tagged[object_kind.value].get("description"), (
+                f"'kind': '{object_kind.value}' hovers blank"
+            )
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_no_description_reaches_an_editor_as_markup_it_cannot_render(self, kind: str) -> None:
+        """The docstrings are written as rST for the api documentation; a schema shows markdown.
+
+        An interpreted role left in place arrives as the literal characters ``:class:`Foo```,
+        which is noise at best and, since it names something in the python sources, points a
+        reader at code they do not have.
+        """
+        offenders = [
+            text for text in descriptions_in(published(kind)) if re.search(r":\w+:`", text)
+        ]
+        assert not offenders, f"reStructuredText roles left in {kind}: {offenders}"
+
+    @pytest.mark.parametrize("kind", published_kinds())
+    def test_no_description_sends_the_reader_into_the_python_sources(self, kind: str) -> None:
+        """Whoever reads these writes json; a dotted module path is an answer to nobody."""
+        offenders = [text for text in descriptions_in(published(kind)) if "ddd.models" in text]
+        assert not offenders, f"{kind} refers the reader to python: {offenders}"
+
+
+class Undocumented(StrEnum):
+    """A set of values whose members say nothing about themselves.
+
+    Defined here rather than found in the sources, because every enum the product publishes is
+    documented - which is exactly what makes the path taken when one is not hard to reach.
+    """
+
+    RED = "red"
+    GREEN = "green"
+
+
+class PartlyDocumented(StrEnum):
+    """One member with a docstring under it and one without."""
+
+    KNOWN = "known"
+    """What this one is for."""
+
+    UNKNOWN = "unknown"
+
+
+class Tagged(BaseModel):
+    """A model over both, to see what a generator makes of them."""
+
+    shade: Undocumented
+    tag: Literal[Undocumented.RED] = Undocumented.RED
+
+
+class TestCarryingTheDocumentationAcross:
+    """The machinery behind :class:`PublishedSchema`, at the edges the contracts do not reach."""
+
+    @pytest.mark.parametrize(
+        ("written", "shown"),
+        [
+            (":class:`Limits`", "``Limits``"),
+            (":data:`~ddd.models.common.Identifier`", "``Identifier``"),
+            (":doc:`the project file <project>`", "``the project file``"),
+            (":doc:`<project>`", "``project``"),
+            ("nothing to do here", "nothing to do here"),
+        ],
+    )
+    def test_a_role_becomes_the_text_sphinx_would_have_shown(
+        self, written: str, shown: str
+    ) -> None:
+        from ddd.models.schema import as_markdown
+
+        assert as_markdown(written) == shown
+
+    def test_the_marker_of_an_rst_literal_block_does_not_reach_the_reader(self) -> None:
+        """In markdown the indent alone makes the block, so the ``::`` is just two characters."""
+        from ddd.models.schema import as_markdown
+
+        assert as_markdown("accepts this form::\n\n    {}\n") == "accepts this form:\n\n    {}\n"
+
+    def test_a_member_with_no_docstring_is_left_out(self) -> None:
+        from ddd.models.schema import value_documentation
+
+        assert value_documentation(PartlyDocumented) == {"known": "What this one is for."}
+
+    def test_annotated_assignments_are_read_as_well_as_plain_ones(self) -> None:
+        """Enum members are assigned, model fields are annotated; both carry a docstring."""
+        from ddd.models import Project
+        from ddd.models.schema import member_docstrings
+
+        assert "also the a2l project and module name" in member_docstrings(Project)["name"]
+
+    def test_a_class_with_no_readable_source_documents_nothing(self) -> None:
+        """A schema published without the per-value docs beats a schema not published at all."""
+        from ddd.models.schema import member_docstrings
+
+        assert member_docstrings(type("Built", (), {})) == {}
+
+    def test_something_that_is_not_a_class_documents_nothing(self) -> None:
+        from ddd.models.schema import member_docstrings
+
+        assert member_docstrings(commands) == {}  # type: ignore[arg-type]
+
+    def test_an_undocumented_set_of_values_is_published_as_pydantic_wrote_it(self) -> None:
+        """No half measure: silence is better than a dropdown that explains only some entries."""
+        from ddd.models.schema import PublishedSchema
+
+        schema = Tagged.model_json_schema(schema_generator=PublishedSchema)
+        assert schema["$defs"]["Undocumented"]["enum"] == ["red", "green"]
+        assert "enumDescriptions" not in schema["$defs"]["Undocumented"]
+        assert "description" not in schema["properties"]["tag"]
 
 
 class TestCommittedSchemas:

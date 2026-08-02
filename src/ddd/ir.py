@@ -34,34 +34,60 @@ class _Frozen(BaseModel):
 
 
 class ComponentDeclaration(_Frozen):
-    """One entry of a component interface, in the order the component declared it."""
+    """One entry of a component interface, in the order the component declared it.
+
+    A reference to an object rather than the object itself: the definition lives once, under
+    ``objects``, and is the one the producing component gave. Two components declaring the
+    same name appear here twice and in ``objects`` once.
+    """
 
     name: Identifier
+    """Name of the declared object; a key into the ``objects`` list of the dictionary."""
+
     scope: Scope
+    """How this component uses the object: ``input``, ``output`` or ``local``."""
+
     condition: str | None = None
+    """Preprocessor expression this component guarded the declaration with, if any."""
 
 
 class ResolvedComponent(_Frozen):
     """A component and the objects it declares."""
 
     name: Identifier
+    """Name of the component, unique within the project."""
+
     description: str = ""
+    """Free text from the component description, offered to the templates."""
+
     source: str = ""
     """Path of the description file, for reference in generated comments."""
 
     declarations: tuple[ComponentDeclaration, ...] = ()
+    """The interface of the component, in the order it declared it."""
 
 
 class ResolvedObject(_Frozen):
     """One data object, with every derived property already worked out."""
 
     name: Identifier
+    """Name of the object, unique across the whole project; its c and a2l identifier."""
+
     kind: ObjectKind
+    """Which sort of object this is, taken from the definition that produced it."""
+
     datatype: Datatype
+    """Storage type of one element."""
+
     description: str = ""
+    """What the object is; the a2l long identifier and the comment in the generated c."""
+
     unit: str = ""
+    """Physical unit, as the declaring components agreed on it."""
 
     conversion: Conversion
+    """Always present: the declared conversion, or the identity when none was given."""
+
     limits: Limits
     """Always present: the explicit limits, or the range the datatype and conversion imply."""
 
@@ -72,7 +98,11 @@ class ResolvedObject(_Frozen):
     """
 
     init: InitValue | None = None
+    """Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""
+
     volatile: bool = False
+    """Generate the variable ``volatile``; only ever true for a measurement."""
+
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""
 
@@ -83,6 +113,8 @@ class ResolvedObject(_Frozen):
     """Component owning the object; ``None`` only when the project is inconsistent."""
 
     consumers: tuple[str, ...] = ()
+    """Components declaring the object as an input, sorted; empty when nothing reads it."""
+
     local: bool = False
     """Owned exclusively by ``owner``; no other component may declare it."""
 
@@ -105,17 +137,35 @@ missing field. It changes only when the shape of the document changes, not with 
 
 
 class DataDictionary(_Frozen):
-    """The resolved data of one project."""
+    """The resolved data of one project.
+
+    What ``ddd dump`` writes and every backend reads. Unlike the description files, this one
+    is produced rather than authored: every derived property is already worked out, so a
+    consumer never has to repeat the resolution and two consumers can never disagree about it.
+    """
+
+    model_config = ConfigDict(title="DDD data dictionary")
 
     format: int = DICTIONARY_FORMAT
-    """Version of the document itself, see :data:`DICTIONARY_FORMAT`."""
+    """Version of this document format, raised only when the shape of the document changes.
+
+    Stamped so that a dictionary archived next to a delivery can be read back years later by
+    a version of DDD that can say "this file is newer than I understand" rather than misread
+    it. It does not follow the version of the tool.
+    """
 
     name: Identifier
+    """Name of the project, from the root project description."""
+
     description: str = ""
+    """Free text from the root project description."""
+
     source: str = ""
     """Name of the root description file, for reference in generated comments."""
 
     components: tuple[ResolvedComponent, ...] = ()
+    """Every component of the project, including those of its sub-projects."""
+
     objects: tuple[ResolvedObject, ...] = ()
     """Sorted by name, so that every backend produces a stable output."""
 

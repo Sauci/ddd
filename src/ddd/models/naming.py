@@ -31,7 +31,18 @@ class Token(_Frozen):
     """One allowed value of a segment, with what it stands for."""
 
     value: str = Field(min_length=1)
+    """The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.
+
+    It cannot contain whitespace, nor the separator of the convention: a name is split on the
+    separator before its parts are judged, so such a token could never match one.
+    """
+
     description: str = ""
+    """What the token stands for, shown when a name is explained and offered with completions.
+
+    This is where the vocabulary of a project is written down, so it is worth filling in: it
+    is what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.
+    """
 
     @model_validator(mode="after")
     def _no_whitespace_inside(self) -> Token:
@@ -57,17 +68,36 @@ class Segment(_Frozen):
     """What this position means, used in messages and in the explanation of a name."""
 
     description: str = ""
+    """What this position of a name is for, quoted when a name is missing it."""
+
     tokens: tuple[Token, ...] = ()
-    """The controlled vocabulary of this position; completions come from here."""
+    """The controlled vocabulary of this position; completions come from here.
+
+    Give either this or ``pattern``, never both: a position described twice has no single
+    answer to what belongs in it.
+    """
 
     pattern: str | None = None
-    """A regular expression for a free position, e.g. the descriptive part of a name."""
+    """A regular expression for a free position, e.g. the descriptive part of a name.
+
+    Python regular expression syntax, matched against one segment rather than the whole name.
+    A position given a pattern cannot be completed, only checked, which is the trade for
+    letting it hold something other than a fixed vocabulary.
+    """
 
     optional: bool = False
-    """A trailing position that a name may leave out."""
+    """A trailing position that a name may leave out.
+
+    Every optional position has to come after every required one, or a shorter name could not
+    be split unambiguously into its parts.
+    """
 
     repeatable: bool = False
-    """The position may be filled more than once, e.g. a multi word descriptive part."""
+    """The position may be filled more than once, e.g. a multi word descriptive part.
+
+    At most one position of a convention may be repeatable, for the same reason: two of them
+    would leave no way to tell which one a given part belongs to.
+    """
 
     @model_validator(mode="after")
     def _describes_something(self) -> Segment:
@@ -116,14 +146,19 @@ class NamingConvention(_Frozen):
     """The rules a variable name has to follow."""
 
     name: str = Field(min_length=1)
+    """Name of the convention, quoted in every finding it produces."""
+
     description: str = ""
+    """Free text describing what the convention is for and where it came from."""
 
     separator: str = Field(default="_", min_length=1)
     """What joins the segments; also what a name is split on."""
 
     segments: Annotated[tuple[Segment, ...], Field(min_length=1)]
+    """The positions of a name, in the order they appear, separated by ``separator``."""
 
     case_sensitive: bool = True
+    """Whether a token has to be matched exactly; set to ``false`` to accept any casing."""
 
     @model_validator(mode="after")
     def _optional_segments_come_last(self) -> NamingConvention:
@@ -172,6 +207,14 @@ class NamingConvention(_Frozen):
 
 
 class NamingFile(FileRoot):
-    """Root object of a ``*.ddd.json`` naming convention description."""
+    """Root object of a ``*.ddd.json`` naming convention description.
+
+    ``naming`` is the top level key that makes this a naming file rather than a project, a
+    component or a types file; DDD decides what a file is from that key alone, so exactly one
+    of the four appears here. A project reaches this file through its own ``naming`` key.
+    """
+
+    model_config = ConfigDict(title="DDD naming convention")
 
     naming: NamingConvention
+    """The convention this file describes; the key that identifies the file as a convention."""

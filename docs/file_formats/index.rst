@@ -130,6 +130,31 @@ is documented with the :doc:`data dictionary </data_dictionary>`. The closed obj
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.
 
+What the schema carries
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A schema that only states which files are valid would do half the job. These carry the
+documentation as well, because the moment somebody wants it is the moment they are typing the
+key, not the moment they go looking for this page:
+
+* every key has a ``description``, so nothing hovers blank;
+* every value of a closed set has one of its own. Hovering ``uint16`` says how much storage it
+  costs and which values fit in it, and hovering ``"kind": "curve"`` says what a curve is as
+  against a value block. The per-value text is published twice - spelled out in the
+  ``description`` of the key, which every editor shows, and repeated in ``enumDescriptions``,
+  the parallel array VS Code reads to document each entry of the completion dropdown;
+* the dialect is stated. Each file opens with
+  ``"$schema": "https://json-schema.org/draft/2020-12/schema"``, so no validator has to guess
+  which version of json schema it is reading.
+
+Some rules cannot be expressed as a constraint and are written into the description of the key
+they hang off instead: that a ``bits`` member needs a width and refuses ``dimensions``, that a
+segment of a naming convention takes either ``tokens`` or a ``pattern`` and not both, that a
+bitfield has to fit the datatype carrying it, that ``min`` cannot exceed ``max``. An editor
+therefore accepts a few files DDD will still reject. That is the deliberate trade: the schema
+is there to help a file get written, and ``ddd check`` remains what decides whether it is
+right.
+
 .. toctree::
    :maxdepth: 2
 

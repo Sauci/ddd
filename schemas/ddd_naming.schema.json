@@ -1,16 +1,19 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "NamingConvention": {
       "additionalProperties": false,
       "description": "The rules a variable name has to follow.",
       "properties": {
         "name": {
+          "description": "Name of the convention, quoted in every finding it produces.",
           "minLength": 1,
           "title": "Name",
           "type": "string"
         },
         "description": {
           "default": "",
+          "description": "Free text describing what the convention is for and where it came from.",
           "title": "Description",
           "type": "string"
         },
@@ -22,6 +25,7 @@
           "type": "string"
         },
         "segments": {
+          "description": "The positions of a name, in the order they appear, separated by ``separator``.",
           "items": {
             "$ref": "#/$defs/Segment"
           },
@@ -31,6 +35,7 @@
         },
         "case_sensitive": {
           "default": true,
+          "description": "Whether a token has to be matched exactly; set to ``false`` to accept any casing.",
           "title": "Case Sensitive",
           "type": "boolean"
         }
@@ -56,12 +61,13 @@
         },
         "description": {
           "default": "",
+          "description": "What this position of a name is for, quoted when a name is missing it.",
           "title": "Description",
           "type": "string"
         },
         "tokens": {
           "default": [],
-          "description": "The controlled vocabulary of this position; completions come from here.",
+          "description": "The controlled vocabulary of this position; completions come from here.\n\nGive either this or ``pattern``, never both: a position described twice has no single\nanswer to what belongs in it.",
           "items": {
             "$ref": "#/$defs/Token"
           },
@@ -78,18 +84,18 @@
             }
           ],
           "default": null,
-          "description": "A regular expression for a free position, e.g. the descriptive part of a name.",
+          "description": "A regular expression for a free position, e.g. the descriptive part of a name.\n\nPython regular expression syntax, matched against one segment rather than the whole name.\nA position given a pattern cannot be completed, only checked, which is the trade for\nletting it hold something other than a fixed vocabulary.",
           "title": "Pattern"
         },
         "optional": {
           "default": false,
-          "description": "A trailing position that a name may leave out.",
+          "description": "A trailing position that a name may leave out.\n\nEvery optional position has to come after every required one, or a shorter name could not\nbe split unambiguously into its parts.",
           "title": "Optional",
           "type": "boolean"
         },
         "repeatable": {
           "default": false,
-          "description": "The position may be filled more than once, e.g. a multi word descriptive part.",
+          "description": "The position may be filled more than once, e.g. a multi word descriptive part.\n\nAt most one position of a convention may be repeatable, for the same reason: two of them\nwould leave no way to tell which one a given part belongs to.",
           "title": "Repeatable",
           "type": "boolean"
         }
@@ -105,12 +111,14 @@
       "description": "One allowed value of a segment, with what it stands for.",
       "properties": {
         "value": {
+          "description": "The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.\n\nIt cannot contain whitespace, nor the separator of the convention: a name is split on the\nseparator before its parts are judged, so such a token could never match one.",
           "minLength": 1,
           "title": "Value",
           "type": "string"
         },
         "description": {
           "default": "",
+          "description": "What the token stands for, shown when a name is explained and offered with completions.\n\nThis is where the vocabulary of a project is written down, so it is worth filling in: it\nis what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.",
           "title": "Description",
           "type": "string"
         }
@@ -123,7 +131,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.ddd.json`` naming convention description.",
+  "description": "Root object of a ``*.ddd.json`` naming convention description.\n\n``naming`` is the top level key that makes this a naming file rather than a project, a\ncomponent or a types file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here. A project reaches this file through its own ``naming`` key.",
   "properties": {
     "$schema": {
       "anyOf": [
@@ -139,12 +147,13 @@
       "title": "$Schema"
     },
     "naming": {
-      "$ref": "#/$defs/NamingConvention"
+      "$ref": "#/$defs/NamingConvention",
+      "description": "The convention this file describes; the key that identifies the file as a convention."
     }
   },
   "required": [
     "naming"
   ],
-  "title": "NamingFile",
+  "title": "DDD naming convention",
   "type": "object"
 }

@@ -35,6 +35,46 @@ will be flattened into one a2l object per member rather than described as an a2l
 CANape 15 accepts the native `TYPEDEF_STRUCTURE` form and then displays nothing for it, which is
 recorded under "what the calibration tools actually implement" in the developer documentation.
 
+### `ddd lsp`: the checks, in the editor
+
+A language server, speaking the Language Server Protocol on stdin and stdout.  It reports the
+consistency checks while a description file is being written - which a json schema cannot do,
+being per file and static: whether an `axis` names a declared axis, whether exactly one
+component produces a name, whether two components agree on a unit, whether a name follows the
+convention.
+
+It navigates as well.  Go to definition on an `input` - or on an `axis`, `x_axis`, `y_axis` or
+`input` reference - lands on the declaration that writes it, in whichever component that turns
+out to be; find references lists every declaration of it.  The same works from a `type` to the
+structure it nests and back, and from an `includes` entry or a project's `naming` to the files
+they name, wildcards included.
+
+It reports on open and on save, and publishes for every file of a project rather than only the
+one on screen, because half of a disagreement is always in the other component.  Which project
+a file belongs to is read from the `ddd-build.json` below, so the editor applies the severities
+the build applies; a file no build claims is checked on its own with `missing-producer`
+silenced.  Editors that launch a server themselves need nothing further, and `-b DIR` points at
+an out-of-tree build.
+
+No new dependency: the protocol framing is a hundred lines and DDD still installs with
+pydantic and jinja2 alone.
+
+### `ddd build-info`, so a build can tell an editor what it does
+
+A new command, and a `ddd-build.json` that `ddd_generate()` now writes into its output
+directory at configure time.  It records the two things no description file can state: which
+project description this image is generated from, and the severity policy it is generated
+under.
+
+Without `PROJECT`, the project description is collected out of the c link graph and written
+into the build tree, so nothing in the source tree names it - which means a tool reading only
+`*.ddd.json` cannot work out which components belong together.  Nothing in the build reads the
+new file; it exists so that an editor can report what the build reports, the same bargain
+`SCHEMA_DIRECTORY` already makes for the json schemas.
+
+A `SEVERITY` naming a check that does not exist is now refused while the project is being
+configured, rather than when the build later runs the check.
+
 ### The published schemas carry their documentation
 
 `ddd schema` writes the same contract as before - nothing it publishes accepts or rejects a

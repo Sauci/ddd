@@ -89,6 +89,8 @@ class TestCommands:
             "list",
             "dump",
             "schema",
+            "build-info",
+            "lsp",
             "checks",
             "cmake-dir",
             "templates-dir",

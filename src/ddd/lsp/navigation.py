@@ -1,0 +1,177 @@
+"""Jumping between the places a project says the same name.
+
+This is the part of an editor that a json schema cannot approach at all. A schema sees one
+file; the interesting jumps all leave it. From a component's ``input`` to the ``output`` that
+produces it is a jump into a file the author may not know the name of, and it is the question
+they actually have: who writes this, and what did they say it was?
+
+Nothing is analysed here. The loader has already read every file of the project, and every
+loaded object knows where it came from - ``LoadedComponent.declaration_location`` gives the
+pointer of a declaration, ``LoadedType.location`` that of a structure. All that is missing is
+an index from a name to those places, which is what this module builds.
+
+What can be jumped from, and to:
+
+* a variable name, or a reference to one (``axis``, ``x_axis``, ``y_axis``, ``input``), goes
+  to the declaration that **produces** that variable - there is exactly one in a consistent
+  project, and where there is not, the ambiguity is worth seeing;
+* the same, asked as "find references", goes to **every** declaration of it;
+* a structure name goes to where the structure is declared, and its references to every
+  member that nests it;
+* an ``includes`` entry and a project's ``naming`` go to the file they name.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Final
+
+from ddd.build_info import BuildInfo
+from ddd.diagnostics import DiagnosticBag
+from ddd.loading import Workspace, load_workspace
+from ddd.lsp.ranges import Document, read
+
+VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
+"""Keys of a declaration whose value is the name of a data object.
+
+``name`` is in the list on purpose: from the name of an ``input``, the jump the author wants
+is to whoever writes it, which is exactly the jump a reference key makes.
+"""
+
+_DECLARATION: Final = "component.declarations["
+_TYPES: Final = "types["
+_INCLUDES: Final = "project.includes["
+_NAMING: Final = "project.naming"
+
+
+@dataclass(frozen=True, slots=True)
+class Site:
+    """Somewhere in the project an editor can be sent."""
+
+    path: Path
+    pointer: str
+
+
+@dataclass(frozen=True, slots=True)
+class Index:
+    """Where a project writes down each of the names it uses."""
+
+    producers: dict[str, list[Site]] = field(default_factory=dict)
+    """Name -> the declarations that write it. More than one is an inconsistent project."""
+
+    declarations: dict[str, list[Site]] = field(default_factory=dict)
+    """Name -> every declaration of it, whichever way round."""
+
+    types: dict[str, Site] = field(default_factory=dict)
+    """Structure name -> where it is declared."""
+
+    type_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Structure name -> every member that nests it."""
+
+
+def index(workspace: Workspace) -> Index:
+    """Read the positions out of an already loaded project."""
+    built = Index()
+    for loaded in workspace.components:
+        for position, declaration in enumerate(loaded.component.declarations):
+            location = loaded.declaration_location(position, "definition")
+            site = Site(location.path, location.pointer)
+            name = declaration.definition.name
+            built.declarations.setdefault(name, []).append(site)
+            if declaration.scope.is_producer:
+                built.producers.setdefault(name, []).append(site)
+    for entry in workspace.types:
+        built.types[entry.name] = Site(entry.path, entry.location().pointer)
+        for position, member in enumerate(entry.structure.members):
+            if member.type is not None:
+                where = entry.location(f"members[{position}].type")
+                built.type_uses.setdefault(member.type, []).append(Site(where.path, where.pointer))
+    return built
+
+
+def workspaces(builds: Sequence[BuildInfo], document: Path) -> list[Workspace]:
+    """The projects that contain a document, or the document read on its own.
+
+    Loaded per request rather than kept: a jump is something a person asks for, so the cost
+    lands on a keypress somebody chose to make, and never on a keystroke they did not.
+    """
+    found = []
+    for info in builds:
+        workspace = load_workspace(Path(info.project), DiagnosticBag())
+        if workspace is not None and document in workspace.sources():
+            found.append(workspace)
+    if not found:
+        alone = load_workspace(document, DiagnosticBag())
+        if alone is not None:
+            found.append(alone)
+    return found
+
+
+def definition(built: Index, document: Document, path: Path, pointer: str) -> list[Site]:
+    """Where the name under the cursor is defined."""
+    value = document.value_at(pointer)
+    if not isinstance(value, str):
+        return []
+    if pointer.startswith(_INCLUDES) or pointer == _NAMING:
+        return _files(path.parent, value)
+    if pointer.startswith(_TYPES):
+        found = built.types.get(value)
+        return [found] if found is not None else []
+    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
+        return list(built.producers.get(value, ()))
+    return []
+
+
+def references(built: Index, document: Document, pointer: str) -> list[Site]:
+    """Everywhere the name under the cursor is used.
+
+    The declaration is always among them. The protocol lets a client ask for the references
+    without it, but here the distinction has little to say: every declaration of a variable is
+    a use of it, and which one is "the" declaration is the question the jump above answers.
+    """
+    value = document.value_at(pointer)
+    if not isinstance(value, str):
+        return []
+    if pointer.startswith(_TYPES):
+        declared = built.types.get(value)
+        found = [declared] if declared is not None else []
+        return found + list(built.type_uses.get(value, ()))
+    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
+        return list(built.declarations.get(value, ()))
+    return []
+
+
+def locations(sites: Iterable[Site], cache: dict[Path, Document]) -> list[dict[str, Any]]:
+    """The sites as the protocol wants them, each one once and in a stable order."""
+    unique = {(site.path, site.pointer): site for site in sites}
+    return [
+        {"uri": site.path.as_uri(), "range": read(site.path, cache).range_of(site.pointer)}
+        for site in sorted(unique.values(), key=lambda site: (str(site.path), site.pointer))
+    ]
+
+
+def _files(base: Path, pattern: str) -> list[Site]:
+    """The files a path in a description names, relative to the file that names it.
+
+    Expanded rather than resolved, because an ``includes`` entry is a pattern:
+    ``components/*.ddd.json`` is the ordinary way to write one, and a jump that worked only
+    for the entries somebody had spelled out in full would miss the common case. A plain path
+    is a pattern that matches one file, so the two need no telling apart.
+    """
+    try:
+        matches = sorted(base.glob(pattern))
+    except (ValueError, NotImplementedError):
+        # An absolute pattern, or an empty one. Both are refusals from pathlib rather than
+        # answers, and NotImplementedError is not a ValueError, so both have to be named: a
+        # description file is somebody's input, and an unrelatable path in one must not take
+        # the editor's server down with it. The loader will have something to say about the
+        # file; the jump simply has nowhere to go.
+        return []
+    return [Site(found.resolve(), "") for found in matches if found.is_file()]
+
+
+def _key(pointer: str) -> str:
+    """The last named segment, which is the key whose value the cursor is on."""
+    return pointer.rsplit(".", 1)[-1]

@@ -27,6 +27,7 @@ from ddd.backends import (
     render,
     write,
 )
+from ddd.build_info import BuildInfo, build_info_text
 from ddd.compare import compare
 from ddd.diagnostics import (
     CHECKS,
@@ -183,6 +184,61 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_common_arguments(dump)
     dump.set_defaults(handler=_command_dump)
+
+    lsp = subparsers.add_parser(
+        "lsp",
+        help="run the language server, so an editor can report what a build reports",
+        description=(
+            "Speaks the Language Server Protocol on stdin and stdout. It reports the "
+            "consistency checks while a description file is being written, which a json "
+            "schema cannot do: whether an axis names a declared axis, whether exactly one "
+            "component produces a name, whether two components agree on a unit. Which "
+            "project a file belongs to is read from the 'ddd-build.json' that "
+            "ddd_generate writes, so the editor and the build apply the same severities."
+        ),
+    )
+    lsp.add_argument(
+        "-b",
+        "--build-directory",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="DIR",
+        help=(
+            "directory holding a build of this project; repeatable. Without it the usual "
+            "build directory names next to the workspace are searched"
+        ),
+    )
+    lsp.set_defaults(handler=_command_lsp)
+
+    build_info = subparsers.add_parser(
+        "build-info",
+        help="record how a build configured DDD, for an editor to pick up",
+        description=(
+            "Writes the project description a build runs DDD on, and the severity policy it "
+            "applies, into a small json file. A build system calls this at configure time so "
+            "that an editor can report what the build reports. The project description is "
+            "recorded rather than read: with CMake it is often generated later in the same "
+            "configure run, out of the link graph."
+        ),
+    )
+    build_info.add_argument("project", type=Path, help="project or component description file")
+    build_info.add_argument(
+        "-o", "--output", type=Path, required=True, help="file to write the result to"
+    )
+    build_info.add_argument("--image", default="", help="name of the build target this belongs to")
+    build_info.add_argument(
+        "-W",
+        "--severity",
+        action="append",
+        default=[],
+        metavar="CHECK=SEVERITY",
+        help="severity override the build applies; repeatable",
+    )
+    build_info.add_argument(
+        "--strict", action="store_true", help="the build reports warnings as errors"
+    )
+    build_info.set_defaults(handler=_command_build_info)
 
     schema = subparsers.add_parser(
         "schema",
@@ -518,6 +574,35 @@ def schema_text(kind: str) -> str:
         by_alias=True, schema_generator=PublishedSchema
     )
     return json.dumps(published, indent=2) + "\n"
+
+
+def _command_lsp(args: argparse.Namespace) -> int:
+    # Imported here rather than at the top of the module: the server pulls in the loader, the
+    # analysis and the range machinery, and every other command would pay for that import
+    # without ever using it.
+    from ddd.lsp.server import serve
+
+    return serve(args.build_directory)
+
+
+def _command_build_info(args: argparse.Namespace) -> int:
+    # Built rather than recorded blindly: a typo in a severity override would otherwise be
+    # copied into the file as a policy nobody can apply, and would surface at build time
+    # instead of here, while the project is being configured.
+    SeverityPolicy.from_strings(args.severity, strict=args.strict)
+    info = BuildInfo(
+        # Absolute, because whoever reads this file is not in the directory the build ran in.
+        project=args.project.resolve().as_posix(),
+        image=args.image,
+        strict=args.strict,
+        severity=tuple(args.severity),
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    # newline="" for the same reason the schemas use it: a file committed or compared across
+    # platforms must not differ by its line endings alone.
+    args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+    print(f"wrote {args.output.as_posix()}", file=sys.stderr)
+    return EXIT_OK
 
 
 def _write_schema(path: Path, kind: str) -> None:

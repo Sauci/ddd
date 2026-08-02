@@ -16,6 +16,7 @@ from conftest import (
     project,
     write_tree,
 )
+from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 
 
@@ -297,6 +298,79 @@ class TestSources:
     ) -> None:
         assert main(["sources", str(tmp_path / "absent.ddd.json")]) == EXIT_FINDINGS
         assert "does not exist" in capsys.readouterr().err
+
+
+class TestBuildInfo:
+    """What a build hands to an editor, so that both report the same project the same way.
+
+    The two things in it are the two a description file cannot state: which project the build
+    actually runs DDD on, and under which severity policy.
+    """
+
+    def test_it_records_the_project_and_the_policy(self, tmp_path: Path) -> None:
+        target = tmp_path / "ddd" / "firmware" / "ddd-build.json"
+        assert (
+            main(
+                [
+                    "build-info",
+                    str(DEMO),
+                    "-o",
+                    str(target),
+                    "--image",
+                    "firmware.elf",
+                    "-W",
+                    "unused-output=info",
+                    "--strict",
+                ]
+            )
+            == EXIT_OK
+        )
+        recorded = json.loads(target.read_text(encoding="utf-8"))
+        assert recorded["project"] == DEMO.resolve().as_posix()
+        assert recorded["image"] == "firmware.elf"
+        assert recorded["severity"] == ["unused-output=info"]
+        assert recorded["strict"] is True
+        assert recorded["format"] == BUILD_INFO_FORMAT
+
+    def test_the_recorded_project_is_absolute(self, tmp_path: Path) -> None:
+        """Whoever reads this file is not in the directory the build ran in."""
+        target = tmp_path / "ddd-build.json"
+        assert main(["build-info", str(DEMO), "-o", str(target)]) == EXIT_OK
+        recorded = json.loads(target.read_text(encoding="utf-8"))
+        assert Path(recorded["project"]).is_absolute()
+        # Everything else is optional, so a build that tunes nothing writes a usable file.
+        assert recorded["image"] == ""
+        assert recorded["severity"] == []
+        assert recorded["strict"] is False
+
+    def test_a_project_that_does_not_exist_yet_is_recorded_anyway(self, tmp_path: Path) -> None:
+        """The collected project description is written later in the same configure run.
+
+        ``file(GENERATE)`` runs at the end of a cmake configure, after the ``execute_process``
+        that writes this file, so refusing to name a file that is not there yet would fail
+        every first configure of every project that lets cmake collect its components.
+        """
+        target = tmp_path / "ddd-build.json"
+        absent = tmp_path / "build" / "firmware.ddd.json"
+        assert main(["build-info", str(absent), "-o", str(target)]) == EXIT_OK
+        assert json.loads(target.read_text(encoding="utf-8"))["project"] == absent.as_posix()
+
+    def test_a_severity_override_naming_no_check_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """At configure time, where the typo is, rather than at build time where it lands."""
+        target = tmp_path / "ddd-build.json"
+        assert main(["build-info", str(DEMO), "-o", str(target), "-W", "nonsense=info"]) == (
+            EXIT_USAGE
+        )
+        assert "unknown check 'nonsense'" in capsys.readouterr().err
+        assert not target.exists()
+
+    def test_it_is_not_named_like_a_description_file(self) -> None:
+        """``*.ddd.json`` means "a DDD description file", and this is a document about one."""
+        from ddd.build_info import BUILD_INFO_FILENAME
+
+        assert not BUILD_INFO_FILENAME.endswith(".ddd.json")
 
 
 class TestBaselineIsolation:

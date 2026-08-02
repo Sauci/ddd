@@ -119,6 +119,36 @@ kinds as dropdowns, and flags an unknown key while it is being typed rather than
 every value of a dropdown - `uint16` says how much storage it costs and which values fit in
 it, `"kind": "curve"` says what a curve is as against a value block.
 
+### The checks in the editor too
+
+A schema is per file and static, so there is a whole class of mistake it cannot see: that an
+`axis` names an axis no component declares, that two components disagree about a unit, that
+nobody produces an input, that a name does not follow the convention.  Those need the whole
+project resolved, which is what `ddd lsp` brings into the editor:
+
+```bash
+ddd lsp                      # speaks the Language Server Protocol on stdin and stdout
+```
+
+Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command;
+VS Code needs an extension to start it.  It reports on open and on save, and it publishes for
+**every** file of the project rather than only the one in front of you, because half of a
+disagreement is always in the other component.
+
+It also navigates, which is where a data dictionary stops being a pile of files:
+
+| from | go to definition | find references |
+| --- | --- | --- |
+| a variable name, or an `axis`, `x_axis`, `y_axis` or `input` naming one | the declaration that **writes** it, in whichever component that is | every declaration of it |
+| a structure name in a `type` | where the structure is declared | every member nesting it |
+| an `includes` entry or a project's `naming` | the file - wildcards land on every match | |
+
+Which project a file belongs to is not something the file can say, so the server reads the
+`ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
+the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
+directory names next to the workspace are searched.  A file no build claims is still checked,
+on its own, with `missing-producer` silenced - on its own, every input has no producer.
+
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:
 
@@ -521,6 +551,8 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
 | `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
+| `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
+| `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
 | `ddd checks` | list the checks and their default severity |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
@@ -590,6 +622,13 @@ needs no 3.30 and no `ddd_add_component`.
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image.
+
+A `ddd-build.json` is written into the output directory at configure time as well.  It names
+the project description this image is generated from and the severity policy it is generated
+under - the two things no `*.ddd.json` records, since without `PROJECT` the project
+description is collected out of the link graph and does not exist in the source tree at all.
+Nothing in the build reads it; it is there so that an editor can report what the build
+reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `ADDRESS_MAP`, `BYTE_ORDER`,

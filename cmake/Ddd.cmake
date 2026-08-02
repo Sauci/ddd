@@ -93,6 +93,32 @@ function(_ddd_write_schemas directory)
     message(STATUS "ddd_generate: wrote the json schemas into \"${directory}\".")
 endfunction()
 
+# Records how this build runs DDD - the project description in use and the severity policy applied to it - next to the
+# generated sources, so that an editor can report what the build reports. Neither is discoverable from the description
+# files: without PROJECT the project description is written into the build directory out of the link closure, so which
+# components belong together is a property of this build and nothing in the source tree names it at all.
+#
+# The same bargain as SCHEMA_DIRECTORY above: nothing in the build consumes this file, it exists so that a tool
+# outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so the
+# three cannot drift into applying different severities.
+#
+# Configure time, and the project description is named rather than read - without PROJECT it is produced by
+# file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
+function(_ddd_write_build_info directory image project_file options)
+    execute_process(COMMAND "${DDD_EXECUTABLE}" build-info "${project_file}"
+                            --output "${directory}/ddd-build.json" --image "${image}" ${options}
+                    RESULT_VARIABLE status
+                    ERROR_VARIABLE error
+                    OUTPUT_QUIET)
+    # Fatal rather than tolerant, unlike _ddd_project_sources: this reads nothing that might not be ready yet, so a
+    # failure means either that the tool is broken or that SEVERITY names a check that does not exist - and the
+    # second would fail the build a moment later anyway, with less to go on.
+    if(NOT status EQUAL 0)
+        message(FATAL_ERROR "ddd_generate: cannot record the build information in \"${directory}\" "
+                            "using \"${DDD_EXECUTABLE}\" (${status}): ${error}")
+    endif()
+endfunction()
+
 # The a2l is named after the project name *inside* the description, which is not necessarily what NAME says. Reading it
 # here keeps the declared OUTPUT and the file the tool actually writes in agreement - otherwise the build re-runs the
 # generator on every ninja invocation and DDD_A2L points at a file that never appears.
@@ -318,6 +344,8 @@ function(ddd_generate image)
     foreach(severity IN LISTS arg_SEVERITY)
         list(APPEND common_options -W ${severity})
     endforeach()
+
+    _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
 
     set(generate_options ${common_options})
     if(arg_CONST_INPUTS)

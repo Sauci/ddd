@@ -378,7 +378,10 @@ at least: checking a project, comparing two deliveries, generating the artefacts
 resolved data objects,
 writing out the data dictionary itself, validating and explaining names against the naming
 convention and completing partially typed ones, printing the json schema of the file formats
-and of the dictionary, listing the available checks, and reporting where its build system
+and of the dictionary, recording how a build is configured to run DDD (`ddd build-info`) so
+that a tool outside the build can apply the same project and the same severities, serving the
+checks to an editor over the Language Server Protocol (`ddd lsp`), listing the
+available checks, and reporting where its build system
 integration and its example templates live. Every command that reports findings can produce machine readable
 json, and the exit code distinguishes clean runs, findings and usage errors. A findings exit
 is reserved for findings reported *as errors*: a run whose findings are all warnings is a

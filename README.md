@@ -130,8 +130,15 @@ project resolved, which is what `ddd lsp` brings into the editor:
 ddd lsp                      # speaks the Language Server Protocol on stdin and stdout
 ```
 
-Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command;
-VS Code needs an extension to start it.  It reports on open and on save, and it publishes for
+Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
+VS Code cannot start one without an extension, so there is one in
+[editors/vscode](editors/vscode); it is a launcher and nothing more, which is why everything
+below works the same either way.  It is not on the marketplace: every release attaches a
+`ddd-<version>.vsix` to its [GitHub release](https://github.com/Sauci/ddd/releases), which
+installs with `code --install-extension ddd-<version>.vsix` or through **Install from VSIX…**
+in the Extensions view.
+
+The server reports on open and on save, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a
 disagreement is always in the other component.
 

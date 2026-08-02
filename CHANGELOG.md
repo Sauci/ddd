@@ -59,6 +59,15 @@ an out-of-tree build.
 No new dependency: the protocol framing is a hundred lines and DDD still installs with
 pydantic and jinja2 alone.
 
+A VS Code extension comes with it, in `editors/vscode`, because VS Code cannot start a language
+server without one.  It is a launcher and deliberately nothing more - two settings, one restart
+command - so an editor that starts servers itself needs none of it.
+
+It is **not published to the marketplace**.  Every release attaches a `ddd-<version>.vsix` to
+its GitHub release, installable with `code --install-extension ddd-<version>.vsix` or through
+"Install from VSIX…" in the Extensions view.  There is no automatic update for an extension
+that did not come from the marketplace, so reinstall it when you upgrade the python package.
+
 ### `ddd build-info`, so a build can tell an editor what it does
 
 A new command, and a `ddd-build.json` that `ddd_generate()` now writes into its output

@@ -130,6 +130,14 @@ class TestPackaging:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         assert metadata["project"]["version"] == __version__
 
+    def test_the_editor_extension_carries_the_same_version(self) -> None:
+        """The extension is a launcher for a server this package ships, so a version of its
+        own would be a second number to explain, and the one a user quotes in a bug report."""
+        manifest = json.loads(
+            (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
+        )
+        assert manifest["version"] == __version__
+
     def test_the_declared_license_file_exists(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         license_file = metadata["project"]["license"]["file"]

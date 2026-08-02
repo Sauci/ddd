@@ -1,0 +1,95 @@
+# DDD for VS Code
+
+Reports the DDD consistency checks while a `*.ddd.json` is being written, and navigates between
+the components that share a variable.
+
+## What it is, and what it is not
+
+This extension is a **launcher**. Everything you see comes from `ddd lsp`, the language server
+that ships with the DDD python package, and works the same in any editor that can start a
+language server - Neovim, Helix and Emacs need no extension at all. VS Code has no way to start
+one without an extension, which is the only reason this exists.
+
+So nothing here adds a feature, and nothing here should grow one that could be served from the
+server instead.
+
+## Installing it
+
+It is **not on the marketplace**. Every release attaches a `ddd-<version>.vsix` to its
+[GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link that needs
+no account. Download that file, then either:
+
+```bash
+code --install-extension ddd-0.2.0.vsix
+```
+
+or, in VS Code, open the Extensions view, use the `...` menu at the top of it and pick
+**Install from VSIX…**. Reinstalling the same way is how you update it; there is no automatic
+update for an extension that did not come from the marketplace, so it is worth reinstalling
+when you upgrade the python package.
+
+For a build that has not been released yet, the CI run of any commit uploads the same file as
+an artifact named `ddd-vscode-extension`. That one expires and does need a GitHub account, so
+it is for trying a change rather than for handing to anybody.
+
+## Requirements
+
+DDD itself, and on the PATH the editor sees:
+
+```bash
+pip install ddd-tool
+```
+
+If `ddd` is on the PATH of your terminal but not of your editor - a virtual environment,
+usually - set `ddd.executable` to its full path rather than fighting the PATH.
+
+The two versions should match. The extension is only a launcher, so a mismatch usually still
+works, but nothing checks it at runtime and a server older than the extension is the case
+nobody has tried.
+
+## What it gives you
+
+Findings appear on open and on save, for **every** file of the project rather than only the one
+on screen: half of a disagreement is always in the other component. What a json schema cannot
+see is exactly what this reports - that an `axis` names an axis nobody declares, that two
+components disagree about a unit, that nobody produces an input, that a name does not follow the
+project's convention.
+
+Go to definition on a variable name, or on an `axis`, `x_axis`, `y_axis` or `input` naming one,
+lands on the declaration that **writes** it. Find references lists every declaration of it. The
+same works from a `type` to the structure it nests, and from an `includes` entry or a project's
+`naming` to the files they name.
+
+The published json schemas keep working alongside this: they do structure, the server does
+meaning.
+
+## Settings
+
+| setting | what it does |
+| --- | --- |
+| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
+| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes. Empty searches the usual names next to the workspace |
+
+Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
+collects the project out of the link graph - so the server reads that build record and applies
+the same severities the build applies. A file no build claims is still checked, on its own.
+
+## Building it
+
+CI builds and tests this on every push and packages it on every release, so nobody has to
+build one to use it. To work on it you need node 20 and DDD installed:
+
+```bash
+npm ci
+npm test        # compiles, then runs the tests
+npm run package # writes ddd-<version>.vsix
+```
+
+It is not in the project's docker image on purpose: carrying a second toolchain there would
+cost everyone who only wants to compile c or build the documentation, and ci can put python
+and node side by side with two actions.
+
+The tests include one that starts the real server through the command this extension builds -
+`ddd lsp`, with the `-b` flags the settings produce. That is the half of the agreement neither
+side would otherwise notice breaking, which is why it needs DDD installed rather than only
+typescript compiled.

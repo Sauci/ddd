@@ -238,8 +238,17 @@ release, and if VS Code is the main audience it should be planned for rather tha
 1. **`ddd lsp` with diagnostics only.** Sidecar discovery, pointer → range, publish on save.
    This is the whole reason to do it and it is testable end to end.
 2. **Go to definition and find references.** No new analysis, only location plumbing.
-3. **Minimal VS Code extension**, if that audience needs it. Nothing before this point
-   requires it for editors that launch a server themselves.
+3. **Minimal VS Code extension** - **done**, in `editors/vscode`. A launcher and nothing more:
+   two settings, one restart command, no status bar and no views, so that whether the extras
+   are wanted can be decided after seeing the plain thing used.
+
+   Two decisions came out of building it. It is **not published to the marketplace** - every
+   release attaches a `.vsix`, which for a commercial tool is a normal channel and costs no
+   publisher account or public cadence. And it is **not in the docker image**: ci puts python
+   and node side by side with two actions, where a second toolchain in the image would be paid
+   for by everyone who only wants to compile c. The price of that is that the one test worth
+   having - which starts the real server through the command the extension builds - runs in ci
+   rather than locally.
 4. **Completion and hover.** Where convention-driven name completion lands.
 5. **Rename and quick fixes.**
 

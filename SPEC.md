@@ -245,6 +245,9 @@ Errors:
   them defers to the producer rather than disagreeing with it
 * `duplicate-declaration` - a component declares the same variable more than once
 * `duplicate-component` - two files declare the same component name
+* `duplicate-type` - two files declare the same structured datatype name
+* `unknown-type`, `type-cycle` - a structure member nests a structure that does not exist, or
+  structures nest each other so that neither has a size
 * `enum-conflict` - one enum name is used with different enumerators
 * `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
 * `unknown-reference`, `reference-kind` - a curve, map or axis refers to an object that does not exist or has the wrong kind

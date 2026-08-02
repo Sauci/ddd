@@ -39,9 +39,10 @@ What kind of file this is
 
 DDD does not ask the file name what a file contains; the **top level key** decides. A file
 whose top level key is ``project`` is a :doc:`project description <project>`, one whose top
-level key is ``component`` is a :doc:`component description <component>`, and one whose top
-level key is ``naming`` is a :doc:`naming convention </naming_conventions>`. Nothing else
-appears at that level, and a file has to carry exactly one of them.
+level key is ``component`` is a :doc:`component description <component>`, one whose top level
+key is ``types`` is a :doc:`structured datatype description <types>`, and one whose top level
+key is ``naming`` is a :doc:`naming convention </naming_conventions>`. Nothing else appears at
+that level, and a file has to carry exactly one of them.
 
 Detecting the kind from the content rather than from the path is what lets ``includes`` name
 components and sub-projects in the same list, and what lets ``ddd check`` be pointed at either
@@ -53,11 +54,11 @@ the message, because the usual cause is a file that was never meant for DDD at a
 .. code-block:: text
 
    $ ddd check both.ddd.json
-   both.ddd.json: error[file-kind]: file has both a 'project' and a 'component' key; it must have exactly one
+   both.ddd.json: error[file-kind]: file has 'project' and 'component' at the top level; it must have exactly one
    1 error
 
    $ ddd check neither.ddd.json
-   neither.ddd.json: error[file-kind]: missing top level key 'project' or 'component' (found: components, version)
+   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types' (found: components, version)
    1 error
 
 Unknown keys are rejected
@@ -113,6 +114,7 @@ validate the files without running DDD at all:
 
    ddd schema project      # the project description
    ddd schema component    # the component description, and every kind of data object in it
+   ddd schema types        # the structured datatype description
    ddd schema naming       # the naming convention
    ddd schema dictionary   # the resolved data dictionary, the contract the backends consume
 
@@ -123,7 +125,7 @@ validate the files without running DDD at all:
    $ ddd schema project -o project.schema.json
    wrote project.schema.json
 
-The first three describe the files you write; the fourth describes what DDD makes of them and
+The first four describe the files you write; the last describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.
@@ -135,3 +137,4 @@ rejects a misspelled key at the moment it is typed rather than at the next build
    component
    variable_definition
    conversions
+   types

@@ -208,6 +208,21 @@ Software component description
 
 .. autopydantic_model:: ddd.models.Declaration
 
+Structured datatype description
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :doc:`types file <file_formats/types>`. A member states which shape it has and carries only
+the keys that shape needs; what it never carries is a bit position or an offset, because c leaves
+both to the compiler.
+
+.. autopydantic_model:: ddd.models.TypesFile
+
+.. autopydantic_model:: ddd.models.StructType
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.Member
+   :field-show-constraints: False
+
 Data objects
 ~~~~~~~~~~~~
 

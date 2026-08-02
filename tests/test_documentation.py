@@ -215,21 +215,23 @@ class TestPublishedSchemas:
     """The schemas are the editor integration, so what they carry is a promise."""
 
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
-        from ddd.models import ComponentFile, NamingFile, ProjectFile
+        from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile
 
-        for model in (ProjectFile, ComponentFile, NamingFile):
+        for model in (ProjectFile, ComponentFile, NamingFile, TypesFile):
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
 
-    def test_every_authored_field_carries_hover_documentation(self) -> None:
+    @pytest.mark.parametrize("root", ["ComponentFile", "TypesFile"])
+    def test_every_authored_field_carries_hover_documentation(self, root: str) -> None:
         """A field without a description is a blank tooltip in every editor.
 
         The discriminator ``kind`` is exempt: it is a fixed value per variant, so the value
         itself is the documentation.
         """
-        from ddd.models import ComponentFile
+        import ddd.models
 
-        schema = ComponentFile.model_json_schema(by_alias=True)
+        model = getattr(ddd.models, root)
+        schema = model.model_json_schema(by_alias=True)
         undocumented = [
             f"{name}.{field}"
             for name, definition in schema["$defs"].items()
@@ -273,7 +275,9 @@ class TestCommittedSchemas:
             target = (path.parent / reference).resolve()
             assert target.is_file(), f"{path.name} points at {reference}, which does not exist"
             # and it points at the schema of the kind it actually is
-            kind = next(key for key in ("project", "component", "naming") if key in document)
+            kind = next(
+                key for key in ("project", "component", "naming", "types") if key in document
+            )
             assert target.name == f"ddd_{kind}.schema.json", (
                 f"{path.name} is a {kind} file but points at {target.name}"
             )

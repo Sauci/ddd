@@ -51,6 +51,7 @@ down should be read after a DDD upgrade:
    include-cycle          error    projects include each other recursively (fixed)
    include-empty          error    an include pattern matches no file
    duplicate-component    error    two different files declare the same component name
+   duplicate-type         error    two different files declare the same structured datatype name
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -277,6 +278,22 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - two different files declare a component of the same name. Component names have to be
        unique: each component gets a generated header named after it.
+   * - ``duplicate-type``
+     - error
+     - two different files declare a structured datatype of the same name. Which of two
+       layouts the generated c would get is not something an include order should decide, so
+       the second is refused rather than allowed to win.
+   * - ``unknown-type``
+     - error
+     - a structure member nests a structured datatype that no file of the project declares. It
+       is refused rather than skipped, because a member of unknown size makes every offset
+       after it in the enclosing structure wrong, and wrong offsets are addresses that point
+       at the wrong bytes without anything looking broken.
+   * - ``type-cycle``
+     - error
+     - structured datatypes nest each other, directly or through others. The finding names the
+       chain, ``A -> B -> C -> A``, because that says which member to remove; a structure that
+       contains itself has no size at all.
    * - ``reserved-identifier``
      - error
      - a component, variable, enum or enumerator name is a c keyword, or is declared by one of

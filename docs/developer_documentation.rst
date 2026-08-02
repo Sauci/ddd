@@ -190,6 +190,36 @@ tool, since it is what ``-W`` and ``--strict`` address and what a ci job matches
 marked ``overridable=False`` are the ones after which nothing further can be said about the
 file at all, and every other check has to survive being set to ``ignore``.
 
+What the calibration tools actually implement
+---------------------------------------------
+
+Structured data can be written into an a2l two ways, and the choice is not a matter of taste.
+ASAP2 has a typedef family - ``TYPEDEF_STRUCTURE``, ``STRUCTURE_COMPONENT``, ``INSTANCE`` - that
+describes a structure once and instantiates it, which is the obvious fit for a project with
+twenty instances of one type. The alternative is to flatten: one ordinary object per leaf, named
+after the path to it, at the address of the instance plus the offset of the member.
+
+The native form was tested against **CANape 15** before any of it was built, with hand written
+a2l files, and it is not usable there:
+
+* ``ASAP2_VERSION 1 71`` is **refused outright** - ``unknown ASAP2 version 1.71`` - so the
+  version DDD declares cannot simply be raised. ``1 70`` is accepted.
+* at ``1 61`` and ``1 70`` a file containing a ``TYPEDEF_STRUCTURE`` and two ``INSTANCE`` of it
+  **loads without a warning and contains no objects at all**. Loading is not evidence of support.
+* the grammar does know the keyword: a ``SYMBOL_TYPE_LINK`` inside the structure is a syntax
+  error on its own line, not on the enclosing block, so the body is being parsed and validated.
+  It accepts the shape and exposes nothing for it.
+* a ``GROUP`` referencing members through their instance loads, and is **empty**.
+
+So the a2l flattens, and two further constraints come out of the same exercise. Do not emit
+``ASAP2_VERSION 1 71``, since ``1 61`` carries everything a flattened structure needs. And do not
+rely on a tool to report a bad reference: CANape silently dropped one it could not resolve, which
+means a mistake in a generated name costs an object with no diagnostic anywhere, and the burden
+of catching it sits here.
+
+INCA has not been tested. Since it is generally the more conservative of the two, flattening is
+what a project targeting both can rely on.
+
 The coverage gate
 -----------------
 

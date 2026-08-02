@@ -1,0 +1,204 @@
+{
+  "$defs": {
+    "Datatype": {
+      "description": "The base datatypes DDD can allocate storage for.",
+      "enum": [
+        "boolean",
+        "uint8",
+        "sint8",
+        "uint16",
+        "sint16",
+        "uint32",
+        "sint32",
+        "uint64",
+        "sint64",
+        "float32",
+        "float64"
+      ],
+      "title": "Datatype",
+      "type": "string"
+    },
+    "Member": {
+      "additionalProperties": false,
+      "description": "One member of a structure, in the order the structure declares it.\n\nOrder is significant: it is the order the c struct is generated in, and therefore the order\nthe compiler lays out.  Reordering members of a released structure moves every address after\nthe change, which is why a comparison against a baseline reports it.",
+      "properties": {
+        "name": {
+          "description": "Name of the member, unique within its structure.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "member": {
+          "$ref": "#/$defs/MemberKind",
+          "description": "Which shape this member has: ``value``, ``bits`` or ``struct``."
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing the member, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the member is measured or calibrated; required unless it is a nested structure."
+        },
+        "datatype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storage of a ``value`` or ``bits`` member."
+        },
+        "dimensions": {
+          "default": [],
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "bits": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Width of a ``bits`` member, in bits.",
+          "title": "Bits"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the structure a ``struct`` member nests.\n\nNot an :data:`~ddd.models.common.Identifier` at this level on purpose: an unresolvable or\nmalformed name is reported against the structure that refers to it, with a location, rather\nthan as a pattern violation on a key the author cannot see the context of.",
+          "title": "Type"
+        }
+      },
+      "required": [
+        "name",
+        "member"
+      ],
+      "title": "Member",
+      "type": "object"
+    },
+    "MemberKind": {
+      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.",
+      "enum": [
+        "value",
+        "bits",
+        "struct"
+      ],
+      "title": "MemberKind",
+      "type": "string"
+    },
+    "ObjectKind": {
+      "description": "What sort of data object a definition describes.",
+      "enum": [
+        "measurement",
+        "parameter",
+        "value_block",
+        "curve",
+        "map",
+        "axis"
+      ],
+      "title": "ObjectKind",
+      "type": "string"
+    },
+    "StructType": {
+      "additionalProperties": false,
+      "description": "One structured datatype.",
+      "properties": {
+        "name": {
+          "description": "Name of the structure; every structure of a project needs a distinct one.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing the structure, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "members": {
+          "description": "The members, in the order they are laid out.",
+          "items": {
+            "$ref": "#/$defs/Member"
+          },
+          "minItems": 1,
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "members"
+      ],
+      "title": "StructType",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.ddd.json`` structured datatype description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "types": {
+      "description": "The structures this file declares.",
+      "items": {
+        "$ref": "#/$defs/StructType"
+      },
+      "minItems": 1,
+      "title": "Types",
+      "type": "array"
+    }
+  },
+  "required": [
+    "types"
+  ],
+  "title": "TypesFile",
+  "type": "object"
+}

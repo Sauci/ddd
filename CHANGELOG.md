@@ -8,6 +8,33 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
+## Unreleased
+
+### Structured datatypes, first part
+
+A new description file kind, `types`, declares structures that a project shares between its
+components.  A member is a `value` (a datatype, optionally an array), a `bits` (a c bitfield) or
+a `struct` (another declared structure), and each shape carries only the keys it needs:
+
+```json
+{ "types": [ { "name": "Status_t", "members": [
+  { "name": "ready", "member": "bits", "kind": "measurement", "datatype": "uint16", "bits": 1 }
+] } ] }
+```
+
+The file is listed in the `includes` of a project, `ddd schema types` publishes its schema, and
+`examples/structures` is a working one.  Three checks come with it: `duplicate-type`,
+`unknown-type` and `type-cycle`.
+
+A member states no bit position and no offset, and never will: c leaves both to the compiler, so
+DDD will read the real layout back out of the build rather than predict it.
+
+**Not yet available**: referring to a structure from a component declaration, so no variable has
+one yet, and nothing structured reaches the generated c or the a2l.  When it does, a structure
+will be flattened into one a2l object per member rather than described as an a2l structure -
+CANape 15 accepts the native `TYPEDEF_STRUCTURE` form and then displays nothing for it, which is
+recorded under "what the calibration tools actually implement" in the developer documentation.
+
 ## 0.2.0
 
 Breaking changes to the description file format and to `ddd generate`.  Migrating an existing

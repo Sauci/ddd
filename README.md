@@ -269,6 +269,9 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
+| error | `duplicate-type` | two files declare the same structured datatype name |
+| error | `unknown-type` | a structure member nests a structure nobody declares |
+| error | `type-cycle` | structures nest each other, so neither has a size |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |

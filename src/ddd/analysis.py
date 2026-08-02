@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import ComponentDeclaration, DataDictionary, ResolvedComponent, ResolvedObject
-from ddd.loading import LoadedComponent, Workspace
+from ddd.loading import LoadedComponent, LoadedType, Workspace
 from ddd.models import (
     Axis,
     Curve,
@@ -249,6 +249,36 @@ def analyze(workspace: Workspace, bag: DiagnosticBag) -> DataDictionary:
     return _Analysis(workspace, bag).run()
 
 
+def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ...]:
+    """The chain of nested structures leading from ``start`` back to a name already on it.
+
+    Returns the cycle itself rather than a bare yes, because the chain is the only useful part
+    of the finding: ``A -> B -> C -> A`` says which member to remove, where "A is recursive"
+    leaves the reader to work out how.
+    """
+    chain: list[str] = []
+
+    def walk(name: str) -> tuple[str, ...]:
+        if name in chain:
+            return (*chain[chain.index(name) :], name)
+        entry = declared.get(name)
+        if entry is None:
+            # An undeclared structure has no members to follow; it is reported as unknown-type.
+            return ()
+        chain.append(name)
+        for member in entry.structure.members:
+            nested = member.type
+            if nested is None:
+                continue
+            found = walk(nested)
+            if found:
+                return found
+        chain.pop()
+        return ()
+
+    return walk(start)
+
+
 def _resolve_component(loaded: LoadedComponent) -> ResolvedComponent:
     """The component and its interface, in the order the author wrote it."""
     seen: set[str] = set()
@@ -290,6 +320,7 @@ class _Analysis:
 
     def run(self) -> DataDictionary:
         workspace = self._workspace
+        self._check_types()
         self._check_component_names()
         for loaded in workspace.components:
             self._collect_component(loaded)
@@ -329,6 +360,45 @@ class _Analysis:
             objects=tuple(variable.resolve() for variable in variables),
             enums=tuple(enum for enum, _ in (known[key] for key in sorted(known))),
         )
+
+    def _check_types(self) -> None:
+        """Every nested structure is declared, and no structure contains itself.
+
+        Both are refused rather than resolved as far as possible. A member whose structure is
+        unknown has no size, so every offset after it in the enclosing structure would be wrong
+        and the generated addresses would silently point at the wrong bytes; a structure that
+        contains itself has no size at all.
+        """
+        declared = {entry.name: entry for entry in self._workspace.types}
+        for entry in self._workspace.types:
+            for index, member in enumerate(entry.structure.members):
+                nested = member.type
+                if nested is None:
+                    continue
+                if nested not in declared:
+                    self._bag.add(
+                        "unknown-type",
+                        f"member '{member.name}' nests structured datatype '{nested}', which no "
+                        f"file of this project declares",
+                        entry.location(f"members[{index}]"),
+                    )
+
+        # Keyed on the participants of the cycle rather than on the structure the walk started
+        # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
+        # and keying on the start would report it once per route into it.
+        reported: set[frozenset[str]] = set()
+        for entry in self._workspace.types:
+            cycle = _nesting_cycle(entry.name, declared)
+            if not cycle or frozenset(cycle) in reported:
+                continue
+            reported.add(frozenset(cycle))
+            # At the structure the cycle closes on rather than the one the walk started from,
+            # for the same reason.
+            self._bag.add(
+                "type-cycle",
+                f"structured datatypes nest each other: {' -> '.join(cycle)}",
+                declared[cycle[0]].location(),
+            )
 
     def _check_component_names(self) -> None:
         """Component names that differ only in case cannot both be generated.

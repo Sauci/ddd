@@ -20,6 +20,8 @@ from ddd.models import (
     NamingFile,
     Project,
     ProjectFile,
+    StructType,
+    TypesFile,
     discriminator_tags,
 )
 
@@ -32,6 +34,13 @@ scripts and editors match them with a single pattern.
 """
 
 _GLOB_CHARACTERS = frozenset("*?[")
+
+FILE_KINDS = ("project", "component", "types")
+"""Top level keys that identify a description file, in the order they are offered.
+
+A naming convention is not among them: it is pointed at by the ``naming`` key of a project
+rather than included, and is reported separately when it turns up in ``includes``.
+"""
 
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
@@ -85,6 +94,31 @@ class LoadedProject:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedType:
+    """One structured datatype together with where it was declared.
+
+    One per structure rather than one per file, because everything downstream refers to a
+    structure by name and a finding about it has to point at the entry that declared it.
+    """
+
+    path: Path
+    index: int
+    """Position in the ``types`` list of its file, which is what the location points at."""
+
+    structure: StructType
+
+    @property
+    def name(self) -> str:
+        return self.structure.name
+
+    def location(self, suffix: str = "") -> Location:
+        pointer = f"types[{self.index}]"
+        if suffix:
+            pointer = f"{pointer}.{suffix}"
+        return Location(self.path, pointer)
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -93,6 +127,14 @@ class Workspace:
     description: str
     components: tuple[LoadedComponent, ...]
     projects: tuple[LoadedProject, ...]
+    types: tuple[LoadedType, ...] = ()
+    """The structured datatypes the project declares, sorted by name.
+
+    Sorted rather than in include order so that a project produces the same output whichever
+    way its ``includes`` happen to expand; the order of *members* inside a structure is the
+    author's and is preserved, because that one decides the layout.
+    """
+
     naming: NamingConvention | None = None
     """The convention the root project points at, if it points at one."""
 
@@ -199,6 +241,7 @@ class _Loader:
         self._components: list[LoadedComponent] = []
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
+        self._types_by_name: dict[str, LoadedType] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
 
@@ -210,6 +253,18 @@ class _Loader:
         self._check_extension(root)
         kind = self._detect_kind(root, data)
         if kind is None:
+            return None
+
+        if kind == "types":
+            # Same reasoning as a naming convention handed in directly: a structure is not a
+            # project, so there is nothing to resolve or generate from it on its own. Validating
+            # it against the published schema is what an editor is for.
+            self._bag.add(
+                "file-kind",
+                "this is a structured datatype description; list it in the 'includes' of the "
+                "project that uses it instead of analysing it on its own",
+                Location(root),
+            )
             return None
 
         if kind == "component":
@@ -235,6 +290,7 @@ class _Loader:
             description=project.project.description,
             components=tuple(self._components),
             projects=tuple(self._projects),
+            types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             naming=load_convention(naming_path, self._bag) if naming_path else None,
             naming_path=naming_path,
             read_paths=tuple(sorted(self._read_paths)),
@@ -291,19 +347,17 @@ class _Loader:
             )
 
     def _detect_kind(self, path: Path, data: dict[str, Any]) -> str | None:
-        has_project = "project" in data
-        has_component = "component" in data
-        if has_project and has_component:
+        present = [key for key in FILE_KINDS if key in data]
+        if len(present) > 1:
+            listed = " and ".join(f"'{key}'" for key in present)
             self._bag.add(
                 "file-kind",
-                "file has both a 'project' and a 'component' key; it must have exactly one",
+                f"file has {listed} at the top level; it must have exactly one",
                 Location(path),
             )
             return None
-        if has_project:
-            return "project"
-        if has_component:
-            return "component"
+        if present:
+            return present[0]
         if "naming" in data:
             self._bag.add(
                 "file-kind",
@@ -313,9 +367,10 @@ class _Loader:
             )
             return None
         keys = ", ".join(sorted(data)) or "none"
+        offered = ", ".join(f"'{kind}'" for kind in FILE_KINDS)
         self._bag.add(
             "file-kind",
-            f"missing top level key 'project' or 'component' (found: {keys})",
+            f"missing top level key, one of {offered} (found: {keys})",
             Location(path),
         )
         return None
@@ -342,6 +397,32 @@ class _Loader:
         self._components_by_name[loaded.name] = loaded
         self._components.append(loaded)
         return loaded
+
+    def _load_types(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a structured datatype description and register what it declares.
+
+        A structure is registered under its name, so the second file to declare ``Engine_t``
+        is refused rather than quietly winning or losing: which of two layouts the generated c
+        would get is not something an include order should decide.
+        """
+        try:
+            model = TypesFile.model_validate(data)
+        except ValidationError as error:
+            self._report_validation_error(path, error)
+            return
+
+        for index, structure in enumerate(model.types):
+            loaded = LoadedType(path=path, index=index, structure=structure)
+            previous = self._types_by_name.get(loaded.name)
+            if previous is not None:
+                self._bag.add(
+                    "duplicate-type",
+                    f"structured datatype '{loaded.name}' is declared twice",
+                    loaded.location(),
+                    notes=[("first declared here", previous.location())],
+                )
+                continue
+            self._types_by_name[loaded.name] = loaded
 
     def _load_project(
         self,
@@ -427,6 +508,8 @@ class _Loader:
             self._load_component(path, data, parents)
         elif kind == "project":
             self._load_project(path, data, parents, stack)
+        elif kind == "types":
+            self._load_types(path, data)
 
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)

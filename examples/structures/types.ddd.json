@@ -1,0 +1,88 @@
+{
+  "$schema": "../../schemas/ddd_types.schema.json",
+  "types": [
+    {
+      "name": "Sample_t",
+      "description": "One reading and the instant it was taken",
+      "members": [
+        {
+          "name": "value",
+          "member": "value",
+          "kind": "measurement",
+          "description": "The reading itself",
+          "datatype": "uint16"
+        },
+        {
+          "name": "timestamp",
+          "member": "value",
+          "kind": "measurement",
+          "description": "Milliseconds since the last reset",
+          "datatype": "uint32"
+        }
+      ]
+    },
+    {
+      "name": "Status_t",
+      "description": "Flags packed into one word, as c bitfields",
+      "members": [
+        {
+          "name": "ready",
+          "member": "bits",
+          "kind": "measurement",
+          "description": "Set once the sensor has produced a first reading",
+          "datatype": "uint16",
+          "bits": 1
+        },
+        {
+          "name": "mode",
+          "member": "bits",
+          "kind": "measurement",
+          "description": "Which of the three operating modes is active",
+          "datatype": "uint16",
+          "bits": 2
+        },
+        {
+          "name": "faultCount",
+          "member": "bits",
+          "kind": "measurement",
+          "description": "Faults seen since the last reset, saturating",
+          "datatype": "uint16",
+          "bits": 4
+        }
+      ]
+    },
+    {
+      "name": "Sensor_t",
+      "description": "Everything one sensor exposes: readings, status and one limit to calibrate",
+      "members": [
+        {
+          "name": "latest",
+          "member": "struct",
+          "description": "The most recent reading",
+          "type": "Sample_t"
+        },
+        {
+          "name": "status",
+          "member": "struct",
+          "description": "The flags of this sensor",
+          "type": "Status_t"
+        },
+        {
+          "name": "history",
+          "member": "value",
+          "kind": "measurement",
+          "description": "The last eight readings, oldest first",
+          "datatype": "uint16",
+          "dimensions": [8]
+        },
+        {
+          "name": "warnLimit",
+          "member": "value",
+          "kind": "parameter",
+          "description": "Reading above which the sensor reports a fault",
+          "datatype": "uint16"
+        }
+      ]
+    }
+  ]
+}

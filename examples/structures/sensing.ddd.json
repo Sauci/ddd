@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Sensing",
+    "description": "Produces the readings the structured datatypes describe",
+    "declarations": [
+      {
+        "scope": "local",
+        "definition": {
+          "name": "InletTemperature",
+          "kind": "measurement",
+          "description": "Conditioned inlet reading",
+          "datatype": "uint16",
+          "unit": "degC",
+          "conversion": { "factor": 0.1, "offset": -40 }
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "SampleCount",
+          "kind": "measurement",
+          "description": "Readings taken since the last reset",
+          "datatype": "uint32"
+        }
+      }
+    ]
+  }
+}

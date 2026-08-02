@@ -40,12 +40,22 @@ from ddd.models.objects import (
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
+from ddd.models.types import (
+    BITS_PER_BYTE,
+    MEMBER_OBJECT_KINDS,
+    Member,
+    MemberKind,
+    StructType,
+    TypesFile,
+)
 
 __all__ = [
+    "BITS_PER_BYTE",
     "C_IDENTIFIER_PATTERN",
     "C_KEYWORDS",
     "IDENTIFIER_MAX_LENGTH",
     "IDENTITY",
+    "MEMBER_OBJECT_KINDS",
     "A2lObjectOptions",
     "AnyDataObject",
     "Axis",
@@ -66,6 +76,8 @@ __all__ = [
     "LinearConversion",
     "Map",
     "Measurement",
+    "Member",
+    "MemberKind",
     "NamingConvention",
     "NamingFile",
     "ObjectKind",
@@ -75,7 +87,9 @@ __all__ = [
     "Scope",
     "Segment",
     "Shape",
+    "StructType",
     "Token",
+    "TypesFile",
     "ValueBlock",
     "broadcast",
     "check_shape",

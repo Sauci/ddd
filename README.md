@@ -348,7 +348,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `multiple-producers` | a variable is written by more than one component |
 | error | `missing-producer` | an input is written by nobody |
 | error | `local-conflict` | a component local variable is used by another component |
-| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer |
+| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since nothing derives it |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
 | error | `duplicate-type` | two files declare the same structured datatype name |

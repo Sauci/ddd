@@ -291,8 +291,14 @@ class _Scanner:
         return text
 
     def _literal(self) -> None:
-        """A number, ``true``, ``false`` or ``null``: everything up to what can follow one."""
-        while self.text[self.pos] not in _LITERAL_END:
+        """A number, ``true``, ``false`` or ``null``: everything up to what can follow one.
+
+        The end of the text ends it too. Inside an object or an array a literal is always
+        followed by a comma or a bracket, but a document that *is* a literal - ``7`` is legal
+        json, if not a legal description - has nothing after it, and walking off the end took
+        the whole server down with it.
+        """
+        while self.pos < len(self.text) and self.text[self.pos] not in _LITERAL_END:
             self.pos += 1
 
     def _skip_whitespace(self) -> None:

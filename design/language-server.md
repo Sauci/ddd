@@ -175,6 +175,17 @@ never on keystroke, and measure before optimising - a project of a few thousand 
 pure python but is also not much work. If it turns out to be too slow, the cheap first move is
 caching parsed files by mtime inside the loader, not incrementalising the analysis.
 
+**Measured, and left alone for now.** On a synthetic project of 150 components (about 900
+declarations), the built server takes roughly 600 ms to answer a save and 320 ms to answer a
+hover, because nothing is cached: every request re-reads and re-loads the whole workspace from
+disk, and a hover pays for the same load a save just paid for. That is comfortable at this
+size and it is not comfortable at ten times it. The order of the cheap moves, when it stops
+being comfortable: cache the loaded workspace per build record and invalidate it on the mtimes
+of its sources; then cache the parsed `Document` per file, which is the other linear pass; and
+only then consider making the analysis itself incremental. Nothing in the current shape blocks
+any of the three - the per-request load is a deliberate "no state to go stale" choice, not an
+accident, and it is the reason the server has no cache invalidation bugs to have.
+
 Note the two-phase design shows through here: `_analyze` returns early when loading reported
 an error, so while a file is mid-edit and unparseable the server has no semantic findings to
 give. That is correct - it is the same reason `ddd check` does it - but it means the editor

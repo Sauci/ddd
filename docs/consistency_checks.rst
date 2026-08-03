@@ -304,9 +304,11 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``name-collision``
      - error
      - two names that are distinct in the description files would become the same c identifier
-       or the same generated file: an enumerator and a variable, an enumerator claimed by two
-       enums (all enumerators share one c namespace), or two component names differing only in
-       case, which ask for the same header on a case insensitive filesystem.
+       or the same generated file: an enumerator and a variable, a variable and the name of an
+       enum (which the types header makes a typedef name, in the same file scope namespace as
+       the variables), an enumerator claimed by two enums (all enumerators share one c
+       namespace), or two component names differing only in case, which ask for the same header
+       on a case insensitive filesystem.
    * - ``duplicate-declaration``
      - error
      - one component declares the same variable twice, for instance once as ``input`` and once
@@ -334,9 +336,12 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``definition-mismatch``
      - error
      - two components describe the same variable differently in a property that changes what
-       the value *means*: kind, datatype, unit, declared shape, conversion, physical limits, or
-       the axis references of a curve or a map. A consumer that simply omits ``limits`` is not
-       disagreeing and is not reported.
+       the value *means*: kind, datatype, unit, declared shape, conversion, volatility,
+       physical limits, or the axis references of a curve or a map. A consumer that simply
+       omits ``limits`` is not disagreeing and is not reported, because they are derived from
+       the datatype and the conversion when nobody states them. ``volatile`` is not relaxed
+       that way: nothing derives it, so omitting it states ``false`` and disagrees with a
+       declaration that states ``true``.
    * - ``enum-conflict``
      - error
      - the same enum type name is defined with different enumerators. One c enum is generated

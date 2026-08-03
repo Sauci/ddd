@@ -73,6 +73,17 @@ class TestMeasurements:
         assert "MEASUREMENT Visible" in content
         assert "Hidden" not in content
 
+    def test_an_unstated_export_still_reaches_the_a2l(self, tree: Path) -> None:
+        """A dictionary that says nothing about exporting is not asking to be left out.
+
+        ``export`` is a tri-state so that several components can be asked whether an object
+        belongs in the file. Reading the unstated third state as "no" would empty the a2l of
+        every dictionary written before the key existed, and of every one a third party hands
+        over without an a2l block at all.
+        """
+        content = a2l(tree, declare("local", "X", a2l={"format": "%8.2"}))
+        assert "MEASUREMENT X" in content
+
     def test_format_and_display_identifier(self, tree: Path) -> None:
         content = a2l(
             tree,

@@ -208,6 +208,22 @@ class TestNamesThatWouldNotCompile:
         )
         assert "name-collision" in checks(bag)
 
+    def test_a_variable_may_not_share_a_name_with_an_enum(self, tree: Path) -> None:
+        """The enum becomes a typedef name, which c keeps with the variables at file scope."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    enum_declaration("X", "State", STATE_OFF=0),
+                    declare("local", "State", "uint8"),
+                ),
+            },
+        )
+        assert "name-collision" in checks(bag)
+        assert "typedef name" in messages(bag)
+
     def test_components_differing_only_in_case_ask_for_one_header(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

@@ -1018,6 +1018,16 @@ class TestRename:
                     "A",
                     declare("output", "Speed", "uint16"),
                     declare("output", "Ax", "uint16", kind="axis", size=3, input="Speed"),
+                    declare(
+                        "output",
+                        "Mode",
+                        "uint8",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_t",
+                            "enumerators": [{"name": "MODE_OFF", "value": 0}],
+                        },
+                    ),
                 ),
                 "b.ddd.json": component("B", declare("input", "Speed", "uint16")),
             },
@@ -1101,6 +1111,8 @@ class TestRename:
             ("int", "reserved"),
             ("uint16_t", "reserved"),
             ("Ax", "already declared"),
+            ("Mode_t", "the name of enum 'Mode_t'"),
+            ("MODE_OFF", "an enumerator of enum 'Mode_t'"),
         ],
     )
     def test_a_name_that_would_break_the_project_is_refused(
@@ -1157,6 +1169,24 @@ class TestPropagating:
         assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
         (edits,) = offered[0]["edit"]["changes"].values()
         assert edits[0]["newText"] == '"rpm"'
+
+    def test_the_kind_is_never_offered(self, tmp_path: Path) -> None:
+        """The one key whose value decides which other keys are allowed.
+
+        Writing the producer's ``kind`` into the consumer would leave keys the new kind
+        forbids and drop keys it requires, and the file would stop loading rather than stop
+        disagreeing - a schema error, which no severity setting can turn down.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.kind",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", kind="parameter")),
+                "b.ddd.json": component("B", declare("input", "Speed", kind="measurement")),
+            },
+        )
+        assert offered == []
 
     def test_a_key_the_others_lack_is_inserted(self, tmp_path: Path) -> None:
         """The usual mismatch: the other declaration simply never mentioned it."""

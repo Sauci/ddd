@@ -103,8 +103,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("local-conflict", Severity.ERROR,
                "a component local variable is also used by another component"),
         _check("definition-mismatch", Severity.ERROR,
-               "components disagree on kind, datatype, unit, scaling, shape, stated limits "
-               "or referenced axes"),
+               "components disagree on kind, datatype, unit, scaling, shape, volatility, "
+               "stated limits or referenced axes"),
         _check("enum-conflict", Severity.ERROR,
                "the same enum name is defined with different enumerators"),
         _check("unknown-reference", Severity.ERROR,

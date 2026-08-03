@@ -169,6 +169,40 @@ class TestComparisonTables:
         assert not inside["volatile"].optional
         assert inside["limits"].optional
 
+    def test_volatile_is_an_interface_field_inside_a_project_and_storage_between_deliveries(
+        self,
+    ) -> None:
+        """The same property, graded by who is left describing the object wrongly.
+
+        Inside a project the declarations are compiled together, so one component saying
+        ``volatile`` and another not gives two headers that describe one piece of storage
+        differently, and the component that was not told may hold a value that changes under
+        it. That is an interface disagreement and an error.
+
+        Between two deliveries there is only ever one answer at a time: every consumer is
+        regenerated and recompiled against the new headers, so nobody is left wrong. What
+        changed is how the object behaves, which is ``changed-storage`` - the same grade as a
+        changed initial value, and deliberately not ``changed-interface``.
+        """
+        assert "volatile" in table_names(analysis._INTERFACE_FIELDS)
+        assert "volatile" not in table_names(analysis._STORAGE_FIELDS)
+        assert "volatile" in table_names(compare._STORAGE_FIELDS)
+        assert "volatile" not in table_names(compare._INTERFACE_FIELDS)
+
+    def test_init_is_not_compared_inside_a_project_and_is_storage_between_deliveries(
+        self,
+    ) -> None:
+        """The mirror of volatile, and the reason the two are not one rule.
+
+        Only a producer may state an initial value, so inside a project there are never two of
+        them to compare - a consumer that states one is told so as ``consumer-storage`` where
+        it wrote it. Between deliveries the producer's own answer may well have changed, and
+        that is a behaviour change consumers should hear about.
+        """
+        assert "init" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
+        assert "init" in _NOT_COMPARED
+        assert "init" in table_names(compare._STORAGE_FIELDS)
+
     def test_a2l_is_a_storage_field_inside_a_project_and_its_own_check_between_deliveries(
         self,
     ) -> None:

@@ -448,19 +448,35 @@ class _Analysis:
                 )
 
     def _check_enumerator_collisions(self, ordered: list[tuple[str, list[DeclarationRef]]]) -> None:
-        """A variable and an enumerator cannot share a name: c has one namespace for both."""
+        """A variable cannot share a name with anything else the generated headers declare.
+
+        At file scope c keeps variables, enumerators and typedef names in one namespace, and
+        both of the others come out of the types header the globals header includes. Either
+        clash produces a translation unit that does not compile, which is a message about a
+        generated file somebody then has to trace back to the description that caused it.
+        """
         for name, refs in ordered:
+            where = refs[0].location("definition.name")
             known = self._enums.enumerators.get(name)
-            if known is None:
-                continue
-            enum_name, location = known
-            self._bag.add(
-                "name-collision",
-                f"'{name}' is declared as a variable and is also an enumerator of enum "
-                f"'{enum_name}'; both become the same c identifier",
-                refs[0].location("definition.name"),
-                notes=[("enumerator declared here", location)],
-            )
+            if known is not None:
+                enum_name, location = known
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is declared as a variable and is also an enumerator of enum "
+                    f"'{enum_name}'; both become the same c identifier",
+                    where,
+                    notes=[("enumerator declared here", location)],
+                )
+            declared = self._enums.by_name.get(name)
+            if declared is not None:
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is declared as a variable and is also the name of an enum; the "
+                    f"types header makes that a typedef name, which c keeps in the same "
+                    f"namespace as the variable",
+                    where,
+                    notes=[("enum declared here", declared[1])],
+                )
 
     def _collect_component(self, loaded: LoadedComponent) -> None:
         component = loaded.component

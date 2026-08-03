@@ -92,6 +92,23 @@ class A2lObjectOptions(_Frozen):
     display_identifier: Identifier | None = None
     """Alternative name shown by the calibration tool."""
 
+    @property
+    def exported(self) -> bool:
+        """Whether the object reaches the a2l, with an unstated ``export`` read as yes.
+
+        The tri-state belongs to the *authored* side, where "not stated" is what lets several
+        components be asked - see :func:`resolve_export`. Everything downstream wants a plain
+        answer, and reading ``None`` as ``False`` is the wrong one: a dictionary that omits the
+        a2l block altogether is a perfectly good dictionary, and one a generator DDD does not
+        ship is allowed to hand over. It used to export such an object and has to keep doing so.
+        """
+        return self.export is not False
+
+    @property
+    def effective(self) -> tuple[bool, str | None, str | None]:
+        """The a2l entry as it will actually be, for comparing two of them."""
+        return (self.exported, self.format, self.display_identifier)
+
 
 def resolve_export(stated: Iterable[bool | None]) -> bool:
     """Whether an object reaches the a2l, given what every component said about it.

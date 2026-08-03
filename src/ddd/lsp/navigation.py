@@ -37,6 +37,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
+    EnumConversion,
     is_reserved_identifier,
 )
 
@@ -79,6 +80,14 @@ class Index:
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
 
+    occupied: dict[str, str] = field(default_factory=dict)
+    """C identifier -> what already spends it, for identifiers that are not variables.
+
+    Enumerators and enum names, both of which the types header emits and c keeps in the same
+    file scope namespace as the variables. The value is the phrase that goes in the refusal,
+    because "already taken" without saying by what leaves the author guessing.
+    """
+
     mentions: dict[str, list[Site]] = field(default_factory=dict)
     """Name -> every place the name itself is written.
 
@@ -106,6 +115,11 @@ def index(workspace: Workspace) -> Index:
             for key, target in declaration.definition.references.items():
                 where = loaded.declaration_location(position, f"definition.{key}")
                 built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
+            conversion = declaration.definition.conversion
+            if isinstance(conversion, EnumConversion):
+                built.occupied[conversion.name] = f"the name of enum '{conversion.name}'"
+                for enumerator in conversion.enumerators:
+                    built.occupied[enumerator.name] = f"an enumerator of enum '{conversion.name}'"
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         for position, member in enumerate(entry.structure.members):
@@ -229,6 +243,13 @@ def rename_problem(built: Index, name: str) -> str | None:
         # Silently merging two objects into one is the worst outcome available here: it
         # compiles, it links, and two components share storage neither of them meant to.
         return f"'{name}' is already declared by this project"
+    occupant = built.occupied.get(name)
+    if occupant is not None:
+        # A variable is not the only thing the generated headers name. Letting the rename
+        # through would report the collision as a finding on the next check, which is the
+        # right finding in the wrong place: by then it is spread over every file the rename
+        # touched, and the author has to undo a rewrite rather than pick another name.
+        return f"'{name}' is {occupant}, which shares c's namespace with the variables"
     return None
 
 

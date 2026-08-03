@@ -97,9 +97,9 @@ owning component.
 
 ## 3 File formats
 
-All files used by DDD contain simple json formatting and shall be named `*.ddd.json`, so
-that a description file is recognisable as such in a project that contains json for many
-other purposes. The top level key of a file decides what the file is: `project` or
+All description files used by DDD contain simple json formatting and shall be named
+`*.ddd.json`, so that a description file is recognisable as such in a project that contains
+json for many other purposes. The top level key of a file decides what the file is: `project` or
 `component`. Unknown keys are rejected, with one exception: a top level `$schema` key shall
 be accepted and ignored, since it is the standard way an editor binds a json file to its
 schema and thereby turns the published contract into completion, hover documentation and
@@ -155,7 +155,7 @@ Attributes common to every kind:
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
-| `kind` | `measurement` | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
+| `kind` | required | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
 | `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
 | `description` | `""` | offered to the c templates as the text of a comment, long identifier in the a2l |
 | `unit` | `""` | physical unit |
@@ -187,6 +187,45 @@ Kind specific attributes:
 * Calibration objects (everything except `measurement`) are always generated `const`, so
   that they are placed in read only memory. `volatile` is not merely ignored on them: it
   is a key of `measurement` alone, so a calibration object carrying it is rejected.
+
+#### 3.3.1 What each declaration of one object may state
+
+Several components declare the same object, and the keys of a definition do not all mean the
+same thing on each of those declarations. They fall into three groups.
+
+**Interface** - `kind`, `datatype`, `unit`, `conversion`, the shape (`dimensions` or `size`),
+the referenced axes, and `volatile`. Every declaration shall state the same thing and a
+disagreement is `definition-mismatch`. `volatile` is compared without exception: it reaches
+every consumer's header as a type qualifier and tells their code whether the value can change
+under it, so a declaration that omits it states `false` rather than "no opinion", and
+therefore disagrees with one that states `true`. `limits` are the one interface key a
+declaration may leave out, because DDD derives them from the datatype and the conversion:
+omitting them defers to whoever states them, and only two *stated* sets of limits can
+disagree.
+
+**Storage** - `init`. What a variable starts out as is decided by the component that produces
+it, so a declaration whose scope is `input` shall not state one at all (`consumer-storage`).
+This is not an opinion to be outvoted: it is a claim over storage the component does not own,
+and it is reported where it is written rather than where it is overruled.
+
+**Presentation** - the `a2l` block, which no generated c depends on. `format` and
+`display_identifier` are taken from the producer, and a consumer stating something else is
+told so by `storage-mismatch`. `export` is the exception, and in the other direction: any
+component may state it, whether it produces the object or not, because which signals a
+calibration engineer needs to see is not a property of whoever happens to write the variable -
+a component reading a value out of a library it does not own has as good a claim to measuring
+it. The stated answers are combined rather than ranked. The object is exported if any
+declaration states `true`, and left out only when every declaration that speaks states
+`false`; unstated everywhere, it is exported. Two consumers can therefore never conflict over
+it, there is no finding to invent for a disagreement between them, and the verdict does not
+depend on which components an image happens to link. A dictionary that omits the `a2l` block
+altogether therefore exports its objects, which is what makes an older or third party
+dictionary readable without rewriting it.
+
+`description` is per declaration and free: two components may describe the same object in
+their own words, and DDD does not compare them. `condition` is per declaration as well but
+should agree, and `condition-mismatch` says so as a warning rather than an error, since
+components legitimately guarded by different expressions is a thing a project does.
 
 ### 3.4 Conversions
 
@@ -227,6 +266,40 @@ A `memory` attribute shall select the memory the object is placed in
 code shall carry the corresponding section attribute and the a2l shall describe the memory
 layout with `MOD_PAR` / `MEMORY_SEGMENT`.
 
+### 3.7 Build record
+
+A build knows two things no description file records: which project description DDD is run
+on, and under which severity policy. In the collected mode of the CMake integration the
+project description is not even in the source tree - it is assembled in the build directory
+out of the c link closure, so which components belong together is a property of the build
+rather than of any file somebody wrote. A build shall therefore write a record of how it runs
+DDD (`ddd build-info`), so that a tool outside the build can check exactly what the build
+checks instead of re-deriving a project from the file tree and guessing at the severities.
+The language server of section 7.2 is the reader this exists for.
+
+The file is named `ddd-build.json` and lives beside the artefacts of the target that wrote
+it. It is deliberately *not* named `*.ddd.json`: that extension means "a DDD description
+file", `file-extension` enforces it, and `file-kind` would then reject this content for
+having none of the top level keys a description may have. It is a document *about* a project
+rather than one.
+
+| key | meaning |
+| --- | --- |
+| `format` | version of this document format, raised only when its shape changes |
+| `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project may not |
+| `image` | the build target the record was written for; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it |
+| `strict` | whether the build reports warnings as errors |
+| `severity` | the severity overrides the build applies, as `check=severity`, in the order given |
+
+The path in `project` is recorded and never checked when the record is written: in the
+collected mode the description is produced at the end of the configure run, after the process
+that writes this file, so requiring it to exist would fail every first configure.
+
+Unlike the description formats and the data dictionary, this document has no published json
+schema. Nobody authors it - a build writes it and a tool reads it - so the schema would serve
+neither an editor nor a hand. Its `format` key is what a reader checks instead, and a record
+it does not understand is one it declines rather than misreads.
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -241,8 +314,9 @@ Errors:
 * `missing-producer` - an input variable is written by nobody
 * `local-conflict` - a component local variable is used by another component
 * `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
-  referenced axes, or on limits where both of them state limits: a declaration that omits
-  them defers to the producer rather than disagreeing with it
+  volatility, referenced axes, or on limits where both of them state limits: a declaration
+  that omits limits defers to the producer rather than disagreeing with it, which is a
+  relaxation `volatile` deliberately does not get (section 3.3.1)
 * `duplicate-declaration` - a component declares the same variable more than once
 * `consumer-storage` - an `input` declaration states `init`. What a variable starts out as is
   decided by the component that produces it, so a reader stating one is claiming storage it
@@ -258,7 +332,8 @@ Errors:
   headers the generated code includes already declares
 * `name-collision` - two names that are distinct in the description files become the same
   c identifier or the same generated file: enumerators of different enums, an enumerator and
-  a variable, or two component names differing only in case
+  a variable, a variable and the name of an enum, or two component names differing only in
+  case
 * `naming` - a declared name does not follow the naming convention of the project
 * `file-extension` - a description file is not named `*.ddd.json`
 * `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
@@ -401,6 +476,33 @@ generates into the build tree, exposes the generated headers to the components t
 interface library and compiles the single definition file into the image. Registering a
 component and generating for an image shall each take one call.
 
+### 7.2 Editor integration
+
+The checks shall also be served over the Language Server Protocol (`ddd lsp`), so that a
+project is checked while it is written rather than when it is built. The same loader, the same
+analysis and the same severity policy answer both, since an editor that disagrees with the
+build about what is wrong is worse than an editor that says nothing.
+
+The server offers, from a description file: the findings of section 4, drawn over the key they
+are about rather than over the file; go to definition and find references across files, which
+is the question a schema cannot answer at all - the producer of an `input` is in a file the
+author may not know the name of; a summary of a data object on hover; renaming an object
+everywhere the project writes it, refused up front for a name the c namespace cannot take; and
+quick fixes that reconcile one key across the declarations of one object, in either direction,
+including removing a key the others do not have.
+
+Which project a file belongs to comes from the build records of section 3.7, found under the
+build directories the client names. A file belonging to no configured build is still checked,
+on its own, with the checks that need every component of a project held back: a component read
+alone has inputs nobody produces and outputs nobody reads by construction rather than by
+mistake, and reporting those buries the findings that are about the file in front of the
+reader. Each check declares whether it needs the whole project, so the two modes cannot drift
+apart.
+
+An editor extension shall do no more than launch the server and point it at the build
+directories: everything a reader sees is the tool's answer, so that an editor DDD ships
+nothing for is not a second class one.
+
 ## 8 Implementation status
 
 | section | status |
@@ -419,3 +521,5 @@ component and generating for an image shall each take one call.
 | 7 command line interface | implemented |
 | 7 data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
 | 7.1 build system integration | implemented (`cmake/Ddd.cmake`, `ddd cmake-dir`) |
+| 3.7 build record | implemented (`ddd build-info`, written by `ddd_generate`) |
+| 7.2 editor integration | implemented (`ddd lsp`: diagnostics, navigation, hover, rename, quick fixes; VS Code launcher extension) |

@@ -229,7 +229,7 @@ class _A2lModelBuilder:
         a curve pulls its axis, and that axis pulls the measurement it is indexed by.
         """
         by_name = self._by_name
-        names = {entry.name for entry in self._dictionary.objects if entry.a2l.export}
+        names = {entry.name for entry in self._dictionary.objects if entry.a2l.exported}
         pending = list(names)
         while pending:
             # Everything in `names` is a key of `by_name`: the initial set comes from the

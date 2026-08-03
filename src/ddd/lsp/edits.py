@@ -53,7 +53,6 @@ PROPAGATED_KEYS: Final = frozenset(
         "dimensions",
         "size",
         "volatile",
-        "kind",
         "axis",
         "x_axis",
         "y_axis",
@@ -65,6 +64,15 @@ PROPAGATED_KEYS: Final = frozenset(
 The interface, in other words - what ``definition-mismatch`` is about. ``name`` is not here
 because changing it is a rename, ``description`` because two components may describe the same
 variable in their own words, and ``init`` because only a producer may state one at all.
+
+``kind`` is left out although the declarations do have to agree on it, and it is the one key
+here whose value decides which *other* keys the definition may carry: a measurement has
+``volatile``, a curve has ``axis``, an axis has ``size``. Writing one declaration's ``kind``
+into another therefore leaves keys behind that the new kind does not allow and keys missing
+that it requires, and the file stops loading at all - a schema error, which is the one class of
+finding no severity setting can turn down. A disagreement about ``kind`` is two components
+describing different objects under one name, and the edit that settles it is not a key at a
+time.
 """
 
 QUICK_FIX: Final = "quickfix"

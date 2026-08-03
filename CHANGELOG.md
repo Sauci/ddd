@@ -10,6 +10,14 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### `name-collision` also sees the enum type names
+
+A variable may not share its name with an enum, as it already may not share one with an
+enumerator.  The types header spells the enum out as `typedef enum { ... } Mode;`, and c keeps
+a typedef name at file scope in the same namespace as the variables, so `uint8_t Mode;` beside
+it is a redeclaration.  It was caught for the enumerators and not for the name they are
+declared under, which left it to the compiler and to a message about a generated file.
+
 ### Structured datatypes, first part
 
 A new description file kind, `types`, declares structures that a project shares between its
@@ -68,6 +76,13 @@ object to reach the a2l, and asking wins over declining:
 is no finding to invent for them.  A producer that says `false` while nobody asks still keeps
 the object out, exactly as before.
 
+The key therefore has three states, and "unstated" is one of them rather than a spelling of
+`true`.  Everything downstream asks for the resolved answer: a dictionary with no `a2l` block
+at all exports its objects, and `ddd compare` reads a baseline that omitted the key and a
+candidate that spells out `export: true` as the same a2l entry rather than as a `changed-a2l`
+nobody can act on.  That is what keeps an older or third party dictionary readable without
+rewriting it.
+
 **What is left of the `a2l` block is presentation** - a `format` string, a
 `display_identifier` - where two values genuinely cannot both be used.  That stays a
 `storage-mismatch` warning with the producer winning.
@@ -125,15 +140,21 @@ this one to the others, or - when nobody else states the key - remove it.  A con
 the producer's answer first and the producer its own, because which side owns the variable is
 the rule the rest of the tool is built on.
 
+`kind` is the one key the declarations have to agree on that is never offered, because its
+value decides which *other* keys a definition may carry: writing one declaration's `kind` into
+another would leave keys the new kind forbids and drop keys it requires, and the file would
+stop loading rather than stop disagreeing.
+
 The value is copied as source text rather than re-serialised, so a project's formatting
 survives a fix; a declaration that never mentioned the key gets it inserted beside its
 neighbours, and removing one takes exactly the comma that joined it.
 
 `F2` renames a variable everywhere the project writes it - every declaration, and every
 `axis`, `x_axis`, `y_axis` or `input` naming it, across as many files as that takes.  A name c
-reserves, one that is not a usable identifier, or one the project already declares is refused
-with the reason before anything is written, since a rename touches several files at once and an
-unusable name would otherwise surface a build later.  Only the characters between the quotes are
+reserves, one that is not a usable identifier, one the project already declares, or one an enum
+or an enumerator already occupies is refused with the reason before anything is written, since
+a rename touches several files at once and an unusable name would otherwise surface a build
+later.  Only the characters between the quotes are
 replaced, so a project's formatting survives, and free text is left alone.
 
 It reports on open and on save, and publishes for every file of a project rather than only the

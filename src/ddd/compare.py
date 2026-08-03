@@ -199,7 +199,9 @@ def _compare_object(
             location,
         )
 
-    if old.a2l != new.a2l:
+    # Compared as it will actually be rather than as it was written: a baseline that
+    # simply omits the block is not asking for the object to be dropped from the a2l.
+    if old.a2l.effective != new.a2l.effective:
         bag.add(
             "changed-a2l",
             f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
@@ -237,10 +239,14 @@ def _a2l_difference(old: ResolvedObject, new: ResolvedObject) -> str:
     display_identifier='FiltGain'``, which invites the reader to go looking for what happened
     to ``export``.
     """
+    # Named as they are written in the file, compared as they will act: an ``export`` that
+    # went from unstated to ``true`` changed nothing and has no business in the message.
     return ", ".join(
-        f"{name}: {_a2l_value(getattr(old.a2l, name))} -> {_a2l_value(getattr(new.a2l, name))}"
-        for name in _A2L_PROPERTIES
-        if getattr(old.a2l, name) != getattr(new.a2l, name)
+        f"{name}: {_a2l_value(before)} -> {_a2l_value(after)}"
+        for name, before, after in zip(
+            _A2L_PROPERTIES, old.a2l.effective, new.a2l.effective, strict=True
+        )
+        if before != after
     )
 
 

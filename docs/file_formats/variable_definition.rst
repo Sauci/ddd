@@ -269,9 +269,12 @@ it, and a project generating no a2l can ignore it entirely.
      - default
      - meaning
    * - ``export``
-     - ``true``
+     - unstated
      - Set to ``false`` to keep the object out of the a2l. The c code is generated as usual;
-       only the calibration tool never sees it.
+       only the calibration tool never sees it. The key has three states rather than two:
+       unstated, which is what an object gets when it says nothing and means the same as
+       ``true``, and the two spelled out answers. See :ref:`who-asks-for-an-export` for why
+       the difference matters when several components declare the object.
    * - ``format``
      - ``null``
      - The a2l ``FORMAT`` string: ``%``, the total display width, a dot, the number of decimal
@@ -307,6 +310,27 @@ it, and a project generating no a2l can ignore it entirely.
 only clutter the measurement list. The demo uses it twice, on ``ValueD`` and ``ValueK``; both
 reach the c templates like every other object, and neither appears anywhere in
 ``DemoDevice.a2l``, not even in the ``GROUP`` of the component that owns them.
+
+.. _who-asks-for-an-export:
+
+Who asks for an export
+~~~~~~~~~~~~~~~~~~~~~~
+
+``export`` is the one a2l setting that is not the producer's alone. Which signals a
+calibration engineer needs to see is not a property of whoever happens to write the variable: a
+component reading a value out of a library it does not own has as good a claim to measuring it
+as the library has to hiding it.
+
+The stated answers are therefore combined rather than ranked. The object reaches the a2l if
+**any** declaration states ``true``, and is left out only when every declaration that says
+anything says ``false``; a declaration that stays silent is not a vote either way, and an
+object nobody says anything about is exported. Two consumers can never conflict over it, so
+there is no finding for a disagreement, and the verdict does not depend on which components an
+image happens to link.
+
+This is also what makes the key safe to leave out. A dictionary written before the key existed,
+or handed over by a third party with no ``a2l`` block at all, exports its objects the way it
+always did rather than quietly emptying the a2l file.
 
 .. warning::
    ``export: false`` on an **axis** that a curve or a map refers to is overruled. The

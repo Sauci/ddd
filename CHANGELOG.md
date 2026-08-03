@@ -105,7 +105,8 @@ being per file and static: whether an `axis` names a declared axis, whether exac
 component produces a name, whether two components agree on a unit, whether a name follows the
 convention.
 
-Hovering a variable shows the resolved object rather than the authored text: the shape a curve
+Hovering anywhere in a declaration - on the name, the datatype, the scope - shows the resolved
+object rather than the authored text: the shape a curve
 took from its axis, the limits derived from its datatype and conversion, its producer and its
 consumers, what an enum's values are called, and the initial values as a sparkline.  A map is
 drawn a row at a time against one shared scale; values that are all the same are stated instead

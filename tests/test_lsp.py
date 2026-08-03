@@ -578,14 +578,11 @@ class TestNavigation:
         root = tmp_path / "p.ddd.json"
         assert definition(self.index_of(root), read(root, {}), root, "project.includes[0]") == []
 
-    @pytest.mark.parametrize(
-        "pointer",
-        ["component.declarations[0].definition.datatype", "component.name", ""],
-    )
-    def test_a_cursor_on_nothing_answerable_offers_no_jump(
+    @pytest.mark.parametrize("pointer", ["component.name", "component", ""])
+    def test_a_cursor_outside_any_declaration_offers_no_jump(
         self, tmp_path: Path, pointer: str
     ) -> None:
-        """A datatype, a component name, whitespace: real places with nowhere to go."""
+        """A component name, the whole component, whitespace: nowhere to go from any of them."""
         from ddd.lsp.navigation import definition, references
 
         root = self.workspace(tmp_path)
@@ -593,6 +590,56 @@ class TestNavigation:
         document = read(path, {})
         assert definition(self.index_of(root), document, path, pointer) == []
         assert references(self.index_of(root), document, pointer) == []
+
+    @pytest.mark.parametrize(
+        "pointer",
+        [
+            "component.declarations[0].definition.name",
+            "component.declarations[0].definition.datatype",
+            "component.declarations[0].definition",
+            "component.declarations[0].scope",
+            "component.declarations[0]",
+        ],
+    )
+    def test_a_jump_answers_from_anywhere_the_hover_does(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The two have to agree, and they did not.
+
+        A hover that said "written by A" from a position where "go to definition" then found
+        nothing is the inconsistency, not the jump from a datatype.
+        """
+        from ddd.lsp.navigation import definition
+
+        root = self.workspace(tmp_path)
+        path = tmp_path / "b.ddd.json"
+        (site,) = definition(self.index_of(root), read(path, {}), path, pointer)
+        assert site.path == tmp_path / "a.ddd.json"
+
+    def test_a_jump_answers_from_a_position_holding_no_string_at_all(self, tmp_path: Path) -> None:
+        """A number is as much a part of the declaration as a name is."""
+        from ddd.lsp.navigation import definition
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Shared", limits={"min": 0, "max": 100})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Shared", limits={"min": 0, "max": 100})
+                ),
+            },
+        )
+        path = tmp_path / "b.ddd.json"
+        (site,) = definition(
+            self.index_of(tmp_path / "p.ddd.json"),
+            read(path, {}),
+            path,
+            "component.declarations[0].definition.limits.min",
+        )
+        assert site.path == tmp_path / "a.ddd.json"
 
     def test_a_file_no_build_claims_is_navigated_on_its_own(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import workspaces
@@ -836,6 +883,65 @@ class TestHover:
         )
         assert "Engine speed, filtered" in describe(dictionary, "Value")
 
+    @pytest.mark.parametrize(
+        "pointer",
+        [
+            "component.declarations[1].definition.name",
+            "component.declarations[1].definition.datatype",
+            "component.declarations[1].scope",
+            "component.declarations[1]",
+        ],
+    )
+    def test_a_hover_anywhere_in_a_declaration_is_about_that_object(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """Hunting for the one key that answers is not a game worth playing."""
+        from ddd.lsp.navigation import subject_at
+
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Axis", kind="axis", size=2, datatype="uint8"),
+                    declare("output", "Curve", kind="curve", datatype="uint8", axis="Axis"),
+                )
+            },
+        )
+        document = read(tmp_path / "a.ddd.json", {})
+        assert subject_at(document, pointer) == "Curve"
+
+    def test_a_reference_still_wins_over_the_declaration_holding_it(self, tmp_path: Path) -> None:
+        """On the axis of a curve, the thing under the pointer is the axis."""
+        from ddd.lsp.navigation import subject_at
+
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Axis", kind="axis", size=2, datatype="uint8"),
+                    declare("output", "Curve", kind="curve", datatype="uint8", axis="Axis"),
+                )
+            },
+        )
+        document = read(tmp_path / "a.ddd.json", {})
+        assert subject_at(document, "component.declarations[1].definition.axis") == "Axis"
+
+    @pytest.mark.parametrize("pointer", ["component.name", "component", ""])
+    def test_outside_a_declaration_there_is_no_subject(self, tmp_path: Path, pointer: str) -> None:
+        from ddd.lsp.navigation import subject_at
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "X"))})
+        assert subject_at(read(tmp_path / "a.ddd.json", {}), pointer) is None
+
+    def test_a_declaration_still_being_written_has_no_subject(self) -> None:
+        """Caught mid edit: the pointer is built rather than scanned, so it may lead nowhere."""
+        from ddd.lsp.navigation import subject_at
+
+        document = Document('{"component": {"declarations": [{"scope": "input"}]}}')
+        assert subject_at(document, "component.declarations[0].scope") is None
+
     def test_a_name_no_component_declares_has_nothing_to_show(self, tmp_path: Path) -> None:
         from ddd.lsp.hover import describe
 
@@ -1052,6 +1158,12 @@ class TestServer:
     def test_hover_on_something_that_is_not_a_variable_says_nothing(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
         assert self.hovered(tmp_path, consumer, "component.name") is None
+
+    def test_hover_works_from_any_key_of_a_declaration(self, tmp_path: Path) -> None:
+        """Not only from the name, which is what asking on a datatype used to give: nothing."""
+        consumer = self.shared_workspace(tmp_path)
+        result = self.hovered(tmp_path, consumer, "component.declarations[0].definition.datatype")
+        assert "**Shared**" in result["contents"]["value"]
 
     def test_hover_on_a_reference_to_nothing_says_nothing(self, tmp_path: Path) -> None:
         """The cursor is on a name, but no component declares it - the very case the

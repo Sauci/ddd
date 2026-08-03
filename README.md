@@ -142,10 +142,10 @@ The server reports on open and on save, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a
 disagreement is always in the other component.
 
-Hovering a variable shows what the **project** made of it, which the file under the cursor
-does not say: the shape a curve got from its axis, limits derived from a datatype and a
-conversion nobody wrote down, who writes it and who reads it, what an enum's numbers mean, and
-the initial values as a sparkline.
+Hovering anywhere in a declaration shows what the **project** made of that variable, which
+the file under the cursor does not say: the shape a curve got from its axis, limits derived
+from a datatype and a conversion nobody wrote down, who writes it and who reads it, what an
+enum's numbers mean, and the initial values as a sparkline.
 
 ```text
 CurveA — curve, uint16          |  unit        ms
@@ -165,7 +165,7 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 
 | from | go to definition | find references |
 | --- | --- | --- |
-| a variable name, or an `axis`, `x_axis`, `y_axis` or `input` naming one | the declaration that **writes** it, in whichever component that is | every declaration of it |
+| anywhere in a declaration - the name, the datatype, a number | the declaration that **writes** that object, in whichever component that is | every declaration of it |
 | a structure name in a `type` | where the structure is declared | every member nesting it |
 | an `includes` entry or a project's `naming` | the file - wildcards land on every match | |
 

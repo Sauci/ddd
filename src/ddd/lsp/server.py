@@ -36,7 +36,7 @@ from ddd.lsp.navigation import (
     index,
     locations,
     references,
-    variable_at,
+    subject_at,
     workspaces,
 )
 from ddd.lsp.protocol import (
@@ -156,7 +156,7 @@ class Server:
         path = uri_to_path(params["textDocument"]["uri"])
         document = read(path, {})
         pointer = document.pointer_at(params["position"])
-        name = variable_at(document, pointer)
+        name = subject_at(document, pointer)
         if name is None:
             return None
         dictionary = resolve(discover(self.root, self.build_directories), path)

@@ -84,14 +84,19 @@ class Document:
         return min(containing)[1] if containing else ""
 
     def value_at(self, pointer: str) -> Any:
-        """What is written at that pointer, already parsed.
+        """What is written at that pointer, already parsed, or ``None`` if nothing is.
 
-        Only ever called with a pointer this document produced, so there is nothing to guard
-        against: indexing works the same way into an object and into an array.
+        Indexing works the same way into an object and into an array, so one loop covers
+        both. The guard is for pointers that were *built* rather than scanned - asking a
+        declaration for its ``definition.name`` when the file is halfway through being
+        written, and there is no definition yet.
         """
         value = self.data
-        for segment in segments(pointer):
-            value = value[segment]
+        try:
+            for segment in segments(pointer):
+                value = value[segment]
+        except (KeyError, IndexError, TypeError):
+            return None
         return value
 
     def _offset(self, position: dict[str, int]) -> int:

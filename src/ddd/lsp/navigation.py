@@ -12,9 +12,10 @@ an index from a name to those places, which is what this module builds.
 
 What can be jumped from, and to:
 
-* a variable name, or a reference to one (``axis``, ``x_axis``, ``y_axis``, ``input``), goes
-  to the declaration that **produces** that variable - there is exactly one in a consistent
-  project, and where there is not, the ambiguity is worth seeing;
+* anywhere inside a declaration goes to the declaration that **produces** the object it is
+  about - there is exactly one in a consistent project, and where there is not, the ambiguity
+  is worth seeing. A reference key (``axis``, ``x_axis``, ``y_axis``, ``input``) wins over the
+  declaration holding it, because that is the object under the pointer;
 * the same, asked as "find references", goes to **every** declaration of it;
 * a structure name goes to where the structure is declared, and its references to every
   member that nests it;
@@ -23,6 +24,7 @@ What can be jumped from, and to:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +43,8 @@ is to whoever writes it, which is exactly the jump a reference key makes.
 """
 
 _DECLARATION: Final = "component.declarations["
+_WITHIN_DECLARATION: Final = re.compile(r"^component\.declarations\[\d+\]")
+"""Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPES: Final = "types["
 _INCLUDES: Final = "project.includes["
 _NAMING: Final = "project.naming"
@@ -110,11 +114,11 @@ def workspaces(builds: Sequence[BuildInfo], document: Path) -> list[Workspace]:
 
 
 def variable_at(document: Document, pointer: str) -> str | None:
-    """The data object the cursor names, if it names one.
+    """The data object the cursor names outright, if it names one.
 
-    One rule, used by every question asked about a position - where is this defined, where
-    else is it used, what is it. Three copies of it would be three things to keep in step, and
-    the two that drifted would drift silently.
+    The narrow half of :func:`subject_at`, which is the rule every question actually uses.
+    Separate because a reference key has to win over the declaration holding it, and that
+    precedence is easier to read as two steps than as one condition.
     """
     value = document.value_at(pointer)
     if not isinstance(value, str):
@@ -124,17 +128,48 @@ def variable_at(document: Document, pointer: str) -> str | None:
     return None
 
 
+def subject_at(document: Document, pointer: str) -> str | None:
+    """The object a question asked at this position is about.
+
+    Wider than :func:`variable_at` on purpose, and used by every question an editor asks about
+    a position - what is this, where is it written, where else is it used. A declaration is
+    *about* one object from its opening brace to its closing one, so resting the pointer on the
+    datatype rather than on the name is not a different question, and hunting for the one key
+    that answers is not a game worth playing.
+
+    This was narrow for navigation at first, on the reasoning that jumping to another file from
+    a datatype would surprise somebody. The opposite turned out to be true: what surprises is a
+    hover that says "written by Controller" from a position where "go to definition" then finds
+    nothing.
+
+    A reference still wins over the declaration containing it: on the ``axis`` of a curve, the
+    thing under the pointer is the axis, and that is what a reader is asking about.
+    """
+    named = variable_at(document, pointer)
+    if named is not None:
+        return named
+    within = _WITHIN_DECLARATION.match(pointer)
+    if within is None:
+        return None
+    name = document.value_at(f"{within.group()}.definition.name")
+    return name if isinstance(name, str) else None
+
+
 def definition(built: Index, document: Document, path: Path, pointer: str) -> list[Site]:
-    """Where the name under the cursor is defined."""
+    """Where the object under the cursor is written.
+
+    The two path-shaped answers need a string under the cursor; the object one does not,
+    because a declaration is about its object wherever inside it the pointer rests - including
+    on a number, or on the braces of the declaration itself.
+    """
     value = document.value_at(pointer)
-    if not isinstance(value, str):
-        return []
-    if pointer.startswith(_INCLUDES) or pointer == _NAMING:
-        return _files(path.parent, value)
-    if pointer.startswith(_TYPES):
-        found = built.types.get(value)
-        return [found] if found is not None else []
-    name = variable_at(document, pointer)
+    if isinstance(value, str):
+        if pointer.startswith(_INCLUDES) or pointer == _NAMING:
+            return _files(path.parent, value)
+        if pointer.startswith(_TYPES):
+            found = built.types.get(value)
+            return [found] if found is not None else []
+    name = subject_at(document, pointer)
     if name is not None:
         return list(built.producers.get(name, ()))
     return []
@@ -148,13 +183,11 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     a use of it, and which one is "the" declaration is the question the jump above answers.
     """
     value = document.value_at(pointer)
-    if not isinstance(value, str):
-        return []
-    if pointer.startswith(_TYPES):
+    if isinstance(value, str) and pointer.startswith(_TYPES):
         declared = built.types.get(value)
         found = [declared] if declared is not None else []
         return found + list(built.type_uses.get(value, ()))
-    name = variable_at(document, pointer)
+    name = subject_at(document, pointer)
     if name is not None:
         return list(built.declarations.get(name, ()))
     return []

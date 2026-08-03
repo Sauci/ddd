@@ -210,12 +210,63 @@ class TestDiagnostics:
         # and the project file itself is covered, with nothing to say about it
         assert named["project.ddd.json"] == []
 
+    def test_both_sides_of_a_conflict_are_marked(self, tmp_path: Path) -> None:
+        """Neither declaration of a duplicated output is the wrong one.
+
+        ``ddd check`` reports the conflict once, with a note at the other declaration, which
+        is right for a list read whole. In an editor a file with no finding on it looks
+        correct, so reporting only one side says the other component is fine - and it is not.
+        """
+        build_record(tmp_path, INCONSISTENT)
+        reports = service.collect(discover(tmp_path))
+        marked = {
+            path.name
+            for path, findings in reports.items()
+            if any(entry["code"] == "multiple-producers" for entry in findings)
+        }
+        assert marked == {"component_a.ddd.json", "component_b.ddd.json"}
+
+    def test_a_mirrored_finding_lands_on_the_other_declaration(self, tmp_path: Path) -> None:
+        """At the place the note pointed at, not at the top of the file it is in."""
+        build_record(tmp_path, INCONSISTENT)
+        reports = service.collect(discover(tmp_path))
+        producer = next(path for path in reports if path.name == "component_a.ddd.json")
+        conflict = next(
+            entry for entry in reports[producer] if entry["code"] == "multiple-producers"
+        )
+        primary = next(
+            entry
+            for path, findings in reports.items()
+            if path.name == "component_b.ddd.json"
+            for entry in findings
+            if entry["code"] == "multiple-producers"
+        )
+        # The same message on both, because it already names both components.
+        assert conflict["message"] == primary["message"]
+        # The copy carries no notes: they read in one direction and it points the other way.
+        assert "relatedInformation" not in conflict
+        assert "relatedInformation" in primary
+
+    def test_a_finding_is_not_mirrored_onto_itself(self) -> None:
+        """A note pointing where the finding already is would double it in place."""
+        location = Location(Path("a.ddd.json"), "component.declarations[0]")
+        finding = Diagnostic(
+            "duplicate-declaration", Severity.ERROR, "twice", location, (("here", location),)
+        )
+        assert service._mirrors(finding) == []
+
+    def test_a_finding_with_nowhere_to_be_has_nothing_to_mirror(self) -> None:
+        finding = Diagnostic("include-empty", Severity.ERROR, "nothing matched", None)
+        assert service._mirrors(finding) == []
+
     def test_a_finding_points_at_the_other_declaration(self, tmp_path: Path) -> None:
         build_record(tmp_path, INCONSISTENT)
         reports = service.collect(discover(tmp_path))
+        # The one reported against component_b; the copy on component_a carries no notes.
         finding = next(
             entry
-            for findings in reports.values()
+            for path, findings in reports.items()
+            if path.name == "component_b.ddd.json"
             for entry in findings
             if entry["code"] == "multiple-producers"
         )
@@ -235,13 +286,55 @@ class TestDiagnostics:
         )
         assert finding["severity"] == 3  # information, not error
 
-    def test_a_file_no_build_claims_is_read_on_its_own(self, tmp_path: Path) -> None:
-        write_tree(tmp_path, {"lonely.ddd.json": component("Lonely", declare("input", "X"))})
+    def test_a_file_no_build_claims_says_nothing_the_file_cannot_answer(
+        self, tmp_path: Path
+    ) -> None:
+        """Read alone, a component has inputs nobody writes, outputs nobody reads and axes
+        declared in files nobody handed over. All three are true by construction, and all
+        three were reported by an editor that had simply not been shown the other files."""
+        write_tree(
+            tmp_path,
+            {
+                "lonely.ddd.json": component(
+                    "Lonely",
+                    declare("input", "NobodyWrites"),
+                    declare("output", "NobodyReads"),
+                    declare(
+                        "output", "Curve", kind="curve", axis="AxisElsewhere", datatype="uint8"
+                    ),
+                )
+            },
+        )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
-        codes = {entry["code"] for findings in reports.values() for entry in findings}
-        # missing-producer is silenced: on its own, every input has no producer by
-        # construction, and saying so about every one of them tells the reader nothing.
-        assert "missing-producer" not in codes
+        assert {entry["code"] for findings in reports.values() for entry in findings} == set()
+
+    def test_what_one_file_can_decide_is_still_reported(self, tmp_path: Path) -> None:
+        """Silencing the project-wide checks must not leave standalone mode saying nothing."""
+        write_tree(
+            tmp_path,
+            {
+                "lonely.ddd.json": component(
+                    "Lonely", declare("output", "Value", datatype="uint8", init=999)
+                )
+            },
+        )
+        reports = service.collect([], [tmp_path / "lonely.ddd.json"])
+        assert {entry["code"] for findings in reports.values() for entry in findings} == {
+            "init-invalid"
+        }
+
+    def test_every_check_that_needs_the_whole_project_is_silenced(self) -> None:
+        """The guard on the mistake that produced this rule.
+
+        ``missing-producer`` was silenced by hand and ``unused-output`` - the same mistake
+        seen from the other end - was not, so an editor reported it about every output of
+        every component it had not been given the rest of.
+        """
+        from ddd.diagnostics import CHECKS
+
+        needed = {name for name, check in CHECKS.items() if check.needs_every_component}
+        assert needed == {entry.split("=")[0] for entry in service.STANDALONE_POLICY}
+        assert needed, "the rule is derived from the registry; nothing marked means no guard"
 
     def test_a_file_a_build_already_covers_is_not_read_twice(self, tmp_path: Path) -> None:
         build_record(tmp_path, INCONSISTENT)

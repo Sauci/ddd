@@ -50,11 +50,19 @@ structure it nests and back, and from an `includes` entry or a project's `naming
 they name, wildcards included.
 
 It reports on open and on save, and publishes for every file of a project rather than only the
-one on screen, because half of a disagreement is always in the other component.  Which project
+one on screen, because half of a disagreement is always in the other component.  Both sides of
+a conflict are marked: `ddd check` reports it once with a note at the other declaration, which
+suits a list read whole, but in an editor a file with no finding on it looks correct - and of
+two components declaring the same output, neither is the innocent one.  Which project
 a file belongs to is read from the `ddd-build.json` below, so the editor applies the severities
-the build applies; a file no build claims is checked on its own with `missing-producer`
-silenced.  Editors that launch a server themselves need nothing further, and `-b DIR` points at
-an out-of-tree build.
+the build applies.  Editors that launch a server themselves need nothing further, and `-b DIR`
+points at an out-of-tree build.
+
+A file no build claims is checked on its own, but only for what one file can decide.  Read
+alone, a component has inputs nobody writes, outputs nobody reads and axes declared in files
+nobody handed over, so `missing-producer`, `unused-output` and `unknown-reference` are left out.
+A check that needs the whole project now says so where it is registered, rather than in a list
+somewhere else that can be - and was - forgotten.
 
 No new dependency: the protocol framing is a hundred lines and DDD still installs with
 pydantic and jinja2 alone.

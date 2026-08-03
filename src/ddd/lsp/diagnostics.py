@@ -19,12 +19,13 @@ Two choices shape the rest:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
 
 from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import Diagnostic, DiagnosticBag, Severity, SeverityPolicy
+from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Severity, SeverityPolicy
 from ddd.loading import load_workspace
 from ddd.lsp.ranges import Document, read
 
@@ -37,13 +38,22 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
     Severity.INFO: 3,
 }
 
-STANDALONE_POLICY: Final = ("missing-producer=ignore",)
+STANDALONE_POLICY: Final = tuple(
+    f"{identifier}=ignore"
+    for identifier, check in sorted(CHECKS.items())
+    if check.needs_every_component
+)
 """What is silenced for a file that belongs to no configured build.
 
-A component read on its own has inputs nobody produces, by construction rather than by
-mistake. Reporting that would fill the editor with findings that say nothing about the file
-and cannot be acted on, so the one check that only makes sense across a whole project is
-turned off rather than left to mislead.
+A component read on its own has inputs nobody produces, outputs nobody reads and axes declared
+in files nobody handed over - all by construction rather than by mistake. Reporting those fills
+the editor with findings whose only cause is what the run was not shown, and buries the ones
+about the file in front of the reader.
+
+Derived from the registry rather than listed here, because listing it here is how this went
+wrong once already: ``missing-producer`` was silenced and ``unused-output``, which is the same
+mistake seen from the other end, was not. A check that needs the whole project now says so
+where it is defined, and is covered without anyone remembering this file exists.
 """
 
 
@@ -114,6 +124,35 @@ def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnost
     for finding in bag.sorted:
         path = finding.location.path if finding.location else fallback
         grouped.setdefault(path, []).append(finding)
+        for mirrored in _mirrors(finding):
+            grouped.setdefault(mirrored.location.path, []).append(mirrored)  # type: ignore[union-attr]
+
+
+def _mirrors(finding: Diagnostic) -> list[Diagnostic]:
+    """The same finding again, at each other place that takes part in it.
+
+    A conflict has two sides and neither is the wrong one. ``ddd check`` reports it once, with
+    a note pointing at the other declaration, which is right for a terminal: the list is read
+    whole and saying it twice would be noise.
+
+    An editor reads the other way round. Findings are attached to files, so a file with no
+    finding on it looks *correct* - and of two components declaring the same output, only one
+    would carry a mark, as though the other were the innocent party. Both are marked here.
+
+    The message needs no rewriting because it already names both sides: "written by component
+    'ComponentB' and by component 'ComponentA'" is as true on one as on the other. The notes
+    are dropped from the copy: they read in one direction, and the copy points the other way.
+    """
+    if finding.location is None:
+        return []
+    seen = {finding.location}
+    mirrors = []
+    for _, location in finding.notes:
+        if location is None or location in seen:
+            continue
+        seen.add(location)
+        mirrors.append(replace(finding, location=location, notes=()))
+    return mirrors
 
 
 def _as_lsp(finding: Diagnostic, cache: dict[Path, Document]) -> dict[str, Any]:

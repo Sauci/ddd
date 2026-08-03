@@ -153,8 +153,14 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
 the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
-directory names next to the workspace are searched.  A file no build claims is still checked,
-on its own, with `missing-producer` silenced - on its own, every input has no producer.
+directory names next to the workspace are searched.
+
+A file no build claims is still checked, on its own, but only for what one file can decide.
+Read alone a component has inputs nobody writes, outputs nobody reads and axes declared in
+files nobody handed over, so `missing-producer`, `unused-output` and `unknown-reference` are
+left out rather than reported about every declaration in it.  Everything a single file settles
+by itself - an initial value that does not fit, a name c reserves, a duplicate declaration -
+is reported as usual.
 
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:

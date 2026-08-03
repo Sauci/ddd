@@ -55,6 +55,9 @@ see is exactly what this reports - that an `axis` names an axis nobody declares,
 components disagree about a unit, that nobody produces an input, that a name does not follow the
 project's convention.
 
+Both sides of a conflict are marked. Two components declaring the same output are equally part
+of it, and a file with no finding on it would otherwise read as the correct one.
+
 Go to definition on a variable name, or on an `axis`, `x_axis`, `y_axis` or `input` naming one,
 lands on the declaration that **writes** it. Find references lists every declaration of it. The
 same works from a `type` to the structure it nests, and from an `includes` entry or a project's

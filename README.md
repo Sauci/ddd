@@ -169,6 +169,22 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | a structure name in a `type` | where the structure is declared | every member nesting it |
 | an `includes` entry or a project's `naming` | the file - wildcards land on every match | |
 
+**Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
+`conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
+offers to give every other declaration of that object the same value.  The value is copied as
+you wrote it rather than re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives
+looking like itself; a declaration that never mentioned the key gets it inserted, on one line
+or its own depending on how that file is written.  Nothing is offered when everybody already
+agrees.
+
+**Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
+every `axis`, `x_axis`, `y_axis` or `input` that names it.  A name c reserves, one that is
+not a usable identifier, or one the project already declares is refused with the reason
+before a single file is touched - a rename writes into several at once, and an unusable
+name is otherwise noticed a build later.  Free text is left alone: a `description` that
+mentions the old name still mentions it, because rewriting prose by substring is how a
+rename tool starts corrupting files.
+
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
 the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build

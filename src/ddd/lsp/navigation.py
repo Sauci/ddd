@@ -34,6 +34,11 @@ from ddd.build_info import BuildInfo
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import Workspace, load_workspace
 from ddd.lsp.ranges import Document, read
+from ddd.models import (
+    C_IDENTIFIER_PATTERN,
+    IDENTIFIER_MAX_LENGTH,
+    is_reserved_identifier,
+)
 
 VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
 """Keys of a declaration whose value is the name of a data object.
@@ -74,6 +79,15 @@ class Index:
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
 
+    mentions: dict[str, list[Site]] = field(default_factory=dict)
+    """Name -> every place the name itself is written.
+
+    Not the same as ``declarations``, which points at the definition objects: these point at
+    the strings, and include the ``axis`` of a curve naming this object as well as its own
+    ``name``. Renaming has to rewrite all of them or it leaves the project referring to
+    something that no longer exists.
+    """
+
 
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
@@ -86,6 +100,12 @@ def index(workspace: Workspace) -> Index:
             built.declarations.setdefault(name, []).append(site)
             if declaration.scope.is_producer:
                 built.producers.setdefault(name, []).append(site)
+            built.mentions.setdefault(name, []).append(
+                Site(location.path, f"{location.pointer}.name")
+            )
+            for key, target in declaration.definition.references.items():
+                where = loaded.declaration_location(position, f"definition.{key}")
+                built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         for position, member in enumerate(entry.structure.members):
@@ -191,6 +211,42 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     if name is not None:
         return list(built.declarations.get(name, ()))
     return []
+
+
+def rename_problem(built: Index, name: str) -> str | None:
+    """Why the project may not be renamed to ``name``, or nothing if it may.
+
+    Checked before a single file is touched. A rename writes into every component that
+    mentions the object, so a name that turns out to be unusable would leave a project broken
+    across several files at once - and the c compiler, which is where an unusable name is
+    otherwise noticed, only sees it a build later.
+    """
+    if not re.fullmatch(C_IDENTIFIER_PATTERN, name) or len(name) > IDENTIFIER_MAX_LENGTH:
+        return f"'{name}' is not a usable c identifier"
+    if is_reserved_identifier(name):
+        return f"'{name}' is reserved by c or by a header DDD generates"
+    if name in built.declarations:
+        # Silently merging two objects into one is the worst outcome available here: it
+        # compiles, it links, and two components share storage neither of them meant to.
+        return f"'{name}' is already declared by this project"
+    return None
+
+
+def rename_edits(
+    built: Index, document: Document, pointer: str, name: str, cache: dict[Path, Document]
+) -> dict[str, list[dict[str, Any]]]:
+    """Every edit that renaming the object under the cursor takes, keyed by file.
+
+    Only the characters between the quotes are replaced, so whatever else is on the line -
+    the key, the spacing a project formats its files with - is left exactly as it was.
+    """
+    subject = variable_at(document, pointer)
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for site in built.mentions.get(subject or "", ()):
+        span = read(site.path, cache).text_range_of(site.pointer)
+        if span is not None:
+            changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
+    return changes
 
 
 def locations(sites: Iterable[Site], cache: dict[Path, Document]) -> list[dict[str, Any]]:

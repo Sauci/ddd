@@ -29,6 +29,7 @@ from urllib.request import url2pathname
 from ddd import __version__
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
+from ddd.lsp.edits import QUICK_FIX, actions
 from ddd.lsp.hover import describe, resolve
 from ddd.lsp.navigation import (
     Site,
@@ -36,11 +37,15 @@ from ddd.lsp.navigation import (
     index,
     locations,
     references,
+    rename_edits,
+    rename_problem,
     subject_at,
+    variable_at,
     workspaces,
 )
 from ddd.lsp.protocol import (
     METHOD_NOT_FOUND,
+    REQUEST_FAILED,
     error,
     notification,
     read_message,
@@ -55,6 +60,9 @@ _REFRESHING: Final = frozenset({"textDocument/didOpen", "textDocument/didSave"})
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
 _HOVER: Final = "textDocument/hover"
+_PREPARE_RENAME: Final = "textDocument/prepareRename"
+_RENAME: Final = "textDocument/rename"
+_CODE_ACTION: Final = "textDocument/codeAction"
 
 
 def uri_to_path(uri: str) -> Path:
@@ -102,6 +110,13 @@ class Server:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
         elif method == _HOVER:
             write_message(self.writer, response(request_id, self._hover(message["params"])))
+        elif method == _PREPARE_RENAME:
+            prepared = self._prepare_rename(message["params"])
+            write_message(self.writer, response(request_id, prepared))
+        elif method == _RENAME:
+            self._answer_rename(request_id, message["params"])
+        elif method == _CODE_ACTION:
+            write_message(self.writer, response(request_id, self._actions(message["params"])))
         elif request_id is not None:
             # A request always gets an answer, even a refusal: a client that is still waiting
             # on one looks exactly like a server that has died.
@@ -168,6 +183,70 @@ class Server:
             "range": document.range_of(pointer),
         }
 
+    def _prepare_rename(self, params: dict[str, Any]) -> dict[str, Any] | None:
+        """Whether a rename may start here, and over which characters.
+
+        Narrow where hovering is wide, and for a reason rather than out of caution: the editor
+        opens its rename box *over the range this returns*. From a datatype, the only honest
+        range would be a name several lines away, and a box appearing somewhere the pointer is
+        not is worse than no box at all.
+        """
+        path = uri_to_path(params["textDocument"]["uri"])
+        document = read(path, {})
+        pointer = document.pointer_at(params["position"])
+        name = variable_at(document, pointer)
+        if name is None:
+            return None
+        span = document.text_range_of(pointer)
+        return None if span is None else {"range": span, "placeholder": name}
+
+    def _answer_rename(self, request_id: Any, params: dict[str, Any]) -> None:
+        """Rewrite a name everywhere the project writes it, or say why it cannot be.
+
+        A refusal is an error rather than an empty edit: an editor shows the message, where an
+        empty edit looks like a rename that quietly did nothing.
+        """
+        path = uri_to_path(params["textDocument"]["uri"])
+        cache: dict[Path, Document] = {}
+        document = read(path, cache)
+        pointer = document.pointer_at(params["position"])
+        wanted = params["newName"]
+        changes: dict[str, list[dict[str, Any]]] = {}
+        # A component linked into two images is in two projects, and both of them mention the
+        # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
+        # is two overlapping rewrites of one range.
+        seen: set[tuple[str, int, int]] = set()
+        for workspace in workspaces(discover(self.root, self.build_directories), path):
+            built = index(workspace)
+            refused = rename_problem(built, wanted)
+            if refused is not None:
+                write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
+                return
+            for uri, edits in rename_edits(built, document, pointer, wanted, cache).items():
+                for edit in edits:
+                    start = edit["range"]["start"]
+                    where = (uri, start["line"], start["character"])
+                    if where not in seen:
+                        seen.add(where)
+                        changes.setdefault(uri, []).append(edit)
+        write_message(self.writer, response(request_id, {"changes": changes}))
+
+    def _actions(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """What can be offered for the key under the cursor.
+
+        The range a client sends covers a selection rather than a point, so the start of it is
+        what decides: an author asking for a fix has put the caret on the thing they mean.
+        """
+        path = uri_to_path(params["textDocument"]["uri"])
+        cache: dict[Path, Document] = {}
+        document = read(path, cache)
+        pointer = document.pointer_at(params["range"]["start"])
+        reported = params.get("context", {}).get("diagnostics", [])
+        offered: list[dict[str, Any]] = []
+        for workspace in workspaces(discover(self.root, self.build_directories), path):
+            offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
+        return offered
+
     def _initialise(self, params: dict[str, Any]) -> None:
         """Take the workspace root from whichever of the two ways the client offers it."""
         folders = params.get("workspaceFolders") or []
@@ -185,6 +264,8 @@ class Server:
                 "definitionProvider": True,
                 "referencesProvider": True,
                 "hoverProvider": True,
+                "renameProvider": {"prepareProvider": True},
+                "codeActionProvider": {"codeActionKinds": [QUICK_FIX]},
             },
             "serverInfo": {"name": "ddd", "version": __version__},
         }

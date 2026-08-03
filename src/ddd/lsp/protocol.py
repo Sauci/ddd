@@ -68,6 +68,9 @@ def response(request_id: Any, result: Any) -> dict[str, Any]:
 METHOD_NOT_FOUND = -32601
 """The json-rpc code for a request naming a method the server does not implement."""
 
+REQUEST_FAILED = -32803
+"""A request the server understood and could not carry out; the message says why."""
+
 
 def error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     """A refusal, which a request always gets rather than being left unanswered."""

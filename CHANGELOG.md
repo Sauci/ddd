@@ -118,6 +118,20 @@ out to be; find references lists every declaration of it.  The same works from a
 structure it nests and back, and from an `includes` entry or a project's `naming` to the files
 they name, wildcards included.
 
+A quick fix reconciles a `definition-mismatch`.  With the cursor on a `unit`, a
+`conversion`, a `datatype` or any other key the declarations of one object have to agree on,
+the editor offers to give every other declaration the same value.  The value is copied as
+source text rather than re-serialised, so a project's formatting survives a fix; a declaration
+that never mentioned the key gets it inserted beside its neighbours.  Only ever written, never
+removed - the action acts on the key under the cursor, so there is always one to copy.
+
+`F2` renames a variable everywhere the project writes it - every declaration, and every
+`axis`, `x_axis`, `y_axis` or `input` naming it, across as many files as that takes.  A name c
+reserves, one that is not a usable identifier, or one the project already declares is refused
+with the reason before anything is written, since a rename touches several files at once and an
+unusable name would otherwise surface a build later.  Only the characters between the quotes are
+replaced, so a project's formatting survives, and free text is left alone.
+
 It reports on open and on save, and publishes for every file of a project rather than only the
 one on screen, because half of a disagreement is always in the other component.  Both sides of
 a conflict are marked: `ddd check` reports it once with a note at the other declaration, which

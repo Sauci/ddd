@@ -50,12 +50,16 @@ class Document:
             # caller reads as "nothing here", rather than as an error of its own.
             self.data = None
             self._spans: dict[str, tuple[int, int]] = {}
+            self._texts: dict[str, tuple[int, int]] = {}
+            self._values: dict[str, tuple[int, int]] = {}
         else:
             # Scanned without a single defensive branch: a document that has already parsed
             # cannot surprise the scanner.
             scanner = _Scanner(text)
             scanner.value("")
             self._spans = scanner.spans
+            self._texts = scanner.texts
+            self._values = scanner.values
 
     def range_of(self, pointer: str) -> dict[str, Any]:
         """The range to underline for a finding located at ``pointer``."""
@@ -108,6 +112,34 @@ class Document:
             remaining -= 1 if ord(self.text[offset]) < 0x10000 else 2
             offset += 1
         return offset
+
+    def text_range_of(self, pointer: str) -> dict[str, Any] | None:
+        """The range of a string's *contents*, inside the quotes, or nothing if it is not one.
+
+        What an edit replaces. :meth:`range_of` covers the key as well, which is right for
+        underlining a finding and wrong for rewriting a name: it would quote the quotes.
+        """
+        span = self._texts.get(pointer)
+        if span is None:
+            return None
+        return _range(self._position(span[0]), self._position(span[1]))
+
+    def raw_at(self, pointer: str) -> str | None:
+        """The source text of a value, exactly as the author wrote it.
+
+        Copied rather than re-serialised when a value is propagated to another declaration:
+        ``{ "kind": "linear", "factor": 0.5 }`` arrives in the other file looking the way its
+        author typed it, where ``json.dumps`` would arrive as a different four lines.
+        """
+        span = self._values.get(pointer)
+        return None if span is None else self.text[span[0] : span[1]]
+
+    def value_range_of(self, pointer: str) -> dict[str, Any] | None:
+        """The range of a value alone, without the key in front of it."""
+        span = self._values.get(pointer)
+        if span is None:
+            return None
+        return _range(self._position(span[0]), self._position(span[1]))
 
     def _resolve(self, pointer: str) -> tuple[int, int] | None:
         """The span of the pointer, of its nearest documented ancestor, or nothing."""
@@ -184,6 +216,10 @@ class _Scanner:
         self.text = text
         self.pos = 0
         self.spans: dict[str, tuple[int, int]] = {}
+        self.texts: dict[str, tuple[int, int]] = {}
+        """Where the characters of a string value sit, without the quotes around them."""
+        self.values: dict[str, tuple[int, int]] = {}
+        """Where a value sits, of whatever shape, without the key in front of it."""
         self._skip_whitespace()
 
     def value(self, pointer: str, start: int | None = None) -> None:
@@ -195,9 +231,12 @@ class _Scanner:
             self._array(pointer)
         elif character == '"':
             self._string()
+            # Between the quotes: begin is the opening one, pos is just past the closing one.
+            self.texts[pointer] = (begin + 1, self.pos - 1)
         else:
             self._literal()
         self.spans[pointer] = (begin if start is None else start, self.pos)
+        self.values[pointer] = (begin, self.pos)
 
     def _object(self, pointer: str) -> None:
         self.pos += 1

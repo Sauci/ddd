@@ -142,6 +142,13 @@ class TestRanges:
             "end": {"line": 0, "character": 0},
         }
 
+    def test_a_pointer_naming_nothing_has_no_value_to_point_at(self) -> None:
+        """The three views of a value all answer nothing for a pointer that is not there."""
+        document = Document(self.DOCUMENT)
+        assert document.value_range_of("component.absent") is None
+        assert document.text_range_of("component.absent") is None
+        assert document.raw_at("component.absent") is None
+
     def test_an_escaped_quote_does_not_end_a_string(self) -> None:
         document = Document('{\n  "a": "say \\" here",\n  "b": 1\n}')
         assert document.range_of("b")["start"]["line"] == 2
@@ -961,6 +968,354 @@ class TestHover:
         assert sparkline([0.0, 5.0, 10.0], 0.0, 20.0) == f"{BARS[0]}{BARS[2]}{BARS[4]}"
 
 
+def apply_edits(path: Path, edits: list[dict[str, Any]]) -> str:
+    """What a client would write, so a test can check the result rather than the offsets."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for edit in sorted(
+        edits,
+        key=lambda e: (e["range"]["start"]["line"], e["range"]["start"]["character"]),
+        reverse=True,
+    ):
+        start, end = edit["range"]["start"], edit["range"]["end"]
+        assert start["line"] == end["line"], "a name does not span lines"
+        line = lines[start["line"]]
+        lines[start["line"]] = (
+            line[: start["character"]] + edit["newText"] + line[end["character"] :]
+        )
+    return "".join(lines)
+
+
+class TestRename:
+    """Rewriting a name everywhere the project writes it."""
+
+    def workspace(self, tmp_path: Path) -> Path:
+        """A producer, a consumer, and an axis whose input quantity names the same object."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", "uint16"),
+                    declare("output", "Ax", "uint16", kind="axis", size=3, input="Speed"),
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint16")),
+            },
+        )
+        return tmp_path / "p.ddd.json"
+
+    def index_of(self, root: Path) -> Any:
+        from ddd.lsp.navigation import index
+
+        return index(load_workspace(root, DiagnosticBag()))
+
+    def test_every_mention_is_rewritten_including_the_references(self, tmp_path: Path) -> None:
+        """A rename that misses the axis leaves the project naming something gone."""
+        from ddd.lsp.navigation import rename_edits
+
+        root = self.workspace(tmp_path)
+        path = tmp_path / "b.ddd.json"
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            self.index_of(root),
+            read(path, cache),
+            "component.declarations[0].definition.name",
+            "EngineSpeed",
+            cache,
+        )
+        rewritten = {
+            uri_to_path(uri): apply_edits(uri_to_path(uri), found) for uri, found in edits.items()
+        }
+        assert {path.name for path in rewritten} == {"a.ddd.json", "b.ddd.json"}
+        produced = json.loads(rewritten[tmp_path / "a.ddd.json"])["component"]["declarations"]
+        assert produced[0]["definition"]["name"] == "EngineSpeed"
+        assert produced[1]["definition"]["input"] == "EngineSpeed"
+        assert "Speed" not in rewritten[tmp_path / "b.ddd.json"].replace("EngineSpeed", "")
+
+    def test_only_the_characters_between_the_quotes_are_replaced(self, tmp_path: Path) -> None:
+        """Whatever else a project puts on the line is left exactly as it was."""
+        from ddd.lsp.navigation import rename_edits
+
+        root = self.workspace(tmp_path)
+        path = tmp_path / "b.ddd.json"
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            self.index_of(root),
+            read(path, cache),
+            "component.declarations[0].definition.name",
+            "X",
+            cache,
+        )
+        rewritten = apply_edits(path, edits[path.as_uri()])
+        assert '"name": "X"' in rewritten
+        assert json.loads(rewritten)  # still json, quotes intact
+
+    def test_a_rename_from_a_position_naming_nothing_edits_nothing(self, tmp_path: Path) -> None:
+        from ddd.lsp.navigation import rename_edits
+
+        root = self.workspace(tmp_path)
+        path = tmp_path / "b.ddd.json"
+        assert rename_edits(self.index_of(root), read(path, {}), "component.name", "X", {}) == {}
+
+    def test_a_mention_that_is_not_a_string_is_skipped(self, tmp_path: Path) -> None:
+        """Belt and braces: the index and the text are read at the same moment, but a file
+        rewritten between the two would otherwise put an edit over a number."""
+        from ddd.lsp.navigation import Index, Site, rename_edits
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Speed"))})
+        path = tmp_path / "a.ddd.json"
+        built = Index(
+            mentions={"Speed": [Site(path, "component.declarations[0].definition.dimensions")]}
+        )
+        cache: dict[Path, Document] = {}
+        found = rename_edits(
+            built, read(path, cache), "component.declarations[0].definition.name", "X", cache
+        )
+        assert found == {}
+
+    @pytest.mark.parametrize(
+        ("name", "because"),
+        [
+            ("2Bad", "not a usable c identifier"),
+            ("has space", "not a usable c identifier"),
+            ("int", "reserved"),
+            ("uint16_t", "reserved"),
+            ("Ax", "already declared"),
+        ],
+    )
+    def test_a_name_that_would_break_the_project_is_refused(
+        self, tmp_path: Path, name: str, because: str
+    ) -> None:
+        """Checked before a single file is touched: a rename writes into several at once, and
+        the c compiler only notices an unusable name a build later."""
+        from ddd.lsp.navigation import rename_problem
+
+        problem = rename_problem(self.index_of(self.workspace(tmp_path)), name)
+        assert problem is not None
+        assert because in problem
+
+    def test_a_usable_name_is_not_refused(self, tmp_path: Path) -> None:
+        from ddd.lsp.navigation import rename_problem
+
+        assert rename_problem(self.index_of(self.workspace(tmp_path)), "EngineSpeed") is None
+
+    def test_a_name_longer_than_the_contract_allows_is_refused(self, tmp_path: Path) -> None:
+        from ddd.lsp.navigation import rename_problem
+        from ddd.models import IDENTIFIER_MAX_LENGTH
+
+        too_long = "A" * (IDENTIFIER_MAX_LENGTH + 1)
+        assert rename_problem(self.index_of(self.workspace(tmp_path)), too_long) is not None
+
+
+class TestPropagating:
+    """Giving the other declarations of one object the value under the cursor."""
+
+    def built(self, tmp_path: Path, **files: Any) -> Any:
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+
+    def offer(self, tmp_path: Path, source: str, pointer: str, **files: Any) -> Any:
+        from ddd.lsp.edits import actions
+
+        built = self.built(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / source
+        return actions(built, path, read(path, cache), pointer, cache), cache
+
+    def test_a_value_replaces_the_one_the_others_hold(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        (action,) = offered
+        assert action["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        (edits,) = action["edit"]["changes"].values()
+        assert edits[0]["newText"] == '"rpm"'
+
+    def test_a_key_the_others_lack_is_inserted(self, tmp_path: Path) -> None:
+        """The usual mismatch: the other declaration simply never mentioned it."""
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        (action,) = offered
+        (edits,) = action["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
+        declared = json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        assert declared["unit"] == "rpm"
+
+    def test_a_value_is_copied_as_written_rather_than_re_serialised(self, tmp_path: Path) -> None:
+        """A conversion arrives looking the way its author typed it, not the way json.dumps
+        would have; otherwise a one line fix reformats somebody's file."""
+        from ddd.lsp.edits import actions
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
+        (tmp_path / "a.ddd.json").write_text(
+            '{"component": {"name": "A", "declarations": [{"scope": "output", "definition":'
+            ' {"name": "S", "kind": "measurement", "datatype": "uint8",'
+            ' "conversion": { "kind": "linear", "factor": 0.25 }}}]}}',
+            encoding="utf-8",
+        )
+        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S"))})
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        (action,) = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.declarations[0].definition.conversion",
+            cache,
+        )
+        (edits,) = action["edit"]["changes"].values()
+        assert '{ "kind": "linear", "factor": 0.25 }' in edits[0]["newText"]
+
+    def test_an_object_written_on_one_line_stays_on_one_line(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import actions
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
+        (tmp_path / "b.ddd.json").write_text(
+            '{"component": {"name": "B", "declarations": [{"scope": "input", "definition":'
+            ' {"name": "S", "kind": "measurement", "datatype": "uint8"}}]}}\n',
+            encoding="utf-8",
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        (action,) = actions(
+            built, path, read(path, cache), "component.declarations[0].definition.unit", cache
+        )
+        (edits,) = action["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
+        assert rewritten.count("\n") == 1  # still one line, plus the trailing newline
+        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+
+    def test_the_action_carries_the_finding_it_settles(self, tmp_path: Path) -> None:
+        """What puts the lightbulb on the squiggle rather than leaving the fix to be guessed."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        reported = [
+            {"code": "definition-mismatch", "source": "ddd", "message": "differ"},
+            {"code": "unused-output", "source": "ddd", "message": "unrelated"},
+        ]
+        (action,) = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.declarations[0].definition.unit",
+            cache,
+            reported,
+        )
+        # Only the finding this actually settles: claiming to fix an unrelated one would put
+        # the lightbulb on a squiggle it does nothing about.
+        assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
+
+    def test_an_action_with_nothing_to_settle_carries_no_finding(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        (action,) = offered
+        assert "diagnostics" not in action
+
+    def test_nothing_is_offered_when_everybody_already_agrees(self, tmp_path: Path) -> None:
+        """A fix that changes nothing teaches a reader to stop looking at the lightbulb."""
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert offered == []
+
+    def test_nothing_is_offered_when_nobody_else_declares_it(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{"a.ddd.json": component("A", declare("local", "Speed", unit="rpm"))},
+        )
+        assert offered == []
+
+    @pytest.mark.parametrize(
+        "pointer",
+        [
+            "component.declarations[0].definition.name",
+            "component.declarations[0].definition.description",
+            "component.declarations[0].scope",
+            "component.name",
+            "",
+        ],
+    )
+    def test_a_key_that_is_not_the_interface_offers_nothing(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """A name is a rename, a description is each component's own, a scope is not shared."""
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            pointer,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", description="ours")
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert offered == []
+
+    def test_a_declaration_being_written_offers_nothing(self, tmp_path: Path) -> None:
+        """No name yet, so there is nothing to look the other declarations up by."""
+        from ddd.lsp.edits import actions
+        from ddd.lsp.navigation import Index
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
+        path = tmp_path / "a.ddd.json"
+        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
+        assert (
+            actions(Index(), path, document, "component.declarations[0].definition.unit", {}) == []
+        )
+
+    def test_a_definition_that_is_not_an_object_is_left_alone(self, tmp_path: Path) -> None:
+        """Belt and braces around the insertion: there is nowhere to insert into."""
+        from ddd.lsp.edits import _insert
+
+        document = Document('{"component": {"declarations": [{"definition": 7}]}}')
+        assert _insert(document, "component.declarations[0].definition", "unit", '"rpm"') is None
+
+
 class TestPositions:
     """Turning where the cursor is into what it is on."""
 
@@ -1198,11 +1553,170 @@ class TestServer:
         (answer,) = sent(writer)
         assert answer["result"] is None
 
+    def test_it_offers_to_rename(self, tmp_path: Path) -> None:
+        writer = io.BytesIO()
+        Server(framed(self.handshake(tmp_path)), writer, root=tmp_path).run()
+        capabilities = sent(writer)[0]["result"]["capabilities"]
+        assert capabilities["renameProvider"] == {"prepareProvider": True}
+
+    def rename_request(self, path: Path, pointer: str, name: str) -> dict[str, Any]:
+        position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
+        return {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": position,
+                "newName": name,
+            },
+        }
+
+    def test_rename_answers_with_edits_in_every_file(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        writer = io.BytesIO()
+        Server(
+            framed(
+                self.rename_request(
+                    consumer, "component.declarations[0].definition.name", "Renamed"
+                )
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
+        assert changed == {"a.ddd.json", "b.ddd.json"}
+
+    def test_rename_to_an_unusable_name_is_refused_with_a_reason(self, tmp_path: Path) -> None:
+        """An error rather than an empty edit: an empty edit looks like a rename that did
+        nothing, where a refusal an editor can show tells the author what to type instead."""
+        consumer = self.shared_workspace(tmp_path)
+        writer = io.BytesIO()
+        Server(
+            framed(
+                self.rename_request(consumer, "component.declarations[0].definition.name", "int")
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert "reserved" in answer["error"]["message"]
+
+    def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        position = Document(consumer.read_text(encoding="utf-8")).range_of(
+            "component.declarations[0].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        Server(
+            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"]["placeholder"] == "Shared"
+
+    @pytest.mark.parametrize(
+        "pointer", ["component.declarations[0].definition.datatype", "component.name"]
+    )
+    def test_preparing_a_rename_away_from_a_name_is_declined(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The editor opens its box over the range this returns, so a range several lines from
+        the pointer would be worse than no box at all - even though hovering answers here."""
+        consumer = self.shared_workspace(tmp_path)
+        position = Document(consumer.read_text(encoding="utf-8")).range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"] is None
+
+    def test_a_file_in_two_projects_is_edited_once(self, tmp_path: Path) -> None:
+        """Two overlapping rewrites of one range is not a duplicate an editor tolerates."""
+        write_tree(
+            tmp_path,
+            {
+                "one.ddd.json": project("One", "a.ddd.json"),
+                "two.ddd.json": project("Two", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Shared")),
+            },
+        )
+        for name in ("one", "two"):
+            record = tmp_path / "build" / name / BUILD_INFO_FILENAME
+            record.parent.mkdir(parents=True, exist_ok=True)
+            record.write_text(
+                json.dumps({"project": (tmp_path / f"{name}.ddd.json").as_posix()}),
+                encoding="utf-8",
+            )
+        writer = io.BytesIO()
+        Server(
+            framed(
+                self.rename_request(
+                    tmp_path / "a.ddd.json", "component.declarations[0].definition.name", "Other"
+                )
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        (edits,) = answer["result"]["changes"].values()
+        assert len(edits) == 1
+
+    def test_it_offers_quick_fixes(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import QUICK_FIX
+
+        writer = io.BytesIO()
+        Server(framed(self.handshake(tmp_path)), writer, root=tmp_path).run()
+        capabilities = sent(writer)[0]["result"]["capabilities"]
+        assert capabilities["codeActionProvider"] == {"codeActionKinds": [QUICK_FIX]}
+
+    def test_a_code_action_propagates_the_value_under_the_cursor(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        producer = tmp_path / "a.ddd.json"
+        span = Document(producer.read_text(encoding="utf-8")).range_of(
+            "component.declarations[0].definition.unit"
+        )
+        writer = io.BytesIO()
+        Server(
+            framed(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 13,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": producer.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": []},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        (action,) = answer["result"]
+        assert "Apply this unit" in action["title"]
+        (uri,) = action["edit"]["changes"]
+        assert uri_to_path(uri).name == "b.ddd.json"
+
     def test_a_request_it_cannot_serve_is_refused_rather_than_ignored(self, tmp_path: Path) -> None:
         """A client still waiting for an answer looks exactly like a server that has died."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/rename"}),
+            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/completion"}),
             writer,
             root=tmp_path,
         ).run()

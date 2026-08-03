@@ -260,7 +260,24 @@ release, and if VS Code is the main audience it should be planned for rather tha
 
    **Completion** is what is left of this stage. Convention-driven name completion, from
    ``complete(prefix, convention)``, is the piece worth having.
-5. **Rename and quick fixes.**
+5. **Rename** - **done**. `textDocument/rename` with `prepareRename`, rewriting the name
+   string in every declaration and every reference key that names the object.
+
+   Narrow where hover and navigation are wide, and for a concrete reason rather than caution:
+   an editor opens its rename box *over the range prepareRename returns*, so answering from a
+   datatype would put the box several lines from the pointer. Refusals are json-rpc errors
+   rather than empty edits, because an empty edit reads as a rename that silently did nothing.
+
+6. **Quick fixes** - **done**, in `ddd/lsp/edits.py`. `textDocument/codeAction` offers to
+   give every other declaration of an object the value under the cursor.
+
+   Insertion was the work, as expected: the usual mismatch is a declaration omitting the key,
+   so the edit adds `"unit": "Hz"` beside the last member, taking its indentation, and staying
+   on one line when the object is written on one. Two rules keep it safe - the value is copied
+   as *source text* rather than re-serialised, and a value is only ever written, never removed,
+   which is what keeps the comma juggling of a deletion out of the picture entirely.
+
+   **Completion** is what remains of the plan.
 
 ## Open questions
 

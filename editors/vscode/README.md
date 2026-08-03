@@ -75,6 +75,17 @@ or `input` naming another object jumps to that one instead. Find references list
 declaration of it. The same works from a `type` to the structure it nests, and from an
 `includes` entry or a project's `naming` to the files they name.
 
+The lightbulb on a `definition-mismatch` offers to reconcile it: put the cursor on the
+`unit`, the `conversion` or any other key the declarations must agree on, and every other
+declaration of that object is given the same value. VS Code shows the multi-file edit in a
+preview first, so nothing changes without being seen. The value is copied as written rather
+than re-serialised, and a declaration that never mentioned the key gets it inserted.
+
+`F2` renames a variable across every component that declares it and every `axis`, `x_axis`,
+`y_axis` or `input` that names it. A name c reserves, one that is not a usable identifier, or
+one the project already declares is refused with the reason rather than half applied. Free text
+is left alone, so a `description` mentioning the old name still mentions it.
+
 The published json schemas keep working alongside this: they do structure, the server does
 meaning.
 

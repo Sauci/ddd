@@ -35,6 +35,68 @@ will be flattened into one a2l object per member rather than described as an a2l
 CANape 15 accepts the native `TYPEDEF_STRUCTURE` form and then displays nothing for it, which is
 recorded under "what the calibration tools actually implement" in the developer documentation.
 
+### Storage, interface and presentation are told apart
+
+Three properties that used to be settled the same way - "the producer wins, with a warning" -
+turn out to be three different kinds of thing, and are now handled as such.
+
+**`volatile` is interface.**  It reaches every consumer's own header as a type qualifier,
+`extern volatile uint16_t Speed[4]`, which is what tells that component's code not to cache the
+value and not to expect two reads to agree.  A component declaring the opposite has
+misunderstood what it is compiled against, so a disagreement is now a `definition-mismatch`
+error rather than a warning it loses.
+
+**Every declaration has to say the same thing**, and leaving it out says `false`.  That is
+unlike `limits`, which a declaration may omit because DDD derives them from the datatype and
+the conversion - there is nothing to derive here.  A component whose description does not say a
+variable is volatile is a component whose author was never told, which is the thing an
+interface description exists to prevent.
+
+**Migrating**: every component that reads a volatile variable has to declare it volatile too.
+`ddd check` names each one.
+
+**`export` is nobody's alone.**  Which signals a calibration engineer needs to see is not a
+property of whoever happens to write the variable, so **any** component may now ask for an
+object to reach the a2l, and asking wins over declining:
+
+```json
+{ "scope": "output", "definition": { "name": "X", "a2l": { "export": false } } }
+{ "scope": "input",  "definition": { "name": "X", "a2l": { "export": true  } } }
+```
+
+`X` is exported.  The rule is order independent, so two consumers can never conflict and there
+is no finding to invent for them.  A producer that says `false` while nobody asks still keeps
+the object out, exactly as before.
+
+**What is left of the `a2l` block is presentation** - a `format` string, a
+`display_identifier` - where two values genuinely cannot both be used.  That stays a
+`storage-mismatch` warning with the producer winning.
+
+### `init` belongs to the producer
+
+**Breaking.** A declaration whose `scope` is `input` may no longer state `init`.  What a
+variable starts out as is decided by the component that produces it, so a component that only
+reads it was never expressing an opinion that could lose - it was claiming storage it does not
+own.  The new `consumer-storage` check reports it, where the claim is written:
+
+```text
+controller.ddd.json#component.declarations[0].definition.init: error[consumer-storage]: 'ValueA': the initial value is decided by the component that produces the variable, not by 'Controller', which reads it
+```
+
+**Migrating**: delete `init` from every `input` declaration; nothing else changes, since the
+producer's value was already the one being generated.  The check is relaxable, so a large
+project can lower it with `-W consumer-storage=warning` while the keys come out.
+
+This also fixes the reason those keys were there.  A consumer that left `init` out used to be
+reported as specifying "none" against the producer's value, so restating it was the only way to
+keep a run quiet - silence was read as a claim.  `init` has left the `storage-mismatch`
+comparison entirely; that check now covers `volatile` and the `a2l` block.
+
+Those two will follow once the contract can tell a value that was omitted from one that was
+written down and happens to be the default.  Today it cannot: `volatile` defaults to `false`
+and the `a2l` block to its defaults, so a consumer saying nothing is indistinguishable from one
+insisting on exactly those - which is the trap `init` was already in.
+
 ### `ddd lsp`: the checks, in the editor
 
 A language server, speaking the Language Server Protocol on stdin and stdout.  It reports the

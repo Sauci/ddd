@@ -301,9 +301,7 @@ condition is the one that is generated:
    $ ddd check project.ddd.json
    consumer.ddd.json#component.declarations[0].condition: warning[condition-mismatch]: 'ValueX': component 'Consumer' uses condition 'defined(FEATURE_Y)' while 'Producer' uses 'defined(FEATURE_X)'
        note: producer.ddd.json#component.declarations[0]: reference declaration
-   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueX': component 'Consumer' specifies a different init than 'Producer' (init: 2 != 1); the value of 'Producer' is used
-       note: producer.ddd.json#component.declarations[0].definition: reference declaration
-   2 warnings
+   1 warning
 
 It is a warning rather than an error because the case does occur legitimately: a consumer whose
 own code is guarded by a wider condition may reasonably repeat the narrower one imprecisely,
@@ -312,10 +310,16 @@ spellings coexist. What DDD refuses to do is decide silently, which is why the m
 both conditions and says which one won.
 
 .. note::
-   ``storage-mismatch`` in the transcript above is the same principle applied to ``init`` and
-   ``volatile``: a difference between components is reported, and the producer's value is the
-   one that is used. Anything that would make the consumers actually *wrong* - datatype, unit,
-   conversion, shape, limits, kind - is an error instead, under ``definition-mismatch``.
+   ``storage-mismatch`` applies the same principle to how the a2l presents an object - a
+   ``format`` string, a ``display_identifier``: a difference between components is reported,
+   and the producer's value is the one that is used. Anything that would make the consumers
+   actually *wrong* - datatype, unit, conversion, shape, limits, kind, ``volatile`` - is an
+   error instead, under ``definition-mismatch``.
+
+   Two keys of the block sit outside that. ``init`` is refused on a consumer altogether, as
+   ``consumer-storage``: a component that only reads a variable has no say in what it starts
+   as. ``export`` is compared by nobody, because any component may ask for an object to reach
+   the a2l and asking wins over declining.
 
 Checking a component on its own
 -------------------------------

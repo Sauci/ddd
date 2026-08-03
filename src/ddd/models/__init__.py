@@ -37,6 +37,7 @@ from ddd.models.objects import (
     check_shape,
     discriminator_tags,
     format_shape,
+    resolve_export,
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
@@ -98,4 +99,5 @@ __all__ = [
     "format_number",
     "format_shape",
     "is_reserved_identifier",
+    "resolve_export",
 ]

@@ -13,8 +13,7 @@
           "datatype": "uint8",
           "unit": "%",
           "conversion": { "kind": "linear", "factor": 0.5 },
-          "limits": { "min": 0, "max": 100 },
-          "init": 0
+          "limits": { "min": 0, "max": 100 }
         }
       },
       {
@@ -27,7 +26,6 @@
           "unit": "V",
           "dimensions": [4],
           "conversion": { "factor": 0.001 },
-          "init": 0,
           "volatile": true
         }
       },

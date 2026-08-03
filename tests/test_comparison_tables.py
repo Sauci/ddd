@@ -59,6 +59,9 @@ _NOT_COMPARED: dict[str, str] = {
     "words without disagreeing about it, and the producer's text is the one generated",
     "kind": "compared, but as a table field of its own - listed here only for ResolvedObject, "
     "see below",
+    "init": "only a producer may state one, so there are never two to compare. A component "
+    "that reads a variable has no say in what it starts as, and stating one is reported "
+    "where it is written as consumer-storage rather than reconciled here afterwards",
 }
 
 # ResolvedObject carries the *result* of the analysis as well as the declaration, and the
@@ -152,6 +155,19 @@ class TestComparisonTables:
         # And a declaration that omits them agrees with one that states them.
         assert inside["limits"].optional
         assert "limits" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
+
+    def test_volatile_is_an_interface_field_and_unlike_limits_is_not_optional(self) -> None:
+        """Both properties are stated by hand, and only one may be left out.
+
+        ``limits`` are derived from the datatype and the conversion when a declaration omits
+        them, so omitting is asking for the derivation. Nothing derives ``volatile``: leaving
+        it out says "this does not change under you" as plainly as writing ``false``, and
+        every component reading the variable has to have been told.
+        """
+        inside = {field.name: field for field in analysis._INTERFACE_FIELDS}
+        assert "volatile" in inside
+        assert not inside["volatile"].optional
+        assert inside["limits"].optional
 
     def test_a2l_is_a_storage_field_inside_a_project_and_its_own_check_between_deliveries(
         self,

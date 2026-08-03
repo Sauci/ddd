@@ -14,7 +14,6 @@
           "unit": "Hz",
           "conversion": { "kind": "linear", "factor": 0.25 },
           "limits": { "min": 0, "max": 8000 },
-          "init": 0,
           "volatile": true
         }
       },
@@ -27,8 +26,7 @@
           "datatype": "sint16",
           "unit": "degC",
           "conversion": { "kind": "linear", "factor": 0.1 },
-          "limits": { "min": -40, "max": 150 },
-          "init": -400
+          "limits": { "min": -40, "max": 150 }
         }
       },
       {
@@ -59,8 +57,7 @@
               { "name": "STATE_DEGRADED", "value": 3 },
               { "name": "STATE_FAULT", "value": 15 }
             ]
-          },
-          "init": 0
+          }
         }
       },
       {
@@ -73,7 +70,6 @@
           "unit": "V",
           "dimensions": [4],
           "conversion": { "factor": 0.001 },
-          "init": 0,
           "volatile": true
         }
       },
@@ -87,8 +83,7 @@
           "datatype": "uint16",
           "unit": "V",
           "conversion": { "factor": 0.001 },
-          "limits": { "min": 0, "max": 5 },
-          "init": 1000
+          "limits": { "min": 0, "max": 5 }
         }
       },
       {
@@ -97,8 +92,7 @@
           "name": "ValueJ",
           "kind": "measurement",
           "description": "Counter written by the event logger",
-          "datatype": "uint8",
-          "init": 0
+          "datatype": "uint8"
         }
       },
       {
@@ -122,8 +116,7 @@
           "conversion": { "factor": 0.25 },
           "limits": { "min": 0, "max": 8000 },
           "size": 6,
-          "input": "ValueE",
-          "init": [0, 3200, 6400, 12800, 19200, 32000]
+          "input": "ValueE"
         }
       },
       {

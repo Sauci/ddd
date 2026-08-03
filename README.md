@@ -342,11 +342,12 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
+| error | `consumer-storage` | an `input` declaration states `init`, which only the producing component decides |
 | error | `naming` | a name does not follow the naming convention of the project |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |
-| warning | `storage-mismatch` | components disagree on `init`, `volatile` or the `a2l` block; the producer wins |
+| warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `condition-mismatch` | declarations of one variable use different conditions |
 | warning | `unused-output` | an output nobody reads |
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |

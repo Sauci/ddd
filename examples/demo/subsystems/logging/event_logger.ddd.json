@@ -14,7 +14,6 @@
           "unit": "Hz",
           "conversion": { "kind": "linear", "factor": 0.25 },
           "limits": { "min": 0, "max": 8000 },
-          "init": 0,
           "volatile": true
         }
       },
@@ -24,8 +23,7 @@
           "name": "FlagA",
           "kind": "measurement",
           "description": "Boolean measurement",
-          "datatype": "boolean",
-          "init": false
+          "datatype": "boolean"
         }
       },
       {
@@ -34,8 +32,7 @@
           "name": "ValueI",
           "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
-          "datatype": "uint32",
-          "init": 0
+          "datatype": "uint32"
         }
       },
       {

@@ -311,6 +311,13 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - one component declares the same variable twice, for instance once as ``input`` and once
        as ``output``. The second declaration is ignored for the rest of the run.
+   * - ``consumer-storage``
+     - error
+     - an ``input`` declaration states ``init``. What a variable starts out as is decided by
+       the component that produces it, so a component that only reads it is claiming storage it
+       does not own - which is a different thing from the disagreements above, and is reported
+       where the claim is written rather than where it is overruled. Relaxable, so a project
+       migrating existing descriptions can lower it while the ``init`` keys are removed.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns
@@ -368,10 +375,10 @@ it is either a smell or a decision somebody should have taken consciously.
      - Fires when
    * - ``storage-mismatch``
      - warning
-     - two components describe the same variable differently in a property that shapes the
-       storage or the a2l entry rather than the meaning of the value: ``init``, ``volatile`` or
-       the ``a2l`` block. This is a warning and not an error because the outcome is defined -
-       the producer's value is the one that is generated, and the message says so.
+     - two components describe the same variable differently in a property that shapes how
+       the a2l presents it - a ``format`` string, a ``display_identifier`` - rather than the
+       meaning of the value. This is a warning and not an error because the outcome is
+       defined: the producer's value is the one that is generated, and the message says so.
    * - ``condition-mismatch``
      - warning
      - the declarations of one variable carry different preprocessor conditions, so the
@@ -488,30 +495,43 @@ change:
    examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
 
-The second is that the properties which merely shape the storage do not have to stop the build,
-precisely because the outcome is defined. Given a producer and a consumer that disagree about
-the initial value,
+The second is that a property which merely shapes how the a2l *presents* the object does not
+have to stop the build, precisely because the outcome is defined. Given a producer and a
+consumer that ask for different display formats,
 
 .. code-block:: json
 
-   { "scope": "output", "definition": { "name": "ValueA", "datatype": "uint16", "init": 100 } }
+   { "scope": "output", "definition": { "name": "ValueA", "datatype": "uint16" } }
 
 .. code-block:: json
 
-   { "scope": "input", "definition": { "name": "ValueA", "datatype": "uint16", "init": 0 } }
+   { "scope": "input", "definition": { "name": "ValueA", "datatype": "uint16", "a2l": { "format": "%8.3" } } }
 
 the check names the value that is going to be used:
 
 .. code-block:: text
 
-   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different init than 'Producer' (init: 0 != 100); the value of 'Producer' is used
+   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l than 'Producer' (format='%8.3' != unset); the value of 'Producer' is used
        note: producer.ddd.json#component.declarations[0].definition: reference declaration
 
-and the generated definition carries the producer's value, exactly as announced:
+Two other properties used to be settled this way, and left in opposite directions.
 
-.. code-block:: c
+``init`` is not a losing opinion but a claim over storage the component does not own: reading
+a variable gives it no say in what the variable starts as. A consumer stating one is refused
+outright, as ``consumer-storage``, where the claim is written rather than where it is
+overruled.
 
-   uint16_t ValueA = 100U;
+``volatile`` went the other way and became interface. It reaches every consumer's own header
+as a type qualifier - ``extern volatile uint16_t ValueA`` - and that is what tells that
+component's code not to cache the value and not to expect two reads to agree. Every
+declaration of the variable therefore has to say the same thing, and a disagreement is a
+``definition-mismatch`` error. Leaving it out says ``false``: unlike ``limits``, which DDD
+derives when a declaration omits them, there is nothing here to derive, and a description that
+does not mention it describes a component whose author was never told.
+
+``export`` is not compared at all. Which signals a calibration engineer needs to see is not the
+producer's to decide alone, so any component may ask for an object to reach the a2l and asking
+wins over declining - see :doc:`the component file format <file_formats/component>`.
 
 .. note::
    When *no* component produces a variable - which is reported on its own as

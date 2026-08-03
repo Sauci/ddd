@@ -244,6 +244,9 @@ Errors:
   referenced axes, or on limits where both of them state limits: a declaration that omits
   them defers to the producer rather than disagreeing with it
 * `duplicate-declaration` - a component declares the same variable more than once
+* `consumer-storage` - an `input` declaration states `init`. What a variable starts out as is
+  decided by the component that produces it, so a reader stating one is claiming storage it
+  does not own, rather than holding an opinion to be outvoted
 * `duplicate-component` - two files declare the same component name
 * `duplicate-type` - two files declare the same structured datatype name
 * `unknown-type`, `type-cycle` - a structure member nests a structure that does not exist, or
@@ -265,8 +268,8 @@ Errors:
 
 Warnings:
 
-* `storage-mismatch` - components disagree on the initial value, on `volatile` or on the
-  `a2l` block; the producer wins
+* `storage-mismatch` - components disagree on how the a2l presents the object; the producer
+  wins
 * `condition-mismatch` - declarations of one variable use different preprocessor conditions
 * `unused-output` - an output is read by nobody
 * `limits-out-of-range` - limits exceed what the datatype can represent

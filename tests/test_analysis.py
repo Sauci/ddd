@@ -131,14 +131,26 @@ class TestDefinitionAgreement:
         )
         assert checks(bag) == []
 
-    def test_init_mismatch_is_only_a_warning(self, tree: Path) -> None:
+    def test_a_consumer_may_not_state_an_initial_value(self, tree: Path) -> None:
+        """Not a disagreement to be settled, but a claim over somebody else's storage.
+
+        Which component a variable starts out belonging to is not a matter of opinion: the one
+        that writes it decides, and a reader saying otherwise is wrong rather than outvoted.
+        """
         dictionary, bag = run_analysis(
             tree,
             two_components(a=[declare("output", "X", init=1)], b=[declare("input", "X", init=2)]),
         )
-        assert checks(bag) == ["storage-mismatch"]
+        assert checks(bag) == ["consumer-storage"]
         assert dictionary is not None
         assert dictionary.by_name["X"].init == 1
+
+    def test_a_producer_states_its_initial_value_freely(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            two_components(a=[declare("output", "X", init=1)], b=[declare("input", "X")]),
+        )
+        assert checks(bag) == []
 
     def test_condition_mismatch_is_only_a_warning(self, tree: Path) -> None:
         _, bag = run_analysis(

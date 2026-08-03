@@ -6,10 +6,17 @@
       "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
       "properties": {
         "export": {
-          "default": true,
-          "description": "Set to ``false`` to keep the object out of the a2l file.",
-          "title": "Export",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "title": "Export"
         },
         "format": {
           "anyOf": [
@@ -474,7 +481,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },

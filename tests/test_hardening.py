@@ -349,16 +349,54 @@ class TestVerdictsThatWereWrong:
         assert "definition-mismatch" not in checks(bag)
 
     def test_disagreeing_a2l_blocks_are_reported(self, tree: Path) -> None:
+        """How the object is displayed: two format strings cannot both be used."""
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
                 "a.ddd.json": component("A", declare("output", "X", "uint8")),
-                "b.ddd.json": component("B", declare("input", "X", "uint8", a2l={"export": False})),
+                "b.ddd.json": component(
+                    "B", declare("input", "X", "uint8", a2l={"format": "%8.3"})
+                ),
             },
         )
         assert "storage-mismatch" in checks(bag)
-        assert "export=" in messages(bag)
+        assert "format='%8.3' != unset" in messages(bag)
+
+    def test_any_component_may_ask_for_the_a2l_and_none_may_veto_that(self, tree: Path) -> None:
+        """Which signals a calibration engineer needs is not the producer's to decide alone.
+
+        An object missing from the a2l costs somebody a measurement they cannot take; one
+        nobody looks at costs a longer file. So asking wins over declining.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "X", "uint8", a2l={"export": False})
+                ),
+                "b.ddd.json": component("B", declare("input", "X", "uint8", a2l={"export": True})),
+            },
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["X"].a2l.export is True
+
+    def test_a_producer_can_still_keep_an_object_out_of_the_a2l(self, tree: Path) -> None:
+        """The opt-out that existed before consumers could ask; two examples rely on it."""
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "X", "uint8", a2l={"export": False})
+                ),
+                "b.ddd.json": component("B", declare("input", "X", "uint8")),
+            },
+        )
+        assert dictionary is not None
+        assert dictionary.by_name["X"].a2l.export is False
 
     def test_a_glob_does_not_swallow_the_naming_file(self, tree: Path) -> None:
         """The layout the manual shows puts the convention next to the project file."""

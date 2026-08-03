@@ -198,7 +198,13 @@ class TestMismatchMessages:
         assert "definition-mismatch" in checks(bag)
         assert "shape: scalar != from the axes" in messages(bag)
 
-    def test_a_missing_init_is_described_as_none(self, tree: Path) -> None:
+    def test_a_consumer_saying_nothing_about_storage_is_not_disagreeing(self, tree: Path) -> None:
+        """Silence is not a claim, and used to be read as one.
+
+        A consumer that left ``init`` out was reported as specifying "none" against the
+        producer's value, so every reader of a variable had to restate an initial value it had
+        no say in just to keep the run quiet.
+        """
         _, bag = run_analysis(
             tree,
             {
@@ -207,10 +213,15 @@ class TestMismatchMessages:
                 "b.ddd.json": component("B", declare("input", "X")),
             },
         )
-        assert checks(bag) == ["storage-mismatch"]
-        assert "init: none != 1" in messages(bag)
+        assert checks(bag) == []
 
-    def test_a_volatile_disagreement_is_described(self, tree: Path) -> None:
+    def test_a_consumer_that_leaves_volatile_out_is_saying_it_is_not(self, tree: Path) -> None:
+        """Silence is a claim here, not an absence.
+
+        Unlike limits, which DDD derives when they are left out, there is nothing to derive:
+        a description that does not say a variable is volatile describes a component whose
+        author was never told, which is the thing an interface description exists to prevent.
+        """
         _, bag = run_analysis(
             tree,
             {
@@ -219,7 +230,32 @@ class TestMismatchMessages:
                 "b.ddd.json": component("B", declare("input", "X")),
             },
         )
-        assert checks(bag) == ["storage-mismatch"]
+        assert checks(bag) == ["definition-mismatch"]
+        assert "volatile: false != true" in messages(bag)
+
+    def test_both_sides_saying_nothing_agree(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        assert checks(bag) == []
+
+    def test_a_stated_volatile_disagreement_is_an_error(self, tree: Path) -> None:
+        """It reaches the consumer's own header as a type qualifier, so a component that
+        believes the opposite has been compiled against something else than it thinks."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", volatile=True)),
+                "b.ddd.json": component("B", declare("input", "X", volatile=False)),
+            },
+        )
+        assert checks(bag) == ["definition-mismatch"]
         assert "volatile: false != true" in messages(bag)
 
     def test_an_enum_conversion_is_named_in_a_mismatch(self, tree: Path) -> None:

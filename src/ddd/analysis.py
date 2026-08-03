@@ -32,6 +32,7 @@ from ddd.models import (
     format_number,
     format_shape,
     is_reserved_identifier,
+    resolve_export,
 )
 from ddd.naming import check_names
 
@@ -81,15 +82,21 @@ def _describe_references(definition: DataObject) -> str:
     return ", ".join(f"{key}={value}" for key, value in sorted(references.items()))
 
 
-def _describe_a2l(definition: DataObject) -> str:
+def _a2l_presentation(definition: DataObject) -> dict[str, str | None]:
+    """The a2l options only the producer decides.
+
+    ``export`` is not among them: any component may ask for an object to reach the a2l, so
+    two declarations differing about it are not disagreeing - see
+    :func:`~ddd.models.objects.resolve_export`. How the object is *displayed* has no such
+    answer, since two format strings cannot both be used.
+    """
     a2l = definition.a2l
-    parts = [f"export={str(a2l.export).lower()}"]
-    parts += [
-        f"{key}='{value}'"
-        for key, value in (("format", a2l.format), ("display_identifier", a2l.display_identifier))
-        if value is not None
-    ]
-    return ", ".join(parts)
+    return {"format": a2l.format, "display_identifier": a2l.display_identifier}
+
+
+def _describe_a2l(definition: DataObject) -> str:
+    stated = [f"{key}='{value}'" for key, value in _a2l_presentation(definition).items() if value]
+    return ", ".join(stated) or "unset"
 
 
 def _conversion_value(definition: DataObject) -> object:
@@ -121,15 +128,25 @@ _INTERFACE_FIELDS = (
         optional=True,
     ),
     _ComparedField("references", lambda d: d.references, _describe_references),
+    # Not optional, unlike limits. A declaration may leave limits out because DDD derives them
+    # from the datatype and the conversion; there is nothing to derive here, so leaving
+    # volatile out says "this does not change under you" as plainly as writing false would.
+    # Every component that reads the variable has to know, which means every description of it
+    # has to say so.
+    _ComparedField("volatile", lambda d: d.volatile, lambda d: str(d.volatile).lower()),
 )
 
-# What only shapes the generated storage or the a2l entry: the producer wins, the others
-# get a warning that says so.
-_STORAGE_FIELDS = (
-    _ComparedField("init", lambda d: d.init, lambda d: "none" if d.init is None else repr(d.init)),
-    _ComparedField("volatile", lambda d: d.volatile, lambda d: str(d.volatile).lower()),
-    _ComparedField("a2l", lambda d: d.a2l.model_dump(mode="json"), _describe_a2l),
-)
+# What only shapes the generated a2l entry: the producer wins, the others get a warning that
+# says so. One field is left, and the two that used to sit here left for opposite reasons.
+#
+# ``init`` is a claim over somebody else's storage rather than a losing opinion, so stating one
+# in a consumer is refused outright as ``consumer-storage``. ``volatile`` went the other way:
+# it reaches every consumer's header as a type qualifier and tells their code whether the value
+# can change under it, which makes it interface, and a disagreement an error.
+#
+# What is left of the a2l block is presentation - a format string, a display name - where two
+# values genuinely cannot both be used and there is no reason to stop a build over it.
+_STORAGE_FIELDS = (_ComparedField("a2l", _a2l_presentation, _describe_a2l),)
 
 
 def _differing(
@@ -221,6 +238,11 @@ class Variable:
     def consumers(self) -> tuple[str, ...]:
         return tuple(ref.component_name for ref in self.declarations if ref.scope is Scope.INPUT)
 
+    @property
+    def exported(self) -> bool:
+        """Whether the a2l carries this object, asked of every component that declares it."""
+        return resolve_export(ref.definition.a2l.export for ref in self.declarations)
+
     def resolve(self) -> ResolvedObject:
         """The public form of this variable, as the backends receive it."""
         definition = self.definition
@@ -240,7 +262,10 @@ class Variable:
             owner=self.producer.component_name if self.producer else None,
             consumers=self.consumers,
             local=self.is_local,
-            a2l=definition.a2l,
+            # The producer's presentation, but everybody's answer on whether to export: the
+            # resolved block therefore states export outright, so a backend never has to know
+            # that "unstated" once meant "yes".
+            a2l=definition.a2l.model_copy(update={"export": self.exported}),
         )
 
 
@@ -478,6 +503,16 @@ class _Analysis:
                 "reserved-identifier",
                 f"variable name '{definition.name}' is reserved by the c language",
                 ref.location("definition.name"),
+            )
+
+        if not ref.scope.is_producer and definition.init is not None:
+            # Reported where the claim is written rather than where it is overruled: the
+            # producer may be in a file this author has never opened, and the fix is here.
+            self._bag.add(
+                "consumer-storage",
+                f"'{definition.name}': the initial value is decided by the component that "
+                f"produces the variable, not by '{ref.component_name}', which reads it",
+                ref.location("definition.init"),
             )
 
         self._check_init(definition, ref.location("definition.init"))
@@ -746,7 +781,12 @@ class _Analysis:
                 producer.location(),
             )
 
-        if len(shape) > _A2L_MAX_DIMENSIONS and definition.a2l.export:
+        # Asked of every declaration, not of the producer's: an object the producer kept out
+        # of the a2l is still in it if a consumer asked for it, and it is then still too many
+        # dimensions for a MATRIX_DIM. Reading definition.a2l.export here would say "unstated"
+        # is "not exported", which is backwards.
+        exported = resolve_export(ref.definition.a2l.export for ref in refs)
+        if len(shape) > _A2L_MAX_DIMENSIONS and exported:
             self._bag.add(
                 "a2l-unrepresentable",
                 f"'{name}' has {len(shape)} dimensions, but the MATRIX_DIM of ASAP2 1.6.1 "

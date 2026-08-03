@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Literal, get_args
 
@@ -74,14 +75,38 @@ class A2lObjectOptions(_Frozen):
     generates no a2l can leave the whole block out.
     """
 
-    export: bool = True
-    """Set to ``false`` to keep the object out of the a2l file."""
+    export: bool | None = None
+    """Whether the object belongs in the a2l file; omitted, it does.
+
+    The one a2l option any component may state, not only the producer. Which signals a
+    calibration engineer needs to see is not a property of whoever happens to write the
+    variable: a component reading a value from a library it does not own has as good a claim
+    to measuring it.
+
+    Stated by several, the answer is yes if any of them says so - see :func:`resolve_export`.
+    """
 
     format: A2lFormat | None = None
     """a2l ``FORMAT`` string, e.g. ``"%8.3"``: total width, then decimal places."""
 
     display_identifier: Identifier | None = None
     """Alternative name shown by the calibration tool."""
+
+
+def resolve_export(stated: Iterable[bool | None]) -> bool:
+    """Whether an object reaches the a2l, given what every component said about it.
+
+    Anyone may ask for it and nobody may veto, which is the safe direction rather than the
+    tidy one: an object in the a2l that nobody looks at costs a longer file, while one missing
+    from it costs somebody a measurement they cannot take and a delivery to wait for.
+
+    Order independent on purpose. Two consumers can then never conflict, so there is no
+    finding to invent for a disagreement between them and no dependence on which components a
+    given image happens to link.
+    """
+    values = [value for value in stated if value is not None]
+    # Nothing stated at all is the default, which is to export.
+    return any(values) if values else True
 
 
 class DataObject(_Frozen):
@@ -208,7 +233,19 @@ class Measurement(DataObject):
     """Array dimensions; empty for a scalar."""
 
     is_volatile: Annotated[bool, Field(alias="volatile")] = False
-    """Generate the variable ``volatile``, for values written by an interrupt or by hardware."""
+    """Generate the variable ``volatile``, for values written by an interrupt or by hardware.
+
+    Interface rather than storage, because it reaches every component that reads the variable:
+    their header declares it ``extern volatile``, which is what tells their code not to cache
+    it and not to expect two reads to agree. Every declaration of one variable therefore has
+    to say the same thing, and a disagreement is an error.
+
+    Left out it is ``false``, and that is a claim rather than a silence - unlike ``limits``,
+    which a declaration may omit because DDD derives them from the datatype and the
+    conversion. There is nothing to derive here: a component whose description does not say a
+    variable is volatile is a component whose author was never told, and that is exactly the
+    thing an interface description exists to prevent.
+    """
 
     @property
     def volatile(self) -> bool:

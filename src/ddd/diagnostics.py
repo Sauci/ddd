@@ -94,6 +94,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "two generated names collide in the same c namespace or file name"),
         _check("duplicate-declaration", Severity.ERROR,
                "a component declares the same variable more than once"),
+        _check("consumer-storage", Severity.ERROR,
+               "an input declaration states storage that only the producing component decides"),
         _check("multiple-producers", Severity.ERROR,
                "a variable is written by more than one component"),
         _check("missing-producer", Severity.ERROR, "an input variable is written by nobody",
@@ -113,8 +115,7 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("init-invalid", Severity.ERROR,
                "an initial value does not fit the datatype of the variable"),
         _check("storage-mismatch", Severity.WARNING,
-               "components disagree on the init value, on volatile or on the a2l block; "
-               "the producer wins"),
+               "components disagree on volatile or on the a2l block; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
                "declarations of one variable use different preprocessor conditions"),
         _check("unused-output", Severity.WARNING, "an output variable is read by no component",

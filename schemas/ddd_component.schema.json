@@ -6,10 +6,17 @@
       "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
       "properties": {
         "export": {
-          "default": true,
-          "description": "Set to ``false`` to keep the object out of the a2l file.",
-          "title": "Export",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "title": "Export"
         },
         "format": {
           "anyOf": [
@@ -126,7 +133,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -285,7 +292,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -652,7 +659,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -772,7 +779,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -796,7 +803,7 @@
         },
         "volatile": {
           "default": false,
-          "description": "Generate the variable ``volatile``, for values written by an interrupt or by hardware.",
+          "description": "Generate the variable ``volatile``, for values written by an interrupt or by hardware.\n\nInterface rather than storage, because it reaches every component that reads the variable:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nit and not to expect two reads to agree. Every declaration of one variable therefore has\nto say the same thing, and a disagreement is an error.\n\nLeft out it is ``false``, and that is a claim rather than a silence - unlike ``limits``,\nwhich a declaration may omit because DDD derives them from the datatype and the\nconversion. There is nothing to derive here: a component whose description does not say a\nvariable is volatile is a component whose author was never told, and that is exactly the\nthing an interface description exists to prevent.",
           "title": "Volatile",
           "type": "boolean"
         }
@@ -890,7 +897,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -1007,7 +1014,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },

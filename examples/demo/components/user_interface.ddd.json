@@ -37,7 +37,10 @@
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
           "unit": "degC",
-          "limits": { "min": -50, "max": 90 }
+          "limits": {
+            "min": -50,
+            "max": 90
+          }
         }
       },
       {
@@ -112,11 +115,11 @@
           "name": "AxisA",
           "description": "Shared axis indexed by ValueE",
           "datatype": "uint16",
-          "unit": "Hz",
           "conversion": { "factor": 0.25 },
           "limits": { "min": 0, "max": 8000 },
           "size": 6,
-          "input": "ValueE"
+          "input": "ValueE",
+          "unit": "Hz"
         }
       },
       {

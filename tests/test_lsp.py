@@ -41,6 +41,18 @@ def framed(*messages: dict[str, Any]) -> io.BytesIO:
     return stream
 
 
+def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
+    """The diagnostics the server published, keyed by file name.
+
+    Filtered rather than taken wholesale: the server also logs, and a log line has no uri.
+    """
+    return {
+        uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
+        for message in sent(stream)
+        if message.get("method") == "textDocument/publishDiagnostics"
+    }
+
+
 def sent(stream: io.BytesIO) -> list[dict[str, Any]]:
     """Everything the server wrote, read back off the wire."""
     stream.seek(0)
@@ -969,20 +981,28 @@ class TestHover:
 
 
 def apply_edits(path: Path, edits: list[dict[str, Any]]) -> str:
-    """What a client would write, so a test can check the result rather than the offsets."""
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    for edit in sorted(
-        edits,
-        key=lambda e: (e["range"]["start"]["line"], e["range"]["start"]["character"]),
-        reverse=True,
-    ):
-        start, end = edit["range"]["start"], edit["range"]["end"]
-        assert start["line"] == end["line"], "a name does not span lines"
-        line = lines[start["line"]]
-        lines[start["line"]] = (
-            line[: start["character"]] + edit["newText"] + line[end["character"] :]
+    """What a client would write, so a test can check the result rather than the offsets.
+
+    Ranges may span lines - removing a member takes the newline before or after it with them -
+    so positions are turned into offsets and the edits applied last first. Columns are read as
+    plain character counts, which is the same as the utf-16 the protocol asks for as long as
+    the fixtures stay ascii.
+    """
+    text = path.read_text(encoding="utf-8")
+    starts = [0]
+    for line in text.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def offset(position: dict[str, int]) -> int:
+        return starts[position["line"]] + position["character"]
+
+    for edit in sorted(edits, key=lambda e: offset(e["range"]["start"]), reverse=True):
+        text = (
+            text[: offset(edit["range"]["start"])]
+            + edit["newText"]
+            + text[offset(edit["range"]["end"]) :]
         )
-    return "".join(lines)
+    return text
 
 
 class TestRename:
@@ -1134,9 +1154,8 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        (action,) = offered
-        assert action["title"] == "Apply this unit to 1 other declaration of 'Speed'"
-        (edits,) = action["edit"]["changes"].values()
+        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        (edits,) = offered[0]["edit"]["changes"].values()
         assert edits[0]["newText"] == '"rpm"'
 
     def test_a_key_the_others_lack_is_inserted(self, tmp_path: Path) -> None:
@@ -1150,8 +1169,8 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed")),
             },
         )
-        (action,) = offered
-        (edits,) = action["edit"]["changes"].values()
+        spread = next(a for a in offered if a["title"].startswith("Apply"))
+        (edits,) = spread["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
         declared = json.loads(rewritten)["component"]["declarations"][0]["definition"]
         assert declared["unit"] == "rpm"
@@ -1173,14 +1192,15 @@ class TestPropagating:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         cache: dict[Path, Document] = {}
         path = tmp_path / "a.ddd.json"
-        (action,) = actions(
+        offered = actions(
             built,
             path,
             read(path, cache),
             "component.declarations[0].definition.conversion",
             cache,
         )
-        (edits,) = action["edit"]["changes"].values()
+        spread = next(a for a in offered if a["title"].startswith("Apply"))
+        (edits,) = spread["edit"]["changes"].values()
         assert '{ "kind": "linear", "factor": 0.25 }' in edits[0]["newText"]
 
     def test_an_object_written_on_one_line_stays_on_one_line(self, tmp_path: Path) -> None:
@@ -1197,10 +1217,11 @@ class TestPropagating:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         cache: dict[Path, Document] = {}
         path = tmp_path / "a.ddd.json"
-        (action,) = actions(
+        offered = actions(
             built, path, read(path, cache), "component.declarations[0].definition.unit", cache
         )
-        (edits,) = action["edit"]["changes"].values()
+        spread = next(entry for entry in offered if entry["title"].startswith("Apply"))
+        (edits,) = spread["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
         assert rewritten.count("\n") == 1  # still one line, plus the trailing newline
         assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
@@ -1247,6 +1268,216 @@ class TestPropagating:
         (action,) = offered
         assert "diagnostics" not in action
 
+    def test_a_consumer_is_offered_the_producer_value_first(self, tmp_path: Path) -> None:
+        """The direction that reads naturally from a component that only reads the variable.
+
+        Offering it only the other way round means a consumer's fix is to redefine data it
+        does not own, which is the opposite of the rule the rest of the tool is built on.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Use the unit declared in a",
+            "Apply this unit to 1 other declaration of 'Speed'",
+        ]
+
+    def test_the_producer_is_offered_its_own_value_first(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+
+    def test_taking_the_producer_value_edits_only_this_file(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        (uri,) = offered[0]["edit"]["changes"]
+        assert uri_to_path(uri).name == "b.ddd.json"
+        rewritten = apply_edits(tmp_path / "b.ddd.json", offered[0]["edit"]["changes"][uri])
+        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+
+    def test_a_consumer_lacking_a_key_takes_it_from_the_producer(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert offered[0]["title"] == "Use the unit declared in a"
+
+    def test_with_no_single_producer_only_the_outward_fix_is_offered(self, tmp_path: Path) -> None:
+        """Two producers is its own finding, and not one to guess a value through."""
+        offered, _ = self.offer(
+            tmp_path,
+            "c.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Apply this unit to 2 other declarations of 'Speed'"
+        ]
+
+    def test_a_key_nobody_else_states_can_be_removed(self, tmp_path: Path) -> None:
+        """Two declarations disagree just as much when one of them says nothing.
+
+        Spreading the value and dropping it settle the finding equally well, and which one an
+        author wants is not something to decide for them.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Remove this unit, which a does not declare",
+            "Apply this unit to 1 other declaration of 'Speed'",
+        ]
+        rewritten = apply_edits(
+            tmp_path / "b.ddd.json", next(iter(offered[0]["edit"]["changes"].values()))
+        )
+        assert "unit" not in json.loads(rewritten)["component"]["declarations"][0]["definition"]
+
+    def test_a_key_somebody_else_states_is_not_offered_for_removal(self, tmp_path: Path) -> None:
+        """Removing it would settle nothing: the other declaration would still have one."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="1/min")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert not any(action["title"].startswith("Remove") for action in offered)
+
+    def test_removal_says_so_generically_when_there_is_no_producer(self, tmp_path: Path) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert offered[0]["title"] == "Remove this unit, which no other declaration of 'Speed' has"
+
+    @pytest.mark.parametrize("key", ["unit", "limits"])
+    def test_removing_a_member_takes_exactly_one_comma_with_it(
+        self, tmp_path: Path, key: str
+    ) -> None:
+        """Whichever comma is the joining one: the member's own, or the previous member's when
+        it is the last thing in the object."""
+        from ddd.lsp.edits import _erase
+
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("output", "S", unit="rpm", limits={"min": 0, "max": 1})
+                )
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        document = read(path, {})
+        edit = _erase(document, "component.declarations[0].definition", key)
+        assert edit is not None
+        rewritten = apply_edits(path, [edit])
+        declared = json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        assert key not in declared
+        assert declared["name"] == "S"
+
+    def test_the_only_member_of_an_object_is_not_removed(self) -> None:
+        """What to leave between the braces is a judgement about style, not about the data."""
+        from ddd.lsp.edits import _erase
+
+        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
+        assert _erase(document, "component.declarations[0].definition", "unit") is None
+
+    def test_a_key_that_is_not_there_is_not_removed(self) -> None:
+        from ddd.lsp.edits import _erase
+
+        document = Document('{"component": {"declarations": [{"definition": {"name": "S"}}]}}')
+        assert _erase(document, "component.declarations[0].definition", "unit") is None
+
+    def test_a_declaration_missing_a_key_is_offered_the_one_the_others_agree_on(
+        self, tmp_path: Path
+    ) -> None:
+        """The direction the first version could not go.
+
+        A declaration with no ``unit`` has none to give, so asking for a fix there offered
+        nothing at all - and the only file that would offer one was a file already correct.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            # The producer's silence, sent out - and the value the others agree on, brought in.
+            "Remove the unit from 2 other declarations of 'Speed'",
+            "Take the unit the other declarations of 'Speed' state",
+        ]
+        take = offered[1]
+        (edits,) = take["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "a.ddd.json", edits)
+        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+
+    def test_a_key_the_others_disagree_about_is_not_taken(self, tmp_path: Path) -> None:
+        """Which of two answers is right is a question, and answering it silently is not help.
+
+        Sending this declaration's silence out is still offered: that settles the finding
+        without choosing between them.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Remove the unit from 2 other declarations of 'Speed'"
+        ]
+
     def test_nothing_is_offered_when_everybody_already_agrees(self, tmp_path: Path) -> None:
         """A fix that changes nothing teaches a reader to stop looking at the lightbulb."""
         offered, _ = self.offer(
@@ -1269,32 +1500,78 @@ class TestPropagating:
         )
         assert offered == []
 
+    @pytest.mark.parametrize("pointer", ["component.declarations[0].scope", "component.name", ""])
+    def test_outside_a_definition_nothing_is_offered(self, tmp_path: Path, pointer: str) -> None:
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            pointer,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert offered == []
+
     @pytest.mark.parametrize(
         "pointer",
         [
+            "component.declarations[0].definition",
             "component.declarations[0].definition.name",
             "component.declarations[0].definition.description",
-            "component.declarations[0].scope",
-            "component.name",
-            "",
+            "component.declarations[0].definition.limits.min",
         ],
     )
-    def test_a_key_that_is_not_the_interface_offers_nothing(
+    def test_asking_anywhere_in_a_declaration_offers_every_differing_key(
         self, tmp_path: Path, pointer: str
     ) -> None:
-        """A name is a rename, a description is each component's own, a scope is not shared."""
+        """The finding is drawn over the whole declaration, so that is where a pointer lands.
+
+        Requiring somebody to have found the offending key first asks them to do the diagnosis
+        the fix exists for - and leaves the menu to whatever else claims the shortcut.
+        """
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
             pointer,
             **{
                 "a.ddd.json": component(
-                    "A", declare("output", "Speed", unit="rpm", description="ours")
+                    "A",
+                    declare(
+                        "output",
+                        "Speed",
+                        "sint16",
+                        unit="rpm",
+                        limits={"min": 0, "max": 100},
+                        description="ours",
+                    ),
                 ),
-                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="1/min")),
             },
         )
-        assert offered == []
+        assert [action["title"] for action in offered] == [
+            "Apply this datatype to 1 other declaration of 'Speed'",
+            "Apply this unit to 1 other declaration of 'Speed'",
+            "Apply this limits to 1 other declaration of 'Speed'",
+            # b has no limits, so dropping them settles the finding as well as spreading them.
+            "Remove this limits, which no other declaration of 'Speed' has",
+        ]
+
+    def test_a_key_of_its_own_offers_only_that_key(self, tmp_path: Path) -> None:
+        """Asked precisely, answered precisely: a name is a rename and a description is a
+        component's own words, so neither is offered even from inside the definition."""
+        offered, _ = self.offer(
+            tmp_path,
+            "a.ddd.json",
+            "component.declarations[0].definition.unit",
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", "sint16", unit="rpm", description="ours")
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="1/min")),
+            },
+        )
+        assert [action["title"].split()[2] for action in offered] == ["unit"]
 
     def test_a_declaration_being_written_offers_nothing(self, tmp_path: Path) -> None:
         """No name yet, so there is nothing to look the other declarations up by."""
@@ -1306,6 +1583,122 @@ class TestPropagating:
         document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
         assert (
             actions(Index(), path, document, "component.declarations[0].definition.unit", {}) == []
+        )
+
+    def test_something_that_is_not_an_object_states_no_keys(self) -> None:
+        """These are read from disk a moment after the loader saw them; a file rewritten in
+        between must not take the server down."""
+        from ddd.lsp.edits import interface_keys
+
+        assert interface_keys({"unit": "rpm", "name": "S"}) == ["unit"]
+        assert interface_keys(7) == []
+        assert interface_keys(None) == []
+
+    def test_a_declaration_without_a_key_can_send_that_out(self, tmp_path: Path) -> None:
+        """The mirror of spreading a value, and the direction that was missing longest.
+
+        A declaration with no unit could take one from the producer but never say "none of you
+        should have one either", so the only fix on offer changed this file rather than the
+        one the author had decided was wrong.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.declarations[0].definition",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="Hz")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Use the unit declared in a",
+            "Remove the unit from 1 other declaration of 'Speed'",
+        ]
+        (edits,) = offered[1]["edit"]["changes"].values()
+        rewritten = apply_edits(tmp_path / "a.ddd.json", edits)
+        assert "unit" not in json.loads(rewritten)["component"]["declarations"][0]["definition"]
+
+    def test_a_target_whose_key_cannot_be_cut_out_is_left_alone(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import _remove_elsewhere
+        from ddd.lsp.navigation import Index, Site
+
+        (tmp_path / "b.ddd.json").write_text(
+            '{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}', encoding="utf-8"
+        )
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
+        document = Document('{"component": {"declarations": [{"definition": {"name": "S"}}]}}')
+        assert (
+            _remove_elsewhere(
+                Index(declarations={"S": [elsewhere]}),
+                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                document,
+                "S",
+                "unit",
+                {},
+            )
+            is None
+        )
+
+    def test_a_key_that_cannot_be_cut_out_is_not_offered_for_removal(self, tmp_path: Path) -> None:
+        """Nothing to leave behind: it is the only member, so there is no comma to take."""
+        from ddd.lsp.edits import _remove_here
+        from ddd.lsp.navigation import Index, Site
+
+        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S"))})
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
+        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
+        assert (
+            _remove_here(
+                Index(declarations={"S": [elsewhere]}),
+                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                document,
+                "S",
+                "unit",
+                {},
+            )
+            is None
+        )
+
+    def test_there_is_nowhere_to_put_the_producer_value_in_an_empty_definition(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.lsp.edits import _from_producer
+        from ddd.lsp.navigation import Index, Site
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
+        producer = Site(tmp_path / "a.ddd.json", "component.declarations[0].definition")
+        document = Document('{"component": {"declarations": [{"definition": {}}]}}')
+        assert (
+            _from_producer(
+                Index(producers={"S": [producer]}),
+                Site(tmp_path / "b.ddd.json", "component.declarations[0].definition"),
+                document,
+                "S",
+                "unit",
+                {},
+            )
+            is None
+        )
+
+    def test_there_is_nothing_to_take_into_a_definition_with_no_members(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.lsp.edits import _adopt
+        from ddd.lsp.navigation import Index, Site
+
+        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S", unit="rpm"))})
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
+        document = Document('{"component": {"declarations": [{"definition": {}}]}}')
+        assert (
+            _adopt(
+                Index(declarations={"S": [elsewhere]}),
+                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                document,
+                "S",
+                "unit",
+                {},
+            )
+            is None
         )
 
     def test_a_definition_that_is_not_an_object_is_left_alone(self, tmp_path: Path) -> None:
@@ -1374,13 +1767,60 @@ class TestServer:
         writer = io.BytesIO()
         opened = INCONSISTENT.parent / "component_b.ddd.json"
         Server(framed(self.opened(opened)), writer, root=tmp_path).run()
-        published = {
-            uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
-            for message in sent(writer)
-        }
-        assert published["component_b.ddd.json"][0]["code"] == "multiple-producers"
+        drawn = published(writer)
+        assert drawn["component_b.ddd.json"][0]["code"] == "multiple-producers"
         # The file that was not opened is published too, which is the point.
-        assert published["component_c.ddd.json"][0]["code"] == "definition-mismatch"
+        assert drawn["component_c.ddd.json"][0]["code"] == "definition-mismatch"
+
+    def logged(self, stream: io.BytesIO) -> list[str]:
+        return [
+            message["params"]["message"]
+            for message in sent(stream)
+            if message.get("method") == "window/logMessage"
+        ]
+
+    def test_finding_no_build_record_is_said_rather_than_left_to_be_guessed(
+        self, tmp_path: Path
+    ) -> None:
+        """Silence is the failure mode: a file no build claims is still checked, but only for
+        what one file settles, so a missing record looks exactly like a clean project."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("input", "X"))})
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "a.ddd.json")
+        (said,) = self.logged(writer)
+        assert "no ddd-build.json found" in said
+
+    def test_a_record_naming_a_project_that_is_not_there_is_called_out(
+        self, tmp_path: Path
+    ) -> None:
+        """How this goes wrong in practice: a record written inside a container names a path
+        that exists only in the container, and is then found, read and quietly of no use."""
+        build_record(tmp_path, Path("/work/build/somewhere/firmware.ddd.json"))
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("input", "X"))})
+        writer = io.BytesIO()
+        Server(io.BytesIO(), writer, root=tmp_path).refresh(tmp_path / "a.ddd.json")
+        (said,) = self.logged(writer)
+        assert "no such file" in said
+        # And nothing is published against the phantom: a finding on a file nobody can open
+        # says the record is stale in the one place a reader cannot act on it.
+        assert not any(published(writer).values())
+
+    def test_a_usable_record_is_named_once_rather_than_every_save(self, tmp_path: Path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        server.refresh(tmp_path / "a.ddd.json")
+        server.refresh(tmp_path / "a.ddd.json")
+        said = self.logged(writer)
+        assert len(said) == 1
+        assert "firmware.elf" in said[0]
 
     def test_a_finding_that_is_fixed_is_withdrawn(self, tmp_path: Path) -> None:
         """An empty list is how the protocol says so; leaving the file out leaves the squiggle."""
@@ -1396,22 +1836,14 @@ class TestServer:
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
-        published = {
-            uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
-            for message in sent(writer)
-        }
-        assert published["a.ddd.json"][0]["code"] == "missing-producer"
+        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
 
         # Somebody produces it now, so the project is clean and the squiggle has to go.
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
-        withdrawn = {
-            uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]
-            for message in sent(writer)
-        }
-        assert withdrawn == {"a.ddd.json": [], "b.ddd.json": []}
+        assert published(writer) == {"a.ddd.json": [], "b.ddd.json": []}
 
     def test_saving_refreshes_as_opening_does(self, tmp_path: Path) -> None:
         build_record(tmp_path, INCONSISTENT)

@@ -120,10 +120,14 @@ they name, wildcards included.
 
 A quick fix reconciles a `definition-mismatch`.  With the cursor on a `unit`, a
 `conversion`, a `datatype` or any other key the declarations of one object have to agree on,
-the editor offers to give every other declaration the same value.  The value is copied as
-source text rather than re-serialised, so a project's formatting survives a fix; a declaration
-that never mentioned the key gets it inserted beside its neighbours.  Only ever written, never
-removed - the action acts on the key under the cursor, so there is always one to copy.
+the editor offers every way of reconciling it: take the producing component's value, spread
+this one to the others, or - when nobody else states the key - remove it.  A consumer is shown
+the producer's answer first and the producer its own, because which side owns the variable is
+the rule the rest of the tool is built on.
+
+The value is copied as source text rather than re-serialised, so a project's formatting
+survives a fix; a declaration that never mentioned the key gets it inserted beside its
+neighbours, and removing one takes exactly the comma that joined it.
 
 `F2` renames a variable everywhere the project writes it - every declaration, and every
 `axis`, `x_axis`, `y_axis` or `input` naming it, across as many files as that takes.  A name c

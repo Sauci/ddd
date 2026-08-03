@@ -1,8 +1,8 @@
 """Applying one declaration's value to the others that describe the same object.
 
 Two components sharing a variable have to agree about it, and until now the editor could only
-say so. This is the other half: put the cursor on a ``unit`` and the editor offers to make
-every other declaration of that object say the same thing.
+say so. This is the other half: ask for a fix anywhere in a declaration and the editor offers
+to make every other declaration of that object say the same thing.
 
 The protocol has no notion of an edit that propagates - nothing says "when this changes, change
 that too" - so this is a code action, offered where the cursor is rather than applied behind
@@ -15,20 +15,33 @@ Three rules keep the writing safe:
   0.5 }`` arrives in the other file looking the way its author wrote it. Round-tripping it
   through a json library would arrive as four differently indented lines and turn a one line
   change into a reformatting of the file.
-* **A value is only ever written, never removed.** The action acts on the key under the
-  cursor, so the source always has one; the awkward case - deleting a key from the others,
-  with the comma juggling that needs - therefore cannot arise.
 * **A key the target lacks is inserted next to its neighbours**, taking the indentation of the
   member above it, on its own line or beside it depending on how that object is written.
+* **Silence is a value too, and travels both ways.** Two declarations disagree just as much
+  when one of them says nothing, so a key can be removed from here to match the others, or
+  removed from the others to match here. Removing takes exactly one comma with it - the one
+  after the member, or the one before it when the member is last - which is the fiddly part
+  and the reason this came last.
+
+Every key is offered at most two ways: somebody else's answer brought here, and this one's
+answer sent out. Either may be a value or its absence. They are ordered by which component owns
+the variable - a consumer is shown the producer's answer first, the producer its own - and
+nothing here decides which is right, because nothing here can.
+
+One action per key rather than one that settles the whole declaration, because two keys the
+other declaration lacks would be two insertions anchored at the same position - which is not a
+pair of edits any client can apply. Applying one and asking again is the way round it, and the
+editor re-asks after every fix anyway.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
 
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 
 PROPAGATED_KEYS: Final = frozenset(
@@ -65,6 +78,10 @@ to ask - which is the wrong way round for a fix.
 """
 
 
+_WITHIN_DEFINITION: Final = re.compile(r"^component\.declarations\[\d+\]\.definition")
+"""Anywhere inside one definition, however deep - the prefix names the definition."""
+
+
 def actions(
     built: Index,
     path: Path,
@@ -75,40 +92,277 @@ def actions(
 ) -> list[dict[str, Any]]:
     """What an editor may offer at this position.
 
-    One action, and only when there is something to change: a key whose value already matches
-    everywhere would offer a fix that does nothing, which teaches a reader to stop reading the
-    lightbulb.
+    On a key that can be propagated, that key. Anywhere else inside the declaration - on the
+    ``"definition"`` line, on a nested ``limits.min``, on a selection covering the lot - every
+    key that differs from the other declarations, one action each.
+
+    The wide answer is the one that matters in practice. The finding is drawn over the whole
+    declaration, so that is where the pointer lands when somebody asks for a fix; requiring
+    them to have first found the offending key is asking them to do the diagnosis the fix is
+    for.
+
+    Nothing at all when there is nothing to change: a fix that does nothing teaches a reader
+    to stop reading the lightbulb.
     """
-    key = pointer.rsplit(".", 1)[-1]
-    definition, _, _ = pointer.rpartition(f".{key}")
-    if key not in PROPAGATED_KEYS or not definition.endswith(".definition"):
+    within = _WITHIN_DEFINITION.match(pointer)
+    if within is None:
         return []
+    definition = within.group()
     name = document.value_at(f"{definition}.name")
-    raw = document.raw_at(pointer)
-    if not isinstance(name, str) or raw is None:
+    if not isinstance(name, str):
         return []
 
-    changes: dict[str, list[dict[str, Any]]] = {}
+    key = pointer.rsplit(".", 1)[-1]
+    if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
+        wanted = [key]
+    else:
+        wanted = interface_keys(document.value_at(definition)) + _missing(
+            built, path, document, name, definition, cache
+        )
+    here = Site(path, definition)
+    produces = here in built.producers.get(name, ())
+    offered: list[dict[str, Any]] = []
+    for candidate in wanted:
+        # Two ways to settle a key, and at most one of each. Taking is somebody else's answer
+        # brought here - the producer's for preference, the one the rest agree on otherwise,
+        # or their silence. Giving is this declaration's answer sent out, value or silence.
+        taken = (
+            _from_producer(built, here, document, name, candidate, cache)
+            or _remove_here(built, here, document, name, candidate, cache)
+            or _adopt(built, here, document, name, candidate, cache)
+        )
+        given = _propagate(built, here, document, name, candidate, cache) or _remove_elsewhere(
+            built, here, document, name, candidate, cache
+        )
+        # A consumer is offered the producer's value first; the producer is offered its own,
+        # outward. Which side owns the variable is not a matter of taste here - it is the rule
+        # the whole tool is built on, and the fix that reads naturally is the one that follows
+        # it rather than the one that quietly redefines somebody else's data.
+        ordered = [given, taken] if produces else [taken, given]
+        offered.extend(action for action in ordered if action is not None)
+    settles = [entry for entry in reported if entry.get("code") in RECONCILED]
+    if settles and offered:
+        for action in offered:
+            action["diagnostics"] = settles
+        offered[0]["isPreferred"] = True
+    return offered
+
+
+def interface_keys(members: Any) -> list[str]:
+    """The propagatable keys an object states, in the order they are written.
+
+    Tolerant of being handed something that is not an object at all: a definition is one in
+    every file that loaded, but these are read from disk a moment after the loader saw them,
+    and a file rewritten in between should not take the server down.
+    """
+    if not isinstance(members, dict):
+        return []
+    return [key for key in members if key in PROPAGATED_KEYS]
+
+
+def _missing(
+    built: Index,
+    path: Path,
+    document: Document,
+    name: str,
+    definition: str,
+    cache: dict[Path, Document],
+) -> list[str]:
+    """Keys the other declarations state and this one does not.
+
+    The other direction, and the one the first version could not do anything about: a
+    declaration missing a ``unit`` the rest agree on cannot *give* one, so without this the
+    only file offering a fix was one of the files that was already right.
+
+    Keys this declaration already has are left out, or every shared key would be considered
+    twice and offered twice.
+    """
+    mine = set(interface_keys(document.value_at(definition)))
+    absent: set[str] = set()
     for site in built.declarations.get(name, ()):
         if site.path == path and site.pointer == definition:
+            continue
+        absent.update(interface_keys(read(site.path, cache).value_at(site.pointer)))
+    return sorted(absent - mine)
+
+
+def _adopt(
+    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+) -> dict[str, Any] | None:
+    """Take a value the others state and this declaration does not.
+
+    Only when they agree with each other about it. Two different answers is a question about
+    which one is right, and picking one silently is exactly the kind of help nobody asked for.
+    """
+    if document.raw_at(f"{here.pointer}.{key}") is not None:
+        return None
+    stated = {
+        raw
+        for site in built.declarations.get(name, ())
+        if site != here
+        and (raw := read(site.path, cache).raw_at(f"{site.pointer}.{key}")) is not None
+    }
+    if len(stated) != 1:
+        return None
+    edit = _insert(document, here.pointer, key, next(iter(stated)))
+    if edit is None:
+        return None
+    return {
+        "title": f"Take the {key} the other declarations of '{name}' state",
+        "kind": QUICK_FIX,
+        "edit": {"changes": {here.path.as_uri(): [edit]}},
+    }
+
+
+def _from_producer(
+    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+) -> dict[str, Any] | None:
+    """Take the value the producing component states, into the declaration asked at.
+
+    The direction that reads naturally from a consumer. A component that reads a variable is
+    describing what it expects to find, and the component that writes it is the one that
+    decides - so "use what the producer says" is a fix, where "make the producer say what I
+    say" is a consumer redefining data it does not own.
+    """
+    producers = [site for site in built.producers.get(name, ()) if site != here]
+    if len(producers) != 1:
+        # No producer, or several - which is its own finding, and not one to guess through.
+        return None
+    producer = producers[0]
+    raw = read(producer.path, cache).raw_at(f"{producer.pointer}.{key}")
+    if raw is None or raw == document.raw_at(f"{here.pointer}.{key}"):
+        return None
+    edit = _assign(document, here.pointer, key, raw)
+    if edit is None:
+        return None
+    owner = producer.path.stem.removesuffix(".ddd")
+    return {
+        "title": f"Use the {key} declared in {owner}",
+        "kind": QUICK_FIX,
+        "edit": {"changes": {here.path.as_uri(): [edit]}},
+    }
+
+
+def _remove_here(
+    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+) -> dict[str, Any] | None:
+    """Take a key out, when this declaration is the only one that states it.
+
+    The other half of adopting somebody else's answer: a key nobody else mentions is
+    reconciled by removing it just as much as by spreading it, and which of the two an author
+    wants is not something to decide for them. Only offered when no other declaration has one,
+    because otherwise removing it settles nothing.
+    """
+    if document.raw_at(f"{here.pointer}.{key}") is None:
+        return None
+    others = [site for site in built.declarations.get(name, ()) if site != here]
+    # Nobody to disagree with is not the same as everybody agreeing: a variable one component
+    # declares on its own has nothing to reconcile, and offering to strip its unit would be a
+    # suggestion to lose information for no reason at all.
+    if not others:
+        return None
+    if any(read(site.path, cache).raw_at(f"{site.pointer}.{key}") is not None for site in others):
+        return None
+    edit = _erase(document, here.pointer, key)
+    if edit is None:
+        return None
+    producers = [site for site in built.producers.get(name, ()) if site != here]
+    where = (
+        f"which {producers[0].path.stem.removesuffix('.ddd')} does not declare"
+        if len(producers) == 1
+        else f"which no other declaration of '{name}' has"
+    )
+    return {
+        "title": f"Remove this {key}, {where}",
+        "kind": QUICK_FIX,
+        "edit": {"changes": {here.path.as_uri(): [edit]}},
+    }
+
+
+def _remove_elsewhere(
+    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+) -> dict[str, Any] | None:
+    """Take the key out of the other declarations, when this one does not state it.
+
+    The mirror of spreading a value, and the direction that was missing: a declaration with no
+    ``unit`` could take one from the others but never say "none of you should have one
+    either". Both are ways of agreeing, and which one is meant is the author's to choose.
+    """
+    if document.raw_at(f"{here.pointer}.{key}") is not None:
+        return None
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for site in built.declarations.get(name, ()):
+        if site == here:
+            continue
+        target = read(site.path, cache)
+        edit = (
+            None
+            if target.raw_at(f"{site.pointer}.{key}") is None
+            else _erase(target, site.pointer, key)
+        )
+        if edit is not None:
+            changes.setdefault(site.path.as_uri(), []).append(edit)
+    if not changes:
+        return None
+    elsewhere = sum(len(edits) for edits in changes.values())
+    return {
+        "title": f"Remove the {key} from {elsewhere} other declaration"
+        f"{'s' if elsewhere != 1 else ''} of '{name}'",
+        "kind": QUICK_FIX,
+        "edit": {"changes": changes},
+    }
+
+
+def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | None:
+    """Cut a member out of an object, taking exactly one comma with it.
+
+    Which comma is the whole difficulty, and it depends on where the member sits. A member
+    with one after it is removed up to the start of that one, which takes its own comma and
+    leaves the next where this began. The last member is removed from the *end of the one
+    before it*, which takes the comma that used to join them and leaves no trailing one.
+
+    An only child is refused: what to leave between the braces is a judgement about the file's
+    style rather than about the data. It cannot arise for these keys anyway - every definition
+    has a ``name`` beside them.
+    """
+    members = document.value_at(definition)
+    if not isinstance(members, dict) or key not in members or len(members) == 1:
+        return None
+    keys = list(members)
+    position = keys.index(key)
+    mine = document.range_of(f"{definition}.{key}")
+    if position < len(keys) - 1:
+        following = document.range_of(f"{definition}.{keys[position + 1]}")
+        cut = {"start": mine["start"], "end": following["start"]}
+    else:
+        previous = document.range_of(f"{definition}.{keys[position - 1]}")
+        cut = {"start": previous["end"], "end": mine["end"]}
+    return {"range": cut, "newText": ""}
+
+
+def _propagate(
+    built: Index, here: Site, document: Document, name: str, key: str, cache: dict[Path, Document]
+) -> dict[str, Any] | None:
+    """One action, or nothing when every other declaration already says the same."""
+    raw = document.raw_at(f"{here.pointer}.{key}")
+    if raw is None:
+        return None
+    changes: dict[str, list[dict[str, Any]]] = {}
+    for site in built.declarations.get(name, ()):
+        if site == here:
             continue
         edit = _assign(read(site.path, cache), site.pointer, key, raw)
         if edit is not None:
             changes.setdefault(site.path.as_uri(), []).append(edit)
     if not changes:
-        return []
-
+        return None
     elsewhere = sum(len(edits) for edits in changes.values())
-    offered: dict[str, Any] = {
+    return {
         "title": f"Apply this {key} to {elsewhere} other declaration"
         f"{'s' if elsewhere != 1 else ''} of '{name}'",
         "kind": QUICK_FIX,
         "edit": {"changes": changes},
     }
-    settles = [entry for entry in reported if entry.get("code") in RECONCILED]
-    if settles:
-        offered["diagnostics"] = settles
-    return [offered]
 
 
 def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str, Any] | None:

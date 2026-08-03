@@ -27,6 +27,7 @@ from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
 from ddd import __version__
+from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
@@ -85,6 +86,8 @@ class Server:
         self.root = root or Path.cwd()
         self.build_directories = list(build_directories)
         self._published: set[Path] = set()
+        self._announced: tuple[tuple[str, str], ...] | None = None
+        """What was last said about the configured projects, so it is not said every save."""
 
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking."""
@@ -132,13 +135,54 @@ class Server:
         linked into two images is in two projects and they need not agree, and the answer to
         which one the reader cares about is "both": whichever is broken is broken.
         """
-        reports = collect(discover(self.root, self.build_directories), [document])
+        builds = discover(self.root, self.build_directories)
+        self._announce(builds)
+        # A record naming a project that is not there is dropped rather than analysed. Running
+        # it produces one finding, "file does not exist", published against a file nobody can
+        # open - and the thing actually wrong is the record, which the log has just said.
+        reports = collect([info for info in builds if Path(info.project).is_file()], [document])
         # Only files with something to say, plus the ones that had something to say last time
         # and no longer do - those need an empty list to withdraw what is on screen.
         current = {path for path, findings in reports.items() if findings}
         for path in sorted(current | self._published):
             self._publish(path, reports.get(path, []))
         self._published = current
+
+    def _announce(self, builds: Sequence[BuildInfo]) -> None:
+        """Say which projects were found, once, and again whenever that changes.
+
+        Silence is the failure mode this guards against. A file no build claims is still
+        checked, but only for what one file can settle - so a missing record looks exactly
+        like a project with nothing wrong with it, and the difference is invisible. Twice now
+        that has been read as the checks having stopped working.
+
+        A record naming a project that is not there gets said out loud, because it is the way
+        this goes wrong in practice: a record written inside a container names a path that
+        exists only in the container, and is then found, read and quietly of no use.
+        """
+        current = tuple((info.image, info.project) for info in builds)
+        if current == self._announced:
+            return
+        self._announced = current
+        if not builds:
+            self._log(
+                "no ddd-build.json found: every file is checked on its own, so findings that "
+                "need the whole project - a missing producer, two components disagreeing - "
+                "are not reported. Configure the build, or pass -b <build directory>."
+            )
+            return
+        for info in builds:
+            known = Path(info.project).is_file()
+            self._log(
+                f"{info.image or 'build'}: {info.project}"
+                + ("" if known else "  <- no such file, so this project cannot be analysed")
+            )
+
+    def _log(self, message: str) -> None:
+        """Put a line in the client's log, where somebody looks when nothing is happening."""
+        write_message(
+            self.writer, notification("window/logMessage", {"type": 3, "message": message})
+        )
 
     def _navigate(self, method: str, message: dict[str, Any]) -> list[dict[str, Any]]:
         """Answer "where is this defined" and "where else is it used".

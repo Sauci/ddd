@@ -142,6 +142,25 @@ The server reports on open and on save, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a
 disagreement is always in the other component.
 
+Hovering a variable shows what the **project** made of it, which the file under the cursor
+does not say: the shape a curve got from its axis, limits derived from a datatype and a
+conversion nobody wrote down, who writes it and who reads it, what an enum's numbers mean, and
+the initial values as a sparkline.
+
+```text
+CurveA — curve, uint16          |  unit        ms
+Calibratable curve over AxisA   |  limits      0 .. 655.35 - the full range of the datatype
+                                |  conversion  linear(factor=0.01, offset=0)
+Local to Controller.            |  shape       [6]
+                                |  axis        AxisA - 0 .. 8000 Hz
+   █▄▃▂▁▁   6.5 .. 12 ms
+```
+
+Those are *initial* values: DDD describes an interface, and what an engineer calibrates lives
+in the calibration tool, the hex file and the a2l.  A map is drawn a row at a time against one
+shared scale, and an object whose values are all the same is stated rather than drawn - a row
+of identical bars looks like a reading of the data rather than the absence of one.
+
 It also navigates, which is where a data dictionary stops being a pile of files:
 
 | from | go to definition | find references |

@@ -58,6 +58,11 @@ project's convention.
 Both sides of a conflict are marked. Two components declaring the same output are equally part
 of it, and a file with no finding on it would otherwise read as the correct one.
 
+Hovering a variable shows what the project made of it - the shape a curve took from its axis,
+limits derived from a datatype and a conversion, who writes it and who reads it, what an enum's
+numbers mean, and the initial values as a sparkline. Those are the values compiled in at
+startup, not calibration data, which lives in the calibration tool rather than here.
+
 Go to definition on a variable name, or on an `axis`, `x_axis`, `y_axis` or `input` naming one,
 lands on the declaration that **writes** it. Find references lists every declaration of it. The
 same works from a `type` to the structure it nests, and from an `includes` entry or a project's

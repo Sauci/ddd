@@ -249,7 +249,17 @@ release, and if VS Code is the main audience it should be planned for rather tha
    for by everyone who only wants to compile c. The price of that is that the one test worth
    having - which starts the real server through the command the extension builds - runs in ci
    rather than locally.
-4. **Completion and hover.** Where convention-driven name completion lands.
+4. **Hover** - **done**, in `ddd/lsp/hover.py`. The resolved object rather than the authored
+   text, plus the init values as a sparkline where there is variation to see.
+
+   Two things were settled by building it. The dictionary has resolved away *whether* limits
+   were stated or derived, so the hover says what is knowable instead - that they are the full
+   range of the datatype, which is what matters to whoever reads it. And a flat set is stated
+   rather than drawn: a scalar ``init`` broadcast over an array is genuinely all the project
+   says, and a row of identical bars reads as data rather than as its absence.
+
+   **Completion** is what is left of this stage. Convention-driven name completion, from
+   ``complete(prefix, convention)``, is the piece worth having.
 5. **Rename and quick fixes.**
 
 ## Open questions

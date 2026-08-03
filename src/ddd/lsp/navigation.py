@@ -109,6 +109,21 @@ def workspaces(builds: Sequence[BuildInfo], document: Path) -> list[Workspace]:
     return found
 
 
+def variable_at(document: Document, pointer: str) -> str | None:
+    """The data object the cursor names, if it names one.
+
+    One rule, used by every question asked about a position - where is this defined, where
+    else is it used, what is it. Three copies of it would be three things to keep in step, and
+    the two that drifted would drift silently.
+    """
+    value = document.value_at(pointer)
+    if not isinstance(value, str):
+        return None
+    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
+        return value
+    return None
+
+
 def definition(built: Index, document: Document, path: Path, pointer: str) -> list[Site]:
     """Where the name under the cursor is defined."""
     value = document.value_at(pointer)
@@ -119,8 +134,9 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
     if pointer.startswith(_TYPES):
         found = built.types.get(value)
         return [found] if found is not None else []
-    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
-        return list(built.producers.get(value, ()))
+    name = variable_at(document, pointer)
+    if name is not None:
+        return list(built.producers.get(name, ()))
     return []
 
 
@@ -138,8 +154,9 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
         declared = built.types.get(value)
         found = [declared] if declared is not None else []
         return found + list(built.type_uses.get(value, ()))
-    if pointer.startswith(_DECLARATION) and _key(pointer) in VARIABLE_KEYS:
-        return list(built.declarations.get(value, ()))
+    name = variable_at(document, pointer)
+    if name is not None:
+        return list(built.declarations.get(name, ()))
     return []
 
 

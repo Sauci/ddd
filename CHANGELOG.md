@@ -43,6 +43,12 @@ being per file and static: whether an `axis` names a declared axis, whether exac
 component produces a name, whether two components agree on a unit, whether a name follows the
 convention.
 
+Hovering a variable shows the resolved object rather than the authored text: the shape a curve
+took from its axis, the limits derived from its datatype and conversion, its producer and its
+consumers, what an enum's values are called, and the initial values as a sparkline.  A map is
+drawn a row at a time against one shared scale; values that are all the same are stated instead
+of drawn.  These are the *initial* values - DDD describes an interface, not calibration data.
+
 It navigates as well.  Go to definition on an `input` - or on an `axis`, `x_axis`, `y_axis` or
 `input` reference - lands on the declaration that writes it, in whichever component that turns
 out to be; find references lists every declaration of it.  The same works from a `type` to the

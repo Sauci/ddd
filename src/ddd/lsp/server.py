@@ -29,7 +29,16 @@ from urllib.request import url2pathname
 from ddd import __version__
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
-from ddd.lsp.navigation import Site, definition, index, locations, references, workspaces
+from ddd.lsp.hover import describe, resolve
+from ddd.lsp.navigation import (
+    Site,
+    definition,
+    index,
+    locations,
+    references,
+    variable_at,
+    workspaces,
+)
 from ddd.lsp.protocol import (
     METHOD_NOT_FOUND,
     error,
@@ -45,6 +54,7 @@ _REFRESHING: Final = frozenset({"textDocument/didOpen", "textDocument/didSave"})
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
+_HOVER: Final = "textDocument/hover"
 
 
 def uri_to_path(uri: str) -> Path:
@@ -90,6 +100,8 @@ class Server:
             self.refresh(uri_to_path(message["params"]["textDocument"]["uri"]))
         elif method in _NAVIGATING:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
+        elif method == _HOVER:
+            write_message(self.writer, response(request_id, self._hover(message["params"])))
         elif request_id is not None:
             # A request always gets an answer, even a refusal: a client that is still waiting
             # on one looks exactly like a server that has died.
@@ -135,6 +147,27 @@ class Server:
                 found.extend(references(built, document, pointer))
         return locations(found, cache)
 
+    def _hover(self, params: dict[str, Any]) -> dict[str, Any] | None:
+        """What the variable under the cursor turned out to be, once the project is resolved.
+
+        ``None`` where there is nothing to say - a description, a number, whitespace, or a
+        name no component declares - which a client shows by doing nothing at all.
+        """
+        path = uri_to_path(params["textDocument"]["uri"])
+        document = read(path, {})
+        pointer = document.pointer_at(params["position"])
+        name = variable_at(document, pointer)
+        if name is None:
+            return None
+        dictionary = resolve(discover(self.root, self.build_directories), path)
+        described = describe(dictionary, name) if dictionary else None
+        if described is None:
+            return None
+        return {
+            "contents": {"kind": "markdown", "value": described},
+            "range": document.range_of(pointer),
+        }
+
     def _initialise(self, params: dict[str, Any]) -> None:
         """Take the workspace root from whichever of the two ways the client offers it."""
         folders = params.get("workspaceFolders") or []
@@ -151,6 +184,7 @@ class Server:
                 "textDocumentSync": {"openClose": True, "change": 0, "save": True},
                 "definitionProvider": True,
                 "referencesProvider": True,
+                "hoverProvider": True,
             },
             "serverInfo": {"name": "ddd", "version": __version__},
         }

@@ -622,6 +622,239 @@ class TestNavigation:
         assert found.name == "P"
 
 
+class TestHover:
+    """What the project made of a variable, which is not what the file under the cursor says."""
+
+    def resolved(self, tmp_path: Path, *declarations: dict[str, Any], **extra: Any) -> Any:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", *declarations, **extra),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        return resolve([info], tmp_path / "a.ddd.json")
+
+    def test_a_curve_reports_what_its_axis_decided(self, tmp_path: Path) -> None:
+        """The shape and the span come from the axis; the file says neither."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Axis", kind="axis", size=3, datatype="uint16", init=[0, 50, 100]),
+            declare("output", "Curve", kind="curve", datatype="uint8", axis="Axis", unit="ms"),
+        )
+        described = describe(dictionary, "Curve")
+        assert "`[3]`" in described
+        assert "| axis | `Axis` — 0 .. 100 |" in described
+
+    def test_limits_say_when_nothing_has_been_narrowed(self, tmp_path: Path) -> None:
+        """Whether they were written or worked out is gone by now; that they are the whole
+        range is the part worth knowing, because it is what a calibration tool will offer."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Whole", datatype="uint8"),
+            declare("output", "Narrow", datatype="uint8", limits={"min": 0, "max": 100}),
+        )
+        assert "the full range of the datatype" in describe(dictionary, "Whole")
+        assert "the full range of the datatype" not in describe(dictionary, "Narrow")
+
+    @pytest.mark.parametrize(
+        ("scope", "expected"),
+        [("output", "read by *nobody*"), ("local", "Local to **A**")],
+    )
+    def test_who_writes_it_and_who_reads_it(
+        self, tmp_path: Path, scope: str, expected: str
+    ) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(tmp_path, declare(scope, "Value"))
+        assert expected in describe(dictionary, "Value")
+
+    def test_a_reader_is_named(self, tmp_path: Path) -> None:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Value")),
+                "b.ddd.json": component("B", declare("input", "Value")),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        dictionary = resolve([info], tmp_path / "a.ddd.json")
+        assert "Written by **A**, read by **B**." in describe(dictionary, "Value")
+
+    def test_an_object_nobody_produces_says_so(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(tmp_path, declare("input", "Orphan"))
+        assert "*No component produces this.*" in describe(dictionary, "Orphan")
+
+    def test_the_optional_facts_appear_only_when_there_are_any(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Bare", datatype="uint8"),
+            declare(
+                "output",
+                "Full",
+                datatype="uint8",
+                condition="defined(FEAT_X)",
+                volatile=True,
+                unit="Hz",
+                dimensions=[2],
+            ),
+        )
+        bare, full = describe(dictionary, "Bare"), describe(dictionary, "Full")
+        assert "| unit | *none* |" in bare
+        assert "shape" not in bare and "condition" not in bare and "volatile" not in bare
+        assert "| unit | `Hz` |" in full
+        assert "| condition | `defined(FEAT_X)` |" in full
+        assert "| volatile | yes |" in full
+
+    def test_a_verbal_conversion_lists_what_the_numbers_mean(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "State",
+                datatype="uint8",
+                conversion={"kind": "enum", "name": "StateA", "enumerators": {"OFF": 0, "ON": 1}},
+            ),
+        )
+        described = describe(dictionary, "State")
+        assert "**StateA**: `0` OFF · `1` ON" in described
+
+    def test_a_long_enumeration_is_cut_short(self, tmp_path: Path) -> None:
+        """A hover is a reminder, not a header file."""
+        from ddd.lsp.hover import MAX_ENUMERATORS, describe
+
+        count = MAX_ENUMERATORS + 3
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Many",
+                datatype="uint8",
+                conversion={
+                    "kind": "enum",
+                    "name": "ManyA",
+                    "enumerators": {f"V{index}": index for index in range(count)},
+                },
+            ),
+        )
+        assert "… 3 more" in describe(dictionary, "Many")
+
+    def test_init_values_are_drawn_in_physical_units(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Block",
+                kind="value_block",
+                datatype="uint8",
+                dimensions=[4],
+                unit="%",
+                conversion={"factor": 0.5},
+                init=[0, 40, 80, 120],
+            ),
+        )
+        described = describe(dictionary, "Block")
+        assert "▁▃▆█" in described
+        assert "0 .. 60 %" in described  # raw 120 through factor 0.5
+
+    def test_a_map_is_drawn_one_row_at_a_time(self, tmp_path: Path) -> None:
+        """Sharing one scale, so a row can be compared with the one above it."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "X", kind="axis", size=2, datatype="uint8", init=[0, 1]),
+            declare("output", "Y", kind="axis", size=2, datatype="uint8", init=[0, 1]),
+            declare(
+                "output",
+                "Surface",
+                kind="map",
+                datatype="uint8",
+                x_axis="X",
+                y_axis="Y",
+                init=[[0, 1], [7, 8]],
+            ),
+        )
+        # One row per row of the map, and the second sits higher than the first because both
+        # are drawn against the same scale.
+        assert "▁▂\n██" in describe(dictionary, "Surface")
+
+    def test_a_flat_init_is_stated_rather_than_drawn(self, tmp_path: Path) -> None:
+        """A row of identical bars looks like a reading of the data rather than its absence."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Flat", kind="value_block", datatype="uint8", dimensions=[4], init=7),
+        )
+        described = describe(dictionary, "Flat")
+        assert "init `7`" in described
+        assert "```text" not in described
+
+    def test_an_object_with_no_init_is_not_drawn(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(tmp_path, declare("output", "Empty", datatype="uint8"))
+        assert "```text" not in describe(dictionary, "Empty")
+
+    def test_a_reference_that_is_not_an_axis_carries_no_span(self, tmp_path: Path) -> None:
+        """The input of an axis names a measurement, whose init is one value."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Speed", datatype="uint8", init=3),
+            declare("output", "Axis", kind="axis", size=2, datatype="uint8", input="Speed"),
+        )
+        assert "| input | `Speed` |" in describe(dictionary, "Axis")
+
+    def test_the_description_the_author_wrote_is_carried_over(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path, declare("output", "Value", description="Engine speed, filtered")
+        )
+        assert "Engine speed, filtered" in describe(dictionary, "Value")
+
+    def test_a_name_no_component_declares_has_nothing_to_show(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        assert describe(self.resolved(tmp_path, declare("output", "Value")), "Absent") is None
+
+    def test_a_document_in_no_project_resolves_to_nothing(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import resolve
+
+        assert resolve([], tmp_path / "absent.ddd.json") is None
+
+    def test_the_scale_is_the_one_it_is_given(self) -> None:
+        """Passed in rather than taken from the row, so that rows can be compared."""
+        from ddd.lsp.hover import BARS, sparkline
+
+        assert sparkline([0.0, 5.0, 10.0], 0.0, 10.0) == f"{BARS[0]}{BARS[4]}{BARS[-1]}"
+        # The same row against a wider scale sits lower, which is the whole point.
+        assert sparkline([0.0, 5.0, 10.0], 0.0, 20.0) == f"{BARS[0]}{BARS[2]}{BARS[4]}"
+
+
 class TestPositions:
     """Turning where the cursor is into what it is on."""
 
@@ -763,6 +996,7 @@ class TestServer:
         capabilities = sent(writer)[0]["result"]["capabilities"]
         assert capabilities["definitionProvider"] is True
         assert capabilities["referencesProvider"] is True
+        assert capabilities["hoverProvider"] is True
 
     def test_definition_answers_with_the_producing_declaration(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
@@ -796,11 +1030,67 @@ class TestServer:
             "b.ddd.json",
         }
 
+    def hovered(self, tmp_path: Path, path: Path, pointer: str) -> Any:
+        position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            framed(self.navigation_request("textDocument/hover", path, position)),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        return answer["result"]
+
+    def test_hover_answers_with_markdown(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        result = self.hovered(tmp_path, consumer, "component.declarations[0].definition.name")
+        assert result["contents"]["kind"] == "markdown"
+        assert "**Shared**" in result["contents"]["value"]
+        # Written by A even though the hover happened in B, which is the point of resolving.
+        assert "Written by **A**" in result["contents"]["value"]
+
+    def test_hover_on_something_that_is_not_a_variable_says_nothing(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        assert self.hovered(tmp_path, consumer, "component.name") is None
+
+    def test_hover_on_a_reference_to_nothing_says_nothing(self, tmp_path: Path) -> None:
+        """The cursor is on a name, but no component declares it - the very case the
+        unknown-reference finding is about, so the hover has nothing to add to it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Curve", kind="curve", datatype="uint8", axis="Absent"),
+                ),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        result = self.hovered(
+            tmp_path, tmp_path / "a.ddd.json", "component.declarations[0].definition.axis"
+        )
+        assert result is None
+
+    def test_hover_with_no_project_to_resolve_says_nothing(self, tmp_path: Path) -> None:
+        """No build record and a file that will not load on its own."""
+        lonely = tmp_path / "gone.ddd.json"
+        writer = io.BytesIO()
+        Server(
+            framed(
+                self.navigation_request("textDocument/hover", lonely, {"line": 0, "character": 0})
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"] is None
+
     def test_a_request_it_cannot_serve_is_refused_rather_than_ignored(self, tmp_path: Path) -> None:
         """A client still waiting for an answer looks exactly like a server that has died."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/hover"}),
+            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/rename"}),
             writer,
             root=tmp_path,
         ).run()

@@ -6,3 +6,24 @@
 .wy-nav-content img {
     max-width: 100%;
 }
+
+/* The theme's default blue is not a colour of this product, and the logo is drawn for the
+   ink rather than for it. The mobile header is the same block, folded. */
+.wy-side-nav-search,
+.wy-nav-top {
+    background-color: #123540;
+}
+
+/* The theme sizes a logo to the full width of the sidebar; the lockup is a wordmark next to
+   a mark, so at 300 px it dwarfs the navigation it belongs to. */
+.wy-side-nav-search > a img.logo {
+    width: auto;
+    max-width: 160px;
+    margin-bottom: 0.4rem;
+}
+
+/* That link carries the project name as text as well, which the lockup has just said. The
+   name goes, the link stays: the logo is what it is wrapped around. */
+.wy-side-nav-search > a {
+    font-size: 0;
+}

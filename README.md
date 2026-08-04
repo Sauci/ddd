@@ -1,5 +1,7 @@
 # DDD
 
+![DDD](https://raw.githubusercontent.com/Sauci/ddd/master/assets/logo/ddd-icon-128.png)
+
 DDD manages the **global variables** of a component based embedded software project.
 
 Components are often written by different teams or companies and talk to each other by
@@ -716,7 +718,7 @@ needs no 3.30 and no `ddd_add_component`.
 | --- | --- |
 | `firmware_ddd_generation` | runs the generator |
 | `firmware_ddd_headers` | interface library carrying the include directory; linked into every registered component |
-| `firmware_ddd_globals` | object library compiling the one definition file, linked into the image |
+| `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image |
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The

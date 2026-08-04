@@ -36,9 +36,9 @@ and that components which consume inputs agree on datatypes/units/scaling etc.
 ### 1.3 Source code generation
 
 In order to enforce the access rules specified for each component, the global variables shall
-be defined and declared by DDD. The tool generates a global definition c-code file, which
-contains all used global variables. This file can later be compiled and linked to the project
-in the build process.
+be defined and declared by DDD. The tool generates the c code defining every global variable
+of the project, which the example templates emit as a single file for the reasons section 5.1
+gives, and which is compiled and linked into the firmware exactly once.
 
 DDD shall also generate a variable declaration c-header for each software component. This
 header shall only contain declarations for the variables specified in the interface
@@ -459,6 +459,38 @@ that passing it to a helper typed for a plain `const` one no longer compiles and
 helper - the cast that would silence it is itself refused by a warning set containing
 `-Wcast-qual`.
 
+The example templates generate the definitions into one file per project and the declarations
+into one header per component, and the build integration of section 7.1 expects that
+arrangement. The asymmetry is deliberate: splitting the declarations is what enforces the
+access rules, since a component sees the objects it declared and a reference to any other
+global is an undeclared identifier, whereas splitting the definitions enforces nothing - after
+linking there are only symbols. Three things argue for the single file instead.
+
+Every object has a definition site. The objects of a project partition by owner, so a file per
+owner would cover all of them but the ones no component owns - which arise whenever
+`missing-producer` is relaxed, to generate a single component on its own or an image that
+deliberately links a subset of the project. Those objects have no component and would have no
+file; the project wide file defines them like any other.
+
+The build system can name what it compiles. The rule above lets it derive the generated files
+from the template directory, and a `{component}` template is the one entry it cannot resolve,
+since the component names come out of the description files and, for an image, the subset that
+matters comes out of its link graph. A generated header survives that because a consumer
+depends on the directory it lives in rather than on its name; a source has to be named before
+it can be compiled.
+
+The definitions reach the image whole. An object that no compiled code references - a
+measurement only the calibration tool reads - has nothing to pull it out of a library archive,
+so the definitions are compiled as a unit of their own and linked into the image rather than
+into the libraries of the components that own them. A definition file per component invites
+the second arrangement, in which the linker drops precisely the objects nobody but the
+calibration tool reads, and the a2l is left describing storage the image does not contain.
+
+None of this forbids the arrangement: a `{component}` template renders a `.c` as readily as a
+`.h`. A project that wants its definitions spread over several files may also write several
+project wide templates, each rendering the part it selects, and the build integration compiles
+every one of them; per-component sources it does not compile, for the reason above.
+
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 
 ### 5.2 A2L
@@ -509,8 +541,9 @@ ship can consume it without depending on the implementation.
 DDD ships a CMake module which registers the description of a component on its target and
 collects, for an image, the descriptions of the components that image actually links. It
 generates into the build tree, exposes the generated headers to the components through an
-interface library and compiles the single definition file into the image. Registering a
-component and generating for an image shall each take one call.
+interface library and compiles the generated definition sources into the image as an object
+library of their own, so that an object no compiled code references is not dropped
+(section 5.1). Registering a component and generating for an image shall each take one call.
 
 ### 7.2 Editor integration
 

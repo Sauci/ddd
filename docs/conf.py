@@ -47,6 +47,11 @@ html_theme_options = {
     "navigation_depth": 3,
 }
 html_css_files = ["css/custom.css"]
+# The theme puts the logo on the dark block at the top of the sidebar, so it is the dark
+# variant that goes there; custom.css repaints that block in the ink the mark is drawn for.
+# Both paths are relative to this file, and sphinx copies what they name into _static.
+html_logo = "../assets/logo/ddd-logo-dark.svg"
+html_favicon = "../assets/logo/ddd-favicon.svg"
 
 # -- Options for LaTeX output ------------------------------------------------
 

@@ -43,6 +43,15 @@ Do not recolour a single bowl, redraw the mark with a stroke width other than 20
 wordmark in a font: the letters and the arcs share one construction, and a substituted `D`
 shows.
 
+## Where it is used
+
+| place | file | why that one |
+| --- | --- | --- |
+| the documentation sidebar | `ddd-logo-dark.svg` | the theme puts it on a dark block; `docs/_static/css/custom.css` repaints that block in the ink |
+| the documentation tab | `ddd-favicon.svg` | 16 px |
+| [../../README.md](../../README.md) | `ddd-icon-128.png`, over its `raw.githubusercontent.com` url | the same file is the description on the package index, which renders neither a relative path nor an svg |
+| the vscode extension | `../../editors/vscode/icon.png` | a copy: vsce packages nothing from outside the extension directory. Re-copy it when the mark changes |
+
 ## Re-exporting the rasters
 
 The pngs are screenshots of `ddd-icon.svg`, so they follow the svg and are never edited by

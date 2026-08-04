@@ -11,8 +11,8 @@ resolved form the backends receive, has to be accounted for in exactly one of th
 
 * it is named in a comparison table,
 * it reaches a table through a derived property under another name - ``dimensions`` is
-  compared as ``shape``, ``is_volatile`` as ``volatile``, ``axis``/``x_axis``/``y_axis``/
-  ``input`` as ``references`` - and the mapping below records which,
+  compared as ``shape``, ``axis``/``x_axis``/``y_axis``/``input`` as ``references`` - and the
+  mapping below records which,
 * it is deliberately not compared, and :data:`_NOT_COMPARED` says why in one line.
 
 Adding a field to a model therefore fails here until somebody has decided which of the three
@@ -44,7 +44,6 @@ def table_names(*tables: tuple[object, ...]) -> set[str]:
 DERIVED_AS: dict[str, str] = {
     "dimensions": "shape",
     "size": "shape",
-    "is_volatile": "volatile",
     "input": "references",
     "axis": "references",
     "x_axis": "references",
@@ -59,6 +58,9 @@ _NOT_COMPARED: dict[str, str] = {
     "words without disagreeing about it, and the producer's text is the one generated",
     "kind": "compared, but as a table field of its own - listed here only for ResolvedObject, "
     "see below",
+    "init": "only a producer may state one, so there are never two to compare. A component "
+    "that reads a variable has no say in what it starts as, and stating one is reported "
+    "where it is written as consumer-storage rather than reconciled here afterwards",
 }
 
 # ResolvedObject carries the *result* of the analysis as well as the declaration, and the
@@ -153,6 +155,54 @@ class TestComparisonTables:
         assert inside["limits"].optional
         assert "limits" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
+    def test_volatile_is_an_interface_field_and_unlike_limits_is_not_optional(self) -> None:
+        """Both are stated by hand, and only one of them may be left out of a definition.
+
+        ``limits`` are derived from the datatype and the conversion when a declaration omits
+        them, so omitting them is asking for the derivation, and the table relaxes the
+        comparison to match. Nothing derives ``volatile``, which is why the key is required on
+        every definition - so there is never a silence to interpret here either, and the entry
+        is not optional.
+        """
+        inside = {field.name: field for field in analysis._INTERFACE_FIELDS}
+        assert "volatile" in inside
+        assert not inside["volatile"].optional
+        assert inside["limits"].optional
+
+    def test_volatile_is_an_interface_field_inside_a_project_and_storage_between_deliveries(
+        self,
+    ) -> None:
+        """The same property, graded by who is left describing the object wrongly.
+
+        Inside a project the declarations are compiled together, so one component saying
+        ``volatile`` and another not gives two headers that describe one piece of storage
+        differently, and the component that was not told may hold a value that changes under
+        it. That is an interface disagreement and an error.
+
+        Between two deliveries there is only ever one answer at a time: every consumer is
+        regenerated and recompiled against the new headers, so nobody is left wrong. What
+        changed is how the object behaves, which is ``changed-storage`` - the same grade as a
+        changed initial value, and deliberately not ``changed-interface``.
+        """
+        assert "volatile" in table_names(analysis._INTERFACE_FIELDS)
+        assert "volatile" not in table_names(analysis._STORAGE_FIELDS)
+        assert "volatile" in table_names(compare._STORAGE_FIELDS)
+        assert "volatile" not in table_names(compare._INTERFACE_FIELDS)
+
+    def test_init_is_not_compared_inside_a_project_and_is_storage_between_deliveries(
+        self,
+    ) -> None:
+        """The mirror of volatile, and the reason the two are not one rule.
+
+        Only a producer may state an initial value, so inside a project there are never two of
+        them to compare - a consumer that states one is told so as ``consumer-storage`` where
+        it wrote it. Between deliveries the producer's own answer may well have changed, and
+        that is a behaviour change consumers should hear about.
+        """
+        assert "init" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
+        assert "init" in _NOT_COMPARED
+        assert "init" in table_names(compare._STORAGE_FIELDS)
+
     def test_a2l_is_a_storage_field_inside_a_project_and_its_own_check_between_deliveries(
         self,
     ) -> None:
@@ -180,5 +230,5 @@ class TestComparisonTables:
         assert "shape" in table_names(analysis._INTERFACE_FIELDS)
         assert "shape" in table_names(compare._INTERFACE_FIELDS)
         declared = next(f for f in analysis._INTERFACE_FIELDS if f.name == "shape")
-        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax")
+        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax", volatile=False)
         assert declared.value(curve) is None  # not known yet, it comes from the axis

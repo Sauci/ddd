@@ -9,9 +9,23 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from conftest import checks, component, declare, messages, project, render_files, run_analysis
-from ddd.models import AnyDataObject, Axis, Curve, Map, ObjectKind, Parameter, ValueBlock
+from ddd.models import (
+    AnyDataObject,
+    Axis,
+    Curve,
+    Map,
+    ObjectKind,
+    Parameter,
+    ValueBlock,
+    definition_keys,
+)
 
 DEFINITION = TypeAdapter(AnyDataObject)
+
+
+def payload(**extra: Any) -> dict[str, Any]:
+    """A definition with the keys every kind requires, plus whatever the test is about."""
+    return {"name": "X", "datatype": "uint8", "volatile": False, **extra}
 
 
 def axis(name: str = "Ax", size: int = 3, **extra: Any) -> dict[str, Any]:
@@ -38,17 +52,15 @@ class TestContract:
         editor validating a file, which a defaulted discriminator was not.
         """
         with pytest.raises(ValidationError, match="kind"):
-            DEFINITION.validate_python({"name": "X", "datatype": "uint8"})
+            DEFINITION.validate_python({"name": "X", "datatype": "uint8", "volatile": False})
 
     def test_a_measurement_is_named_like_every_other_kind(self) -> None:
-        definition = DEFINITION.validate_python(
-            {"name": "X", "datatype": "uint8", "kind": "measurement"}
-        )
+        definition = DEFINITION.validate_python(payload(kind="measurement"))
         assert definition.kind is ObjectKind.MEASUREMENT
         assert not definition.is_calibration
 
     @pytest.mark.parametrize(
-        ("payload", "expected"),
+        ("extra", "expected"),
         [
             ({"kind": "parameter"}, Parameter),
             ({"kind": "value_block", "dimensions": [2]}, ValueBlock),
@@ -57,43 +69,90 @@ class TestContract:
             ({"kind": "map", "x_axis": "Ax", "y_axis": "Ay"}, Map),
         ],
     )
-    def test_kinds(self, payload: dict[str, Any], expected: type) -> None:
-        definition = DEFINITION.validate_python({"name": "X", "datatype": "uint8", **payload})
+    def test_kinds(self, extra: dict[str, Any], expected: type) -> None:
+        definition = DEFINITION.validate_python(payload(**extra))
         assert isinstance(definition, expected)
         assert definition.is_calibration
 
     def test_a_parameter_has_no_dimensions(self) -> None:
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            DEFINITION.validate_python(
-                {"kind": "parameter", "name": "X", "datatype": "uint8", "dimensions": [2]}
-            )
+            DEFINITION.validate_python(payload(kind="parameter", dimensions=[2]))
 
     def test_a_value_block_needs_dimensions(self) -> None:
         with pytest.raises(ValidationError):
-            DEFINITION.validate_python({"kind": "value_block", "name": "X", "datatype": "uint8"})
+            DEFINITION.validate_python(payload(kind="value_block"))
 
     def test_an_axis_needs_a_size(self) -> None:
         with pytest.raises(ValidationError):
-            DEFINITION.validate_python({"kind": "axis", "name": "X", "datatype": "uint8"})
+            DEFINITION.validate_python(payload(kind="axis"))
 
     def test_a_curve_needs_an_axis(self) -> None:
         with pytest.raises(ValidationError):
-            DEFINITION.validate_python({"kind": "curve", "name": "X", "datatype": "uint8"})
+            DEFINITION.validate_python(payload(kind="curve"))
 
-    def test_calibration_objects_are_never_volatile(self) -> None:
-        definition = DEFINITION.validate_python(
-            {"kind": "parameter", "name": "X", "datatype": "uint8"}
-        )
-        assert definition.volatile is False
-        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            DEFINITION.validate_python(
-                {"kind": "parameter", "name": "X", "datatype": "uint8", "volatile": True}
-            )
+    def test_calibration_data_may_be_volatile(self) -> None:
+        """And normally is: it is what lets a calibration tool change the value at runtime.
+
+        A plain ``const`` object is one the compiler may use the initialiser of in place of a
+        read, wherever it can see that initialiser: within one translation unit at every
+        optimisation level, ``-O0`` included, since the c front end substitutes it before any
+        optimiser runs, and across them under link time optimisation. The tool then writes a
+        new value the software does not pick up.
+        """
+        assert DEFINITION.validate_python(payload(kind="parameter", volatile=True)).volatile
+        assert not DEFINITION.validate_python(payload(kind="parameter")).volatile
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"kind": "measurement"},
+            {"kind": "parameter"},
+            {"kind": "value_block", "dimensions": [2]},
+            {"kind": "axis", "size": 3},
+            {"kind": "curve", "axis": "Ax"},
+            {"kind": "map", "x_axis": "Ax", "y_axis": "Ay"},
+        ],
+        ids=lambda extra: str(extra["kind"]),
+    )
+    def test_every_kind_has_to_state_its_volatility(self, extra: dict[str, Any]) -> None:
+        """Required, with no default, on every kind - there is nothing to derive it from.
+
+        The two answers have different costs and only the project knows which it is paying,
+        so a definition that says nothing is a question nobody has answered rather than a
+        definition that means false.
+        """
+        written = {"name": "X", "datatype": "uint8", **extra}
+        with pytest.raises(ValidationError, match="volatile"):
+            DEFINITION.validate_python(written)
+        assert DEFINITION.validate_python({**written, "volatile": False}).volatile is False
+
+    @pytest.mark.parametrize(
+        ("kind", "required"),
+        [
+            ("measurement", {"name", "datatype", "kind", "volatile"}),
+            ("value_block", {"name", "datatype", "kind", "volatile", "dimensions"}),
+            ("curve", {"name", "datatype", "kind", "volatile", "axis"}),
+        ],
+    )
+    def test_the_keys_of_a_kind_are_derived_from_its_model(
+        self, kind: str, required: set[str]
+    ) -> None:
+        """What an editor consults before offering to add or remove one key of a definition."""
+        allowed, must_state = definition_keys(kind)
+        assert must_state == required
+        assert must_state <= allowed
+
+    def test_the_keys_of_a_kind_nobody_declares_are_none(self) -> None:
+        """Asked about a kind that does not exist, which is what half-typed json looks like.
+
+        Answering with an empty pair rather than raising is what lets the caller - an editor
+        deciding whether a fix is safe to offer - treat "I cannot tell" as "offer nothing".
+        The loader is the one that has something to say about the kind itself.
+        """
+        assert definition_keys("measuremen") == (frozenset(), frozenset())
 
     def test_the_shape_of_a_curve_is_unknown_to_the_contract(self) -> None:
-        curve = DEFINITION.validate_python(
-            {"kind": "curve", "name": "X", "datatype": "uint8", "axis": "Ax"}
-        )
+        curve = DEFINITION.validate_python(payload(kind="curve", axis="Ax"))
         assert curve.declared_shape is None
         assert curve.references == {"axis": "Ax"}
 
@@ -249,6 +308,42 @@ class TestCodeGeneration:
         assert "const uint16_t P = 7U;" in source
         assert "uint16_t M;" in source
         assert "const uint16_t M;" not in source
+        assert "volatile" not in source
+
+    def test_volatile_calibration_data_is_const_volatile(self, tree: Path) -> None:
+        """The two qualifiers are independent, and both are ordinary on calibration data.
+
+        ``const`` says the software never writes the object, ``volatile`` says something
+        outside the software does - which is exactly a calibration tool changing a value in a
+        running ecu. Without the second one a compiler folds the initialiser into the code
+        that reads it, and the tool ends up writing to an address nothing reads.
+        """
+        files = generate(
+            tree,
+            declare("local", "P", "uint16", kind="parameter", init=7, volatile=True),
+            declare("local", "Ax", "uint16", kind="axis", size=3, volatile=True),
+        )
+        source, header = files["ddd_globals.c"], files["ddd_globals.h"]
+        assert "const volatile uint16_t P = 7U;" in source
+        assert "const volatile uint16_t Ax[3];" in source
+        assert "extern const volatile uint16_t P;" in header
+
+    def test_asking_for_a_const_consumer_view_does_not_repeat_the_qualifier(
+        self, tree: Path
+    ) -> None:
+        """``const const`` is not a declaration any compiler accepts.
+
+        The consumer view adds ``const`` so that a write does not compile; calibration data
+        already carries one, whether or not it also carries ``volatile``.
+        """
+        files = generate(
+            tree,
+            declare("output", "P", "uint16", kind="parameter", volatile=True),
+            const_inputs=True,
+        )
+        header = files["A.h"]
+        assert "extern const volatile uint16_t P;" in header
+        assert "const const" not in header
 
     def test_sections_separate_ram_from_calibration_data(self, tree: Path) -> None:
         files = generate(

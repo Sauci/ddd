@@ -1,0 +1,65 @@
+{
+  "name": "ddd",
+  "displayName": "DDD",
+  "description": "Reports the DDD consistency checks while a description file is being written, and navigates between the components that share a variable.",
+  "version": "0.2.0",
+  "publisher": "sauci",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sauci/ddd.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.ddd.json"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ddd.restartServer",
+        "title": "Restart Language Server",
+        "category": "DDD"
+      }
+    ],
+    "configuration": {
+      "title": "DDD",
+      "properties": {
+        "ddd.executable": {
+          "type": "string",
+          "default": "ddd",
+          "markdownDescription": "The `ddd` command to run the language server with. Left as the bare name, it is looked up on the PATH; set it to an absolute path to use the interpreter a virtual environment installed it into."
+        },
+        "ddd.buildDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Directories holding a build of this project, each searched for the `ddd-build.json` that `ddd_generate()` writes. Leave empty to search the usual build directory names next to the workspace."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --project .",
+    "test": "npm run build && node --test out/",
+    "package": "npx --yes @vscode/vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.82.0",
+    "typescript": "^5.4.0"
+  }
+}

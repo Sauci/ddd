@@ -68,6 +68,38 @@ class TestLoadingFailures:
         )
         assert checks(bag) == ["schema"]
 
+    def test_a_definition_without_volatile_is_a_schema_error(self, tree: Path) -> None:
+        """The key is required, and a missing one is refused where every contract breach is.
+
+        Written by hand rather than through ``declare``, which fills the key in: this is the
+        one test that must see a definition without it. The severity of ``schema`` cannot be
+        relaxed, so this is also what a project upgrading to the required key runs into, and
+        the finding names the key it is missing.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "declarations": [
+                            {
+                                "scope": "local",
+                                "definition": {
+                                    "name": "X",
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                },
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "volatile" in messages(bag)
+
     def test_an_included_file_of_an_unknown_kind_is_skipped(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,
@@ -145,7 +177,13 @@ class TestModelEdges:
 
     def test_an_empty_conversion_object_means_identity(self) -> None:
         definition = DEFINITION.validate_python(
-            {"kind": "measurement", "name": "X", "datatype": "uint8", "conversion": {}}
+            {
+                "kind": "measurement",
+                "name": "X",
+                "datatype": "uint8",
+                "volatile": False,
+                "conversion": {},
+            }
         )
         assert isinstance(definition.conversion, IdentityConversion)
 
@@ -175,6 +213,7 @@ class TestModelEdges:
                     "kind": "measurement",
                     "name": "X",
                     "datatype": "uint8",
+                    "volatile": False,
                     "dimensions": [2, 2],
                     "init": [1, [2, 3]],
                 }
@@ -198,7 +237,13 @@ class TestMismatchMessages:
         assert "definition-mismatch" in checks(bag)
         assert "shape: scalar != from the axes" in messages(bag)
 
-    def test_a_missing_init_is_described_as_none(self, tree: Path) -> None:
+    def test_a_consumer_saying_nothing_about_storage_is_not_disagreeing(self, tree: Path) -> None:
+        """Silence is not a claim, and used to be read as one.
+
+        A consumer that left ``init`` out was reported as specifying "none" against the
+        producer's value, so every reader of a variable had to restate an initial value it had
+        no say in just to keep the run quiet.
+        """
         _, bag = run_analysis(
             tree,
             {
@@ -207,19 +252,31 @@ class TestMismatchMessages:
                 "b.ddd.json": component("B", declare("input", "X")),
             },
         )
-        assert checks(bag) == ["storage-mismatch"]
-        assert "init: none != 1" in messages(bag)
+        assert checks(bag) == []
 
-    def test_a_volatile_disagreement_is_described(self, tree: Path) -> None:
+    def test_both_sides_saying_nothing_agree(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        assert checks(bag) == []
+
+    def test_a_stated_volatile_disagreement_is_an_error(self, tree: Path) -> None:
+        """It reaches the consumer's own header as a type qualifier, so a component that
+        believes the opposite has been compiled against something else than it thinks."""
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
                 "a.ddd.json": component("A", declare("output", "X", volatile=True)),
-                "b.ddd.json": component("B", declare("input", "X")),
+                "b.ddd.json": component("B", declare("input", "X", volatile=False)),
             },
         )
-        assert checks(bag) == ["storage-mismatch"]
+        assert checks(bag) == ["definition-mismatch"]
         assert "volatile: false != true" in messages(bag)
 
     def test_an_enum_conversion_is_named_in_a_mismatch(self, tree: Path) -> None:

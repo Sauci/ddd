@@ -8,15 +8,16 @@ Those mappings belong to the backend that needs them (:mod:`ddd.backends.c.types
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Final
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 
 class FileRoot(BaseModel):
-    """Base of the three hand-written file roots: project, component and naming.
+    """Base of the hand-written file roots: project, component, naming and types.
 
     The one thing they share is the ``$schema`` key. Editors use it to bind a json file to
     its schema, and that binding is what turns the published contract into completion,
@@ -140,6 +141,32 @@ class Datatype(StrEnum):
         """Largest value representable in the raw (implementation) domain."""
         return self.info.raw_max
 
+    @property
+    def schema_description(self) -> str:
+        """One line of hover documentation for the published json schema.
+
+        Derived from the table below rather than written out under each member, because what
+        an author needs to know about ``uint16`` is exactly what the table already states -
+        how much storage it costs and which values fit in it. A docstring repeating that
+        would be a second copy of eleven ranges, and the copy that goes wrong is the one
+        somebody reads.
+        """
+        info = self.info
+        storage = f"{info.size} byte{'' if info.size == 1 else 's'}"
+        if self is Datatype.BOOLEAN:
+            return f"A truth value, 0 or 1; {storage} of storage."
+        if info.is_float:
+            precision = "single" if info.size == 4 else "double"
+            return (
+                f"IEEE 754 {precision} precision floating point; {storage} of storage, "
+                f"magnitude up to {format_number(info.raw_max)}."
+            )
+        sign = "Signed" if info.is_signed else "Unsigned"
+        return (
+            f"{sign} integer; {storage} of storage, "
+            f"{format_number(info.raw_min)} to {format_number(info.raw_max)}."
+        )
+
 
 _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
     Datatype.BOOLEAN: DatatypeInfo(1, False, False, 0, 1),
@@ -154,6 +181,74 @@ _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
     Datatype.FLOAT32: DatatypeInfo(4, True, True, -FLOAT32_MAX, FLOAT32_MAX),
     Datatype.FLOAT64: DatatypeInfo(8, True, True, -FLOAT64_MAX, FLOAT64_MAX),
 }
+
+
+_STORAGE_STEM: Final = r"(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)"
+
+_DATATYPE_LIKE: Final = re.compile(rf"{_STORAGE_STEM}[0-9_]*", re.IGNORECASE)
+"""A word that is nothing but a storage stem followed by digits or underscores."""
+
+TYPE_NAME_PATTERN: Final = rf"^(?!{_STORAGE_STEM}[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$"
+"""The same rule as a regular expression, for the published schema and for editors.
+
+Spelled twice, in two dialects, because the two consumers cannot share one: json schema
+patterns are ECMA-262, where a negative lookahead is ordinary, and the validator pydantic
+compiles has none. So the rule is enforced in python and *published* as this pattern, which an
+editor applies as the file is typed - which is the whole point of having it.
+"""
+
+
+def _not_a_datatype_in_disguise(value: str) -> str:
+    """Refuse a type name that reads as an attempt at a base datatype.
+
+    This is what one key naming both would otherwise cost. Since ``datatype`` accepts a declared
+    name as well as a base datatype, a mistyped ``uint166`` is a perfectly well formed *name*:
+    without this it would pass the contract, reach the editor as valid, and be reported only
+    when the project was next checked. Refusing the shape puts the rejection where the typo is.
+
+    ``uint166``, ``int16``, ``float3`` and ``sint_16`` are refused; ``Int16_t``, ``intensity``,
+    ``wordCount`` and ``charge`` are not. It also means a project cannot declare a type called
+    ``uint16``, which would be a name nothing could ever refer to - written anywhere, the base
+    datatype wins the union.
+    """
+    if _DATATYPE_LIKE.fullmatch(value):
+        msg = (
+            f"'{value}' reads as a base datatype rather than as the name of a type this project "
+            f"declares; a base datatype has to be spelled as one of them exactly"
+        )
+        raise ValueError(msg)
+    return value
+
+
+TypeName = Annotated[
+    str,
+    StringConstraints(pattern=C_IDENTIFIER_PATTERN, min_length=1, max_length=IDENTIFIER_MAX_LENGTH),
+    AfterValidator(_not_a_datatype_in_disguise),
+    Field(json_schema_extra={"pattern": TYPE_NAME_PATTERN}),
+]
+"""The name of a type the project declares, as written where something refers to it.
+
+The rule lives in python rather than in the constraint so that it survives being taken apart: a
+tool that rebuilds one field on its own - the api documentation generator does exactly that -
+gets a model it can still build, and the published pattern goes along for the ride.
+"""
+
+DatatypeRef = Annotated[Datatype | TypeName, Field(union_mode="left_to_right")]
+"""What may be written where storage is named: one of the base datatypes, or a declared type.
+
+One key names a type everywhere - on a structure member and on a declaration alike - rather
+than a second key beside ``datatype``. A ``type`` key would have to mean "the name of a
+declared type" in those two places and "which shape this entry has" at the top of a type
+entry, and one key with one meaning is worth what it costs.
+
+What it costs is stated plainly, because it is the largest thing given up: the published schema
+can no longer say ``datatype`` is one of eleven values. It becomes the eleven *or* a string, so
+an editor still offers them as completions and still documents each one, but a typo in a base
+datatype name stops being refused as it is typed and becomes an ``unknown-type`` finding from
+``ddd check`` instead.
+
+Left to right, so that ``"uint16"`` is the datatype rather than a type somebody named after it.
+"""
 
 
 def format_number(value: float | int) -> str:

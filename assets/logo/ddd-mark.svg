@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="DDD">
+  <title>DDD</title>
+  <g fill="none" stroke-linecap="round" stroke-width="20">
+    <!-- the echoes: the components that read the variable -->
+    <path d="M84 40 A88 88 0 0 1 84 216" stroke="#35BBD1"/>
+    <path d="M84 69 A59 59 0 0 1 84 187" stroke="#1590A6"/>
+    <!-- the stem and its bowl: the one declaration that owns the definition -->
+    <path d="M84 40 V216" stroke="#123540"/>
+    <path d="M84 98 A30 30 0 0 1 84 158" stroke="#123540"/>
+  </g>
+</svg>

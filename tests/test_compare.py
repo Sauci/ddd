@@ -195,6 +195,27 @@ class TestGradedChanges:
         new = one_component(tree, "new", declare("local", "X", a2l={"export": False}))
         assert checks(verdict(old, new)) == ["changed-a2l"]
 
+    def test_stating_an_export_that_was_already_in_force_is_no_change(self, tree: Path) -> None:
+        """An a2l entry is compared as it will be, not as it happens to be written.
+
+        A baseline that leaves ``export`` out exports the object, so a delivery that spells
+        out ``true`` delivers the same a2l. Comparing the records raw made that a warning, and
+        one nobody can act on: the fix is to write the key the baseline did not have.
+        """
+        old = one_component(tree, "old", declare("local", "X"))
+        new = one_component(tree, "new", declare("local", "X", a2l={"export": True}))
+        assert checks(verdict(old, new)) == []
+
+    def test_a_changed_a2l_entry_names_only_what_changed(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "X"))
+        new = one_component(
+            tree, "new", declare("local", "X", a2l={"export": True, "format": "%8.2"})
+        )
+        report = verdict(old, new)
+        assert checks(report) == ["changed-a2l"]
+        assert "format: none -> '%8.2'" in messages(report)
+        assert "export" not in messages(report)
+
     def test_a_team_can_relax_any_of_it(self, tree: Path) -> None:
         old = one_component(tree, "old", declare("local", "X", "uint16"))
         new = one_component(tree, "new", declare("local", "X", "uint32"))

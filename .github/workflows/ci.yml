@@ -62,3 +62,37 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy
+
+  extension:
+    # The VS Code extension is a launcher for the language server, so what is worth testing is
+    # that the command it builds really starts one - which needs both toolchains here, and is
+    # why the tests install the package rather than only compiling typescript. Node 20 rather
+    # than the distribution's, because the packaging step below needs it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: pip install -e .
+      - run: npm ci
+        working-directory: editors/vscode
+      - run: npm test
+        working-directory: editors/vscode
+      # Proves the artefact a customer would be handed can actually be produced. The
+      # release workflow builds it again and attaches it to the release, which is where
+      # anyone outside this repository should get it from: an artifact here expires and
+      # needs a GitHub account to reach.
+      - run: npm run package
+        working-directory: editors/vscode
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ddd-vscode-extension
+          path: editors/vscode/*.vsix

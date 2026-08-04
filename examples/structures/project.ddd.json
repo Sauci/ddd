@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/ddd_project.schema.json",
+  "project": {
+    "name": "StructuredDevice",
+    "description": "A project that declares structured datatypes alongside its components",
+    "includes": [
+      "types.ddd.json",
+      "sensing.ddd.json"
+    ]
+  }
+}

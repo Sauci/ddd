@@ -121,6 +121,9 @@ def test_schema_error_points_at_the_offending_value(tree: Path) -> None:
             "a.ddd.json": component("A", declare("output", "X", datatype="uint7")),
         },
     )
+    # ``datatype`` also accepts the name of a declared type, so a typo in a base datatype is a
+    # perfectly well formed name and would slip past the contract - except that a name reading
+    # as a storage stem with the digits wrong is refused outright. See TYPE_NAME_PATTERN.
     assert checks(bag) == ["schema"]
     location = next(iter(bag)).location
     assert location is not None

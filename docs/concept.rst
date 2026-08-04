@@ -55,9 +55,10 @@ Every component declares its data interface explicitly
 
 A component ships a ``*.ddd.json`` file listing every global variable it takes part in,
 together with what the value *is*: its datatype, its physical unit, the conversion from the
-raw stored value to the physical one, its limits, its initial value and, for calibration data,
-the axes it is defined over. Nothing about a shared variable stays implicit, and in particular
-nothing about it lives in a hand written header that only one team ever reads.
+raw stored value to the physical one, its limits, its initial value, whether the software has
+to re-read it at every access, and, for calibration data, the axes it is defined over. Nothing
+about a shared variable stays implicit, and in particular nothing about it lives in a hand
+written header that only one team ever reads.
 
 .. code-block:: json
 
@@ -65,12 +66,14 @@ nothing about it lives in a hand written header that only one team ever reads.
      "scope": "output",
      "definition": {
        "name": "ValueF",
+       "kind": "measurement",
        "description": "Signed measurement with a fixed point conversion",
-       "datatype": "int16",
+       "datatype": "sint16",
        "unit": "degC",
        "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
        "limits": { "min": -40, "max": 150 },
-       "init": -400
+       "init": -400,
+       "volatile": false
      }
    }
 
@@ -300,9 +303,22 @@ interface in the project.
 For a measurement, ``output`` has the obvious reading: the component writes the variable at
 run time and everybody else reads it. For calibration data - parameters, value blocks, curves,
 maps and axes - the software never writes anything at all, since those objects are generated
-``const`` and end up in read only memory. ``output`` there means that the component *provides*
-the data and that other components may read it; the writing is done by the calibration tool,
-from outside the software.
+``const``. ``output`` there means that the component *provides* the data and that other
+components may read it; the writing is done by the calibration tool, from outside the
+software.
+
+Whether the software has to *notice* that writing is the other half of the answer, and it is
+what every definition states as ``volatile``. An object a calibration tool tunes while the
+software runs is generated ``const volatile``, because ``const`` alone lets the compiler use
+the initial value in place of a read wherever it can see it - within one translation unit at
+every optimisation level, ``-O0`` included, and across them under ``-flto`` - and, where the
+load does survive, still lets it serve two reads from one of them. Either way the tool writes
+a value the software does not pick up. The qualifier
+costs the read only section: gcc moves a ``const volatile`` object out of ``.rodata`` into
+``.data``, which on a flash target is a question the linker script has to answer. An object
+that is never tuned online states ``false``, is generated plain ``const`` and stays in read
+only memory. DDD states no preference between the two and reports nothing about the choice;
+it renders what the description says.
 
 The demo project uses both readings. ``AxisA`` is declared ``output`` by the controller and
 ``input`` by the user interface, which defines its own curve ``CurveB`` over the controller's
@@ -319,8 +335,8 @@ controller and nothing else:
    BlockA      value_block  uint8     -     [8]     UserInterface (local)  -
    CurveA      curve        uint16    ms    [6]     Controller (local)     -
    CurveB      curve        uint8     %     [6]     UserInterface (local)  -
-   FlagA       measurement  bool      -     -       SensorHub              EventLogger
-   MapA        map          int8      %     [4][6]  Controller (local)     -
+   FlagA       measurement  boolean   -     -       SensorHub              EventLogger
+   MapA        map          sint8     %     [4][6]  Controller (local)     -
    ParameterA  parameter    uint16    Hz    -       Controller (local)     -
    StateA      measurement  uint8     -     -       Controller             UserInterface
    ValueA      measurement  uint8     %     -       SensorHub              Controller
@@ -328,12 +344,12 @@ controller and nothing else:
    ValueC      measurement  float32   degC  -       SensorHub              UserInterface
    ValueD      measurement  uint16    -     [8]     SensorHub (local)      -
    ValueE      measurement  uint16    Hz    -       Controller             UserInterface, EventLogger
-   ValueF      measurement  int16     degC  -       Controller             UserInterface
+   ValueF      measurement  sint16    degC  -       Controller             UserInterface
    ValueG      measurement  uint16    V     -       Controller             UserInterface
-   ValueH      measurement  int16     %     -       Controller (local)     -
+   ValueH      measurement  sint16    %     -       Controller (local)     -
    ValueI      measurement  uint32    -     -       UserInterface          EventLogger
    ValueJ      measurement  uint8     -     -       EventLogger            UserInterface
-   ValueK      measurement  int8      -     [3][4]  EventLogger (local)    -
+   ValueK      measurement  sint8     -     [3][4]  EventLogger (local)    -
 
 ``local`` is the normal choice for calibration data that only tunes its owning component, and
 it is worth preferring over ``output`` whenever it applies: it keeps the object out of every

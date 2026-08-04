@@ -167,13 +167,15 @@ when the names speak for themselves, and it keeps a twenty-entry fault code list
 
    {
      "name": "Mode",
+     "kind": "measurement",
      "description": "Short form",
      "datatype": "uint8",
      "conversion": {
        "kind": "enum",
        "name": "Mode_t",
        "enumerators": { "MODE_OFF": 0, "MODE_RUN": 1, "MODE_FAULT": 15 }
-     }
+     },
+     "volatile": false
    }
 
 The long one is a list of objects, which costs more lines and buys a ``description`` per
@@ -184,6 +186,7 @@ write the state machine:
 
    {
      "name": "Level",
+     "kind": "measurement",
      "description": "Long form",
      "datatype": "uint8",
      "conversion": {
@@ -193,13 +196,16 @@ write the state machine:
          { "name": "LEVEL_OK",   "value": 1, "description": "inside the working range" },
          { "name": "LEVEL_HIGH", "value": 2, "description": "above the working range" }
        ]
-     }
+     },
+     "volatile": false
    }
 
 The two are the same thing to DDD - the short form is expanded into the long one with empty
 descriptions - so a project can start with the short spelling and grow into the long one
-where it turns out to be worth the space. Note that the second example above omits ``kind``:
-an object carrying ``enumerators`` cannot be anything else.
+where it turns out to be worth the space. Note that the conversion of the second example above
+omits its ``kind``: a conversion carrying ``enumerators`` cannot be anything else. The
+``kind`` next to the name of the object is the other one - what sort of data object this is -
+and that one is always stated.
 
 What it generates
 ~~~~~~~~~~~~~~~~~
@@ -313,9 +319,11 @@ and the derived limits come out in the order a reader expects:
 
    {
      "name": "Inverted",
-     "datatype": "int8",
+     "kind": "measurement",
+     "datatype": "sint8",
      "unit": "bar",
-     "conversion": { "factor": -0.25, "offset": 10 }
+     "conversion": { "factor": -0.25, "offset": 10 },
+     "volatile": false
    }
 
 .. code-block:: text

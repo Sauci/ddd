@@ -6,6 +6,17 @@ name: Documentation
 # trustworthy: a reference that stops resolving fails the build instead of quietly
 # disappearing from the page.
 #
+# The site keeps one directory per version. A push to master rewrites `latest`; publishing a
+# release writes a directory named after its tag, and nothing writes to that directory again.
+# Old documentation describes old code, so rebuilding it would only expose it to a toolchain
+# that has moved on - a two year old tag that no longer builds under the sphinx of the day
+# would take the deployment of the current one down with it.
+#
+# Since a deployment replaces the whole site, the versions that are not being built have to
+# come from somewhere: the `gh-pages` branch is that archive. It is storage rather than the
+# published thing - Pages still serves the artifact this workflow uploads, authenticated by
+# the same short lived token as before, and nothing in the repository settings changes.
+#
 # The two diagram programs come from apt rather than from a prepared image, so that this needs
 # nothing but a stock runner to reproduce. Only html is built: a pdf would want a LaTeX
 # distribution, roughly a gigabyte of packages, and nothing asks for one.
@@ -13,15 +24,18 @@ on:
   push:
     branches: [master]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# The published site is one shared resource, so runs against master queue instead of racing,
-# and a deployment is never cancelled half way. Superseding a pull request build is free.
+# The published site and the branch it is archived on are both single shared resources, so
+# every run that deploys queues behind the last one rather than racing it, whichever event
+# started it. Superseding a pull request build is free, and those deploy nothing.
 concurrency:
-  group: docs-${{ github.ref }}
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -47,8 +61,11 @@ jobs:
       - run: pip install -e ".[docs]"
       - run: sphinx-build -b html docs build/docs/html -W --keep-going
 
-      - uses: actions/upload-pages-artifact@v5
+      # A plain artifact rather than a Pages one: this is a single version, and what gets
+      # published is this version merged into every other one the deploy job restores.
+      - uses: actions/upload-artifact@v7
         with:
+          name: docs-html
           path: build/docs/html
 
   # Publishing needs Pages set to build from GitHub Actions once, in the repository settings:
@@ -57,14 +74,144 @@ jobs:
     needs: build
     # Never from a feature branch, and never from a pull request, which on a fork would mean
     # publishing somebody else's revision of the documentation as the product's own.
-    if: github.ref == 'refs/heads/master'
+    if: github.event_name == 'release' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
+      contents: write # the branch the versions that are not being built are kept on
       pages: write # deploy to the Pages site
       id-token: write # the deployment authenticates with an OIDC token, not a stored secret
     steps:
+      # A release is written under its own tag and frozen there; master is the moving one and
+      # always lands in the same place.
+      - name: Choose the directory this build is published under
+        id: slot
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = release ]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Look for the archive branch
+        id: archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/branches/gh-pages" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.archive.outputs.exists == 'true'
+        with:
+          ref: gh-pages
+          path: site
+
+      # The first deployment has no archive to restore, and the workflow starts one rather
+      # than asking for a branch to be created by hand. The push below creates it on the
+      # remote; the credentials actions/checkout would have left behind are set here instead.
+      - name: Start the archive
+        if: steps.archive.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p site
+          git -C site init --initial-branch gh-pages
+          git -C site remote add origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: docs-html
+          path: html
+
+      # Removed rather than copied over: a page that no longer exists in this build has no
+      # business surviving in the directory this build owns.
+      - name: Put this build in its directory
+        env:
+          SLOT: ${{ steps.slot.outputs.name }}
+        run: |
+          rm -rf "site/${SLOT}"
+          mkdir -p "site/${SLOT}"
+          cp -a html/. "site/${SLOT}/"
+
+      # versions.json is what the menu on every page reads, including the pages of versions
+      # published long before this one - which is why it is rewritten from what is on disk
+      # rather than appended to. The root of the site redirects to the newest release: a
+      # reader arriving without a version in the url wants the one they can install, not
+      # master's account of features that are not released yet.
+      - name: Write the version index
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+
+          site = pathlib.Path("site")
+
+          def order(name):
+              """Newest first, with a prerelease behind the release it leads to."""
+              match = re.fullmatch(r"v(\d+(?:\.\d+)*)(.*)", name)
+              if not match:
+                  return ((), False, name)
+              numbers = tuple(int(part) for part in match.group(1).split("."))
+              return (numbers, match.group(2) == "", match.group(2))
+
+          tags = sorted(
+              (d.name for d in site.iterdir() if d.is_dir() and d.name.startswith("v")),
+              key=order,
+              reverse=True,
+          )
+          versions = (["latest"] if (site / "latest").is_dir() else []) + tags
+          # Before the first release there is nothing else to land on.
+          stable = tags[0] if tags else "latest"
+
+          (site / "versions.json").write_text(
+              json.dumps({"stable": stable, "versions": versions}, indent=2) + "\n"
+          )
+          (site / "index.html").write_text(
+              "<!DOCTYPE html>\n"
+              '<html lang="en">\n'
+              "  <head>\n"
+              '    <meta charset="utf-8">\n'
+              f'    <meta http-equiv="refresh" content="0; url=./{stable}/">\n'
+              f'    <link rel="canonical" href="./{stable}/">\n'
+              "    <title>DDD documentation</title>\n"
+              "  </head>\n"
+              "  <body>\n"
+              f'    <p>Redirecting to <a href="./{stable}/">the {stable} documentation</a>.</p>\n'
+              "  </body>\n"
+              "</html>\n"
+          )
+          print(f"stable is {stable}, versions are {', '.join(versions)}")
+          PY
+
+      - name: Commit the new state of the site
+        env:
+          SLOT: ${{ steps.slot.outputs.name }}
+        run: |
+          git -C site config user.name "github-actions[bot]"
+          git -C site config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C site add --all
+          if git -C site diff --cached --quiet; then
+            echo "the site is already in this state, nothing to archive"
+          else
+            git -C site commit --message "docs: publish ${SLOT} from ${GITHUB_SHA}"
+            git -C site push origin gh-pages
+          fi
+
+      # The archive's own history is not part of the site, and uploading it would publish the
+      # credentials the push above used along with it.
+      - run: rm -rf site/.git
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
       - id: deployment
         uses: actions/deploy-pages@v5

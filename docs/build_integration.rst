@@ -189,6 +189,48 @@ configure and picks the new component up. If the tool cannot resolve the project
 module says so and falls back to depending on the project file alone rather than refusing to
 configure at all.
 
+What the build tells an editor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each ``ddd_generate()`` writes a ``ddd-build.json`` into its output directory, at configure
+time, with ``ddd build-info``:
+
+.. code-block:: json
+
+   {
+     "format": 1,
+     "project": "/home/me/firmware/build/ddd/firmware.elf/firmware.ddd.json",
+     "image": "firmware.elf",
+     "strict": false,
+     "severity": ["unused-output=info"]
+   }
+
+Nothing in the build reads it. It is written for the same reason ``SCHEMA_DIRECTORY`` writes
+the json schemas at configure time - so that a tool outside the build can see what the build
+sees - and it carries the two things no description file can state.
+
+The first is **which project description this image is generated from**. In the collected mode
+that file is written into the build tree out of the link graph, so the source tree does not
+name it anywhere: a tool that reads only ``*.ddd.json`` cannot find out which components belong
+together, because the answer is a property of the build rather than of any file somebody wrote.
+A component linked into both a firmware and a test binary is in two projects, and the ``image``
+key is what tells the two records apart.
+
+The second is **the severity policy**, from ``STRICT`` and ``SEVERITY``. A tool that ignores it
+reports a different set of findings than the build does, which is worse than reporting none:
+the same working tree would be clean in one place and failing in the other. The options handed
+to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd generate``, so the
+three cannot drift apart.
+
+The project description is named rather than read, because in the collected mode it does not
+exist yet at that point - ``file(GENERATE)`` produces it at the end of the configure run, after
+this file is written. A severity that names no known check is refused here, which is a
+deliberate choice to fail the configure step where the typo is rather than the build step
+where it would land.
+
+The file is not named ``*.ddd.json``: that extension means "a DDD description file", the
+``file-extension`` check enforces it, and this is a document *about* a project rather than one.
+
 The targets it creates
 ~~~~~~~~~~~~~~~~~~~~~~
 

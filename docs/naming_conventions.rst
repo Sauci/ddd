@@ -478,11 +478,13 @@ instead:
        "declarations": [
          {
            "scope": "local",
-           "definition": { "name": "InletPressure_raw", "datatype": "uint16" }
+           "definition": { "name": "InletPressure_raw", "kind": "measurement", "datatype": "uint16",
+                          "volatile": false }
          },
          {
            "scope": "local",
-           "definition": { "name": "cnt_InletSensorFaults_fltr", "datatype": "uint16" }
+           "definition": { "name": "cnt_InletSensorFaults_fltr", "kind": "measurement",
+                          "datatype": "uint16", "volatile": false }
          }
        ]
      }

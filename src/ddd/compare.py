@@ -22,7 +22,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import DataDictionary, ResolvedObject
+from ddd.ir import Comparable, DataDictionary
 from ddd.models import format_number, format_shape
 
 
@@ -54,7 +54,7 @@ def spell_out[T](fields: Sequence[ComparedField[T]], reference: T, other: T) -> 
     )
 
 
-def _describe_references(entry: ResolvedObject) -> str:
+def _describe_references(entry: Comparable) -> str:
     if not entry.references:
         return "none"
     return ", ".join(f"{key}={value}" for key, value in sorted(entry.references.items()))
@@ -63,7 +63,7 @@ def _describe_references(entry: ResolvedObject) -> str:
 # Change any of these and the consumers of the object are wrong, whether or not they still
 # compile: a widened datatype breaks the abi, a rescaled conversion falsifies every value,
 # and an object turning local takes itself out of reach.
-_INTERFACE_FIELDS: tuple[ComparedField[ResolvedObject], ...] = (
+_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("kind", lambda o: o.kind.value, lambda o: o.kind.value),
     ComparedField("datatype", lambda o: o.datatype.value, lambda o: o.datatype.value),
     ComparedField("unit", lambda o: o.unit, lambda o: f"'{o.unit}'"),
@@ -78,7 +78,7 @@ _INTERFACE_FIELDS: tuple[ComparedField[ResolvedObject], ...] = (
 )
 
 # Changing these alters behaviour or the generated files, but no consumer becomes wrong.
-_STORAGE_FIELDS: tuple[ComparedField[ResolvedObject], ...] = (
+_STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("init", lambda o: o.init, lambda o: "none" if o.init is None else repr(o.init)),
     ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
 )
@@ -108,8 +108,8 @@ def compare(
             location,
         )
 
-    was = baseline.by_name
-    now = candidate.by_name
+    was = baseline.comparable
+    now = candidate.comparable
 
     for name in sorted(was):
         old = was[name]
@@ -129,7 +129,7 @@ def compare(
         )
 
 
-def _report_removal(old: ResolvedObject, bag: DiagnosticBag, location: Location | None) -> None:
+def _report_removal(old: Comparable, bag: DiagnosticBag, location: Location | None) -> None:
     if old.consumers:
         bag.add(
             "removed-object",
@@ -146,8 +146,8 @@ def _report_removal(old: ResolvedObject, bag: DiagnosticBag, location: Location 
 
 
 def _compare_object(
-    old: ResolvedObject,
-    new: ResolvedObject,
+    old: Comparable,
+    new: Comparable,
     bag: DiagnosticBag,
     location: Location | None,
 ) -> None:
@@ -199,7 +199,9 @@ def _compare_object(
             location,
         )
 
-    if old.a2l != new.a2l:
+    # Compared as it will actually be rather than as it was written: a baseline that
+    # simply omits the block is not asking for the object to be dropped from the a2l.
+    if old.a2l.effective != new.a2l.effective:
         bag.add(
             "changed-a2l",
             f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
@@ -211,7 +213,7 @@ def _condition(condition: str | None) -> str:
     return f"'{condition}'" if condition else "none"
 
 
-def _condition_consequence(old: ResolvedObject, new: ResolvedObject) -> str:
+def _condition_consequence(old: Comparable, new: Comparable) -> str:
     """What the change of a condition costs, which depends on its direction.
 
     Wrapping an object that was always there is the damaging direction and has to say so:
@@ -229,7 +231,7 @@ def _condition_consequence(old: ResolvedObject, new: ResolvedObject) -> str:
 _A2L_PROPERTIES = ("export", "format", "display_identifier")
 
 
-def _a2l_difference(old: ResolvedObject, new: ResolvedObject) -> str:
+def _a2l_difference(old: Comparable, new: Comparable) -> str:
     """Name only the a2l properties that actually differ.
 
     Rendering the whole record on both sides made a change to one property read as a change
@@ -237,10 +239,14 @@ def _a2l_difference(old: ResolvedObject, new: ResolvedObject) -> str:
     display_identifier='FiltGain'``, which invites the reader to go looking for what happened
     to ``export``.
     """
+    # Named as they are written in the file, compared as they will act: an ``export`` that
+    # went from unstated to ``true`` changed nothing and has no business in the message.
     return ", ".join(
-        f"{name}: {_a2l_value(getattr(old.a2l, name))} -> {_a2l_value(getattr(new.a2l, name))}"
-        for name in _A2L_PROPERTIES
-        if getattr(old.a2l, name) != getattr(new.a2l, name)
+        f"{name}: {_a2l_value(before)} -> {_a2l_value(after)}"
+        for name, before, after in zip(
+            _A2L_PROPERTIES, old.a2l.effective, new.a2l.effective, strict=True
+        )
+        if before != after
     )
 
 

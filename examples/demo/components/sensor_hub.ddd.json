@@ -20,7 +20,8 @@
             "min": 0,
             "max": 100
           },
-          "init": 0
+          "init": 0,
+          "volatile": false
         }
       },
       {
@@ -52,7 +53,8 @@
           "limits": {
             "min": -50,
             "max": 90
-          }
+          },
+          "volatile": false
         }
       },
       {
@@ -62,7 +64,8 @@
           "kind": "measurement",
           "description": "Boolean measurement",
           "datatype": "boolean",
-          "init": false
+          "init": false,
+          "volatile": false
         }
       },
       {
@@ -77,7 +80,8 @@
           ],
           "a2l": {
             "export": false
-          }
+          },
+          "volatile": false
         }
       }
     ]

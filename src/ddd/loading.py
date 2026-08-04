@@ -13,6 +13,7 @@ from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.models import (
     AnyDataObject,
+    AnyType,
     Component,
     ComponentFile,
     Conversion,
@@ -20,6 +21,8 @@ from ddd.models import (
     NamingFile,
     Project,
     ProjectFile,
+    StructType,
+    TypesFile,
     discriminator_tags,
 )
 
@@ -32,6 +35,13 @@ scripts and editors match them with a single pattern.
 """
 
 _GLOB_CHARACTERS = frozenset("*?[")
+
+FILE_KINDS = ("project", "component", "types")
+"""Top level keys that identify a description file, in the order they are offered.
+
+A naming convention is not among them: it is pointed at by the ``naming`` key of a project
+rather than included, and is reported separately when it turns up in ``includes``.
+"""
 
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
@@ -85,6 +95,37 @@ class LoadedProject:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedType:
+    """One declared type together with where it was declared.
+
+    One per type rather than one per file, because everything downstream refers to a type by
+    name and a finding about it has to point at the entry that declared it.
+    """
+
+    path: Path
+    index: int
+    """Position in the ``types`` list of its file, which is what the location points at."""
+
+    declared: AnyType
+    """The entry itself: a structure or a scalar type."""
+
+    @property
+    def name(self) -> str:
+        return self.declared.name
+
+    @property
+    def structure(self) -> StructType | None:
+        """The entry as a structure, or nothing if it names a scalar."""
+        return self.declared if isinstance(self.declared, StructType) else None
+
+    def location(self, suffix: str = "") -> Location:
+        pointer = f"types[{self.index}]"
+        if suffix:
+            pointer = f"{pointer}.{suffix}"
+        return Location(self.path, pointer)
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -93,6 +134,14 @@ class Workspace:
     description: str
     components: tuple[LoadedComponent, ...]
     projects: tuple[LoadedProject, ...]
+    types: tuple[LoadedType, ...] = ()
+    """The structured datatypes the project declares, sorted by name.
+
+    Sorted rather than in include order so that a project produces the same output whichever
+    way its ``includes`` happen to expand; the order of *members* inside a structure is the
+    author's and is preserved, because that one decides the layout.
+    """
+
     naming: NamingConvention | None = None
     """The convention the root project points at, if it points at one."""
 
@@ -199,6 +248,7 @@ class _Loader:
         self._components: list[LoadedComponent] = []
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
+        self._types_by_name: dict[str, LoadedType] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
 
@@ -210,6 +260,18 @@ class _Loader:
         self._check_extension(root)
         kind = self._detect_kind(root, data)
         if kind is None:
+            return None
+
+        if kind == "types":
+            # Same reasoning as a naming convention handed in directly: a structure is not a
+            # project, so there is nothing to resolve or generate from it on its own. Validating
+            # it against the published schema is what an editor is for.
+            self._bag.add(
+                "file-kind",
+                "this is a structured datatype description; list it in the 'includes' of the "
+                "project that uses it instead of analysing it on its own",
+                Location(root),
+            )
             return None
 
         if kind == "component":
@@ -235,6 +297,7 @@ class _Loader:
             description=project.project.description,
             components=tuple(self._components),
             projects=tuple(self._projects),
+            types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             naming=load_convention(naming_path, self._bag) if naming_path else None,
             naming_path=naming_path,
             read_paths=tuple(sorted(self._read_paths)),
@@ -291,19 +354,17 @@ class _Loader:
             )
 
     def _detect_kind(self, path: Path, data: dict[str, Any]) -> str | None:
-        has_project = "project" in data
-        has_component = "component" in data
-        if has_project and has_component:
+        present = [key for key in FILE_KINDS if key in data]
+        if len(present) > 1:
+            listed = " and ".join(f"'{key}'" for key in present)
             self._bag.add(
                 "file-kind",
-                "file has both a 'project' and a 'component' key; it must have exactly one",
+                f"file has {listed} at the top level; it must have exactly one",
                 Location(path),
             )
             return None
-        if has_project:
-            return "project"
-        if has_component:
-            return "component"
+        if present:
+            return present[0]
         if "naming" in data:
             self._bag.add(
                 "file-kind",
@@ -313,9 +374,10 @@ class _Loader:
             )
             return None
         keys = ", ".join(sorted(data)) or "none"
+        offered = ", ".join(f"'{kind}'" for kind in FILE_KINDS)
         self._bag.add(
             "file-kind",
-            f"missing top level key 'project' or 'component' (found: {keys})",
+            f"missing top level key, one of {offered} (found: {keys})",
             Location(path),
         )
         return None
@@ -342,6 +404,32 @@ class _Loader:
         self._components_by_name[loaded.name] = loaded
         self._components.append(loaded)
         return loaded
+
+    def _load_types(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a type description and register what it declares.
+
+        A type is registered under its name, so the second file to declare ``Engine_t`` is
+        refused rather than quietly winning or losing: which of two layouts the generated c
+        would get is not something an include order should decide.
+        """
+        try:
+            model = TypesFile.model_validate(data)
+        except ValidationError as error:
+            self._report_validation_error(path, error)
+            return
+
+        for index, declared in enumerate(model.types):
+            loaded = LoadedType(path=path, index=index, declared=declared)
+            previous = self._types_by_name.get(loaded.name)
+            if previous is not None:
+                self._bag.add(
+                    "duplicate-type",
+                    f"type '{loaded.name}' is declared twice",
+                    loaded.location(),
+                    notes=[("first declared here", previous.location())],
+                )
+                continue
+            self._types_by_name[loaded.name] = loaded
 
     def _load_project(
         self,
@@ -427,6 +515,8 @@ class _Loader:
             self._load_component(path, data, parents)
         elif kind == "project":
             self._load_project(path, data, parents, stack)
+        elif kind == "types":
+            self._load_types(path, data)
 
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)
@@ -475,11 +565,28 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
 
 
 def _report_validation_error(path: Path, error: ValidationError, bag: DiagnosticBag) -> None:
-    for item in _meaningful(error.errors(include_url=False)):
+    for item in _one_per_place(_meaningful(error.errors(include_url=False))):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
         bag.add("schema", message, Location(path, _pointer(item["loc"])))
+
+
+def _one_per_place(items: list[Any]) -> list[Any]:
+    """One finding per place, however many ways the value failed to be what was wanted.
+
+    A union that is not discriminated fails once per branch, so a mistyped ``datatype`` arrives
+    as two errors about one key: it is not one of the eleven base datatypes, *and* it does not
+    look like a type name. Both are true and the reader needs neither of them twice.
+
+    The first is kept, because pydantic reports the branches in the order they are declared and
+    that order is chosen to put the likely reading first - for ``datatype``, "one of these
+    eleven" says far more than a regular expression does.
+    """
+    kept: dict[str, Any] = {}
+    for item in items:
+        kept.setdefault(_pointer(item["loc"]), item)
+    return list(kept.values())
 
 
 def _meaningful(items: list[Any]) -> list[Any]:
@@ -525,9 +632,10 @@ def _resolve(path: Path) -> Path:
 def _pointer(loc: tuple[int | str, ...]) -> str:
     parts: list[str] = []
     for item in loc:
-        if item in _UNION_TAGS:
-            # pydantic reports the selected variant of a tagged union as a path segment;
-            # 'definition.measurement.datatype' would only confuse the reader.
+        if item in _UNION_TAGS or _is_branch_tag(item):
+            # pydantic reports the selected variant of a tagged union as a path segment, and
+            # the tried branch of a plain one the same way; 'definition.measurement.datatype'
+            # and 'datatype.str-enum[Datatype]' would both only confuse the reader.
             continue
         if isinstance(item, int):
             parts.append(f"[{item}]")
@@ -536,6 +644,16 @@ def _pointer(loc: tuple[int | str, ...]) -> str:
         else:
             parts.append(str(item))
     return "".join(parts)
+
+
+def _is_branch_tag(item: int | str) -> bool:
+    """Whether a path segment names a union branch rather than a key of the document.
+
+    pydantic spells those as ``str-enum[Datatype]`` or ``constrained-str``, neither of which
+    can be a key: a key is an identifier, and these are not. Recognised by shape rather than
+    by a list of names, so a new branch needs nothing added here.
+    """
+    return isinstance(item, str) and not item.replace("_", "").replace("$", "").isalnum()
 
 
 def _short(value: Any, limit: int = 60) -> str:

@@ -34,6 +34,14 @@ class Project(BaseModel):
 
 
 class ProjectFile(FileRoot):
-    """Root object of a ``*.json`` project description."""
+    """Root object of a ``*.ddd.json`` project description.
+
+    ``project`` is the top level key that makes this a project file rather than a component,
+    a types or a naming file; DDD decides what a file is from that key alone, so exactly one
+    of the four appears here.
+    """
+
+    model_config = ConfigDict(title="DDD project description")
 
     project: Project
+    """The project this file describes; the key that identifies the file as a project."""

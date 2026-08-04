@@ -182,7 +182,9 @@ it means. The **json schema** says exactly what a validator will accept - the pr
 pattern, length and range every field is held to - and is the fragment an editor uses. The
 **entity relationship diagram** says how the models fit together, which neither of the other
 two shows: that a ``Declaration`` holds exactly one of the six kinds of data object, and that
-the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them.
+the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them. Where a field carries
+an alias, the alias is the key that belongs in the json file - ``$schema``, not
+``schema_reference``.
 
 .. Models carrying an identifier field switch the rendered constraint list off. The
    constraint would be written into the page as ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``,
@@ -208,6 +210,21 @@ Software component description
 
 .. autopydantic_model:: ddd.models.Declaration
 
+Structured datatype description
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :doc:`types file <file_formats/types>`. A member states which shape it has and carries only
+the keys that shape needs; what it never carries is a bit position or an offset, because c leaves
+both to the compiler.
+
+.. autopydantic_model:: ddd.models.TypesFile
+
+.. autopydantic_model:: ddd.models.StructType
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.Member
+   :field-show-constraints: False
+
 Data objects
 ~~~~~~~~~~~~
 
@@ -218,8 +235,10 @@ in the published schema, which an editor validating the file reports as an ambig
 it keeps the schema and the loader in agreement. :class:`ddd.models.DataObject` holds what all six
 kinds have in common, and the six models after it document only what their own kind adds;
 the json schema shown with each of them is nevertheless the complete document a declaration
-of that kind is validated against. Where a field carries an alias, the alias is the key that
-belongs in the json file - ``volatile``, not ``is_volatile``.
+of that kind is validated against. ``volatile`` is one of the common fields, and one of the four
+an author always has to write - the others are ``name``, ``datatype`` and ``kind``. It carries no
+default because there is no answer DDD could derive from the rest of the description, so a
+definition that leaves it out is a ``schema`` finding like any other missing field.
 
 .. autopydantic_model:: ddd.models.DataObject
    :field-show-constraints: False

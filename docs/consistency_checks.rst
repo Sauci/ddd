@@ -51,6 +51,7 @@ down should be read after a DDD upgrade:
    include-cycle          error    projects include each other recursively (fixed)
    include-empty          error    an include pattern matches no file
    duplicate-component    error    two different files declare the same component name
+   duplicate-type         error    two different files declare the same type name
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -277,9 +278,32 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - two different files declare a component of the same name. Component names have to be
        unique: each component gets a generated header named after it.
+   * - ``duplicate-type``
+     - error
+     - two different files declare a type of the same name. Which of two answers the generated
+       c would get is not something an include order should decide, so the second is refused
+       rather than allowed to win.
+   * - ``unknown-type``
+     - error
+     - a ``datatype`` names neither one of the base datatypes nor a type any file of the
+       project declares - on a component declaration or on a structure member alike. It is
+       refused rather than skipped, because an object of unknown storage has no limits, no
+       size and nothing later to check against. The nearest known name is suggested, which is
+       what answers a transposition like ``unit16`` that the contract cannot catch on its own.
+   * - ``type-kind``
+     - error
+     - a declared type is used where its shape does not fit: a declaration naming a structure
+       while being a curve, a map, an axis or a value block, all of which refer to other
+       objects or are arrays of one datatype, or one stating an ``init``, which for a
+       structure is written by the code that starts it rather than by the description.
+   * - ``type-cycle``
+     - error
+     - structures nest each other, directly or through others. The finding names the chain,
+       ``A -> B -> C -> A``, because that says which member to remove; a structure that
+       contains itself has no size at all.
    * - ``reserved-identifier``
      - error
-     - a component, variable, enum or enumerator name is a c keyword, or is declared by one of
+     - a component, variable, type, enum or enumerator name is a c keyword, or is declared by one of
        the headers the generated code includes (everything ``<stdint.h>`` and ``<stdbool.h>``
        bring in, so ``uint16_t`` is out), or is reserved for the implementation by C11 7.1.3 -
        any name containing a double underscore, or starting with an underscore followed by a
@@ -287,13 +311,22 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``name-collision``
      - error
      - two names that are distinct in the description files would become the same c identifier
-       or the same generated file: an enumerator and a variable, an enumerator claimed by two
-       enums (all enumerators share one c namespace), or two component names differing only in
-       case, which ask for the same header on a case insensitive filesystem.
+       or the same generated file: an enumerator and a variable, a variable and the name of an
+       enum or of a declared type (both of which the types header makes typedef names, in the
+       same file scope namespace as the variables), an enumerator claimed by two enums (all
+       enumerators share one c namespace), or two component names differing only in case, which
+       ask for the same header on a case insensitive filesystem.
    * - ``duplicate-declaration``
      - error
      - one component declares the same variable twice, for instance once as ``input`` and once
        as ``output``. The second declaration is ignored for the rest of the run.
+   * - ``consumer-storage``
+     - error
+     - an ``input`` declaration states ``init``. What a variable starts out as is decided by
+       the component that produces it, so a component that only reads it is claiming storage it
+       does not own - which is a different thing from the disagreements above, and is reported
+       where the claim is written rather than where it is overruled. Relaxable, so a project
+       migrating existing descriptions can lower it while the ``init`` keys are removed.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns
@@ -310,9 +343,13 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``definition-mismatch``
      - error
      - two components describe the same variable differently in a property that changes what
-       the value *means*: kind, datatype, unit, declared shape, conversion, physical limits, or
-       the axis references of a curve or a map. A consumer that simply omits ``limits`` is not
-       disagreeing and is not reported.
+       the value *means*: kind, datatype, unit, declared shape, conversion, volatility,
+       physical limits, or the axis references of a curve or a map. A consumer that simply
+       omits ``limits`` is not disagreeing and is not reported, because they are derived from
+       the datatype and the conversion when nobody states them. ``volatile`` cannot be left
+       out that way: every definition of every kind has to state it, so a difference there is
+       always two components saying two different things rather than one of them saying
+       nothing at all.
    * - ``enum-conflict``
      - error
      - the same enum type name is defined with different enumerators. One c enum is generated
@@ -351,10 +388,10 @@ it is either a smell or a decision somebody should have taken consciously.
      - Fires when
    * - ``storage-mismatch``
      - warning
-     - two components describe the same variable differently in a property that shapes the
-       storage or the a2l entry rather than the meaning of the value: ``init``, ``volatile`` or
-       the ``a2l`` block. This is a warning and not an error because the outcome is defined -
-       the producer's value is the one that is generated, and the message says so.
+     - two components describe the same variable differently in a property that shapes how
+       the a2l presents it - a ``format`` string, a ``display_identifier`` - rather than the
+       meaning of the value. This is a warning and not an error because the outcome is
+       defined: the producer's value is the one that is generated, and the message says so.
    * - ``condition-mismatch``
      - warning
      - the declarations of one variable carry different preprocessor conditions, so the
@@ -428,7 +465,11 @@ registry can be read in one place.
        external tool still might.
    * - ``changed-storage``
      - warning
-     - the initial value or the volatility of an object changed.
+     - the initial value or the volatility of an object changed. A calibration object whose
+       ``volatile`` went from ``true`` to ``false`` is the case worth reading twice: it keeps
+       its address and a tool can still write to it, but the compiler is now entitled to fold
+       the initial value into the code that reads it, so tuning it while the software runs
+       stops working.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
@@ -468,33 +509,49 @@ change:
 
 .. code-block:: text
 
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
 
-The second is that the properties which merely shape the storage do not have to stop the build,
-precisely because the outcome is defined. Given a producer and a consumer that disagree about
-the initial value,
+The second is that a property which merely shapes how the a2l *presents* the object does not
+have to stop the build, precisely because the outcome is defined. Given a producer and a
+consumer that ask for different display formats,
 
 .. code-block:: json
 
-   { "scope": "output", "definition": { "name": "ValueA", "datatype": "uint16", "init": 100 } }
+   { "scope": "output", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "volatile": false } }
 
 .. code-block:: json
 
-   { "scope": "input", "definition": { "name": "ValueA", "datatype": "uint16", "init": 0 } }
+   { "scope": "input", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "a2l": { "format": "%8.3" }, "volatile": false } }
 
 the check names the value that is going to be used:
 
 .. code-block:: text
 
-   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different init than 'Producer' (init: 0 != 100); the value of 'Producer' is used
+   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l than 'Producer' (format='%8.3' != unset); the value of 'Producer' is used
        note: producer.ddd.json#component.declarations[0].definition: reference declaration
 
-and the generated definition carries the producer's value, exactly as announced:
+Two other properties used to be settled this way, and left in opposite directions.
 
-.. code-block:: c
+``init`` is not a losing opinion but a claim over storage the component does not own: reading
+a variable gives it no say in what the variable starts as. A consumer stating one is refused
+outright, as ``consumer-storage``, where the claim is written rather than where it is
+overruled.
 
-   uint16_t ValueA = 100U;
+``volatile`` went the other way and became interface. It reaches every consumer's own header
+as a type qualifier - ``extern volatile uint16_t ValueA`` - and that is what tells that
+component's code not to cache the value and not to expect two reads to agree. Every
+declaration of the variable therefore has to say the same thing, and a disagreement is a
+``definition-mismatch`` error. There is no leaving it out, either: unlike ``limits``, which
+DDD derives when a declaration omits them, there is nothing here to derive, so the key is
+required on every definition of every kind and a definition without it does not load at all.
+That is reported as ``schema``, one of the five checks whose severity cannot be relaxed, which
+is why a project adopting this version of DDD adds the key everywhere in one go rather than
+phasing it in.
+
+``export`` is not compared at all. Which signals a calibration engineer needs to see is not the
+producer's to decide alone, so any component may ask for an object to reach the a2l and asking
+wins over declining - see :doc:`the component file format <file_formats/component>`.
 
 .. note::
    When *no* component produces a variable - which is reported on its own as
@@ -535,7 +592,7 @@ gives:
    $ ddd check examples/inconsistent/project.ddd.json
    examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
    examples/inconsistent/component_c.ddd.json#component.declarations[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
    examples/inconsistent/component_c.ddd.json#component.declarations[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'

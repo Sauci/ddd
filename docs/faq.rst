@@ -164,17 +164,18 @@ would make the generated code depend on the order in which a project happens to 
 includes.
 
 What that means in practice depends on *what* the two sides disagree about. A disagreement
-about the interface - kind, datatype, unit, conversion, shape, limits or the axes an object
-refers to - is a ``definition-mismatch`` error and generation refuses to run, because two
-components compiled against two different views of the same memory is precisely the class of
-bug DDD exists to prevent. A disagreement about storage - the initial value, the ``volatile``
-qualifier, or the a2l options - is a ``storage-mismatch`` warning, since both components can
-be compiled against the producer's choice without either of them being wrong about the data:
+about the interface - kind, datatype, unit, conversion, shape, limits, the ``volatile``
+qualifier or the axes an object refers to - is a ``definition-mismatch`` error and generation
+refuses to run, because two components compiled against two different views of the same memory
+is precisely the class of bug DDD exists to prevent. A disagreement about how the a2l
+*presents* the object - a format string, a display name - is a ``storage-mismatch`` warning,
+since both components can be compiled against the producer's choice without either of them
+being wrong about the data:
 
 .. code-block:: text
 
    $ ddd check device.ddd.json
-   controller.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different init and volatile than 'SensorHub' (init: 250 != -400, volatile: true != false); the value of 'SensorHub' is used
+   controller.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l than 'SensorHub' (format='%8.3' != unset); the value of 'SensorHub' is used
        note: sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
    1 warning
 
@@ -281,10 +282,12 @@ a2l without ever being looked at. The demo project uses it for ``ValueD``:
      "scope": "local",
      "definition": {
        "name": "ValueD",
+       "kind": "measurement",
        "description": "Component local measurement, kept out of the a2l",
        "datatype": "uint16",
        "dimensions": [8],
-       "a2l": { "export": false }
+       "a2l": { "export": false },
+       "volatile": false
      }
    }
 

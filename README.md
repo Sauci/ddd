@@ -1,5 +1,7 @@
 # DDD
 
+![DDD](https://raw.githubusercontent.com/Sauci/ddd/master/assets/logo/ddd-icon-128.png)
+
 DDD manages the **global variables** of a component based embedded software project.
 
 Components are often written by different teams or companies and talk to each other by
@@ -92,11 +94,11 @@ script, a linter or an editor match them with one pattern.  A description file w
 other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
-The top level key decides what a file is: `project` or `component`.  Unknown keys are
-rejected, so typos are found instead of silently ignored - with one deliberate exception:
-a top level `$schema` key is allowed and ignored, because it is how an editor binds a file
-to its schema.  The machine readable contract is available with `ddd schema project` /
-`ddd schema component`, and writing it out turns the editor into the authoring aid:
+The top level key decides what a file is: `project`, `component`, `types` or `naming`.
+Unknown keys are rejected, so typos are found instead of silently ignored - with one
+deliberate exception: a top level `$schema` key is allowed and ignored, because it is how an
+editor binds a file to its schema.  The machine readable contract of each kind is available
+with `ddd schema <kind>`, and writing it out turns the editor into the authoring aid:
 
 ```bash
 ddd schema all -o schemas          # writes one file per format, to commit
@@ -114,8 +116,90 @@ and a convention all end in `*.ddd.json` and only the content says which is whic
 ```
 
 With that binding in place the editor completes the keys, offers the datatypes, scopes and
-kinds as dropdowns, shows each field's documentation on hover, and flags an unknown key while
-it is being typed rather than at the next `ddd check`.
+kinds as dropdowns, and flags an unknown key while it is being typed rather than at the next
+`ddd check`.  The documentation comes with it: every key explains itself on hover, and so does
+every value of a dropdown - `uint16` says how much storage it costs and which values fit in
+it, `"kind": "curve"` says what a curve is as against a value block.
+
+### The checks in the editor too
+
+A schema is per file and static, so there is a whole class of mistake it cannot see: that an
+`axis` names an axis no component declares, that two components disagree about a unit, that
+nobody produces an input, that a name does not follow the convention.  Those need the whole
+project resolved, which is what `ddd lsp` brings into the editor:
+
+```bash
+ddd lsp                      # speaks the Language Server Protocol on stdin and stdout
+```
+
+Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
+VS Code cannot start one without an extension, so there is one in
+[editors/vscode](editors/vscode); it is a launcher and nothing more, which is why everything
+below works the same either way.  It is not on the marketplace: every release attaches a
+`ddd-<version>.vsix` to its [GitHub release](https://github.com/Sauci/ddd/releases), which
+installs with `code --install-extension ddd-<version>.vsix` or through **Install from VSIX…**
+in the Extensions view.
+
+The server reports on open and on save, and it publishes for
+**every** file of the project rather than only the one in front of you, because half of a
+disagreement is always in the other component.
+
+Hovering anywhere in a declaration shows what the **project** made of that variable, which
+the file under the cursor does not say: the shape a curve got from its axis, limits derived
+from a datatype and a conversion nobody wrote down, who writes it and who reads it, what an
+enum's numbers mean, and the initial values as a sparkline.
+
+```text
+CurveA — curve, uint16          |  unit        ms
+Calibratable curve over AxisA   |  limits      0 .. 655.35 - the full range of the datatype
+                                |  conversion  linear(factor=0.01, offset=0)
+Local to Controller.            |  shape       [6]
+                                |  axis        AxisA - 0 .. 8000 Hz
+   █▄▃▂▁▁   6.5 .. 12 ms
+```
+
+Those are *initial* values: DDD describes an interface, and what an engineer calibrates lives
+in the calibration tool, the hex file and the a2l.  A map is drawn a row at a time against one
+shared scale, and an object whose values are all the same is stated rather than drawn - a row
+of identical bars looks like a reading of the data rather than the absence of one.
+
+It also navigates, which is where a data dictionary stops being a pile of files:
+
+| from | go to definition | find references |
+| --- | --- | --- |
+| anywhere in a declaration - the name, the datatype, a number | the declaration that **writes** that object, in whichever component that is | every declaration of it |
+| a structure name in a `type` | where the structure is declared | every member nesting it |
+| an `includes` entry or a project's `naming` | the file - wildcards land on every match | |
+
+**Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
+`conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
+offers every way of reconciling it, ordered by which component owns the variable: a consumer
+is shown the producer's value first, the producer its own.  A key nobody else states can be
+**removed** instead of spread - two declarations disagree just as much when one says nothing,
+and which way to settle it is yours.  The value is copied as you wrote it rather than
+re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives looking like itself; a
+declaration that never mentioned the key gets it inserted, on one line or its own depending on
+how that file is written.  Nothing is offered when everybody already agrees.
+
+**Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
+every `axis`, `x_axis`, `y_axis` or `input` that names it.  A name c reserves, one that is
+not a usable identifier, or one the project already declares is refused with the reason
+before a single file is touched - a rename writes into several at once, and an unusable
+name is otherwise noticed a build later.  Free text is left alone: a `description` that
+mentions the old name still mentions it, because rewriting prose by substring is how a
+rename tool starts corrupting files.
+
+Which project a file belongs to is not something the file can say, so the server reads the
+`ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
+the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
+directory names next to the workspace are searched.
+
+A file no build claims is still checked, on its own, but only for what one file can decide.
+Read alone a component has inputs nobody writes, outputs nobody reads and axes declared in
+files nobody handed over, so `missing-producer`, `unused-output` and `unknown-reference` are
+left out rather than reported about every declaration in it.  Everything a single file settles
+by itself - an initial value that does not fit, a name c reserves, a duplicate declaration -
+is reported as usual.
 
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:
@@ -161,7 +245,9 @@ Include cycles are reported instead of hanging.
       {
         "scope": "output",
         "condition": "defined(FEATURE_X)",
-        "definition": { "kind": "measurement", "name": "ValueG", "datatype": "uint16" }
+        "definition": {
+          "kind": "measurement", "name": "ValueG", "datatype": "uint16", "volatile": false
+        }
       }
     ]
   }
@@ -202,6 +288,7 @@ Include cycles are reported instead of hanging.
 | `conversion` | identity | raw to physical conversion, see below |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
+| `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
 
 `init` accepts a scalar or a nested list matching the shape of the object.  A scalar given
@@ -211,32 +298,77 @@ for an array initialises **every** element, so `"dimensions": [10], "init": 1` i
 
 Every definition states its `kind`.  A `measurement` is an online value that the software
 writes and the calibration tool only reads; everything else is calibration data, which the
-software never writes, so it is generated `const` and ends up in read only memory.  (`kind`
-is stated rather than defaulting to `measurement`, so that a file bound to `ddd schema` in an
-editor validates without the ambiguity a defaulted discriminator leaves in the schema.)
+software never writes, so it is generated `const`.  (`kind` is stated rather than defaulting
+to `measurement`, so that a file bound to `ddd schema` in an editor validates without the
+ambiguity a defaulted discriminator leaves in the schema.)
 
 | kind | extra keys | generated c | a2l |
 | --- | --- | --- | --- |
-| `measurement` | `dimensions`, `volatile` | `uint16_t Speed;` | `MEASUREMENT` |
-| `parameter` | - | `const uint16_t Kp = 100U;` | `CHARACTERISTIC ... VALUE` |
-| `value_block` | `dimensions` | `const uint8_t Tbl[8] = ...;` | `CHARACTERISTIC ... VAL_BLK` |
-| `axis` | `size`, `input` | `const uint16_t Ax[6] = ...;` | `AXIS_PTS` |
-| `curve` | `axis` | `const uint16_t C[6] = ...;` | `CHARACTERISTIC ... CURVE` |
-| `map` | `x_axis`, `y_axis` | `const int8_t M[4][6] = ...;` | `CHARACTERISTIC ... MAP` |
+| `measurement` | `dimensions` | `volatile uint16_t Speed;` | `MEASUREMENT` |
+| `parameter` | - | `const volatile uint16_t Kp = 100U;` | `CHARACTERISTIC ... VALUE` |
+| `value_block` | `dimensions` | `const volatile uint8_t Tbl[8] = ...;` | `CHARACTERISTIC ... VAL_BLK` |
+| `axis` | `size`, `input` | `const volatile uint16_t Ax[6] = ...;` | `AXIS_PTS` |
+| `curve` | `axis` | `const volatile uint16_t C[6] = ...;` | `CHARACTERISTIC ... CURVE` |
+| `map` | `x_axis`, `y_axis` | `const volatile int8_t M[4][6] = ...;` | `CHARACTERISTIC ... MAP` |
+
+The two qualifiers in that column are decided separately.  The `const` is the kind's doing,
+and no description can take it off calibration data; the `volatile` next to it is what the
+definition asked for, so the same parameter stating `"volatile": false` is generated
+`const uint16_t Kp = 100U;`, and a measurement that states `false` is generated
+`uint16_t Speed;`.
 
 ```json
 { "kind": "axis",  "name": "AxisA", "datatype": "uint16", "unit": "Hz",
-  "size": 6, "input": "ValueE", "init": [0, 3200, 6400, 12800, 19200, 32000] }
+  "size": 6, "input": "ValueE", "init": [0, 3200, 6400, 12800, 19200, 32000],
+  "volatile": false }
 
-{ "kind": "map",   "name": "MapA", "datatype": "int8", "unit": "%",
+{ "kind": "map",   "name": "MapA", "datatype": "sint8", "unit": "%",
   "x_axis": "AxisA", "y_axis": "AxisB",
-  "init": [[20, 24, 28, 30, 32, 30], [18, 22, 26, 28, 30, 28]] }
+  "init": [[20, 24, 28, 30, 32, 30], [18, 22, 26, 28, 30, 28]], "volatile": false }
 ```
 
 A curve or a map does not repeat the size of its tables: DDD takes the shape from the axes
 it refers to, checks the init data against it and emits `[size of y][size of x]`, the layout
 the a2l calls `ROW_DIR`.  Axes are shared (a2l `COM_AXIS`), so several curves and maps over
 the same break points store them once.
+
+#### Volatile
+
+`volatile` is a key of every kind, it is required, and it has no default, because there is no
+answer DDD could derive the way it derives limits from a datatype - the two answers cost
+different things and only the project knows which of them it is paying for.  A measurement
+needs it when something outside the reading component writes the variable: an interrupt, a
+second core, a peripheral.  Calibration data needs it when a calibration tool is to change
+the value in a running ecu, because with plain `const` the compiler is entitled to fold the
+initialiser into the code that reads it, and gcc does wherever it can see that initialiser -
+within one translation unit that is not an optimisation a debug build escapes but a
+substitution the front end makes while parsing, so it happens at `-O0` as much as at `-O2`,
+to an array element at a constant index as much as to a scalar, and to a value read once at
+startup as much as to one read in a loop; across translation units it is what `-flto` does.
+Where the load survives, `const` still lets the compiler serve two reads from one of them and
+move it across a call.  Either way, a program that writes a new value through such an
+object's address prints it back out of memory and then goes on computing with the old one.
+
+What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
+side effect and takes the object out of the read only category, so `.rodata` becomes a plain
+`.data`: measured with gcc 12.2.0 on DDD's own generated demo with this repository's own flag
+set, `.rodata 84 / .data 2` becomes `.data 86`, and an explicitly attributed section moves the
+same way.  The categorisation is target independent, but it is worth confirming once on the
+toolchain you actually ship with.  On a flash target with an ordinary linker script that means a RAM address with a load
+region in flash and a startup copy, so the tool programs a page the code never reads and the
+next reset overwrites what it wrote.  A project that calibrates online handles that placement
+in its linker script; one that does not states `false` and keeps its data in flash.
+**DDD states no preference and reports nothing about the choice** - it generates what the
+description says.
+
+Two smaller consequences are worth knowing before writing `true`.  Handing a `const volatile`
+array to a helper that takes a plain `const` one is
+`error: passing argument 1 of 'sum' discards 'volatile' qualifier`, and the cast that would
+paper over it is refused by the `-Wcast-qual` this project compiles with, so hand written
+consumer code may need its helpers re-typed.  And the qualifier buys freshness by giving up
+coherence: the compiler must re-read the object at every mention, so a parameter set read at
+several points of one control step can straddle a calibration write, and a loop over a
+`volatile` gain does not vectorise.
 
 #### Conversions
 
@@ -266,20 +398,25 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `multiple-producers` | a variable is written by more than one component |
 | error | `missing-producer` | an input is written by nobody |
 | error | `local-conflict` | a component local variable is used by another component |
-| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer |
+| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since every declaration states it and there is no silence to interpret |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
+| error | `duplicate-type` | two files declare the same structured datatype name |
+| error | `unknown-type` | a datatype names neither a base datatype nor a type any file declares |
+| error | `type-kind` | a declared type is used where its shape does not fit |
+| error | `type-cycle` | structures nest each other, so neither has a size |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
+| error | `consumer-storage` | an `input` declaration states `init`, which only the producing component decides |
 | error | `naming` | a name does not follow the naming convention of the project |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |
-| warning | `storage-mismatch` | components disagree on `init`, `volatile` or the `a2l` block; the producer wins |
+| warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `condition-mismatch` | declarations of one variable use different conditions |
 | warning | `unused-output` | an output nobody reads |
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
@@ -387,7 +524,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value or `volatile` changed |
+| warning | `changed-storage` | the initial value or `volatile` changed; on calibration data the second one also decides whether the object still lives in read only memory |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |
@@ -512,10 +649,12 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema project\|component\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
+| `ddd schema project\|component\|types\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
 | `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
+| `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
+| `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
 | `ddd checks` | list the checks and their default severity |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
@@ -580,11 +719,18 @@ needs no 3.30 and no `ddd_add_component`.
 | --- | --- |
 | `firmware_ddd_generation` | runs the generator |
 | `firmware_ddd_headers` | interface library carrying the include directory; linked into every registered component |
-| `firmware_ddd_globals` | object library compiling the one definition file, linked into the image |
+| `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image |
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image.
+
+A `ddd-build.json` is written into the output directory at configure time as well.  It names
+the project description this image is generated from and the severity policy it is generated
+under - the two things no `*.ddd.json` records, since without `PROJECT` the project
+description is collected out of the link graph and does not exist in the source tree at all.
+Nothing in the build reads it; it is there so that an editor can report what the build
+reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `ADDRESS_MAP`, `BYTE_ORDER`,

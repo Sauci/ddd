@@ -87,7 +87,8 @@ demo project declares ``CurveA`` like this - no limits, no dimensions:
        "unit": "ms",
        "conversion": { "factor": 0.01 },
        "axis": "AxisA",
-       "init": [1200, 900, 800, 750, 700, 650]
+       "init": [1200, 900, 800, 750, 700, 650],
+       "volatile": false
      }
    }
 
@@ -175,6 +176,12 @@ fields this version does not know about, and quietly report every one of them as
 which is precisely the verdict that would let a broken delivery out of the door. The rule is
 one-directional on purpose, so that a new DDD keeps reading the dictionaries archived by
 older ones.
+
+That is also why a field of the dictionary may keep a default the description files no longer
+allow. ``volatile`` has to be stated by every definition an author writes, but the dictionary
+still defaults it to ``false``, so a dictionary dumped by an older DDD still reads back and can
+still be compared against, instead of a required field turning every archived document into a
+file this version refuses.
 
 .. warning::
    A dictionary is a snapshot of a project, not a description of it. ``ddd generate`` and

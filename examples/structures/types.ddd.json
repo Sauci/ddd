@@ -1,0 +1,111 @@
+{
+  "$schema": "../../schemas/ddd_types.schema.json",
+  "types": [
+    {
+      "type": "scalar",
+      "name": "Temperature_t",
+      "description": "A temperature as every component of this project agrees to see it",
+      "datatype": "uint16",
+      "unit": "degC",
+      "conversion": { "factor": 0.1, "offset": -40 },
+      "limits": { "min": -40, "max": 150 }
+    },
+    {
+      "type": "struct",
+      "name": "Sample_t",
+      "description": "One reading and the instant it was taken",
+      "members": [
+        {
+          "name": "value",
+          "member": "value",
+          "description": "The reading itself",
+          "datatype": "Temperature_t"
+        },
+        {
+          "name": "timestamp",
+          "member": "value",
+          "description": "Milliseconds since the last reset",
+          "datatype": "uint32",
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Status_t",
+      "description": "Flags packed into one word, as c bitfields",
+      "members": [
+        {
+          "name": "ready",
+          "member": "bits",
+          "description": "Set once the sensor has produced a first reading",
+          "datatype": "uint16",
+          "bits": 1
+        },
+        {
+          "name": "mode",
+          "member": "bits",
+          "description": "Which of the three operating modes is active",
+          "datatype": "uint16",
+          "bits": 2,
+          "conversion": {
+            "kind": "enum",
+            "name": "SensorMode_t",
+            "enumerators": [
+              { "name": "MODE_IDLE", "value": 0 },
+              { "name": "MODE_RUNNING", "value": 1 },
+              { "name": "MODE_FAULT", "value": 2 }
+            ]
+          }
+        },
+        {
+          "name": "faultCount",
+          "member": "bits",
+          "description": "Faults seen since the last reset, saturating",
+          "datatype": "uint16",
+          "bits": 4,
+          "a2l": { "export": false }
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "Sensor_t",
+      "description": "Everything one sensor measures",
+      "members": [
+        {
+          "name": "latest",
+          "member": "value",
+          "description": "The most recent reading",
+          "datatype": "Sample_t"
+        },
+        {
+          "name": "status",
+          "member": "value",
+          "description": "The flags of this sensor",
+          "datatype": "Status_t"
+        },
+        {
+          "name": "history",
+          "member": "value",
+          "description": "The last eight readings, oldest first",
+          "datatype": "Temperature_t",
+          "dimensions": [8]
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "SensorCal_t",
+      "description": "What one sensor exposes to the calibration tool",
+      "members": [
+        {
+          "name": "warnLimit",
+          "member": "value",
+          "description": "Reading above which the sensor reports a fault",
+          "datatype": "Temperature_t"
+        }
+      ]
+    }
+  ]
+}

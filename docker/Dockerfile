@@ -25,6 +25,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # graphviz and plantuml draw the figures of the documentation, which builds with warnings as
 # errors: without them the `docs` service fails rather than dropping a diagram. plantuml brings
 # a headless jre with it, which is most of what these two add to the image.
+#
+# No node here, deliberately. The VS Code extension under editors/vscode is built and tested by
+# ci, which can put python and node 20 side by side with two setup actions; carrying a second
+# toolchain in this image would cost everyone who only wants to compile c or build the
+# documentation, to save a contributor changing typescript from installing node.
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes \
         gcc \
@@ -44,6 +49,10 @@ COPY pyproject.toml README.md LICENSE requirements*.txt ./
 COPY src ./src
 COPY cmake ./cmake
 COPY completion ./completion
+# Every path the wheel force-includes has to be here, or the install below cannot build it.
+# The templates are the one that is easy to forget: they live under examples/ rather than
+# beside the other two, and leaving them out fails the image build rather than the tests.
+COPY examples/templates ./examples/templates
 RUN pip install --no-cache-dir ".[dev]"
 
 COPY docker/compile.sh docker/verify_symbols.py /opt/ddd/bin/

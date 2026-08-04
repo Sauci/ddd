@@ -132,9 +132,10 @@ say so:
          {
            "scope": "output",
            "definition": {
+             "kind": "measurement",
              "name": "CabinTemperature",
              "description": "Temperature measured in the cabin",
-             "datatype": "int16",
+             "datatype": "sint16",
              "unit": "degC",
              "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
              "limits": { "min": -40.0, "max": 85.0 },
@@ -151,8 +152,12 @@ uses, while ``conversion`` says what the stored number *means*: with a factor of
 value 235 is 23.5 degC, which is why the physical ``limits`` may be given as -40 and 85 rather
 than as raw counts. That pair of statements is what lets DDD generate an a2l in which the
 calibration tool shows degrees rather than counts, and it is also one of the things the other
-components have to agree with. ``volatile`` is a property of the c definition: the value is
-written by an interrupt or by another task, so the compiler must not cache it in a register.
+components have to agree with. ``volatile`` is a property of the c definition, stated by every
+definition whatever its kind, and it says whether the compiler may assume it already knows the
+value: it is ``true`` here because the temperature is written by an interrupt while another task
+reads it, so the compiler must not cache it in a register. The key has no default and may not be
+left out, since nothing else in the description implies the answer; a definition without it is
+refused under the ``schema`` check.
 
 The component that consumes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -170,13 +175,13 @@ calibration parameter of its own with scope ``local``:
          {
            "scope": "input",
            "definition": {
+             "kind": "measurement",
              "name": "CabinTemperature",
              "description": "Temperature measured in the cabin",
-             "datatype": "int16",
+             "datatype": "sint16",
              "unit": "degC",
              "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
              "limits": { "min": -40.0, "max": 85.0 },
-             "init": 0,
              "volatile": true
            }
          },
@@ -186,11 +191,12 @@ calibration parameter of its own with scope ``local``:
              "kind": "parameter",
              "name": "HeaterOnThreshold",
              "description": "Temperature below which the heater is switched on",
-             "datatype": "int16",
+             "datatype": "sint16",
              "unit": "degC",
              "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
              "limits": { "min": -40.0, "max": 85.0 },
-             "init": 180
+             "init": 180,
+             "volatile": true
            }
          }
        ]
@@ -205,11 +211,19 @@ authoritative one - its definition is what gets generated, and the diagnostic po
 consumer that deviates.
 
 ``HeaterOnThreshold`` is a different animal. Its ``kind`` is ``parameter``, so the software
-never writes it and the calibration tool does: DDD generates it ``const``, which puts it in read
-only memory, and describes it in the a2l as a ``CHARACTERISTIC`` the tool may change. Its scope
-is ``local``, so it belongs to Controller alone and no other component will ever see it - the
-right choice for data that only parametrises the component that owns it. ``init`` is a raw
-value, so 180 means 18.0 degC.
+never writes it and the calibration tool does: DDD generates it ``const`` and describes it in the
+a2l as a ``CHARACTERISTIC`` the tool may change. That second half is what a calibration object's
+``volatile`` is about. The threshold here is meant to be tuned while the device runs, and
+``const`` on its own would not allow that: the compiler is entitled to fold the 180 into the code
+that reads it, which it does even without optimisation wherever it can see the 180, so the tool
+would write a new value the software never picks up. The price is the read only memory: a value the
+compiler has to re-read is no longer constant data, so it leaves ``.rodata`` for ``.data``, and
+on a flash target that is a ram address the project has to place deliberately in its linker
+script. A project whose parameters only ever change with a new build states ``false`` instead and
+keeps them in flash; DDD renders what the description says and reports nothing about the choice.
+Its scope is ``local``, so it belongs to Controller alone and no other component will ever see
+it - the right choice for data that only parametrises the component that owns it. ``init`` is a
+raw value, so 180 means 18.0 degC.
 
 Checking the project
 ~~~~~~~~~~~~~~~~~~~~
@@ -234,8 +248,8 @@ what it actually contains, which is the view a newcomer to an existing project w
 
    $ ddd list thermostat.ddd.json
    VARIABLE           KIND         DATATYPE  UNIT  SHAPE  PRODUCER            CONSUMERS
-   CabinTemperature   measurement  int16     degC  -      SensorHub           Controller
-   HeaterOnThreshold  parameter    int16     degC  -      Controller (local)  -
+   CabinTemperature   measurement  sint16    degC  -      SensorHub           Controller
+   HeaterOnThreshold  parameter    sint16    degC  -      Controller (local)  -
 
 Getting the templates
 ~~~~~~~~~~~~~~~~~~~~~
@@ -372,7 +386,7 @@ than written by hand so that no variable can be defined twice or defined by the 
     * Controller - Decides when to heat, from the cabin temperature
     * ------------------------------------------------------------------------ */
    /* Temperature below which the heater is switched on [degC] (calibration parameter) */
-   const int16_t HeaterOnThreshold = 180;
+   const volatile int16_t HeaterOnThreshold = 180;
 
    /* ---------------------------------------------------------------------------
     * SensorHub - Reads the sensors and publishes their conditioned values
@@ -447,7 +461,7 @@ description files. The local parameter appears in its own section, and only here
 
    /* locals - owned exclusively by Controller */
    /* Temperature below which the heater is switched on [degC] (calibration parameter) */
-   extern const int16_t HeaterOnThreshold;
+   extern const volatile int16_t HeaterOnThreshold;
 
    #endif /* DDD_COMPONENT_CONTROLLER_H */
 
@@ -498,7 +512,7 @@ told - and check the project again:
 .. code-block:: text
 
    $ ddd check thermostat.ddd.json
-   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != int16)
+   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
    components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
    1 error, 1 warning
@@ -531,7 +545,7 @@ agreed on are worse than no sources:
 .. code-block:: text
 
    $ ddd generate thermostat.ddd.json -o gen2 -t templates
-   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != int16)
+   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
    components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
    1 error, 1 warning

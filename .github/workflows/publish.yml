@@ -58,6 +58,40 @@ jobs:
           name: dist
           path: dist/
 
+  # The VS Code extension is not published to the marketplace. It is attached to the release
+  # instead, which is a permanent url anybody can download without an account - unlike a ci
+  # artifact, which expires and does not. Built from the tag, so the version inside the
+  # package is the version being released; a test asserts it matches the python one.
+  extension:
+    needs: test
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # attach the .vsix to the release being published
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      # The extension's tests start the real language server, so the package it launches has
+      # to be installed here as well as node being present.
+      - run: pip install -e .
+      - run: npm ci
+        working-directory: editors/vscode
+      - run: npm test
+        working-directory: editors/vscode
+      - run: npm run package
+        working-directory: editors/vscode
+      - name: Attach the extension to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" editors/vscode/*.vsix --clobber
+
   publish-testpypi:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'

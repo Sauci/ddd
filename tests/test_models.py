@@ -22,7 +22,7 @@ from ddd.models import (
 
 def definition(**kwargs: object) -> Measurement:
     return Measurement.model_validate(
-        {"name": "X", "datatype": "uint8", "kind": "measurement", **kwargs}
+        {"name": "X", "datatype": "uint8", "kind": "measurement", "volatile": False, **kwargs}
     )
 
 
@@ -109,6 +109,7 @@ class TestConversions:
                     "kind": "measurement",
                     "name": "X",
                     "datatype": "float32",
+                    "volatile": False,
                     "conversion": {"kind": "enum", "name": "E", "enumerators": {"A": 0}},
                 }
             )
@@ -126,6 +127,7 @@ class TestLimits:
                 "kind": "measurement",
                 "name": "X",
                 "datatype": "sint16",
+                "volatile": False,
                 "conversion": {"factor": 0.1},
             }
         ).physical_limits()
@@ -192,7 +194,12 @@ class TestContractStrictness:
                         {
                             "scope": "output",
                             "condition": "   ",
-                            "definition": {"kind": "measurement", "name": "X", "datatype": "uint8"},
+                            "definition": {
+                                "kind": "measurement",
+                                "name": "X",
+                                "datatype": "uint8",
+                                "volatile": False,
+                            },
                         }
                     ],
                 }

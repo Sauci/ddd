@@ -33,13 +33,24 @@ class Declaration(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
     scope: Scope
-    """Direction of the declaration: ``input``, ``output`` or ``local``."""
+    """Direction of the declaration, which is what makes the interfaces check each other.
+
+    Exactly one component may produce a name - declare it ``output`` or ``local`` - and that
+    component's definition is the one the project uses. Every ``input`` declaring the same
+    name has to agree with it on datatype, unit, conversion, limits and shape.
+    """
 
     condition: str | None = None
-    """C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``."""
+    """C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.
+
+    One expression, written as it would appear after ``#if``. It is emitted verbatim into the
+    generated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or
+    ``*/`` - each of which would let a description file put arbitrary directives, or live
+    code, into somebody else's build.
+    """
 
     definition: AnyDataObject
-    """The data object being declared."""
+    """The data object being declared; its ``kind`` decides which keys it carries."""
 
     @field_validator("condition")
     @classmethod
@@ -84,6 +95,14 @@ class Component(BaseModel):
 
 
 class ComponentFile(FileRoot):
-    """Root object of a ``*.json`` software component description."""
+    """Root object of a ``*.ddd.json`` software component description.
+
+    ``component`` is the top level key that makes this a component file rather than a project,
+    a types or a naming file; DDD decides what a file is from that key alone, so exactly one
+    of the four appears here.
+    """
+
+    model_config = ConfigDict(title="DDD component description")
 
     component: Component
+    """The component this file describes; the key that identifies the file as a component."""

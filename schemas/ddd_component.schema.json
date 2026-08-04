@@ -1,14 +1,22 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "A2lObjectOptions": {
       "additionalProperties": false,
-      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.",
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
       "properties": {
         "export": {
-          "default": true,
-          "description": "Set to ``false`` to keep the object out of the a2l file.",
-          "title": "Export",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "title": "Export"
         },
         "format": {
           "anyOf": [
@@ -57,8 +65,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -68,7 +87,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -82,13 +101,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -120,19 +139,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "axis",
+          "description": "Shared axis points a curve or map is interpolated over.",
           "title": "Kind",
           "type": "string"
         },
@@ -162,6 +187,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "size"
       ],
@@ -215,8 +241,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -226,7 +263,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -240,13 +277,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -278,19 +315,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "curve",
+          "description": "A one dimensional calibratable table over one axis.",
           "title": "Kind",
           "type": "string"
         },
@@ -306,6 +349,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "axis"
       ],
@@ -313,7 +357,7 @@
       "type": "object"
     },
     "Datatype": {
-      "description": "The base datatypes DDD can allocate storage for.",
+      "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
         "boolean",
         "uint8",
@@ -327,6 +371,19 @@
         "float32",
         "float64"
       ],
+      "enumDescriptions": [
+        "A truth value, 0 or 1; 1 byte of storage.",
+        "Unsigned integer; 1 byte of storage, 0 to 255.",
+        "Signed integer; 1 byte of storage, -128 to 127.",
+        "Unsigned integer; 2 bytes of storage, 0 to 65535.",
+        "Signed integer; 2 bytes of storage, -32768 to 32767.",
+        "Unsigned integer; 4 bytes of storage, 0 to 4294967295.",
+        "Signed integer; 4 bytes of storage, -2147483648 to 2147483647.",
+        "Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.",
+        "Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.",
+        "IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.",
+        "IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308."
+      ],
       "title": "Datatype",
       "type": "string"
     },
@@ -336,7 +393,7 @@
       "properties": {
         "scope": {
           "$ref": "#/$defs/Scope",
-          "description": "Direction of the declaration: ``input``, ``output`` or ``local``."
+          "description": "Direction of the declaration, which is what makes the interfaces check each other.\n\nExactly one component may produce a name - declare it ``output`` or ``local`` - and that\ncomponent's definition is the one the project uses. Every ``input`` declaring the same\nname has to agree with it on datatype, unit, conversion, limits and shape."
         },
         "condition": {
           "anyOf": [
@@ -348,11 +405,11 @@
             }
           ],
           "default": null,
-          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.",
+          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.\n\nOne expression, written as it would appear after ``#if``. It is emitted verbatim into the\ngenerated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or\n``*/`` - each of which would let a description file put arbitrary directives, or live\ncode, into somebody else's build.",
           "title": "Condition"
         },
         "definition": {
-          "description": "The data object being declared.",
+          "description": "The data object being declared; its ``kind`` decides which keys it carries.",
           "discriminator": {
             "mapping": {
               "axis": "#/$defs/Axis",
@@ -396,7 +453,7 @@
     },
     "EnumConversion": {
       "additionalProperties": false,
-      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
       "properties": {
         "kind": {
           "const": "enum",
@@ -431,7 +488,7 @@
     },
     "Enumerator": {
       "additionalProperties": false,
-      "description": "One named value of an :class:`EnumConversion`.",
+      "description": "One named value of an enum conversion, and what that value means.",
       "properties": {
         "name": {
           "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
@@ -568,8 +625,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -579,7 +647,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -593,13 +661,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -631,19 +699,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "map",
+          "description": "A two dimensional calibratable table over two axes.",
           "title": "Kind",
           "type": "string"
         },
@@ -667,6 +741,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "x_axis",
         "y_axis"
@@ -687,8 +762,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -698,7 +784,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -712,13 +798,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -750,19 +836,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "measurement",
+          "description": "An online value the software writes and the calibration tool only reads.",
           "title": "Kind",
           "type": "string"
         },
@@ -775,17 +867,12 @@
           },
           "title": "Dimensions",
           "type": "array"
-        },
-        "volatile": {
-          "default": false,
-          "description": "Generate the variable ``volatile``, for values written by an interrupt or by hardware.",
-          "title": "Volatile",
-          "type": "boolean"
         }
       },
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind"
       ],
       "title": "Measurement",
@@ -804,8 +891,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -815,7 +913,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -829,13 +927,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -867,19 +965,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "parameter",
+          "description": "A single calibratable constant.",
           "title": "Kind",
           "type": "string"
         }
@@ -887,17 +991,23 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind"
       ],
       "title": "Parameter",
       "type": "object"
     },
     "Scope": {
-      "description": "Direction of a variable with respect to the declaring component.",
+      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
         "input",
         "output",
         "local"
+      ],
+      "enumDescriptions": [
+        "The component reads the variable; another component has to produce it.",
+        "The component writes the variable; exactly one component may do so.",
+        "The component owns the variable exclusively; no other component may use it."
       ],
       "title": "Scope",
       "type": "string"
@@ -915,8 +1025,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, ``bool``, ``uint8`` .. ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -926,7 +1047,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.  Free text, but must match between components.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
         },
@@ -940,13 +1061,13 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value.  ``null`` leaves the object zero initialised by the startup code.\n\nA scalar given for an array shaped object initialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
           "default": {
             "kind": "identity"
           },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -978,19 +1099,25 @@
             }
           ],
           "default": null,
-          "description": "Physical limits; derived from ``datatype`` and ``conversion`` when omitted."
+          "description": "Physical limits of the object, in the unit given by ``unit``.\n\nOmitted, they are derived from ``datatype`` and ``conversion``: the whole range the\nstorage can hold, converted. State them to say that the software handles less than that,\nwhich is what stops a calibration tool offering a value the software cannot take."
         },
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "Per object a2l tuning; see :class:`A2lObjectOptions`."
+          "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
+        },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
         },
         "kind": {
           "const": "value_block",
+          "description": "An array of calibratable constants.",
           "title": "Kind",
           "type": "string"
         },
@@ -1008,6 +1135,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "dimensions"
       ],
@@ -1016,7 +1144,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.json`` software component description.",
+  "description": "Root object of a ``*.ddd.json`` software component description.\n\n``component`` is the top level key that makes this a component file rather than a project,\na types or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
   "properties": {
     "$schema": {
       "anyOf": [
@@ -1032,12 +1160,13 @@
       "title": "$Schema"
     },
     "component": {
-      "$ref": "#/$defs/Component"
+      "$ref": "#/$defs/Component",
+      "description": "The component this file describes; the key that identifies the file as a component."
     }
   },
   "required": [
     "component"
   ],
-  "title": "ComponentFile",
+  "title": "DDD component description",
   "type": "object"
 }

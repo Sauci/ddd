@@ -36,9 +36,9 @@ and that components which consume inputs agree on datatypes/units/scaling etc.
 ### 1.3 Source code generation
 
 In order to enforce the access rules specified for each component, the global variables shall
-be defined and declared by DDD. The tool generates a global definition c-code file, which
-contains all used global variables. This file can later be compiled and linked to the project
-in the build process.
+be defined and declared by DDD. The tool generates the c code defining every global variable
+of the project, which the example templates emit as a single file for the reasons section 5.1
+gives, and which is compiled and linked into the firmware exactly once.
 
 DDD shall also generate a variable declaration c-header for each software component. This
 header shall only contain declarations for the variables specified in the interface
@@ -97,9 +97,9 @@ owning component.
 
 ## 3 File formats
 
-All files used by DDD contain simple json formatting and shall be named `*.ddd.json`, so
-that a description file is recognisable as such in a project that contains json for many
-other purposes. The top level key of a file decides what the file is: `project` or
+All description files used by DDD contain simple json formatting and shall be named
+`*.ddd.json`, so that a description file is recognisable as such in a project that contains
+json for many other purposes. The top level key of a file decides what the file is: `project` or
 `component`. Unknown keys are rejected, with one exception: a top level `$schema` key shall
 be accepted and ignored, since it is the standard way an editor binds a json file to its
 schema and thereby turns the published contract into completion, hover documentation and
@@ -155,7 +155,7 @@ Attributes common to every kind:
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
-| `kind` | `measurement` | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
+| `kind` | required | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
 | `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
 | `description` | `""` | offered to the c templates as the text of a comment, long identifier in the a2l |
 | `unit` | `""` | physical unit |
@@ -163,17 +163,25 @@ Attributes common to every kind:
 | `limits` | derived | physical `min`/`max`; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | `export`, `format`, `display_identifier` |
+| `volatile` | required | whether the generated c carries `volatile`, i.e. whether the value can change without the reading code having written it |
+
+`volatile` has no default because there is nothing to derive one from: unlike `limits`, which
+follow from the datatype and the conversion, it states something about the running system that
+only the project knows. A measurement needs it when an interrupt, a second core or a
+peripheral writes the variable; a calibration object needs it when a calibration tool is to
+change the value while the software runs. Both answers have a price, and the tool asks rather
+than picks one silently.
 
 Kind specific attributes:
 
 | kind | additional keys | storage | a2l |
 | --- | --- | --- | --- |
-| `measurement` | `dimensions`, `volatile` | writable ram variable | `MEASUREMENT` |
-| `parameter` | - | `const` scalar | `CHARACTERISTIC ... VALUE` |
-| `value_block` | `dimensions` (mandatory) | `const` array | `CHARACTERISTIC ... VAL_BLK` |
-| `axis` | `size` (mandatory), `input` | `const` array `[size]` | `AXIS_PTS` |
-| `curve` | `axis` | `const` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
-| `map` | `x_axis`, `y_axis` | `const` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
+| `measurement` | `dimensions` | writable ram variable | `MEASUREMENT` |
+| `parameter` | - | `const` or `const volatile` scalar | `CHARACTERISTIC ... VALUE` |
+| `value_block` | `dimensions` (mandatory) | `const` or `const volatile` array | `CHARACTERISTIC ... VAL_BLK` |
+| `axis` | `size` (mandatory), `input` | `const` or `const volatile` array `[size]` | `AXIS_PTS` |
+| `curve` | `axis` | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
+| `map` | `x_axis`, `y_axis` | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
 * `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`. In the a2l the
   same object is described by a `MATRIX_DIM` listing the fastest running index first, i.e.
@@ -184,9 +192,90 @@ Kind specific attributes:
   project; the axis is shared between all curves and maps referring to it (a2l `COM_AXIS`).
 * `input` names the measurement that indexes an axis (a2l input quantity); when omitted the
   a2l uses `NO_INPUT_QUANTITY`.
-* Calibration objects (everything except `measurement`) are always generated `const`, so
-  that they are placed in read only memory. `volatile` is not merely ignored on them: it
-  is a key of `measurement` alone, so a calibration object carrying it is rejected.
+* Calibration objects (everything except `measurement`) are always generated `const`, since
+  the software never writes them, and additionally `volatile` when the declaration says so.
+  An object a calibration tool changes in a running ecu needs both: plain `const` entitles the
+  compiler to fold the initial value into the code that reads it wherever that value is
+  visible at the point of the read, which within one translation unit is every optimisation
+  level, `-O0` included, since the substitution happens in the c front end rather than in an
+  optimiser, and which link time optimisation extends across translation units. Where the
+  load does survive - a component reading through the generated header of another, compiled
+  without `-flto` - `const` still lets the compiler serve two reads from one of them and move
+  it across a call. Either way the tool writes a value the software does not pick up. What `const volatile` costs is the read only memory: the compiler
+  treats every read as a side effect and drops the object out of the read only category, so
+  it is emitted into a writable section instead of `.rodata` - measured with gcc 12.2.0, and
+  worth confirming on the toolchain a project ships with - which on a flash target means a ram
+  address with a load region and a startup copy that overwrites what the tool wrote unless the
+  linker script says otherwise. DDD states no preference between the two and reports
+  nothing about the choice: a project that calibrates online states `true` and places the
+  object itself in its linker script, DDD's own memory placement being planned rather than
+  implemented (section 3.6), and one that does not states `false` and keeps its data in flash.
+* `volatile` buys freshness and gives up coherence, which is worth knowing before turning it
+  on for a whole dictionary: the compiler has to re-read the object at every mention, so a set
+  of parameters read at several points of one control step can straddle a calibration write
+  and be used half old and half new, and a loop over a `const volatile` value is not
+  vectorised.
+
+#### 3.3.1 What each declaration of one object may state
+
+Several components declare the same object, and the keys of a definition do not all mean the
+same thing on each of those declarations. They fall into three groups.
+
+**Interface** - `kind`, `datatype`, `unit`, `conversion`, the shape (`dimensions` or `size`),
+the referenced axes, and `volatile`. Every declaration shall state the same thing and a
+disagreement is `definition-mismatch`. `volatile` is interface rather than storage because it
+reaches every consumer's header as a type qualifier and tells their code whether the value can
+change under it; two components disagreeing about it would compile different assumptions about
+the same address. Being required on every definition, it is stated by every declaration, so
+there is always an answer to compare rather than a silence to interpret. `limits` are the one
+interface key a declaration may leave out, because DDD derives them from the datatype and the
+conversion: omitting them defers to whoever states them, and only two *stated* sets of limits
+can disagree.
+
+**Storage** - `init`. What a variable starts out as is decided by the component that produces
+it, so a declaration whose scope is `input` shall not state one at all (`consumer-storage`).
+This is not an opinion to be outvoted: it is a claim over storage the component does not own,
+and it is reported where it is written rather than where it is overruled.
+
+**Presentation** - the `a2l` block, which no generated c depends on. `format` and
+`display_identifier` are taken from the producer, and a consumer stating something else is
+told so by `storage-mismatch`. `export` is the exception, and in the other direction: any
+component may state it, whether it produces the object or not, because which signals a
+calibration engineer needs to see is not a property of whoever happens to write the variable -
+a component reading a value out of a library it does not own has as good a claim to measuring
+it. The stated answers are combined rather than ranked. The object is exported if any
+declaration states `true`, and left out only when every declaration that speaks states
+`false`; unstated everywhere, it is exported. Two consumers can therefore never conflict over
+it, there is no finding to invent for a disagreement between them, and the verdict does not
+depend on which components an image happens to link. A dictionary that omits the `a2l` block
+altogether therefore exports its objects, which is what makes an older or third party
+dictionary readable without rewriting it.
+
+`description` is per declaration and free: two components may describe the same object in
+their own words, and DDD does not compare them. `condition` is per declaration as well but
+should agree, and `condition-mismatch` says so as a warning rather than an error, since
+components legitimately guarded by different expressions is a thing a project does.
+
+#### 3.3.2 Naming a declared type
+
+`datatype` accepts one of the base datatypes **or** the name of a type the project declares in a
+types file (section 3.8). One key names a type everywhere - on a component declaration and on a
+structure member alike - rather than a second key beside it: a `type` key would have to mean "the
+name of a declared type" in those two places and "which shape this entry has" at the top of a
+types entry, and one key with one meaning is worth what it costs.
+
+What it costs is that the published schema can no longer say `datatype` is one of eleven values.
+A mistyped base datatype is a well formed *name*, so a name that reads as a storage stem with the
+digits wrong - `uint166`, `int16`, `float3`, `sint_16` - is refused outright to put the rejection
+back where the typo is made. What that cannot catch, a transposition such as `unit16`, is reported
+as `unknown-type` with the nearest name suggested.
+
+Naming a type and then restating what it fixes is an error rather than an override, so that "where
+is this object's unit written down" has one answer.
+
+A declaration naming a **scalar type** is an ordinary object whose datatype, unit, conversion and
+limits come from the type. A declaration naming a **structure** is a structured object: it
+generates one c variable, and reaches the a2l as one object per member (section 5.2).
 
 ### 3.4 Conversions
 
@@ -227,6 +316,65 @@ A `memory` attribute shall select the memory the object is placed in
 code shall carry the corresponding section attribute and the a2l shall describe the memory
 layout with `MOD_PAR` / `MEMORY_SEGMENT`.
 
+### 3.8 Type description
+
+A `types` file declares the types a project names, so that components agree by naming rather than
+by each copying out the same answer. Its top level key is `types`, and every entry states its
+`type`:
+
+* a **scalar** type fixes `datatype`, `unit`, `conversion` and `limits` - exactly what makes two
+  declarations interchangeable, and nothing else. `kind`, `dimensions`, `init`, `volatile` and
+  `a2l` stay on the variable, because two measurements of one type may differ in whether an
+  interrupt writes one of them.
+* a **struct** type declares `members`, in the order they are laid out. A member is a `value` - a
+  datatype, base or declared, optionally an array - or a `bits`, an integer datatype and a width.
+
+A member says what its bytes mean as well as where they are: it carries `unit`, `conversion`,
+`limits` and `a2l` of its own, or names a scalar type that fixes them, never both. It carries no
+`init` and no `volatile`, which belong to a variable rather than to a type, and no `kind`: a
+storage class qualifies a whole c object, so the declaration decides and a structure mixing
+measured and calibrated members is not something this format can express.
+
+Bit positions and member offsets are not stated and never will be. C leaves both to the compiler,
+so DDD reads them back out of the build rather than predicting them - which is why the address map
+of section 6 is keyed on access paths. The limits of a bitfield do follow from its stated width,
+since offering a two bit field over the whole range of the word carrying it would invite a value
+it cannot hold.
+
+### 3.7 Build record
+
+A build knows two things no description file records: which project description DDD is run
+on, and under which severity policy. In the collected mode of the CMake integration the
+project description is not even in the source tree - it is assembled in the build directory
+out of the c link closure, so which components belong together is a property of the build
+rather than of any file somebody wrote. A build shall therefore write a record of how it runs
+DDD (`ddd build-info`), so that a tool outside the build can check exactly what the build
+checks instead of re-deriving a project from the file tree and guessing at the severities.
+The language server of section 7.2 is the reader this exists for.
+
+The file is named `ddd-build.json` and lives beside the artefacts of the target that wrote
+it. It is deliberately *not* named `*.ddd.json`: that extension means "a DDD description
+file", `file-extension` enforces it, and `file-kind` would then reject this content for
+having none of the top level keys a description may have. It is a document *about* a project
+rather than one.
+
+| key | meaning |
+| --- | --- |
+| `format` | version of this document format, raised only when its shape changes |
+| `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project may not |
+| `image` | the build target the record was written for; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it |
+| `strict` | whether the build reports warnings as errors |
+| `severity` | the severity overrides the build applies, as `check=severity`, in the order given |
+
+The path in `project` is recorded and never checked when the record is written: in the
+collected mode the description is produced at the end of the configure run, after the process
+that writes this file, so requiring it to exist would fail every first configure.
+
+Unlike the description formats and the data dictionary, this document has no published json
+schema. Nobody authors it - a build writes it and a tool reads it - so the schema would serve
+neither an editor nor a hand. Its `format` key is what a reader checks instead, and a record
+it does not understand is one it declines rather than misreads.
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -241,10 +389,18 @@ Errors:
 * `missing-producer` - an input variable is written by nobody
 * `local-conflict` - a component local variable is used by another component
 * `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
-  referenced axes, or on limits where both of them state limits: a declaration that omits
-  them defers to the producer rather than disagreeing with it
+  volatility, referenced axes, or on limits where both of them state limits: a declaration
+  that omits limits defers to the producer rather than disagreeing with it, a relaxation
+  `volatile` has no use for, being required on every definition (section 3.3.1)
 * `duplicate-declaration` - a component declares the same variable more than once
+* `consumer-storage` - an `input` declaration states `init`. What a variable starts out as is
+  decided by the component that produces it, so a reader stating one is claiming storage it
+  does not own, rather than holding an opinion to be outvoted
 * `duplicate-component` - two files declare the same component name
+* `duplicate-type` - two files declare the same type name
+* `unknown-type`, `type-kind`, `type-cycle` - a `datatype` names neither a base datatype nor a
+  type any file of the project declares, a declared type is used where its shape does not fit,
+  or structures nest each other so that neither has a size
 * `enum-conflict` - one enum name is used with different enumerators
 * `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
 * `unknown-reference`, `reference-kind` - a curve, map or axis refers to an object that does not exist or has the wrong kind
@@ -252,7 +408,8 @@ Errors:
   headers the generated code includes already declares
 * `name-collision` - two names that are distinct in the description files become the same
   c identifier or the same generated file: enumerators of different enums, an enumerator and
-  a variable, or two component names differing only in case
+  a variable, a variable and the name of an enum or of a declared type, or two component names
+  differing only in case
 * `naming` - a declared name does not follow the naming convention of the project
 * `file-extension` - a description file is not named `*.ddd.json`
 * `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
@@ -262,8 +419,8 @@ Errors:
 
 Warnings:
 
-* `storage-mismatch` - components disagree on the initial value, on `volatile` or on the
-  `a2l` block; the producer wins
+* `storage-mismatch` - components disagree on how the a2l presents the object; the producer
+  wins
 * `condition-mismatch` - declarations of one variable use different preprocessor conditions
 * `unused-output` - an output is read by nobody
 * `limits-out-of-range` - limits exceed what the datatype can represent
@@ -295,7 +452,9 @@ Errors - the consumers of the object become wrong, whether or not they still com
 Warnings - behaviour or tooling changes, but no consumer becomes wrong:
 
 * `removed-unused-object` - an object is gone that no component read
-* `changed-storage` - the initial value or the volatility changed
+* `changed-storage` - the initial value or the volatility changed; on a calibration object the
+  volatility also decides whether a tool can still change the value in a running ecu, and
+  which memory the object ends up in
 * `narrowed-limits` - the physical limits got tighter, so calibrated data may no longer fit
 * `changed-owner` - another component produces the object now
 * `changed-condition` - the preprocessor condition changed
@@ -338,9 +497,46 @@ system can declare its outputs without running the generator first:
 A template in a subdirectory of the template directory is importable but never rendered.
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
-variables and calibration objects are `const`, a declaration that carries a condition is
-offered with that condition so it can be wrapped in `#if` / `#endif`, and input objects are
-optionally marked `const` for the consumer header so that a write access does not compile.
+variables and calibration objects are `const`, each of them additionally `volatile` when its
+declaration states so, a declaration that carries a condition is offered with that condition
+so it can be wrapped in `#if` / `#endif`, and input objects are optionally marked `const` for
+the consumer header so that a write access does not compile. The qualifier reaches the hand
+written code that reads the object, so a project that turns `volatile` on for an array finds
+that passing it to a helper typed for a plain `const` one no longer compiles and re-types the
+helper - the cast that would silence it is itself refused by a warning set containing
+`-Wcast-qual`.
+
+The example templates generate the definitions into one file per project and the declarations
+into one header per component, and the build integration of section 7.1 expects that
+arrangement. The asymmetry is deliberate: splitting the declarations is what enforces the
+access rules, since a component sees the objects it declared and a reference to any other
+global is an undeclared identifier, whereas splitting the definitions enforces nothing - after
+linking there are only symbols. Three things argue for the single file instead.
+
+Every object has a definition site. The objects of a project partition by owner, so a file per
+owner would cover all of them but the ones no component owns - which arise whenever
+`missing-producer` is relaxed, to generate a single component on its own or an image that
+deliberately links a subset of the project. Those objects have no component and would have no
+file; the project wide file defines them like any other.
+
+The build system can name what it compiles. The rule above lets it derive the generated files
+from the template directory, and a `{component}` template is the one entry it cannot resolve,
+since the component names come out of the description files and, for an image, the subset that
+matters comes out of its link graph. A generated header survives that because a consumer
+depends on the directory it lives in rather than on its name; a source has to be named before
+it can be compiled.
+
+The definitions reach the image whole. An object that no compiled code references - a
+measurement only the calibration tool reads - has nothing to pull it out of a library archive,
+so the definitions are compiled as a unit of their own and linked into the image rather than
+into the libraries of the components that own them. A definition file per component invites
+the second arrangement, in which the linker drops precisely the objects nobody but the
+calibration tool reads, and the a2l is left describing storage the image does not contain.
+
+None of this forbids the arrangement: a `{component}` template renders a `.c` as readily as a
+`.h`. A project that wants its definitions spread over several files may also write several
+project wide templates, each rendering the part it selects, and the build integration compiles
+every one of them; per-component sources it does not compile, for the reason above.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 
@@ -375,7 +571,10 @@ at least: checking a project, comparing two deliveries, generating the artefacts
 resolved data objects,
 writing out the data dictionary itself, validating and explaining names against the naming
 convention and completing partially typed ones, printing the json schema of the file formats
-and of the dictionary, listing the available checks, and reporting where its build system
+and of the dictionary, recording how a build is configured to run DDD (`ddd build-info`) so
+that a tool outside the build can apply the same project and the same severities, serving the
+checks to an editor over the Language Server Protocol (`ddd lsp`), listing the
+available checks, and reporting where its build system
 integration and its example templates live. Every command that reports findings can produce machine readable
 json, and the exit code distinguishes clean runs, findings and usage errors. A findings exit
 is reserved for findings reported *as errors*: a run whose findings are all warnings is a
@@ -389,8 +588,36 @@ ship can consume it without depending on the implementation.
 DDD ships a CMake module which registers the description of a component on its target and
 collects, for an image, the descriptions of the components that image actually links. It
 generates into the build tree, exposes the generated headers to the components through an
-interface library and compiles the single definition file into the image. Registering a
-component and generating for an image shall each take one call.
+interface library and compiles the generated definition sources into the image as an object
+library of their own, so that an object no compiled code references is not dropped
+(section 5.1). Registering a component and generating for an image shall each take one call.
+
+### 7.2 Editor integration
+
+The checks shall also be served over the Language Server Protocol (`ddd lsp`), so that a
+project is checked while it is written rather than when it is built. The same loader, the same
+analysis and the same severity policy answer both, since an editor that disagrees with the
+build about what is wrong is worse than an editor that says nothing.
+
+The server offers, from a description file: the findings of section 4, drawn over the key they
+are about rather than over the file; go to definition and find references across files, which
+is the question a schema cannot answer at all - the producer of an `input` is in a file the
+author may not know the name of; a summary of a data object on hover; renaming an object
+everywhere the project writes it, refused up front for a name the c namespace cannot take; and
+quick fixes that reconcile one key across the declarations of one object, in either direction,
+including removing a key the others do not have.
+
+Which project a file belongs to comes from the build records of section 3.7, found under the
+build directories the client names. A file belonging to no configured build is still checked,
+on its own, with the checks that need every component of a project held back: a component read
+alone has inputs nobody produces and outputs nobody reads by construction rather than by
+mistake, and reporting those buries the findings that are about the file in front of the
+reader. Each check declares whether it needs the whole project, so the two modes cannot drift
+apart.
+
+An editor extension shall do no more than launch the server and point it at the build
+directories: everything a reader sees is the tool's answer, so that an editor DDD ships
+nothing for is not a second class one.
 
 ## 8 Implementation status
 
@@ -410,3 +637,6 @@ component and generating for an image shall each take one call.
 | 7 command line interface | implemented |
 | 7 data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
 | 7.1 build system integration | implemented (`cmake/Ddd.cmake`, `ddd cmake-dir`) |
+| 3.8 type description, scalar and struct types | implemented (`ddd schema types`, `examples/structures`); a2l bitfield members await a build that reports their bits |
+| 3.7 build record | implemented (`ddd build-info`, written by `ddd_generate`) |
+| 7.2 editor integration | implemented (`ddd lsp`: diagnostics, navigation, hover, rename, quick fixes; VS Code launcher extension) |

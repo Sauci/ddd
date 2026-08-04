@@ -43,6 +43,17 @@ class CheckInfo:
     description: str
     overridable: bool = True
 
+    needs_every_component: bool = False
+    """Whether the check reaches the *wrong* answer when a component is missing.
+
+    Most checks read one file and are right about it whatever else exists. A few conclude
+    something from the absence of a declaration - an input nobody produces, an output nobody
+    reads, a reference to an object no component declares - and those are wrong by
+    construction about a project only some of which is present. Anything that reads one file
+    on its own, as the language server does when no build claims it, has to leave them out
+    rather than report a finding whose only cause is what it was not shown.
+    """
+
 
 def _check(
     identifier: str,
@@ -50,8 +61,9 @@ def _check(
     description: str,
     *,
     overridable: bool = True,
+    needs_every_component: bool = False,
 ) -> CheckInfo:
-    return CheckInfo(identifier, severity, description, overridable)
+    return CheckInfo(identifier, severity, description, overridable, needs_every_component)
 
 
 CHECKS: Final[dict[str, CheckInfo]] = {
@@ -71,33 +83,46 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("include-empty", Severity.ERROR, "an include pattern matches no file"),
         _check("duplicate-component", Severity.ERROR,
                "two different files declare the same component name"),
+        _check("duplicate-type", Severity.ERROR,
+               "two different files declare the same type name"),
+        _check("unknown-type", Severity.ERROR,
+               "a datatype names neither a base datatype nor a type any file declares",
+               needs_every_component=True),
+        _check("type-kind", Severity.ERROR,
+               "a declared type is used where its shape does not fit"),
+        _check("type-cycle", Severity.ERROR,
+               "structures nest each other, directly or through others"),
         _check("reserved-identifier", Severity.ERROR, "a name collides with a c keyword"),
         _check("name-collision", Severity.ERROR,
                "two generated names collide in the same c namespace or file name"),
         _check("duplicate-declaration", Severity.ERROR,
                "a component declares the same variable more than once"),
+        _check("consumer-storage", Severity.ERROR,
+               "an input declaration states storage that only the producing component decides"),
         _check("multiple-producers", Severity.ERROR,
                "a variable is written by more than one component"),
-        _check("missing-producer", Severity.ERROR, "an input variable is written by nobody"),
+        _check("missing-producer", Severity.ERROR, "an input variable is written by nobody",
+               needs_every_component=True),
         _check("local-conflict", Severity.ERROR,
                "a component local variable is also used by another component"),
         _check("definition-mismatch", Severity.ERROR,
-               "components disagree on kind, datatype, unit, scaling, shape, stated limits "
-               "or referenced axes"),
+               "components disagree on kind, datatype, unit, scaling, shape, volatility, "
+               "stated limits or referenced axes"),
         _check("enum-conflict", Severity.ERROR,
                "the same enum name is defined with different enumerators"),
         _check("unknown-reference", Severity.ERROR,
-               "a curve, map or axis refers to an object that no component declares"),
+               "a curve, map or axis refers to an object that no component declares",
+               needs_every_component=True),
         _check("reference-kind", Severity.ERROR,
                "a reference points at an object of the wrong kind"),
         _check("init-invalid", Severity.ERROR,
                "an initial value does not fit the datatype of the variable"),
         _check("storage-mismatch", Severity.WARNING,
-               "components disagree on the init value, on volatile or on the a2l block; "
-               "the producer wins"),
+               "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
                "declarations of one variable use different preprocessor conditions"),
-        _check("unused-output", Severity.WARNING, "an output variable is read by no component"),
+        _check("unused-output", Severity.WARNING, "an output variable is read by no component",
+               needs_every_component=True),
         _check("enum-duplicate-value", Severity.WARNING,
                "two enumerators of one enum share the same value"),
         _check("limits-out-of-range", Severity.WARNING,

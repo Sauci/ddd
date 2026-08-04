@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="DDD">
+  <title>DDD</title>
+  <!-- One colour, taken from whatever surrounds it: currentColor in html, the single ink of a
+       one colour print, the foreground of an etched or engraved plate. Nothing is set in a
+       tint or an opacity, so the mark survives a medium that has no such thing. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="20">
+    <path d="M84 40 A88 88 0 0 1 84 216"/>
+    <path d="M84 69 A59 59 0 0 1 84 187"/>
+    <path d="M84 40 V216"/>
+    <path d="M84 98 A30 30 0 0 1 84 158"/>
+  </g>
+</svg>

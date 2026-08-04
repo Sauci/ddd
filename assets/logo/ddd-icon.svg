@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DDD">
+  <title>DDD</title>
+  <!-- the tile, for a launcher, an avatar or an extension listing, where the mark needs a
+       field of its own rather than the page's -->
+  <rect width="64" height="64" rx="14" fill="#123540"/>
+  <g transform="translate(0.65 0.653) scale(0.244898)" fill="none" stroke-linecap="round" stroke-width="20">
+    <path d="M84 40 A88 88 0 0 1 84 216" stroke="#2C93A8"/>
+    <path d="M84 69 A59 59 0 0 1 84 187" stroke="#4FC9DC"/>
+    <path d="M84 40 V216" stroke="#FFFFFF"/>
+    <path d="M84 98 A30 30 0 0 1 84 158" stroke="#FFFFFF"/>
+  </g>
+</svg>

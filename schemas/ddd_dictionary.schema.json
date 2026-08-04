@@ -1,14 +1,22 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "A2lObjectOptions": {
       "additionalProperties": false,
-      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.",
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
       "properties": {
         "export": {
-          "default": true,
-          "description": "Set to ``false`` to keep the object out of the a2l file.",
-          "title": "Export",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "title": "Export"
         },
         "format": {
           "anyOf": [
@@ -46,9 +54,10 @@
     },
     "ComponentDeclaration": {
       "additionalProperties": false,
-      "description": "One entry of a component interface, in the order the component declared it.",
+      "description": "One entry of a component interface, in the order the component declared it.\n\nA reference to an object rather than the object itself: the definition lives once, under\n``objects``, and is the one the producing component gave. Two components declaring the\nsame name appear here twice and in ``objects`` once.",
       "properties": {
         "name": {
+          "description": "Name of the declared object; a key into the ``objects`` list of the dictionary.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -56,7 +65,8 @@
           "type": "string"
         },
         "scope": {
-          "$ref": "#/$defs/Scope"
+          "$ref": "#/$defs/Scope",
+          "description": "How this component uses the object: ``input``, ``output`` or ``local``."
         },
         "condition": {
           "anyOf": [
@@ -68,6 +78,7 @@
             }
           ],
           "default": null,
+          "description": "Preprocessor expression this component guarded the declaration with, if any.",
           "title": "Condition"
         }
       },
@@ -79,7 +90,7 @@
       "type": "object"
     },
     "Datatype": {
-      "description": "The base datatypes DDD can allocate storage for.",
+      "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
         "boolean",
         "uint8",
@@ -93,12 +104,25 @@
         "float32",
         "float64"
       ],
+      "enumDescriptions": [
+        "A truth value, 0 or 1; 1 byte of storage.",
+        "Unsigned integer; 1 byte of storage, 0 to 255.",
+        "Signed integer; 1 byte of storage, -128 to 127.",
+        "Unsigned integer; 2 bytes of storage, 0 to 65535.",
+        "Signed integer; 2 bytes of storage, -32768 to 32767.",
+        "Unsigned integer; 4 bytes of storage, 0 to 4294967295.",
+        "Signed integer; 4 bytes of storage, -2147483648 to 2147483647.",
+        "Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.",
+        "Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.",
+        "IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.",
+        "IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308."
+      ],
       "title": "Datatype",
       "type": "string"
     },
     "EnumConversion": {
       "additionalProperties": false,
-      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand::\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
       "properties": {
         "kind": {
           "const": "enum",
@@ -133,7 +157,7 @@
     },
     "Enumerator": {
       "additionalProperties": false,
-      "description": "One named value of an :class:`EnumConversion`.",
+      "description": "One named value of an enum conversion, and what that value means.",
       "properties": {
         "name": {
           "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
@@ -258,7 +282,7 @@
       "type": "object"
     },
     "ObjectKind": {
-      "description": "What sort of data object a definition describes.",
+      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes and the calibration tool only reads.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
       "enum": [
         "measurement",
         "parameter",
@@ -266,6 +290,14 @@
         "curve",
         "map",
         "axis"
+      ],
+      "enumDescriptions": [
+        "An online value the software writes and the calibration tool only reads.",
+        "A single calibratable constant.",
+        "An array of calibratable constants.",
+        "A one dimensional calibratable table over one axis.",
+        "A two dimensional calibratable table over two axes.",
+        "Shared axis points a curve or map is interpolated over."
       ],
       "title": "ObjectKind",
       "type": "string"
@@ -275,6 +307,7 @@
       "description": "A component and the objects it declares.",
       "properties": {
         "name": {
+          "description": "Name of the component, unique within the project.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -283,6 +316,7 @@
         },
         "description": {
           "default": "",
+          "description": "Free text from the component description, offered to the templates.",
           "title": "Description",
           "type": "string"
         },
@@ -294,6 +328,7 @@
         },
         "declarations": {
           "default": [],
+          "description": "The interface of the component, in the order it declared it.",
           "items": {
             "$ref": "#/$defs/ComponentDeclaration"
           },
@@ -307,11 +342,342 @@
       "title": "ResolvedComponent",
       "type": "object"
     },
+    "ResolvedInstance": {
+      "additionalProperties": false,
+      "description": "One variable whose datatype is a structure.\n\nKept apart from ``ResolvedObject`` rather than widening it: an object with no datatype\nand no limits would turn every reader of those two fields into a branch, and they are read\nunconditionally in a dozen places on the strength of always being there.",
+      "properties": {
+        "name": {
+          "description": "Name of the variable; its c identifier and the root of every leaf path.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "description": "Name of the structure it is, which is the c type of the declaration.",
+          "title": "Type",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ObjectKind",
+          "description": "``measurement`` or ``parameter``: what the whole object is, and so how it is qualified."
+        },
+        "description": {
+          "default": "",
+          "description": "What the object is; the comment in the generated c.",
+          "title": "Description",
+          "type": "string"
+        },
+        "shape": {
+          "default": [],
+          "description": "Array dimensions of the variable itself, empty for a single structure.\n\nAn array of structures reaches the a2l as its elements: there is no one address that\ndescribes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own\nleaves at its own path.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "volatile": {
+          "default": false,
+          "description": "Whether the declaration carries ``volatile``, which qualifies the whole object.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preprocessor condition of the producing declaration, if any.",
+          "title": "Condition"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Component owning the object; ``None`` only when the project is inconsistent.",
+          "title": "Owner"
+        },
+        "consumers": {
+          "default": [],
+          "description": "Components declaring the object as an input, sorted.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Consumers",
+          "type": "array"
+        },
+        "local": {
+          "default": false,
+          "description": "Owned exclusively by ``owner``; no other component may declare it.",
+          "title": "Local",
+          "type": "boolean"
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": null,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "What the whole object asks of the a2l; a member may ask for more of its own."
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "kind"
+      ],
+      "title": "ResolvedInstance",
+      "type": "object"
+    },
+    "ResolvedLeaf": {
+      "additionalProperties": false,
+      "description": "One member of one structured variable, at the end of one access path.\n\nThe flattening. A structure reaches the a2l as an object per member rather than as an a2l\nstructure, so this is the form that backend consumes - an ordinary object in every respect\nbut its name, which is a path rather than an identifier.",
+      "properties": {
+        "path": {
+          "description": "The c expression that reads this member: ``Inlet.latest.value``, ``Inlet.cell[2].raw``.\n\nBoth the name the a2l gives the object and the symbol it links it to. Written the way it\nwould be written in c, so that a reader of the a2l, of the generated c and of a map file is\nlooking at one string rather than at three spellings of one thing.",
+          "title": "Path",
+          "type": "string"
+        },
+        "instance": {
+          "description": "Name of the variable this leaf belongs to, which is the root of ``path``.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Instance",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ObjectKind",
+          "description": "Taken from the variable: every leaf of one object has the storage class of the whole."
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage of one element."
+        },
+        "description": {
+          "default": "",
+          "description": "What this member is; the a2l long identifier.",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit, from the member or from the type it names.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "description": "Always present: the member's conversion, or the identity when none was given.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits",
+          "description": "Always present: stated, or derived from the storage - a bitfield's from its width."
+        },
+        "shape": {
+          "default": [],
+          "description": "Array dimensions of this member; empty for a scalar.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "bits": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Width in bits when the member is a c bitfield.\n\nSuch a leaf has no address of its own - ``&s.ready`` does not compile - so it reaches no\na2l until a build tells DDD both where the word is and which bits inside it to read.",
+          "title": "Bits"
+        },
+        "volatile": {
+          "default": false,
+          "description": "From the variable, which carries the qualifier for all of its members at once.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preprocessor condition of the producing declaration, if any.",
+          "title": "Condition"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Component owning the variable this leaf belongs to.",
+          "title": "Owner"
+        },
+        "consumers": {
+          "default": [],
+          "description": "Components declaring the variable as an input, sorted.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Consumers",
+          "type": "array"
+        },
+        "local": {
+          "default": false,
+          "description": "Owned exclusively by ``owner``.",
+          "title": "Local",
+          "type": "boolean"
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": null,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "The member's own a2l options; a member may be kept out of the file on its own."
+        }
+      },
+      "required": [
+        "path",
+        "instance",
+        "kind",
+        "datatype",
+        "conversion",
+        "limits"
+      ],
+      "title": "ResolvedLeaf",
+      "type": "object"
+    },
+    "ResolvedMember": {
+      "additionalProperties": false,
+      "description": "One member of a structure, as the c templates need it to declare the member.\n\nOnly what a declaration takes. The meaning of the member - its unit, its conversion, its\nlimits - travels with the *leaf* instead, because that is the form the a2l consumes and\nthere is no second place a reader should have to look.",
+      "properties": {
+        "name": {
+          "description": "Name of the member, as it is written in the c struct.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "What the member is, for a comment beside its declaration.",
+          "title": "Description",
+          "type": "string"
+        },
+        "datatype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storage of the member when it is a base one; ``None`` when it names a structure."
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.",
+          "title": "Type"
+        },
+        "shape": {
+          "default": [],
+          "description": "Array dimensions, empty for a scalar.",
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Shape",
+          "type": "array"
+        },
+        "bits": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Width in bits when the member is a c bitfield; ``None`` when it is not.",
+          "title": "Bits"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ResolvedMember",
+      "type": "object"
+    },
     "ResolvedObject": {
       "additionalProperties": false,
       "description": "One data object, with every derived property already worked out.",
       "properties": {
         "name": {
+          "description": "Name of the object, unique across the whole project; its c and a2l identifier.",
           "maxLength": 128,
           "minLength": 1,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -319,22 +685,27 @@
           "type": "string"
         },
         "kind": {
-          "$ref": "#/$defs/ObjectKind"
+          "$ref": "#/$defs/ObjectKind",
+          "description": "Which sort of object this is, taken from the definition that produced it."
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype"
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage type of one element."
         },
         "description": {
           "default": "",
+          "description": "What the object is; the a2l long identifier and the comment in the generated c.",
           "title": "Description",
           "type": "string"
         },
         "unit": {
           "default": "",
+          "description": "Physical unit, as the declaring components agreed on it.",
           "title": "Unit",
           "type": "string"
         },
         "conversion": {
+          "description": "Always present: the declared conversion, or the identity when none was given.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -379,10 +750,12 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Raw initial value, nested to match ``shape``; ``null`` means zero initialised."
         },
         "volatile": {
           "default": false,
+          "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``\nexists to make safe.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -422,6 +795,7 @@
         },
         "consumers": {
           "default": [],
+          "description": "Components declaring the object as an input, sorted; empty when nothing reads it.",
           "items": {
             "type": "string"
           },
@@ -437,7 +811,7 @@
         "a2l": {
           "$ref": "#/$defs/A2lObjectOptions",
           "default": {
-            "export": true,
+            "export": null,
             "format": null,
             "display_identifier": null
           },
@@ -454,27 +828,67 @@
       "title": "ResolvedObject",
       "type": "object"
     },
+    "ResolvedStruct": {
+      "additionalProperties": false,
+      "description": "One structure, in an order a c file can be written out in.\n\nThe order of ``DataDictionary.types`` matters and is not alphabetical: a structure\nappears after every structure it nests, because a c compiler needs the nested one to be\ncomplete first. The members keep the order the author wrote them in, which is the order the\ncompiler lays them out.",
+      "properties": {
+        "name": {
+          "description": "Name of the structure, which is the name of the generated typedef.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "What the structure is, for a comment above it.",
+          "title": "Description",
+          "type": "string"
+        },
+        "members": {
+          "default": [],
+          "description": "The members, in declaration order.",
+          "items": {
+            "$ref": "#/$defs/ResolvedMember"
+          },
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ResolvedStruct",
+      "type": "object"
+    },
     "Scope": {
-      "description": "Direction of a variable with respect to the declaring component.",
+      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
         "input",
         "output",
         "local"
+      ],
+      "enumDescriptions": [
+        "The component reads the variable; another component has to produce it.",
+        "The component writes the variable; exactly one component may do so.",
+        "The component owns the variable exclusively; no other component may use it."
       ],
       "title": "Scope",
       "type": "string"
     }
   },
   "additionalProperties": false,
-  "description": "The resolved data of one project.",
+  "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 1,
-      "description": "Version of the document itself, see :data:`DICTIONARY_FORMAT`.",
+      "default": 2,
+      "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"
     },
     "name": {
+      "description": "Name of the project, from the root project description.",
       "maxLength": 128,
       "minLength": 1,
       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
@@ -483,6 +897,7 @@
     },
     "description": {
       "default": "",
+      "description": "Free text from the root project description.",
       "title": "Description",
       "type": "string"
     },
@@ -494,6 +909,7 @@
     },
     "components": {
       "default": [],
+      "description": "Every component of the project, including those of its sub-projects.",
       "items": {
         "$ref": "#/$defs/ResolvedComponent"
       },
@@ -517,11 +933,38 @@
       },
       "title": "Enums",
       "type": "array"
+    },
+    "types": {
+      "default": [],
+      "description": "The structures the project declares, each after every structure it nests.\n\nDependency order rather than alphabetical, because a template that simply loops over them\nhas to be able to write them out as they come: c needs a nested structure to be complete\nbefore the one that contains it.",
+      "items": {
+        "$ref": "#/$defs/ResolvedStruct"
+      },
+      "title": "Types",
+      "type": "array"
+    },
+    "instances": {
+      "default": [],
+      "description": "Variables whose datatype is a structure, sorted by name.",
+      "items": {
+        "$ref": "#/$defs/ResolvedInstance"
+      },
+      "title": "Instances",
+      "type": "array"
+    },
+    "leaves": {
+      "default": [],
+      "description": "Every member of every structured variable, flattened, sorted by path.\n\nWritten out rather than worked out on demand, because the dictionary is a produced\ndocument: a generator DDD does not ship reads it without importing python, and no backend\nshould repeat resolution the analysis has already done.",
+      "items": {
+        "$ref": "#/$defs/ResolvedLeaf"
+      },
+      "title": "Leaves",
+      "type": "array"
     }
   },
   "required": [
     "name"
   ],
-  "title": "DataDictionary",
+  "title": "DDD data dictionary",
   "type": "object"
 }

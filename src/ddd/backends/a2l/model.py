@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.a2l.types import A2L_TYPE
-from ddd.ir import DataDictionary, ResolvedComponent, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
     Conversion,
     Datatype,
@@ -178,6 +178,9 @@ class _A2lModelBuilder:
         self._options = options
         self._by_name = dictionary.by_name
         self._exported = self._resolve_exported()
+        self._instances_exported = {
+            entry.name: entry.a2l.exported for entry in dictionary.instances
+        }
         self._methods = _CompuMethodBuilder()
         self._layouts = _RecordLayoutBuilder()
 
@@ -196,6 +199,14 @@ class _A2lModelBuilder:
                 axis_pts.append(self._axis_pts(entry))
             else:
                 characteristics.append(self._characteristic(entry))
+
+        for leaf in dictionary.leaves:
+            if not self._carries(leaf):
+                continue
+            if leaf.kind is ObjectKind.MEASUREMENT:
+                measurements.append(self._leaf_measurement(leaf))
+            else:
+                characteristics.append(self._leaf_characteristic(leaf))
 
         groups = [
             group
@@ -229,7 +240,7 @@ class _A2lModelBuilder:
         a curve pulls its axis, and that axis pulls the measurement it is indexed by.
         """
         by_name = self._by_name
-        names = {entry.name for entry in self._dictionary.objects if entry.a2l.export}
+        names = {entry.name for entry in self._dictionary.objects if entry.a2l.exported}
         pending = list(names)
         while pending:
             # Everything in `names` is a key of `by_name`: the initial set comes from the
@@ -240,6 +251,57 @@ class _A2lModelBuilder:
                     names.add(referenced)
                     pending.append(referenced)
         return names
+
+    def _carries(self, leaf: ResolvedLeaf) -> bool:
+        """Whether this member can be described at all, and was asked to be.
+
+        A bitfield cannot. ``&s.ready`` does not compile, so no build can report an address for
+        it, and ``SYMBOL_LINK`` carries a byte offset with nowhere to put a bit position -
+        leaving the mask out means the whole word and writing zero means nothing, so both are
+        wrong answers dressed up as output. Such a member waits for a build that reports where
+        its bits are; the analysis says so once per object it happens to.
+        """
+        if leaf.bits is not None:
+            return False
+        return leaf.a2l.exported and self._instances_exported.get(leaf.instance, True)
+
+    def _leaf_measurement(self, leaf: ResolvedLeaf) -> MeasurementView:
+        return MeasurementView(
+            name=leaf.path,
+            description=leaf.description or leaf.path,
+            datatype=A2L_TYPE[leaf.datatype],
+            compu_method=self._methods.reference(leaf),
+            lower=format_number(leaf.limits.min),
+            upper=format_number(leaf.limits.max),
+            address=self._options.address_of(leaf.path),
+            matrix_dim=_matrix_dim(leaf),
+            format=leaf.a2l.format,
+            display_identifier=leaf.a2l.display_identifier,
+            component=leaf.owner or "",
+            condition=leaf.condition,
+        )
+
+    def _leaf_characteristic(self, leaf: ResolvedLeaf) -> CharacteristicView:
+        """A calibratable member, which is a ``VALUE`` or a ``VAL_BLK`` and never a curve.
+
+        A member refers to no other object - a structure cannot hold an axis reference - so the
+        two table shapes cannot arise here and there is no ``AXIS_DESCR`` to write.
+        """
+        return CharacteristicView(
+            name=leaf.path,
+            description=leaf.description or leaf.path,
+            type="VAL_BLK" if leaf.shape else "VALUE",
+            address=self._options.address_of(leaf.path),
+            deposit=self._layouts.values(leaf.datatype),
+            compu_method=self._methods.reference(leaf),
+            lower=format_number(leaf.limits.min),
+            upper=format_number(leaf.limits.max),
+            matrix_dim=_matrix_dim(leaf) if leaf.shape else None,
+            format=leaf.a2l.format,
+            display_identifier=leaf.a2l.display_identifier,
+            axis_descrs=(),
+            condition=leaf.condition,
+        )
 
     def _measurement(self, entry: ResolvedObject) -> MeasurementView:
         return MeasurementView(
@@ -310,21 +372,33 @@ class _A2lModelBuilder:
         )
 
     def _group(self, component: ResolvedComponent) -> GroupView | None:
+        """What one component contributes to the file, by name.
+
+        A structured variable contributes its members rather than itself: there is no record
+        called ``Inlet``, so a group naming it would be a reference to nothing - and a
+        calibration tool drops one of those without a word.
+        """
         by_name = self._by_name
+        declared = {entry.name for entry in component.declarations}
         names = [entry.name for entry in component.declarations if entry.name in self._exported]
-        if not names:
+        measurements = [n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT]
+        characteristics = [n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT]
+        for leaf in self._dictionary.leaves:
+            if leaf.instance not in declared or not self._carries(leaf):
+                continue
+            target = measurements if leaf.kind is ObjectKind.MEASUREMENT else characteristics
+            target.append(leaf.path)
+        if not measurements and not characteristics:
             return None
         return GroupView(
             name=component.name,
             description=component.description or component.name,
-            measurements=tuple(n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT),
-            characteristics=tuple(
-                n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT
-            ),
+            measurements=tuple(measurements),
+            characteristics=tuple(characteristics),
         )
 
 
-def _matrix_dim(entry: ResolvedObject) -> str | None:
+def _matrix_dim(entry: ResolvedObject | ResolvedLeaf) -> str | None:
     """``MATRIX_DIM x y z``, where ``x`` is the index that runs fastest.
 
     The dictionary carries the shape in c declaration order, in which the *last* index runs
@@ -374,7 +448,7 @@ class _CompuMethodBuilder:
         self._vtabs: dict[str, CompuVtabView] = {}
         self._names: set[str] = set()
 
-    def reference(self, entry: ResolvedObject) -> str:
+    def reference(self, entry: ResolvedObject | ResolvedLeaf) -> str:
         conversion = entry.conversion
         unit = entry.unit
         if isinstance(conversion, IdentityConversion) and not unit:

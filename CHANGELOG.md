@@ -10,6 +10,81 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### `volatile` is a key of every kind, and every definition states it
+
+**Breaking.**  `volatile` used to belong to the measurement alone, where it was optional and
+saying nothing meant `false`.  It is a key of every kind now - measurement, parameter, value
+block, curve, map, axis - and it is required on every definition, with no default:
+
+```json
+{ "kind": "parameter", "name": "Gain", "datatype": "uint16", "init": 3, "volatile": true }
+```
+
+A definition that leaves it out does not load:
+
+```text
+sensing.ddd.json#component.declarations[0].definition.volatile: error[schema]: Field required
+```
+
+The generated c composes the two qualifiers independently, where `const` used to swallow the
+`volatile` a definition asked for:
+
+```c
+volatile uint16_t Speed;            /* measurement, volatile true  */
+uint16_t Speed;                     /* measurement, volatile false */
+const volatile uint16_t Gain = 3U;  /* calibration, volatile true  */
+const uint16_t Gain = 3U;           /* calibration, volatile false */
+```
+
+The matching `extern` declarations carry the same pair, and `--const-inputs` still adds no
+second `const`.
+
+A calibration object needs the qualifier because `const` alone lets the compiler use the initial
+value in place of a read wherever it can see that value, and gcc 12.2.0 does.  Read in the
+translation unit that defines it, `const uint16_t Gain = 3;` under
+`apply(x) { return x * Gain; }` compiles at `-O2` to `lea eax, [rdi+rdi*2]` - the 3 has become a
+shift and an add, and no load of `Gain` is left in the function.  With `const volatile` the same
+function is `movzx eax, WORD PTR Gain[rip]` followed by `imul eax, edi`.  Nor is this the
+optimiser, so lowering the level is no escape: at `-O0` the body is `mov eax, 3`, because the c
+front end substitutes the initialiser while it parses, and an array element read at a constant
+index folds there too.  Across translation units without `-flto` - which is DDD's own layout,
+the definitions in `ddd_globals.c` and the reads in the components - the load does survive, but
+`const` still lets the compiler serve two source-level reads from one of them and move it across
+an opaque call: two reads either side of a call are one `movzwl` with plain `const` and two with
+`const volatile`.  With `-flto` it folds outright.  A program that writes 7 through the object's
+address prints, at `-O0`, `-O2` and `-Os` alike, `memory now holds Gain=7` and then
+`apply(1) = 3`: the new value is in memory and the software is not reading it.  Reading the
+object once into a ram copy at startup is no way out either - `RamGain = Gain;` is
+`mov eax, 3`.
+
+What `true` costs is read-only memory.  gcc counts a volatile access as a side effect and takes
+the object out of the read-only category, so `.rodata` becomes a plain `.data`: measured on
+DDD's own generated demo with the flag set this project documents, `size -A ddd_globals.o` goes
+from `.rodata 84` and `.data 2` to `.data 86`, and an explicitly attributed section behaves the
+same way - `.calib` is emitted `A` for const and `WA` for const volatile.  On a flash target with
+an ordinary linker script that means a ram address with a load region in flash and a copy at
+startup, so the tool programs a page the code never reads and the next reset overwrites what the
+tool wrote.  A project that calibrates online settles the placement in its linker script - DDD's
+own memory placement is section 3.6 of `SPEC.md` and still planned - and DDD states no
+preference between the two and reports nothing about the choice, because only the project knows
+which cost it is paying.
+
+Hand-written code that consumes the object may need its helpers re-typed: passing a
+`const volatile` array to one that takes a plain `const` array is
+`error: passing argument 1 of 'sum' discards 'volatile' qualifier`, reported under
+`-Werror=discarded-qualifiers`, and casting the qualifier away is closed by `-Wcast-qual`, which
+this project's documented flag set includes.  The qualifier also buys freshness by giving up
+coherence: the compiler has to re-read at every mention, so a parameter set read at several
+points of one control step can straddle a calibration write, and a loop over a `const volatile`
+gain does not vectorise at `-O3`.
+
+**Migrating**: add the key to every declaration of every kind.  `ddd check` names each one that
+still lacks it, and no severity softens it - the finding is `schema`, and `-W schema=warning` is
+refused with `the severity of check 'schema' cannot be changed`.  A project that does not
+calibrate a running ecu states `false` throughout and keeps its data in flash exactly as before;
+one whose calibration tool writes through an object's address states `true` and places those
+objects itself.
+
 ### `name-collision` also sees the enum type names
 
 A variable may not share its name with an enum, as it already may not share one with an
@@ -50,14 +125,16 @@ turn out to be three different kinds of thing, and are now handled as such.
 
 **`volatile` is interface.**  It reaches every consumer's own header as a type qualifier,
 `extern volatile uint16_t Speed[4]`, which is what tells that component's code not to cache the
-value and not to expect two reads to agree.  A component declaring the opposite has
-misunderstood what it is compiled against, so a disagreement is now a `definition-mismatch`
-error rather than a warning it loses.
+value and not to expect two reads to agree - and, on a calibration object, what keeps the
+compiler from using the initial value instead of reading the variable at all.  A component
+declaring the opposite has misunderstood what it is compiled against, so a disagreement is now a
+`definition-mismatch` error rather than a warning it loses.
 
-**Every declaration has to say the same thing**, and leaving it out says `false`.  That is
-unlike `limits`, which a declaration may omit because DDD derives them from the datatype and
-the conversion - there is nothing to derive here.  A component whose description does not say a
-variable is volatile is a component whose author was never told, which is the thing an
+**Every declaration has to say the same thing**, and every declaration has to say it: the key is
+required on every definition of every kind, and there is no value it takes by staying silent.
+That is unlike `limits`, which a declaration may omit because DDD derives them from the datatype
+and the conversion - there is nothing to derive here.  A component whose description does not
+say a variable is volatile is a component whose author was never told, which is the thing an
 interface description exists to prevent.
 
 **Migrating**: every component that reads a volatile variable has to declare it volatile too.
@@ -68,8 +145,12 @@ property of whoever happens to write the variable, so **any** component may now 
 object to reach the a2l, and asking wins over declining:
 
 ```json
-{ "scope": "output", "definition": { "name": "X", "a2l": { "export": false } } }
-{ "scope": "input",  "definition": { "name": "X", "a2l": { "export": true  } } }
+{ "scope": "output", "definition": { "name": "X", "kind": "measurement",
+                                     "datatype": "uint8", "volatile": false,
+                                     "a2l": { "export": false } } }
+{ "scope": "input",  "definition": { "name": "X", "kind": "measurement",
+                                     "datatype": "uint8", "volatile": false,
+                                     "a2l": { "export": true } } }
 ```
 
 `X` is exported.  The rule is order independent, so two consumers can never conflict and there
@@ -105,12 +186,14 @@ project can lower it with `-W consumer-storage=warning` while the keys come out.
 This also fixes the reason those keys were there.  A consumer that left `init` out used to be
 reported as specifying "none" against the producer's value, so restating it was the only way to
 keep a run quiet - silence was read as a claim.  `init` has left the `storage-mismatch`
-comparison entirely; that check now covers `volatile` and the `a2l` block.
+comparison entirely; what that check still compares is the `a2l` block, and only the part of it
+that is presentation.
 
-Those two will follow once the contract can tell a value that was omitted from one that was
-written down and happens to be the default.  Today it cannot: `volatile` defaults to `false`
-and the `a2l` block to its defaults, so a consumer saying nothing is indistinguishable from one
-insisting on exactly those - which is the trap `init` was already in.
+The other two keys the trap applied to are out of it as well, by the two ways there are of
+getting out.  `volatile` is required on every definition now, so there is no silence left to
+read as a claim, and what it states is compared as interface rather than as storage.  `export`
+kept the right to say nothing and gained a third state for it, so a declaration that omits the
+key is stored as having omitted it rather than as having asked for the default.
 
 ### `ddd lsp`: the checks, in the editor
 

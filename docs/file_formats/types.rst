@@ -86,6 +86,13 @@ generated c that the description does not describe. A ``value`` or ``bits`` memb
 its ``kind``, ``measurement`` or ``parameter``, which decides whether a calibration tool may
 write it; the other object kinds refer to further objects, which a member has no way to do.
 
+A member states no ``volatile``, and the scope of that key is the reason rather than an
+oversight. ``volatile`` is stated by the object that has an address, and a structured variable
+is one such object however many members it has: it answers once, in its own declaration, and
+the answer covers the whole of it. A ``types`` file describes a layout and not a variable, so
+there is nothing in it for the qualifier to belong to. None of this reaches the generated c
+yet, since a variable cannot have a structured datatype for the moment.
+
 A bitfield has to fit its storage and has to sit in an integer: ``17`` bits do not fit a
 ``uint16``, and c allows a bitfield only in an integer type, so ``float32`` and ``boolean`` are
 refused.

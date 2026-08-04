@@ -282,10 +282,12 @@ a2l without ever being looked at. The demo project uses it for ``ValueD``:
      "scope": "local",
      "definition": {
        "name": "ValueD",
+       "kind": "measurement",
        "description": "Component local measurement, kept out of the a2l",
        "datatype": "uint16",
        "dimensions": [8],
-       "a2l": { "export": false }
+       "a2l": { "export": false },
+       "volatile": false
      }
    }
 

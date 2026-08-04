@@ -128,11 +128,9 @@ _INTERFACE_FIELDS = (
         optional=True,
     ),
     _ComparedField("references", lambda d: d.references, _describe_references),
-    # Not optional, unlike limits. A declaration may leave limits out because DDD derives them
-    # from the datatype and the conversion; there is nothing to derive here, so leaving
-    # volatile out says "this does not change under you" as plainly as writing false would.
-    # Every component that reads the variable has to know, which means every description of it
-    # has to say so.
+    # Not optional, unlike limits, and it cannot be: the key is required on every definition,
+    # so there is no silence to interpret. Every component that reads the object gets the
+    # qualifier in its own header, which means every description of it has to agree.
     _ComparedField("volatile", lambda d: d.volatile, lambda d: str(d.volatile).lower()),
 )
 

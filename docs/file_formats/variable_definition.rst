@@ -14,6 +14,7 @@ json files can actually catch.
 
    {
      "name": "ValueE",
+     "kind": "measurement",
      "description": "Measurement used as the input quantity of AxisA",
      "datatype": "uint16",
      "unit": "Hz",
@@ -26,10 +27,10 @@ json files can actually catch.
 The common attributes
 ---------------------
 
-Every kind of data object carries the attributes below. The kind specific ones - ``kind``
-itself, ``dimensions``, ``volatile``, ``size``, ``input``, ``axis``, ``x_axis``, ``y_axis`` -
-are described in the sections that follow, and a key that does not belong to the kind that was
-selected is rejected rather than ignored.
+Every kind of data object carries the attributes below. The kind specific ones -
+``dimensions``, ``size``, ``input``, ``axis``, ``x_axis``, ``y_axis`` - are described in the
+sections that follow, and a key that does not belong to the kind that was selected is rejected
+rather than ignored.
 
 .. list-table::
    :header-rows: 1
@@ -45,14 +46,33 @@ selected is rejected rather than ignored.
        the ASAP2 1.6.1 limit, which is tighter than what a c compiler would accept and is
        therefore the one enforced.
    * - ``kind``
-     - ``measurement``
+     - required
      - What sort of object this is: ``measurement``, ``parameter``, ``value_block``, ``axis``,
-       ``curve`` or ``map``. Omitting it gives a measurement, so the simplest possible
-       definition is a name and a datatype.
+       ``curve`` or ``map``. It is stated rather than inferred, and it decides which of the
+       kind specific keys the definition may carry.
    * - ``datatype``
      - required
      - The storage the target uses: ``boolean``, ``uint8``, ``sint8``, ``uint16``, ``sint16``,
        ``uint32``, ``sint32``, ``uint64``, ``sint64``, ``float32`` or ``float64``.
+   * - ``volatile``
+     - required
+     - Whether the generated declaration carries the c qualifier of the same name, which
+       forbids the compiler to assume it already knows the value. A measurement needs it when
+       something outside the reading component writes the variable - an interrupt, a second
+       core, a peripheral - and calibration data needs it when a calibration tool is to change
+       the value in a running ecu, because without it the compiler is entitled to fold the
+       initialiser into the code that reads it - within one translation unit at every
+       optimisation level, ``-O0`` included, and across them under ``-flto``. The whole
+       account, with the compiler output it was measured from, is in
+       :doc:`../generated_artefacts`. There is no default because there is no answer DDD could derive, and
+       because the two answers have different costs that only the project can weigh:
+       ``true`` keeps a value tunable while it runs and, on a typical toolchain, moves a
+       calibration object out of read only memory, since the compiler treats a volatile access
+       as a side effect and stops putting the object in ``.rodata``; ``false`` leaves it in
+       flash and lets the optimiser keep the value in a register. DDD states no preference and
+       reports nothing about the choice - it renders what the description says, and
+       :doc:`generated artefacts </generated_artefacts>` follows what that costs into the
+       image.
    * - ``description``
      - ``""``
      - Free text. It is offered to the c templates as the text of the comment above the
@@ -81,6 +101,13 @@ selected is rejected rather than ignored.
    * - ``a2l``
      - export
      - Per object settings for the a2l backend, and nothing else reads them.
+
+Four of those are required, and none of them is something DDD could invent a value for, so
+the simplest possible definition still says four things:
+
+.. code-block:: json
+
+   { "name": "Counter", "kind": "measurement", "datatype": "uint32", "volatile": false }
 
 .. note::
    ``limits`` and ``init`` are on different sides of the conversion, and that is not an
@@ -289,11 +316,13 @@ it, and a project generating no a2l can ignore it entirely.
 
    {
      "name": "ValueLong",
+     "kind": "measurement",
      "description": "Long name shown shorter in the tool",
      "datatype": "uint16",
      "unit": "Hz",
      "conversion": { "factor": 0.25 },
-     "a2l": { "format": "%8.3", "display_identifier": "ValLong" }
+     "a2l": { "format": "%8.3", "display_identifier": "ValLong" },
+     "volatile": false
    }
 
 .. code-block:: text
@@ -359,8 +388,13 @@ Kinds of data object
 The division that matters is between the one kind the software writes and the five it does
 not: a ``measurement`` is an online value that the software produces and the calibration tool
 only observes, while everything else is calibration data - the software never writes it, so it
-is generated ``const`` and ends up in read only memory where a calibration tool can change it
-between sessions.
+is generated ``const``, and a calibration tool changes it through its address.
+
+Whether it also ends up in read only memory is the other question, and the one ``volatile``
+answers. ``const`` says who writes the object from inside the software, ``volatile`` says
+whether anything writes it from outside, and the two are independent: a parameter that a tool
+is meant to tune while the ecu runs is ``const volatile``, and a parameter that is only ever
+changed between builds is plain ``const`` and stays in flash.
 
 .. list-table::
    :header-rows: 1
@@ -371,29 +405,34 @@ between sessions.
      - c
      - a2l
    * - ``measurement``
-     - ``dimensions``, ``volatile``
+     - ``dimensions``
      - writable variable
      - ``MEASUREMENT``
    * - ``parameter``
      - -
-     - ``const`` scalar
+     - ``const`` scalar, ``const volatile`` where stated
      - ``CHARACTERISTIC ... VALUE``
    * - ``value_block``
      - ``dimensions`` (required)
-     - ``const`` array
+     - ``const`` array, ``const volatile`` where stated
      - ``CHARACTERISTIC ... VAL_BLK``
    * - ``axis``
      - ``size`` (required), ``input``
-     - ``const`` array ``[size]``
+     - ``const`` array ``[size]``, ``const volatile`` where stated
      - ``AXIS_PTS``
    * - ``curve``
      - ``axis`` (required)
-     - ``const`` array ``[size of the axis]``
+     - ``const`` array ``[size of the axis]``, ``const volatile`` where stated
      - ``CHARACTERISTIC ... CURVE``
    * - ``map``
      - ``x_axis``, ``y_axis`` (required)
-     - ``const`` array ``[size of y][size of x]``
+     - ``const`` array ``[size of y][size of x]``, ``const volatile`` where stated
      - ``CHARACTERISTIC ... MAP``
+
+The extra keys are what the kind adds to the common attributes, which is why ``volatile`` is
+not among them: every kind states it, and where the answer is ``true`` the c column gains that
+word - a measurement becomes ``volatile uint16_t Speed;`` and a parameter
+``const volatile uint16_t Gain = 3U;``.
 
 Every example below is taken from ``examples/demo/``, and every generated fragment is what
 ``ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates`` actually
@@ -403,10 +442,11 @@ measurement
 ~~~~~~~~~~~
 
 A measurement is a value the software computes and writes, declared with
-``"kind": "measurement"`` like every other kind. Two keys are its own: ``dimensions``, a list of array
-dimensions that is empty for a scalar, and ``volatile``, which puts the c keyword of the same
-name on the definition for a value written by an interrupt or by another task, so that the
-compiler does not cache it in a register.
+``"kind": "measurement"`` like every other kind. One key is its own: ``dimensions``, a list of
+array dimensions that is empty for a scalar. It is also the one kind that is not generated
+``const``, so the ``volatile`` every definition states is the whole of its qualifier -
+``ValueB`` says ``true``, which is the answer for a value written by an interrupt or by
+another task, and keeps the compiler from caching it in a register.
 
 .. code-block:: json
 
@@ -414,6 +454,7 @@ compiler does not cache it in a register.
      "scope": "output",
      "definition": {
        "name": "ValueB",
+       "kind": "measurement",
        "description": "Array measurement with four elements",
        "datatype": "uint16",
        "unit": "V",
@@ -449,8 +490,17 @@ parameter
 ~~~~~~~~~
 
 A parameter is a single calibratable constant: one value the software reads and the
-calibration tool writes. It has no extra keys at all - a scalar has no shape and a constant
-has no volatility.
+calibration tool writes. It has no extra keys at all, since a scalar has no shape - but like
+every other kind it states ``volatile``, and a constant very much has a volatility. Volatility
+is not about whether the software ever assigns to the object; it is about whether the value
+can change while the program runs, and a calibratable constant exists precisely so that
+somebody outside the program can change it. Say ``false`` and the compiler is free to fold
+the initialiser into the code that reads the value wherever it can see it - at ``-O0`` as
+well, since that is the front end substituting a value it knows rather than the optimiser at
+work - so a tool writing a new value through the object's address changes memory the software
+has stopped reading. Say
+``true`` and every read is a load from the address, at the price of the object leaving read
+only memory.
 
 .. code-block:: json
 
@@ -464,7 +514,8 @@ has no volatility.
        "unit": "Hz",
        "conversion": { "factor": 0.25 },
        "limits": { "min": 500, "max": 1500 },
-       "init": 3200
+       "init": 3200,
+       "volatile": false
      }
    }
 
@@ -485,6 +536,16 @@ limits of 500 and 1500 that the calibration tool will enforce. ``local`` is the 
 for a parameter, since data that only tunes one component has no business being visible to the
 others.
 
+Every calibration object of the demo says ``"volatile": false``, which is why all of them are
+plain ``const`` here. The same definition with ``true`` differs by one word in the c and by
+nothing at all in the a2l, since a calibration tool is told the same address either way - the
+difference is whether the code that reads the value goes back to that address:
+
+.. code-block:: c
+
+   /** Single calibratable constant [Hz] (calibration parameter) */
+   const volatile uint16_t ParameterA = 3200U;
+
 value_block
 ~~~~~~~~~~~
 
@@ -502,7 +563,8 @@ mask table, a set of coefficients, a lookup with an index the software computes 
        "description": "Calibratable array of constants",
        "datatype": "uint8",
        "dimensions": [8],
-       "init": [0, 12, 28, 52, 84, 124, 180, 255]
+       "init": [0, 12, 28, 52, 84, 124, 180, 255],
+       "volatile": false
      }
    }
 
@@ -550,7 +612,8 @@ to be a measurement, and it has to exist.
        "limits": { "min": 0, "max": 8000 },
        "size": 6,
        "input": "ValueE",
-       "init": [0, 3200, 6400, 12800, 19200, 32000]
+       "init": [0, 3200, 6400, 12800, 19200, 32000],
+       "volatile": false
      }
    }
 
@@ -590,7 +653,8 @@ A curve is a one dimensional calibratable table laid over one axis. It names tha
        "unit": "ms",
        "conversion": { "factor": 0.01 },
        "axis": "AxisA",
-       "init": [1200, 900, 800, 750, 700, 650]
+       "init": [1200, 900, 800, 750, 700, 650],
+       "volatile": false
      }
    }
 
@@ -641,7 +705,7 @@ A map is a two dimensional calibratable table over two axes, named with ``x_axis
        "kind": "map",
        "name": "MapA",
        "description": "Calibratable map over AxisA and AxisB",
-       "datatype": "int8",
+       "datatype": "sint8",
        "unit": "%",
        "conversion": { "factor": 0.5 },
        "x_axis": "AxisA",
@@ -651,7 +715,8 @@ A map is a two dimensional calibratable table over two axes, named with ``x_axis
          [18, 22, 26, 28, 30, 28],
          [12, 16, 20, 22, 24, 22],
          [6, 10, 14, 16, 18, 16]
-       ]
+       ],
+       "volatile": false
      }
    }
 

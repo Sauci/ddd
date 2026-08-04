@@ -115,7 +115,7 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("init-invalid", Severity.ERROR,
                "an initial value does not fit the datatype of the variable"),
         _check("storage-mismatch", Severity.WARNING,
-               "components disagree on volatile or on the a2l block; the producer wins"),
+               "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
                "declarations of one variable use different preprocessor conditions"),
         _check("unused-output", Severity.WARNING, "an output variable is read by no component",

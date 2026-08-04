@@ -376,33 +376,101 @@ where another does not define it.
       20 of 20 declared variables are defined
         conditional, present: ValueG
 
-Calibration data is const
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Calibration data is const, and volatile when a tool tunes it
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Everything that is not a ``measurement`` - a parameter, a value block, an axis, a curve, a
 map - is data the software reads and never writes, and it is generated ``const`` for that
-reason. The immediate benefit is that the linker places it in read only memory, which on a
-flash based target is the only place calibration data can usefully live: a calibration tool
-reprograms a flash page or redirects the access through an emulator, and neither works for
-an object the linker decided to put in ram. The second benefit is that a component that
-tries to write its own calibration parameter does not compile, which catches the mistake at
-the point where somebody typed it rather than in the field.
+reason. The immediate benefit is that a component which tries to write its own calibration
+parameter does not compile, which catches the mistake at the point where somebody typed it
+rather than in the field. The second is that the linker is free to place the object in read
+only memory, which on a flash based target is where a constant that is only ever changed by
+reflashing the image belongs.
 
-This is not something a description can override. ``volatile`` is a key of a measurement and
-of nothing else, so writing it on a parameter is rejected outright rather than quietly
-ignored:
+What ``const`` does not say is whether anything *outside* the compiled code changes the
+value while it runs, and that is the question ``volatile`` answers. It is a key of every
+definition of every kind, required and without a default, so a parameter, an axis, a curve
+and a map state it exactly as a measurement does. The two qualifiers describe two different
+things - ``const`` that this software never writes the object, ``volatile`` that somebody
+else does - so DDD composes them independently instead of letting one displace the other:
 
-.. code-block:: text
+.. code-block:: c
 
-   $ ddd check volatile_parameter.ddd.json
-   volatile_parameter.ddd.json#component.declarations[0].definition.volatile: error[schema]: Extra inputs are not permitted (got: True)
-   1 error
+   volatile uint16_t Speed;            /* measurement, "volatile": true  */
+   uint16_t Speed;                     /* measurement, "volatile": false */
+   const volatile uint16_t Gain = 3U;  /* parameter,   "volatile": true  */
+   const uint16_t Gain = 3U;           /* parameter,   "volatile": false */
 
-The reasoning behind that restriction is that ``volatile`` describes a value that changes
-without the compiled code having written it, which is exactly what a measurement produced by
-an interrupt or by another core is; a ``const`` object living in flash is read through a
-normal load, and qualifying it ``volatile`` would defeat the optimiser without buying
-anything.
+Every ``extern`` declaration of the object is qualified to match, in ``ddd_globals.h`` and in
+the header of each component that declared it, so that the whole image is compiled against
+one statement about the value. This is the argument ``--const-inputs`` makes one section
+above, applied to the other half of the data: ``const volatile`` is the correct qualification
+for a value this translation unit may not write but that something else changes underneath
+it, and whether that something else is the producing component or the calibration tool
+connected to the running ecu makes no difference to the compiler.
+
+The reason a tuned constant needs the ``volatile`` is that ``const`` is a promise the
+compiler is entitled to act on, and it does. Compiled with the gcc 12.2.0 of the project's
+own container, ``const uint16_t Gain = 3;`` read by ``apply(x) { return x * Gain; }`` becomes
+``lea eax, [rdi+rdi*2]`` at ``-O2``: the 3 has been turned into a shift and an add and no
+load of ``Gain`` is left in the function. Declared ``const volatile``, the same source
+compiles to ``movzx eax, WORD PTR Gain[rip]`` followed by ``imul eax, edi``, which reads the
+object every time it is evaluated. This is not an optimiser level anybody can dial down: at
+``-O0`` the body is ``mov eax, 3``, because the c front end substitutes the initialiser while
+it parses, before an optimiser has run. Nor is it confined to scalars, since
+``pick() { return Curve[2]; }`` on a ``const`` array is ``mov eax, 30`` at ``-O0`` as well.
+Across translation units without link time optimisation the load does survive, but the
+``const`` still allows the compiler to collapse two source level reads into one and to move
+that one across an opaque call, so a value that changes while the software runs cannot be
+observed to change between them - and with ``-flto`` it folds outright. Reading the parameter
+once into a ram copy at startup is no escape either: ``RamGain = Gain;`` is ``mov eax, 3``.
+
+What that costs is not a write that fails but a write nobody notices. A program that stores 7
+through the address of a plain ``const`` object prints, identically at ``-O0``, ``-O2`` and
+``-Os``, that memory now holds ``Gain=7`` and that ``apply(1)`` still returns 3, which is
+exactly the failure a calibration engineer spends an afternoon on: the tool shows the new
+value, reads it back correctly, and the ecu behaves as it did before.
+
+``volatile`` is not free, and what it costs is the read only memory the ``const`` earned. gcc
+treats a volatile access as a side effect and takes the object out of the read only category
+altogether: ``.section .rodata`` becomes a plain ``.data``, the section flags ``readelf``
+reports go from ``A`` to ``WA``, and the class ``nm`` prints goes from ``R`` to ``D``.
+Measured on DDD's own generated demo with the flag set quoted above, ``size -A
+ddd_globals.o`` moves from ``.rodata 84`` and ``.data 2`` to ``.data 86``. Naming a section
+explicitly does not change this - a ``.calib`` section is emitted ``A`` when its contents are
+``const`` and ``WA`` when they are ``const volatile``. On a flash target with an ordinary
+linker script that means a ram address with a load region in flash and a copy at startup, so
+the calibration tool programs a page the code never reads and the next reset overwrites what
+the tool wrote. A project that calibrates online therefore places these objects itself, in
+its linker script.
+
+DDD states no preference between the two answers and reports nothing about the choice. There
+is nothing in a description it could derive one from - unlike the limits, which follow from
+the datatype and the conversion - and the two answers have different costs, of which only the
+project knows which it is paying. A project that tunes calibration data in a running ecu
+writes ``true`` and arranges the placement; a project that changes a constant by reflashing
+the image writes ``false`` and keeps its data in flash, where the ``const`` alone puts it.
+Both are ordinary, and DDD renders what the description says.
+
+.. note::
+   Because the key is required and has no default, a description written before it existed
+   gains it on every definition of every kind. There is no phase-in: an omitted ``volatile``
+   is reported by the ``schema`` check, one of the five whose severity ``-W`` refuses to
+   relax, so ``-W schema=warning`` does not buy a project the time to migrate one component
+   at a time. Templates need no change at all, because no template spells a qualifier out:
+   ``.definition`` and ``.declaration()`` compose it, and a template that lays a declaration
+   out itself reads the two booleans behind it, as :doc:`templates` describes.
+
+.. warning::
+   ``const volatile`` propagates into the hand-written code that reads the object. Passing a
+   ``const volatile`` array to a helper declared to take a plain ``const`` pointer is
+   ``error: passing argument 1 of 'sum' discards 'volatile' qualifier
+   [-Werror=discarded-qualifiers]``, and casting the qualifier away is refused in turn by
+   ``-Wcast-qual``, which the flag set above includes, so such a helper has to be re-typed
+   rather than worked around. The qualifier also buys freshness at the price of coherence:
+   the compiler has to re-read the object at every mention, so a set of parameters read at
+   several points of one control step can straddle a calibration write and be half old and
+   half new, and at ``-O3`` a loop over a ``const volatile`` gain is not vectorised at all.
 
 Regeneration is stable
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1038,10 +1106,12 @@ business displaying:
      "scope": "local",
      "definition": {
        "name": "ValueD",
+       "kind": "measurement",
        "description": "Component local measurement, kept out of the a2l",
        "datatype": "uint16",
        "dimensions": [8],
-       "a2l": { "export": false }
+       "a2l": { "export": false },
+       "volatile": false
      }
    }
 

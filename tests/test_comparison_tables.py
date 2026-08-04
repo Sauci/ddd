@@ -11,8 +11,8 @@ resolved form the backends receive, has to be accounted for in exactly one of th
 
 * it is named in a comparison table,
 * it reaches a table through a derived property under another name - ``dimensions`` is
-  compared as ``shape``, ``is_volatile`` as ``volatile``, ``axis``/``x_axis``/``y_axis``/
-  ``input`` as ``references`` - and the mapping below records which,
+  compared as ``shape``, ``axis``/``x_axis``/``y_axis``/``input`` as ``references`` - and the
+  mapping below records which,
 * it is deliberately not compared, and :data:`_NOT_COMPARED` says why in one line.
 
 Adding a field to a model therefore fails here until somebody has decided which of the three
@@ -44,7 +44,6 @@ def table_names(*tables: tuple[object, ...]) -> set[str]:
 DERIVED_AS: dict[str, str] = {
     "dimensions": "shape",
     "size": "shape",
-    "is_volatile": "volatile",
     "input": "references",
     "axis": "references",
     "x_axis": "references",
@@ -157,12 +156,13 @@ class TestComparisonTables:
         assert "limits" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
     def test_volatile_is_an_interface_field_and_unlike_limits_is_not_optional(self) -> None:
-        """Both properties are stated by hand, and only one may be left out.
+        """Both are stated by hand, and only one of them may be left out of a definition.
 
         ``limits`` are derived from the datatype and the conversion when a declaration omits
-        them, so omitting is asking for the derivation. Nothing derives ``volatile``: leaving
-        it out says "this does not change under you" as plainly as writing ``false``, and
-        every component reading the variable has to have been told.
+        them, so omitting them is asking for the derivation, and the table relaxes the
+        comparison to match. Nothing derives ``volatile``, which is why the key is required on
+        every definition - so there is never a silence to interpret here either, and the entry
+        is not optional.
         """
         inside = {field.name: field for field in analysis._INTERFACE_FIELDS}
         assert "volatile" in inside
@@ -230,5 +230,5 @@ class TestComparisonTables:
         assert "shape" in table_names(analysis._INTERFACE_FIELDS)
         assert "shape" in table_names(compare._INTERFACE_FIELDS)
         declared = next(f for f in analysis._INTERFACE_FIELDS if f.name == "shape")
-        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax")
+        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax", volatile=False)
         assert declared.value(curve) is None  # not known yet, it comes from the axis

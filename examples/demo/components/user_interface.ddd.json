@@ -26,7 +26,8 @@
           "datatype": "sint16",
           "unit": "degC",
           "conversion": { "kind": "linear", "factor": 0.1 },
-          "limits": { "min": -40, "max": 150 }
+          "limits": { "min": -40, "max": 150 },
+          "volatile": false
         }
       },
       {
@@ -40,7 +41,8 @@
           "limits": {
             "min": -50,
             "max": 90
-          }
+          },
+          "volatile": false
         }
       },
       {
@@ -60,7 +62,8 @@
               { "name": "STATE_DEGRADED", "value": 3 },
               { "name": "STATE_FAULT", "value": 15 }
             ]
-          }
+          },
+          "volatile": false
         }
       },
       {
@@ -86,7 +89,8 @@
           "datatype": "uint16",
           "unit": "V",
           "conversion": { "factor": 0.001 },
-          "limits": { "min": 0, "max": 5 }
+          "limits": { "min": 0, "max": 5 },
+          "volatile": false
         }
       },
       {
@@ -95,7 +99,8 @@
           "name": "ValueJ",
           "kind": "measurement",
           "description": "Counter written by the event logger",
-          "datatype": "uint8"
+          "datatype": "uint8",
+          "volatile": false
         }
       },
       {
@@ -105,7 +110,8 @@
           "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
-          "init": 0
+          "init": 0,
+          "volatile": false
         }
       },
       {
@@ -119,7 +125,8 @@
           "limits": { "min": 0, "max": 8000 },
           "size": 6,
           "input": "ValueE",
-          "unit": "Hz"
+          "unit": "Hz",
+          "volatile": false
         }
       },
       {
@@ -132,7 +139,8 @@
           "unit": "%",
           "conversion": { "factor": 0.5 },
           "axis": "AxisA",
-          "init": 200
+          "init": 200,
+          "volatile": false
         }
       },
       {
@@ -143,7 +151,8 @@
           "description": "Calibratable array of constants",
           "datatype": "uint8",
           "dimensions": [8],
-          "init": [0, 12, 28, 52, 84, 124, 180, 255]
+          "init": [0, 12, 28, 52, 84, 124, 180, 255],
+          "volatile": false
         }
       }
     ]

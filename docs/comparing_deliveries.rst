@@ -185,10 +185,21 @@ them together with everything else.
 kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
 component local - are the properties a consumer compiles against and calibrates against. Any
 one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. ``changed-storage`` covers the two properties that change behaviour without
-changing the interface, the initial value and ``volatile``; ``changed-a2l`` covers the export
-flag, the display format and the display identifier, which move labels around in a
+ones differ. ``changed-storage`` covers the two properties that change how an object behaves
+rather than what it means, the initial value and ``volatile``; ``changed-a2l`` covers the
+export flag, the display format and the display identifier, which move labels around in a
 calibration tool without touching the software.
+
+``volatile`` is graded differently here than it is *inside* a project, where it is interface
+and a disagreement is a ``definition-mismatch`` error - see :doc:`consistency_checks`. The
+difference is who is left describing the object wrongly. Inside one project two components are
+compiled together against one address, so one of them is compiled against an assumption that
+does not hold. Between two deliveries there is only one answer at a time and every consumer is
+regenerated and recompiled against it, so nobody is left wrong; what changed is how the object
+behaves. On a calibration object, ``volatile`` losing
+its ``true`` is more than a change of behaviour in the abstract: the compiler is then entitled
+to fold the value it was built with into the code that reads it, so the parameter keeps its
+address and its a2l entry but stops being tunable while the software runs.
 
 Two removals are distinguished because they cost different things. An object that a component
 read cannot simply disappear: the baseline names the components that read it, so DDD knows
@@ -230,33 +241,39 @@ The delivery that went out
            "scope": "output",
            "definition": {
              "name": "PressureRaw",
+             "kind": "measurement",
              "description": "Manifold pressure",
              "datatype": "uint16",
              "unit": "kPa",
              "conversion": { "factor": 0.1 },
-             "limits": { "min": 0, "max": 400 }
+             "limits": { "min": 0, "max": 400 },
+             "volatile": false
            }
          },
          {
            "scope": "output",
            "definition": {
              "name": "TemperatureRaw",
+             "kind": "measurement",
              "description": "Manifold temperature",
-             "datatype": "int16",
+             "datatype": "sint16",
              "unit": "degC",
              "conversion": { "factor": 0.1 },
-             "limits": { "min": -40, "max": 150 }
+             "limits": { "min": -40, "max": 150 },
+             "volatile": false
            }
          },
          {
            "scope": "output",
            "definition": {
              "name": "SupplyVoltage",
+             "kind": "measurement",
              "description": "Sensor supply voltage",
              "datatype": "uint16",
              "unit": "V",
              "conversion": { "factor": 0.001 },
-             "limits": { "min": 0, "max": 16 }
+             "limits": { "min": 0, "max": 16 },
+             "volatile": false
            }
          },
          {
@@ -268,7 +285,8 @@ The delivery that went out
              "datatype": "uint8",
              "conversion": { "factor": 0.01 },
              "limits": { "min": 0, "max": 1 },
-             "init": 50
+             "init": 50,
+             "volatile": false
            }
          }
        ]

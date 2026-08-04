@@ -68,6 +68,38 @@ class TestLoadingFailures:
         )
         assert checks(bag) == ["schema"]
 
+    def test_a_definition_without_volatile_is_a_schema_error(self, tree: Path) -> None:
+        """The key is required, and a missing one is refused where every contract breach is.
+
+        Written by hand rather than through ``declare``, which fills the key in: this is the
+        one test that must see a definition without it. The severity of ``schema`` cannot be
+        relaxed, so this is also what a project upgrading to the required key runs into, and
+        the finding names the key it is missing.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "declarations": [
+                            {
+                                "scope": "local",
+                                "definition": {
+                                    "name": "X",
+                                    "kind": "measurement",
+                                    "datatype": "uint8",
+                                },
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "volatile" in messages(bag)
+
     def test_an_included_file_of_an_unknown_kind_is_skipped(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,
@@ -145,7 +177,13 @@ class TestModelEdges:
 
     def test_an_empty_conversion_object_means_identity(self) -> None:
         definition = DEFINITION.validate_python(
-            {"kind": "measurement", "name": "X", "datatype": "uint8", "conversion": {}}
+            {
+                "kind": "measurement",
+                "name": "X",
+                "datatype": "uint8",
+                "volatile": False,
+                "conversion": {},
+            }
         )
         assert isinstance(definition.conversion, IdentityConversion)
 
@@ -175,6 +213,7 @@ class TestModelEdges:
                     "kind": "measurement",
                     "name": "X",
                     "datatype": "uint8",
+                    "volatile": False,
                     "dimensions": [2, 2],
                     "init": [1, [2, 3]],
                 }
@@ -214,24 +253,6 @@ class TestMismatchMessages:
             },
         )
         assert checks(bag) == []
-
-    def test_a_consumer_that_leaves_volatile_out_is_saying_it_is_not(self, tree: Path) -> None:
-        """Silence is a claim here, not an absence.
-
-        Unlike limits, which DDD derives when they are left out, there is nothing to derive:
-        a description that does not say a variable is volatile describes a component whose
-        author was never told, which is the thing an interface description exists to prevent.
-        """
-        _, bag = run_analysis(
-            tree,
-            {
-                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
-                "a.ddd.json": component("A", declare("output", "X", volatile=True)),
-                "b.ddd.json": component("B", declare("input", "X")),
-            },
-        )
-        assert checks(bag) == ["definition-mismatch"]
-        assert "volatile: false != true" in messages(bag)
 
     def test_both_sides_saying_nothing_agree(self, tree: Path) -> None:
         _, bag = run_analysis(

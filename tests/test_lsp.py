@@ -783,9 +783,13 @@ class TestHover:
         )
         bare, full = describe(dictionary, "Bare"), describe(dictionary, "Full")
         assert "| unit | *none* |" in bare
-        assert "shape" not in bare and "condition" not in bare and "volatile" not in bare
+        assert "shape" not in bare and "condition" not in bare
         assert "| unit | `Hz` |" in full
         assert "| condition | `defined(FEAT_X)` |" in full
+        # Volatility is not an optional fact: every definition states it, so the row is always
+        # drawn. Leaving it out when it is false would make "no" and "nobody said" look alike,
+        # which is the confusion the required key exists to end.
+        assert "| volatile | no |" in bare
         assert "| volatile | yes |" in full
 
     def test_a_verbal_conversion_lists_what_the_numbers_mean(self, tmp_path: Path) -> None:
@@ -1143,10 +1147,15 @@ class TestPropagating:
     """Giving the other declarations of one object the value under the cursor."""
 
     def built(self, tmp_path: Path, **files: Any) -> Any:
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return self.built_from(tmp_path / "p.ddd.json")
+
+    def built_from(self, root: Path) -> Any:
         from ddd.lsp.navigation import index
 
-        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
-        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        workspace = load_workspace(root, DiagnosticBag())
+        assert workspace is not None
+        return index(workspace)
 
     def offer(self, tmp_path: Path, source: str, pointer: str, **files: Any) -> Any:
         from ddd.lsp.edits import actions
@@ -1169,6 +1178,62 @@ class TestPropagating:
         assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
         (edits,) = offered[0]["edit"]["changes"].values()
         assert edits[0]["newText"] == '"rpm"'
+
+    def test_a_key_its_own_kind_requires_is_never_removed(self, tmp_path: Path) -> None:
+        """The state every migration passes through: one file not yet updated, the rest right.
+
+        The offer that settles it is to take the key. The offer to remove it from everybody
+        else settles it too, on paper, and leaves a project whose files no longer load - which
+        is why an edit is measured against what the loader will accept, not only against what
+        the other declarations say.
+        """
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", volatile=True))})
+        (tmp_path / "b.ddd.json").write_text(
+            '{"component": {"name": "B", "declarations": [{"scope": "input", "definition":'
+            ' {"name": "S", "kind": "measurement", "datatype": "uint8"}}]}}\n',
+            encoding="utf-8",
+        )
+        from ddd.lsp.edits import actions
+
+        built = self.built_from(tmp_path / "p.ddd.json")
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.declarations[0].definition", cache
+        )
+        titles = [entry["title"] for entry in offered]
+        assert titles == ["Use the volatile declared in a"]
+
+    def test_a_key_the_other_kind_does_not_have_is_not_written_into_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Two declarations disagreeing about ``kind`` is its own finding, not a key to spread.
+
+        A curve's ``axis`` written into the measurement somebody else declared produces a file
+        the loader refuses, and removing it from the curve produces another - so on a pair
+        this far apart the honest answer is to offer nothing and let the mismatch be read.
+
+        Asked from both ends, because the two ends run different code: the curve reaches the
+        other declaration through ``_propagate``, while the measurement reaches back through
+        ``_adopt``, and only one of those was guarded when the guard was first written.
+        """
+        files = {
+            "a.ddd.json": component(
+                "A",
+                declare("output", "S", kind="curve", axis="Ax"),
+                declare("output", "Ax", kind="axis", size=3),
+            ),
+            "b.ddd.json": component("B", declare("input", "S")),
+        }
+        from_curve, _ = self.offer(
+            tmp_path, "a.ddd.json", "component.declarations[0].definition.axis", **files
+        )
+        assert from_curve == []
+        from_measurement, _ = self.offer(
+            tmp_path, "b.ddd.json", "component.declarations[0].definition", **files
+        )
+        assert from_measurement == []
 
     def test_the_kind_is_never_offered(self, tmp_path: Path) -> None:
         """The one key whose value decides which other keys are allowed.
@@ -1241,7 +1306,7 @@ class TestPropagating:
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
         (tmp_path / "b.ddd.json").write_text(
             '{"component": {"name": "B", "declarations": [{"scope": "input", "definition":'
-            ' {"name": "S", "kind": "measurement", "datatype": "uint8"}}]}}\n',
+            ' {"name": "S", "kind": "measurement", "datatype": "uint8", "volatile": false}}]}}\n',
             encoding="utf-8",
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))

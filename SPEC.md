@@ -163,17 +163,25 @@ Attributes common to every kind:
 | `limits` | derived | physical `min`/`max`; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | `export`, `format`, `display_identifier` |
+| `volatile` | required | whether the generated c carries `volatile`, i.e. whether the value can change without the reading code having written it |
+
+`volatile` has no default because there is nothing to derive one from: unlike `limits`, which
+follow from the datatype and the conversion, it states something about the running system that
+only the project knows. A measurement needs it when an interrupt, a second core or a
+peripheral writes the variable; a calibration object needs it when a calibration tool is to
+change the value while the software runs. Both answers have a price, and the tool asks rather
+than picks one silently.
 
 Kind specific attributes:
 
 | kind | additional keys | storage | a2l |
 | --- | --- | --- | --- |
-| `measurement` | `dimensions`, `volatile` | writable ram variable | `MEASUREMENT` |
-| `parameter` | - | `const` scalar | `CHARACTERISTIC ... VALUE` |
-| `value_block` | `dimensions` (mandatory) | `const` array | `CHARACTERISTIC ... VAL_BLK` |
-| `axis` | `size` (mandatory), `input` | `const` array `[size]` | `AXIS_PTS` |
-| `curve` | `axis` | `const` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
-| `map` | `x_axis`, `y_axis` | `const` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
+| `measurement` | `dimensions` | writable ram variable | `MEASUREMENT` |
+| `parameter` | - | `const` or `const volatile` scalar | `CHARACTERISTIC ... VALUE` |
+| `value_block` | `dimensions` (mandatory) | `const` or `const volatile` array | `CHARACTERISTIC ... VAL_BLK` |
+| `axis` | `size` (mandatory), `input` | `const` or `const volatile` array `[size]` | `AXIS_PTS` |
+| `curve` | `axis` | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
+| `map` | `x_axis`, `y_axis` | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
 * `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`. In the a2l the
   same object is described by a `MATRIX_DIM` listing the fastest running index first, i.e.
@@ -184,9 +192,29 @@ Kind specific attributes:
   project; the axis is shared between all curves and maps referring to it (a2l `COM_AXIS`).
 * `input` names the measurement that indexes an axis (a2l input quantity); when omitted the
   a2l uses `NO_INPUT_QUANTITY`.
-* Calibration objects (everything except `measurement`) are always generated `const`, so
-  that they are placed in read only memory. `volatile` is not merely ignored on them: it
-  is a key of `measurement` alone, so a calibration object carrying it is rejected.
+* Calibration objects (everything except `measurement`) are always generated `const`, since
+  the software never writes them, and additionally `volatile` when the declaration says so.
+  An object a calibration tool changes in a running ecu needs both: plain `const` entitles the
+  compiler to fold the initial value into the code that reads it wherever that value is
+  visible at the point of the read, which within one translation unit is every optimisation
+  level, `-O0` included, since the substitution happens in the c front end rather than in an
+  optimiser, and which link time optimisation extends across translation units. Where the
+  load does survive - a component reading through the generated header of another, compiled
+  without `-flto` - `const` still lets the compiler serve two reads from one of them and move
+  it across a call. Either way the tool writes a value the software does not pick up. What `const volatile` costs is the read only memory: the compiler
+  treats every read as a side effect and drops the object out of the read only category, so
+  it is emitted into a writable section instead of `.rodata` - measured with gcc 12.2.0, and
+  worth confirming on the toolchain a project ships with - which on a flash target means a ram
+  address with a load region and a startup copy that overwrites what the tool wrote unless the
+  linker script says otherwise. DDD states no preference between the two and reports
+  nothing about the choice: a project that calibrates online states `true` and places the
+  object itself in its linker script, DDD's own memory placement being planned rather than
+  implemented (section 3.6), and one that does not states `false` and keeps its data in flash.
+* `volatile` buys freshness and gives up coherence, which is worth knowing before turning it
+  on for a whole dictionary: the compiler has to re-read the object at every mention, so a set
+  of parameters read at several points of one control step can straddle a calibration write
+  and be used half old and half new, and a loop over a `const volatile` value is not
+  vectorised.
 
 #### 3.3.1 What each declaration of one object may state
 
@@ -195,13 +223,14 @@ same thing on each of those declarations. They fall into three groups.
 
 **Interface** - `kind`, `datatype`, `unit`, `conversion`, the shape (`dimensions` or `size`),
 the referenced axes, and `volatile`. Every declaration shall state the same thing and a
-disagreement is `definition-mismatch`. `volatile` is compared without exception: it reaches
-every consumer's header as a type qualifier and tells their code whether the value can change
-under it, so a declaration that omits it states `false` rather than "no opinion", and
-therefore disagrees with one that states `true`. `limits` are the one interface key a
-declaration may leave out, because DDD derives them from the datatype and the conversion:
-omitting them defers to whoever states them, and only two *stated* sets of limits can
-disagree.
+disagreement is `definition-mismatch`. `volatile` is interface rather than storage because it
+reaches every consumer's header as a type qualifier and tells their code whether the value can
+change under it; two components disagreeing about it would compile different assumptions about
+the same address. Being required on every definition, it is stated by every declaration, so
+there is always an answer to compare rather than a silence to interpret. `limits` are the one
+interface key a declaration may leave out, because DDD derives them from the datatype and the
+conversion: omitting them defers to whoever states them, and only two *stated* sets of limits
+can disagree.
 
 **Storage** - `init`. What a variable starts out as is decided by the component that produces
 it, so a declaration whose scope is `input` shall not state one at all (`consumer-storage`).
@@ -315,8 +344,8 @@ Errors:
 * `local-conflict` - a component local variable is used by another component
 * `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
   volatility, referenced axes, or on limits where both of them state limits: a declaration
-  that omits limits defers to the producer rather than disagreeing with it, which is a
-  relaxation `volatile` deliberately does not get (section 3.3.1)
+  that omits limits defers to the producer rather than disagreeing with it, a relaxation
+  `volatile` has no use for, being required on every definition (section 3.3.1)
 * `duplicate-declaration` - a component declares the same variable more than once
 * `consumer-storage` - an `input` declaration states `init`. What a variable starts out as is
   decided by the component that produces it, so a reader stating one is claiming storage it
@@ -376,7 +405,9 @@ Errors - the consumers of the object become wrong, whether or not they still com
 Warnings - behaviour or tooling changes, but no consumer becomes wrong:
 
 * `removed-unused-object` - an object is gone that no component read
-* `changed-storage` - the initial value or the volatility changed
+* `changed-storage` - the initial value or the volatility changed; on a calibration object the
+  volatility also decides whether a tool can still change the value in a running ecu, and
+  which memory the object ends up in
 * `narrowed-limits` - the physical limits got tighter, so calibrated data may no longer fit
 * `changed-owner` - another component produces the object now
 * `changed-condition` - the preprocessor condition changed
@@ -419,9 +450,14 @@ system can declare its outputs without running the generator first:
 A template in a subdirectory of the template directory is importable but never rendered.
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
-variables and calibration objects are `const`, a declaration that carries a condition is
-offered with that condition so it can be wrapped in `#if` / `#endif`, and input objects are
-optionally marked `const` for the consumer header so that a write access does not compile.
+variables and calibration objects are `const`, each of them additionally `volatile` when its
+declaration states so, a declaration that carries a condition is offered with that condition
+so it can be wrapped in `#if` / `#endif`, and input objects are optionally marked `const` for
+the consumer header so that a write access does not compile. The qualifier reaches the hand
+written code that reads the object, so a project that turns `volatile` on for an array finds
+that passing it to a helper typed for a plain `const` one no longer compiles and re-types the
+helper - the cast that would silence it is itself refused by a warning set containing
+`-Wcast-qual`.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 

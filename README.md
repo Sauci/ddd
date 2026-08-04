@@ -243,7 +243,9 @@ Include cycles are reported instead of hanging.
       {
         "scope": "output",
         "condition": "defined(FEATURE_X)",
-        "definition": { "kind": "measurement", "name": "ValueG", "datatype": "uint16" }
+        "definition": {
+          "kind": "measurement", "name": "ValueG", "datatype": "uint16", "volatile": false
+        }
       }
     ]
   }
@@ -284,6 +286,7 @@ Include cycles are reported instead of hanging.
 | `conversion` | identity | raw to physical conversion, see below |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
+| `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
 
 `init` accepts a scalar or a nested list matching the shape of the object.  A scalar given
@@ -293,32 +296,77 @@ for an array initialises **every** element, so `"dimensions": [10], "init": 1` i
 
 Every definition states its `kind`.  A `measurement` is an online value that the software
 writes and the calibration tool only reads; everything else is calibration data, which the
-software never writes, so it is generated `const` and ends up in read only memory.  (`kind`
-is stated rather than defaulting to `measurement`, so that a file bound to `ddd schema` in an
-editor validates without the ambiguity a defaulted discriminator leaves in the schema.)
+software never writes, so it is generated `const`.  (`kind` is stated rather than defaulting
+to `measurement`, so that a file bound to `ddd schema` in an editor validates without the
+ambiguity a defaulted discriminator leaves in the schema.)
 
 | kind | extra keys | generated c | a2l |
 | --- | --- | --- | --- |
-| `measurement` | `dimensions`, `volatile` | `uint16_t Speed;` | `MEASUREMENT` |
-| `parameter` | - | `const uint16_t Kp = 100U;` | `CHARACTERISTIC ... VALUE` |
-| `value_block` | `dimensions` | `const uint8_t Tbl[8] = ...;` | `CHARACTERISTIC ... VAL_BLK` |
-| `axis` | `size`, `input` | `const uint16_t Ax[6] = ...;` | `AXIS_PTS` |
-| `curve` | `axis` | `const uint16_t C[6] = ...;` | `CHARACTERISTIC ... CURVE` |
-| `map` | `x_axis`, `y_axis` | `const int8_t M[4][6] = ...;` | `CHARACTERISTIC ... MAP` |
+| `measurement` | `dimensions` | `volatile uint16_t Speed;` | `MEASUREMENT` |
+| `parameter` | - | `const volatile uint16_t Kp = 100U;` | `CHARACTERISTIC ... VALUE` |
+| `value_block` | `dimensions` | `const volatile uint8_t Tbl[8] = ...;` | `CHARACTERISTIC ... VAL_BLK` |
+| `axis` | `size`, `input` | `const volatile uint16_t Ax[6] = ...;` | `AXIS_PTS` |
+| `curve` | `axis` | `const volatile uint16_t C[6] = ...;` | `CHARACTERISTIC ... CURVE` |
+| `map` | `x_axis`, `y_axis` | `const volatile int8_t M[4][6] = ...;` | `CHARACTERISTIC ... MAP` |
+
+The two qualifiers in that column are decided separately.  The `const` is the kind's doing,
+and no description can take it off calibration data; the `volatile` next to it is what the
+definition asked for, so the same parameter stating `"volatile": false` is generated
+`const uint16_t Kp = 100U;`, and a measurement that states `false` is generated
+`uint16_t Speed;`.
 
 ```json
 { "kind": "axis",  "name": "AxisA", "datatype": "uint16", "unit": "Hz",
-  "size": 6, "input": "ValueE", "init": [0, 3200, 6400, 12800, 19200, 32000] }
+  "size": 6, "input": "ValueE", "init": [0, 3200, 6400, 12800, 19200, 32000],
+  "volatile": false }
 
-{ "kind": "map",   "name": "MapA", "datatype": "int8", "unit": "%",
+{ "kind": "map",   "name": "MapA", "datatype": "sint8", "unit": "%",
   "x_axis": "AxisA", "y_axis": "AxisB",
-  "init": [[20, 24, 28, 30, 32, 30], [18, 22, 26, 28, 30, 28]] }
+  "init": [[20, 24, 28, 30, 32, 30], [18, 22, 26, 28, 30, 28]], "volatile": false }
 ```
 
 A curve or a map does not repeat the size of its tables: DDD takes the shape from the axes
 it refers to, checks the init data against it and emits `[size of y][size of x]`, the layout
 the a2l calls `ROW_DIR`.  Axes are shared (a2l `COM_AXIS`), so several curves and maps over
 the same break points store them once.
+
+#### Volatile
+
+`volatile` is a key of every kind, it is required, and it has no default, because there is no
+answer DDD could derive the way it derives limits from a datatype - the two answers cost
+different things and only the project knows which of them it is paying for.  A measurement
+needs it when something outside the reading component writes the variable: an interrupt, a
+second core, a peripheral.  Calibration data needs it when a calibration tool is to change
+the value in a running ecu, because with plain `const` the compiler is entitled to fold the
+initialiser into the code that reads it, and gcc does wherever it can see that initialiser -
+within one translation unit that is not an optimisation a debug build escapes but a
+substitution the front end makes while parsing, so it happens at `-O0` as much as at `-O2`,
+to an array element at a constant index as much as to a scalar, and to a value read once at
+startup as much as to one read in a loop; across translation units it is what `-flto` does.
+Where the load survives, `const` still lets the compiler serve two reads from one of them and
+move it across a call.  Either way, a program that writes a new value through such an
+object's address prints it back out of memory and then goes on computing with the old one.
+
+What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
+side effect and takes the object out of the read only category, so `.rodata` becomes a plain
+`.data`: measured with gcc 12.2.0 on DDD's own generated demo with this repository's own flag
+set, `.rodata 84 / .data 2` becomes `.data 86`, and an explicitly attributed section moves the
+same way.  The categorisation is target independent, but it is worth confirming once on the
+toolchain you actually ship with.  On a flash target with an ordinary linker script that means a RAM address with a load
+region in flash and a startup copy, so the tool programs a page the code never reads and the
+next reset overwrites what it wrote.  A project that calibrates online handles that placement
+in its linker script; one that does not states `false` and keeps its data in flash.
+**DDD states no preference and reports nothing about the choice** - it generates what the
+description says.
+
+Two smaller consequences are worth knowing before writing `true`.  Handing a `const volatile`
+array to a helper that takes a plain `const` one is
+`error: passing argument 1 of 'sum' discards 'volatile' qualifier`, and the cast that would
+paper over it is refused by the `-Wcast-qual` this project compiles with, so hand written
+consumer code may need its helpers re-typed.  And the qualifier buys freshness by giving up
+coherence: the compiler must re-read the object at every mention, so a parameter set read at
+several points of one control step can straddle a calibration write, and a loop over a
+`volatile` gain does not vectorise.
 
 #### Conversions
 
@@ -348,7 +396,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `multiple-producers` | a variable is written by more than one component |
 | error | `missing-producer` | an input is written by nobody |
 | error | `local-conflict` | a component local variable is used by another component |
-| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since nothing derives it |
+| error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since every declaration states it and there is no silence to interpret |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
 | error | `duplicate-type` | two files declare the same structured datatype name |
@@ -473,7 +521,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value or `volatile` changed |
+| warning | `changed-storage` | the initial value or `volatile` changed; on calibration data the second one also decides whether the object still lives in read only memory |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |

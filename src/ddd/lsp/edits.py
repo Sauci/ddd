@@ -43,6 +43,7 @@ from typing import Any, Final
 
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
+from ddd.models import definition_keys
 
 PROPAGATED_KEYS: Final = frozenset(
     {
@@ -66,8 +67,8 @@ because changing it is a rename, ``description`` because two components may desc
 variable in their own words, and ``init`` because only a producer may state one at all.
 
 ``kind`` is left out although the declarations do have to agree on it, and it is the one key
-here whose value decides which *other* keys the definition may carry: a measurement has
-``volatile``, a curve has ``axis``, an axis has ``size``. Writing one declaration's ``kind``
+here whose value decides which *other* keys the definition may carry: a value block has
+``dimensions``, a curve has ``axis``, an axis has ``size``. Writing one declaration's ``kind``
 into another therefore leaves keys behind that the new kind does not allow and keys missing
 that it requires, and the file stops loading at all - a schema error, which is the one class of
 finding no severity setting can turn down. A disagreement about ``kind`` is two components
@@ -88,6 +89,17 @@ to ask - which is the wrong way round for a fix.
 
 _WITHIN_DEFINITION: Final = re.compile(r"^component\.declarations\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
+
+
+def _keys_of(document: Document, definition: str) -> tuple[frozenset[str], frozenset[str]]:
+    """What the definition at that pointer accepts and must state, by its own ``kind``.
+
+    Read from the file rather than from the object being reconciled, because the two
+    declarations need not agree - a disagreement about ``kind`` is precisely one of the things
+    being reported. Each side is measured against its own kind.
+    """
+    kind = document.value_at(f"{definition}.kind")
+    return definition_keys(kind) if isinstance(kind, str) else (frozenset(), frozenset())
 
 
 def actions(
@@ -201,6 +213,9 @@ def _adopt(
 
     Only when they agree with each other about it. Two different answers is a question about
     which one is right, and picking one silently is exactly the kind of help nobody asked for.
+
+    Written through :func:`_assign` rather than straight into the text, so that this direction
+    is refused for a key the target's own kind does not have on the same terms as every other.
     """
     if document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
@@ -212,7 +227,7 @@ def _adopt(
     }
     if len(stated) != 1:
         return None
-    edit = _insert(document, here.pointer, key, next(iter(stated)))
+    edit = _assign(document, here.pointer, key, next(iter(stated)))
     if edit is None:
         return None
     return {
@@ -263,6 +278,10 @@ def _remove_here(
     """
     if document.raw_at(f"{here.pointer}.{key}") is None:
         return None
+    if key in _keys_of(document, here.pointer)[1]:
+        # Offering to remove a key the kind requires is offering to break the file: it would
+        # not load at all afterwards, which is a worse state than the disagreement it settles.
+        return None
     others = [site for site in built.declarations.get(name, ()) if site != here]
     # Nobody to disagree with is not the same as everybody agreeing: a variable one component
     # declares on its own has nothing to reconcile, and offering to strip its unit would be a
@@ -306,6 +325,7 @@ def _remove_elsewhere(
         edit = (
             None
             if target.raw_at(f"{site.pointer}.{key}") is None
+            or key in _keys_of(target, site.pointer)[1]
             else _erase(target, site.pointer, key)
         )
         if edit is not None:
@@ -374,7 +394,15 @@ def _propagate(
 
 
 def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str, Any] | None:
-    """The edit that makes one declaration say ``key: raw``, or nothing if it already does."""
+    """The edit that makes one declaration say ``key: raw``, or nothing if it already does.
+
+    Refused for a key the target's own kind does not have. Two declarations of one object
+    disagreeing about ``kind`` is a finding of its own, and while it stands, writing a curve's
+    ``axis`` into the measurement somebody else declared would only add a file that no longer
+    loads to a project that already has something to fix.
+    """
+    if key not in _keys_of(document, definition)[0]:
+        return None
     existing = document.raw_at(f"{definition}.{key}")
     if existing is not None:
         if existing == raw:

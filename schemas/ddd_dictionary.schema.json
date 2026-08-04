@@ -425,7 +425,7 @@
         },
         "volatile": {
           "default": false,
-          "description": "Generate the variable ``volatile``; only ever true for a measurement.",
+          "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``\nexists to make safe.",
           "title": "Volatile",
           "type": "boolean"
         },

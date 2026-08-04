@@ -139,6 +139,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "axis",
           "description": "Shared axis points a curve or map is interpolated over.",
@@ -171,6 +176,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "size"
       ],
@@ -298,6 +304,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "curve",
           "description": "A one dimensional calibratable table over one axis.",
@@ -316,6 +327,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "axis"
       ],
@@ -665,6 +677,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "map",
           "description": "A two dimensional calibratable table over two axes.",
@@ -691,6 +708,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "x_axis",
         "y_axis"
@@ -785,6 +803,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "measurement",
           "description": "An online value the software writes and the calibration tool only reads.",
@@ -800,17 +823,12 @@
           },
           "title": "Dimensions",
           "type": "array"
-        },
-        "volatile": {
-          "default": false,
-          "description": "Generate the variable ``volatile``, for values written by an interrupt or by hardware.\n\nInterface rather than storage, because it reaches every component that reads the variable:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nit and not to expect two reads to agree. Every declaration of one variable therefore has\nto say the same thing, and a disagreement is an error.\n\nLeft out it is ``false``, and that is a claim rather than a silence - unlike ``limits``,\nwhich a declaration may omit because DDD derives them from the datatype and the\nconversion. There is nothing to derive here: a component whose description does not say a\nvariable is volatile is a component whose author was never told, and that is exactly the\nthing an interface description exists to prevent.",
-          "title": "Volatile",
-          "type": "boolean"
         }
       },
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind"
       ],
       "title": "Measurement",
@@ -903,6 +921,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "parameter",
           "description": "A single calibratable constant.",
@@ -913,6 +936,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind"
       ],
       "title": "Parameter",
@@ -1020,6 +1044,11 @@
           },
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
+        "volatile": {
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "title": "Volatile",
+          "type": "boolean"
+        },
         "kind": {
           "const": "value_block",
           "description": "An array of calibratable constants.",
@@ -1040,6 +1069,7 @@
       "required": [
         "name",
         "datatype",
+        "volatile",
         "kind",
         "dimensions"
       ],

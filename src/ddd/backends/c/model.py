@@ -28,14 +28,28 @@ class ObjectView:
     kind: ObjectKind
     c_type: str
     array_suffix: str
-    qualifier: str
-    """``"volatile "``, ``"const "`` or the empty string."""
+    constant: bool
+    """Whether the object is calibration data, which is generated ``const``."""
+
+    volatile: bool
+    """Whether the declaration carries ``volatile``, which the object states for itself."""
 
     initializer: str | None
     comment: str | None
     condition: str | None
     owner: str
     consumers: tuple[str, ...]
+
+    @property
+    def qualifier(self) -> str:
+        """``"const volatile "``, ``"const "``, ``"volatile "`` or the empty string.
+
+        The two are independent and both are ordinary for calibration data: ``const`` says the
+        software never writes it, ``volatile`` says something outside the software does. Built
+        from the two answers rather than chosen between them, because a chain of ``elif`` is
+        how ``const`` used to silently swallow the ``volatile`` a parameter asked for.
+        """
+        return ("const " if self.constant else "") + ("volatile " if self.volatile else "")
 
     @property
     def definition(self) -> str:
@@ -47,8 +61,8 @@ class ObjectView:
 
     def declaration(self, *, const: bool = False) -> str:
         """``extern const volatile uint16_t Speed[4]``, without the trailing semicolon."""
-        # Calibration data already carries const, adding a second one does not compile.
-        prefix = "const " if const and "const " not in self.qualifier else ""
+        # Calibration data already carries const, and c refuses a repeated qualifier.
+        prefix = "const " if const and not self.constant else ""
         return f"extern {prefix}{self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
 
 
@@ -214,18 +228,13 @@ def _group(
 
 
 def _object_view(entry: ResolvedObject) -> ObjectView:
-    if entry.is_calibration:
-        qualifier = "const "
-    elif entry.volatile:
-        qualifier = "volatile "
-    else:
-        qualifier = ""
     return ObjectView(
         name=entry.name,
         kind=entry.kind,
         c_type=c_type(entry),
         array_suffix=declarator_suffix(entry.shape),
-        qualifier=qualifier,
+        constant=entry.is_calibration,
+        volatile=entry.volatile,
         initializer=initializer_of(entry),
         comment=doc_comment(entry),
         condition=entry.condition,

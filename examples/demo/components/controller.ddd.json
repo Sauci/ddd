@@ -13,7 +13,8 @@
           "datatype": "uint8",
           "unit": "%",
           "conversion": { "kind": "linear", "factor": 0.5 },
-          "limits": { "min": 0, "max": 100 }
+          "limits": { "min": 0, "max": 100 },
+          "volatile": false
         }
       },
       {
@@ -53,7 +54,8 @@
           "unit": "degC",
           "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
           "limits": { "min": -40, "max": 150 },
-          "init": -400
+          "init": -400,
+          "volatile": false
         }
       },
       {
@@ -74,7 +76,8 @@
               { "name": "STATE_FAULT", "value": 15 }
             ]
           },
-          "init": 0
+          "init": 0,
+          "volatile": false
         }
       },
       {
@@ -88,7 +91,8 @@
           "unit": "V",
           "conversion": { "factor": 0.001 },
           "limits": { "min": 0, "max": 5 },
-          "init": 1000
+          "init": 1000,
+          "volatile": false
         }
       },
       {
@@ -101,7 +105,8 @@
           "unit": "%",
           "conversion": { "factor": 0.1 },
           "limits": { "min": -100, "max": 100 },
-          "init": 0
+          "init": 0,
+          "volatile": false
         }
       },
       {
@@ -114,7 +119,8 @@
           "unit": "Hz",
           "conversion": { "factor": 0.25 },
           "limits": { "min": 500, "max": 1500 },
-          "init": 3200
+          "init": 3200,
+          "volatile": false
         }
       },
       {
@@ -129,7 +135,8 @@
           "limits": { "min": 0, "max": 8000 },
           "size": 6,
           "input": "ValueE",
-          "init": [0, 3200, 6400, 12800, 19200, 32000]
+          "init": [0, 3200, 6400, 12800, 19200, 32000],
+          "volatile": false
         }
       },
       {
@@ -144,7 +151,8 @@
           "limits": { "min": 0, "max": 100 },
           "size": 4,
           "input": "ValueA",
-          "init": [0, 60, 140, 200]
+          "init": [0, 60, 140, 200],
+          "volatile": false
         }
       },
       {
@@ -157,7 +165,8 @@
           "unit": "ms",
           "conversion": { "factor": 0.01 },
           "axis": "AxisA",
-          "init": [1200, 900, 800, 750, 700, 650]
+          "init": [1200, 900, 800, 750, 700, 650],
+          "volatile": false
         }
       },
       {
@@ -176,7 +185,8 @@
             [18, 22, 26, 28, 30, 28],
             [12, 16, 20, 22, 24, 22],
             [6, 10, 14, 16, 18, 16]
-          ]
+          ],
+          "volatile": false
         }
       }
     ]

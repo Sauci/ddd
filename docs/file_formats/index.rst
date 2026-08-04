@@ -67,9 +67,8 @@ Unknown keys are rejected
 Every object in every description file is closed: a key DDD does not know is an error, not
 something quietly ignored. The reason is that the alternative fails silently and in the worst
 possible way. A misspelled ``definiton`` leaves a declaration without the definition it was
-meant to carry, a misspelled ``volatille`` produces a variable the compiler is free to cache
-in a register, and a misspelled ``limits`` puts the full range of the datatype into the a2l and
-lets a calibration engineer enter a value the software cannot handle - all three from a file
+meant to carry, and a misspelled ``limits`` puts the full range of the datatype into the a2l
+and lets a calibration engineer enter a value the software cannot handle - both from a file
 that looked perfectly correct in review. Closing the objects turns every one of those into a
 finding that names the offending key and points at it:
 
@@ -85,6 +84,13 @@ because a line number in a file that is often generated or reformatted means ver
 whereas ``component.declarations[0].definiton`` is exactly where the key sits whatever the
 formatting. Both halves of the mistake are reported: the key that should not be there, and the
 key that is now missing because of it.
+
+Those two halves are also why a key like ``volatile`` is required and has no default. A
+misspelled ``volatille`` is caught twice over - the key that was written is not one DDD knows,
+and the key that had to be there is missing - but only the second half catches the definition
+where it was never typed at all. A default would have answered that one silently, and for this
+key the silent answer decides whether the compiler may keep a variable in a register and
+whether it may fold a calibration constant into the code that reads it.
 
 .. note::
    ``schema`` is one of the five checks whose severity cannot be changed, along with

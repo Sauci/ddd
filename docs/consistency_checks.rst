@@ -339,9 +339,10 @@ or an a2l file that does not do what the description says - or that does not com
        the value *means*: kind, datatype, unit, declared shape, conversion, volatility,
        physical limits, or the axis references of a curve or a map. A consumer that simply
        omits ``limits`` is not disagreeing and is not reported, because they are derived from
-       the datatype and the conversion when nobody states them. ``volatile`` is not relaxed
-       that way: nothing derives it, so omitting it states ``false`` and disagrees with a
-       declaration that states ``true``.
+       the datatype and the conversion when nobody states them. ``volatile`` cannot be left
+       out that way: every definition of every kind has to state it, so a difference there is
+       always two components saying two different things rather than one of them saying
+       nothing at all.
    * - ``enum-conflict``
      - error
      - the same enum type name is defined with different enumerators. One c enum is generated
@@ -457,7 +458,11 @@ registry can be read in one place.
        external tool still might.
    * - ``changed-storage``
      - warning
-     - the initial value or the volatility of an object changed.
+     - the initial value or the volatility of an object changed. A calibration object whose
+       ``volatile`` went from ``true`` to ``false`` is the case worth reading twice: it keeps
+       its address and a tool can still write to it, but the compiler is now entitled to fold
+       the initial value into the code that reads it, so tuning it while the software runs
+       stops working.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
@@ -497,7 +502,7 @@ change:
 
 .. code-block:: text
 
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
 
 The second is that a property which merely shapes how the a2l *presents* the object does not
@@ -506,11 +511,11 @@ consumer that ask for different display formats,
 
 .. code-block:: json
 
-   { "scope": "output", "definition": { "name": "ValueA", "datatype": "uint16" } }
+   { "scope": "output", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "volatile": false } }
 
 .. code-block:: json
 
-   { "scope": "input", "definition": { "name": "ValueA", "datatype": "uint16", "a2l": { "format": "%8.3" } } }
+   { "scope": "input", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "a2l": { "format": "%8.3" }, "volatile": false } }
 
 the check names the value that is going to be used:
 
@@ -530,9 +535,12 @@ overruled.
 as a type qualifier - ``extern volatile uint16_t ValueA`` - and that is what tells that
 component's code not to cache the value and not to expect two reads to agree. Every
 declaration of the variable therefore has to say the same thing, and a disagreement is a
-``definition-mismatch`` error. Leaving it out says ``false``: unlike ``limits``, which DDD
-derives when a declaration omits them, there is nothing here to derive, and a description that
-does not mention it describes a component whose author was never told.
+``definition-mismatch`` error. There is no leaving it out, either: unlike ``limits``, which
+DDD derives when a declaration omits them, there is nothing here to derive, so the key is
+required on every definition of every kind and a definition without it does not load at all.
+That is reported as ``schema``, one of the five checks whose severity cannot be relaxed, which
+is why a project adopting this version of DDD adds the key everywhere in one go rather than
+phasing it in.
 
 ``export`` is not compared at all. Which signals a calibration engineer needs to see is not the
 producer's to decide alone, so any component may ask for an object to reach the a2l and asking
@@ -577,7 +585,7 @@ gives:
    $ ddd check examples/inconsistent/project.ddd.json
    examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
        note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
    examples/inconsistent/component_c.ddd.json#component.declarations[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
    examples/inconsistent/component_c.ddd.json#component.declarations[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'

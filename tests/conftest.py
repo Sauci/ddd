@@ -40,11 +40,18 @@ def component(name: str, *declarations: dict[str, Any], **extra: Any) -> dict[st
 def declare(
     scope: str, name: str, datatype: str = "uint8", condition: str | None = None, **definition: Any
 ) -> dict[str, Any]:
-    # kind is required on a definition; a test that does not care is declaring a measurement,
-    # so it is filled in here and overridden by whatever the caller passes in **definition.
+    # kind and volatile are required on a definition; a test that does not care is declaring a
+    # non-volatile measurement, so both are filled in here and overridden by whatever the
+    # caller passes in **definition. A test *about* a missing key writes its json by hand.
     entry: dict[str, Any] = {
         "scope": scope,
-        "definition": {"name": name, "datatype": datatype, "kind": "measurement", **definition},
+        "definition": {
+            "name": name,
+            "datatype": datatype,
+            "kind": "measurement",
+            "volatile": False,
+            **definition,
+        },
     }
     if condition is not None:
         entry["condition"] = condition

@@ -12,7 +12,8 @@
           "description": "Conditioned inlet reading",
           "datatype": "uint16",
           "unit": "degC",
-          "conversion": { "factor": 0.1, "offset": -40 }
+          "conversion": { "factor": 0.1, "offset": -40 },
+          "volatile": false
         }
       },
       {
@@ -21,7 +22,8 @@
           "name": "SampleCount",
           "kind": "measurement",
           "description": "Readings taken since the last reset",
-          "datatype": "uint32"
+          "datatype": "uint32",
+          "volatile": false
         }
       }
     ]

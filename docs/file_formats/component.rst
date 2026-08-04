@@ -26,12 +26,14 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
            "condition": "defined(FEATURE_X)",
            "definition": {
              "name": "ValueG",
+             "kind": "measurement",
              "description": "Measurement that only exists when FEATURE_X is defined",
              "datatype": "uint16",
              "unit": "V",
              "conversion": { "factor": 0.001 },
              "limits": { "min": 0, "max": 5 },
-             "init": 1000
+             "init": 1000,
+             "volatile": false
            }
          }
        ]
@@ -202,6 +204,14 @@ is ``Controller.h`` from the demo, shortened to the parts that matter:
    /** Single calibratable constant [Hz] (calibration parameter) */
    extern const uint16_t ParameterA;
 
+The qualifiers there belong to the object rather than to the scope. ``ValueE`` and ``ValueB``
+are ``volatile`` because their definitions say so, and that has to reach every reader: a
+consumer whose header declared them plain would be free to read them once and keep the value.
+``AxisA`` and ``ParameterA`` are ``const`` because they are calibration data, and they are not
+also ``volatile`` only because every calibration object of the demo states
+``"volatile": false``; a project whose tool retunes a running ecu states ``true`` and reads
+``extern const volatile uint16_t ParameterA;`` here instead.
+
 A source file of ``Controller`` includes this one header and nothing else, so it simply has no
 way of naming a variable that belongs to ``SensorHub`` and was not declared as one of its own
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
@@ -209,9 +219,11 @@ input is possible by construction, since that is what an input is; *writing* one
 compiles here, because the declaration is not ``const``. ``ddd generate --const-inputs``
 declares inputs ``extern const`` instead, which stops that too, at the cost of a definition
 that stays non-const - strictly a constraint violation, accepted by the usual embedded
-toolchains, and therefore opt-in. It is an option rather than a matter for the templates
-because it changes what is declared and not how the declaration is written. The whole picture
-is on the :doc:`generated artefacts </generated_artefacts>` page.
+toolchains, and therefore opt-in. An input that is volatile becomes ``extern const volatile``,
+since the qualifier the object asked for is not dropped for the one the option adds. It is an
+option rather than a matter for the templates because it changes what is declared and not how
+the declaration is written. The whole picture is on the
+:doc:`generated artefacts </generated_artefacts>` page.
 
 condition
 ---------
@@ -227,12 +239,14 @@ produces. ``condition`` carries that, as a c preprocessor expression:
      "condition": "defined(FEATURE_X)",
      "definition": {
        "name": "ValueG",
+       "kind": "measurement",
        "description": "Measurement that only exists when FEATURE_X is defined",
        "datatype": "uint16",
        "unit": "V",
        "conversion": { "factor": 0.001 },
        "limits": { "min": 0, "max": 5 },
-       "init": 1000
+       "init": 1000,
+       "volatile": false
      }
    }
 
@@ -314,7 +328,12 @@ both conditions and says which one won.
    ``format`` string, a ``display_identifier``: a difference between components is reported,
    and the producer's value is the one that is used. Anything that would make the consumers
    actually *wrong* - datatype, unit, conversion, shape, limits, kind, ``volatile`` - is an
-   error instead, under ``definition-mismatch``.
+   error instead, under ``definition-mismatch``. ``volatile`` is in that list because it is
+   interface and not storage: it reaches every consumer's own header as
+   ``extern volatile uint16_t ValueB[4]``, and that is what tells the code reading the object
+   not to keep the value it read the first time. A producer saying ``true`` and a consumer
+   saying ``false`` is two components compiled against two different meanings of the same
+   address.
 
    Two keys of the block sit outside that. ``init`` is refused on a consumer altogether, as
    ``consumer-storage``: a component that only reads a variable has no say in what it starts

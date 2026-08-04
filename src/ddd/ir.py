@@ -101,7 +101,14 @@ class ResolvedObject(_Frozen):
     """Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""
 
     volatile: bool = False
-    """Generate the variable ``volatile``; only ever true for a measurement."""
+    """Generate the object ``volatile``: stated by every declaration, on every kind.
+
+    Calibration data carries it as ``const volatile``, which is what a value the calibration
+    tool changes in a running ecu needs - see the field of the same name on the authored
+    definition. The default is kept although a definition may no longer omit it, so that a
+    dictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``
+    exists to make safe.
+    """
 
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""

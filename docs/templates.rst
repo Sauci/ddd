@@ -223,12 +223,15 @@ themselves:
      - The object name, exactly as it appears in the description.
    * - ``.definition``
      - The complete definition without the trailing semicolon, qualifier, type, declarator
-       and initialiser included: ``volatile uint16_t Speed[4] = { ... }``. The template adds
-       the semicolon, which is what lets it put something between the two.
+       and initialiser included: ``volatile uint16_t Speed[4] = { ... }``, or
+       ``const volatile uint16_t Gain = 3U`` for calibration data the description declares
+       volatile. The template adds the semicolon, which is what lets it put something between
+       the two.
    * - ``.declaration(const=...)``
-     - The matching ``extern`` declaration, again without the semicolon. ``const=true`` adds
-       a ``const`` unless the object already carries one, so asking for it on calibration
-       data does not produce the ``const const`` that no compiler accepts.
+     - The matching ``extern`` declaration, again without the semicolon, carrying the same
+       qualifier the definition does. ``const=true`` adds a ``const`` unless the object
+       already carries one, so asking for it on calibration data does not produce the
+       ``const const`` that no compiler accepts.
    * - ``.comment``
      - The description, the unit in square brackets and, for calibration data, a note saying
        what the object is and what it is dimensioned by - or nothing at all if the
@@ -245,7 +248,16 @@ themselves:
 
 ``.kind``, ``.c_type``, ``.array_suffix``, ``.qualifier`` and ``.initializer`` are there as
 well, for a template that would rather lay the declaration out itself than take
-``.definition`` whole.
+``.definition`` whole. ``.qualifier`` is derived rather than stored, from the two answers a
+declaration can give about who writes the object: ``.constant`` is true for calibration data,
+which the software never writes and which is therefore generated ``const``, and ``.volatile``
+is what the description states on the definition, on every kind, to say that something
+outside the compiled code - an interrupt, another core, a calibration tool - changes the
+value while it runs. Either, both or neither may hold, and ``.qualifier`` is simply the one
+or two keywords that follow, with their trailing space. A template that composes its own
+declaration is better off testing the two booleans than matching text against the string they
+produce, and they are also what a MISRA deviation record above every ``volatile`` object, or
+a section attribute on the tunable data alone, is written from.
 
 A component header
 ~~~~~~~~~~~~~~~~~~
@@ -275,7 +287,9 @@ variable is declared differently in different headers:
    * - ``.condition``
      - The preprocessor condition of this declaration, or nothing.
    * - ``.const``
-     - Whether this declaration is the const one, for a template that builds the line itself.
+     - Whether ``--const-inputs`` added a ``const`` to this declaration, for a template that
+       builds the line itself. It says nothing about the object's own qualifiers, which are
+       ``.variable.constant`` and ``.variable.volatile``.
    * - ``.variable``
      - The object behind the declaration, with everything the previous table lists - which is
        how a header comments a declaration with ``.variable.comment`` or names its producer

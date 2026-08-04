@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import StrEnum
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
@@ -176,23 +176,45 @@ class DataObject(_Frozen):
     entirely.
     """
 
+    volatile: bool
+    """Whether the c declaration carries ``volatile``; stated on every definition.
+
+    Required, with no default, and on every kind rather than on measurements alone. Both
+    follow from what the qualifier does, which is to forbid the compiler to assume it already
+    knows the value.
+
+    A measurement needs it when something outside the reading component's control writes the
+    variable - an interrupt, a second core, a peripheral. A calibration object needs it when
+    the calibration tool is to change the value in a running ecu: without it the compiler is
+    entitled to use the initialiser in place of a read wherever it can see it - within one
+    translation unit at every optimisation level, ``-O0`` included, and across them under link
+    time optimisation - and, where the load does survive, to serve two reads from one of them.
+    Either way the tool writes a new value the software does not pick up.
+
+    Interface rather than storage, because it reaches every component that reads the object:
+    their header declares it ``extern volatile``, which is what tells their code not to cache
+    the value and not to expect two reads to agree. Every declaration of one object therefore
+    has to say the same thing, and a disagreement is an error.
+
+    There is no default because there is no answer DDD could derive - unlike ``limits``, which
+    follow from the datatype and the conversion. The two answers have different costs and only
+    the project knows which it is paying: ``true`` keeps a value tunable and, on a typical
+    toolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash
+    and lets the optimiser cache it. Saying nothing would pick one of them silently, and the
+    one it picked would be wrong roughly as often as not.
+    """
+
     kind: ObjectKind
     """Which sort of object this is; stated on every definition.
 
-    It also decides which further keys the definition may carry: ``dimensions`` and
-    ``volatile`` on a measurement, ``dimensions`` on a value block, ``size`` and ``input`` on
-    an axis, ``axis`` on a curve, ``x_axis`` and ``y_axis`` on a map, and none of them on a
-    parameter.
+    It also decides which further keys the definition may carry: ``dimensions`` on a
+    measurement or a value block, ``size`` and ``input`` on an axis, ``axis`` on a curve,
+    ``x_axis`` and ``y_axis`` on a map, and none of them on a parameter.
     """
 
     @property
     def is_calibration(self) -> bool:
         return self.kind.is_calibration
-
-    @property
-    def volatile(self) -> bool:
-        """Only a measurement can be volatile; overridden by :class:`Measurement`."""
-        return False
 
     @property
     def declared_shape(self) -> Shape | None:
@@ -248,25 +270,6 @@ class Measurement(DataObject):
     kind: Literal[ObjectKind.MEASUREMENT]
     dimensions: tuple[PositiveInt, ...] = ()
     """Array dimensions; empty for a scalar."""
-
-    is_volatile: Annotated[bool, Field(alias="volatile")] = False
-    """Generate the variable ``volatile``, for values written by an interrupt or by hardware.
-
-    Interface rather than storage, because it reaches every component that reads the variable:
-    their header declares it ``extern volatile``, which is what tells their code not to cache
-    it and not to expect two reads to agree. Every declaration of one variable therefore has
-    to say the same thing, and a disagreement is an error.
-
-    Left out it is ``false``, and that is a claim rather than a silence - unlike ``limits``,
-    which a declaration may omit because DDD derives them from the datatype and the
-    conversion. There is nothing to derive here: a component whose description does not say a
-    variable is volatile is a component whose author was never told, and that is exactly the
-    thing an interface description exists to prevent.
-    """
-
-    @property
-    def volatile(self) -> bool:
-        return self.is_volatile
 
     @property
     def declared_shape(self) -> Shape:
@@ -358,6 +361,12 @@ it keeps the published schema and the loader in agreement, at the cost of one mo
 measurement.
 """
 
+_VARIANTS: Final[dict[str, type[DataObject]]] = {
+    str(get_args(variant.model_fields["kind"].annotation)[0]): variant
+    for variant in get_args(get_args(AnyDataObject)[0])
+}
+"""Each ``kind`` value and the model that describes it - see :func:`definition_keys`."""
+
 
 def format_shape(shape: Shape) -> str:
     """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings."""
@@ -394,6 +403,30 @@ def broadcast(value: InitValue, shape: Shape) -> InitValue:
     if not shape:
         return value
     return tuple(broadcast(value, shape[1:]) for _ in range(shape[0]))
+
+
+def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
+    """Which keys a definition of that kind accepts, and which of them it must state.
+
+    Derived from the variants rather than listed, for the reason every list in this file is
+    derived: a key added to a model is covered here the moment it exists, and one that moves
+    between models cannot be left behind in a copy of the answer.
+
+    The caller is an editor offering to change one key of one definition. Both halves are what
+    stops it offering an edit that produces a file the loader then refuses - removing a key the
+    kind requires, or writing one the kind does not have.
+    """
+    variant = _VARIANTS.get(kind)
+    if variant is None:
+        # A kind the file states and DDD does not know. The loader has its own opinion about
+        # that; here it simply means nothing can be said, which every caller reads as "offer
+        # nothing" rather than as an error of its own.
+        return (frozenset(), frozenset())
+    fields = variant.model_fields
+    return (
+        frozenset(fields),
+        frozenset(name for name, field in fields.items() if field.is_required()),
+    )
 
 
 def discriminator_tags(*unions: Any) -> frozenset[str]:

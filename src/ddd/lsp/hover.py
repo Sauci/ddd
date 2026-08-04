@@ -136,8 +136,9 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
             rendered.append((key, f"`{target}`{_axis_range(dictionary, target)}"))
     if entry.condition:
         rendered.append(("condition", f"`{entry.condition}`"))
-    if entry.volatile:
-        rendered.append(("volatile", "yes"))
+    # Always, unlike the rows above it: every definition states this one, so leaving it out
+    # when it is false would be the reader's only way of confusing "no" with "not asked".
+    rendered.append(("volatile", "yes" if entry.volatile else "no"))
     table = ["| | |", "|---|---|"]
     table += [f"| {label} | {value} |" for label, value in rendered]
     return table + _enumerators(entry)

@@ -19,5 +19,15 @@ typedef enum
 {% endfor %}
 } {{ enum.name }};
 {% endfor %}
+{% for structure in model.structures %}
+
+/* {{ structure.name }}{{ " - " ~ structure.comment if structure.comment else "" }} */
+typedef struct
+{
+{% for member in structure.members %}
+    {{ member.declaration }};{{ (" /**< " ~ member.comment ~ " */") if member.comment else "" }}
+{% endfor %}
+} {{ structure.name }};
+{% endfor %}
 
 #endif /* {{ model.guard("ddd", "types") }} */

@@ -51,7 +51,7 @@ down should be read after a DDD upgrade:
    include-cycle          error    projects include each other recursively (fixed)
    include-empty          error    an include pattern matches no file
    duplicate-component    error    two different files declare the same component name
-   duplicate-type         error    two different files declare the same structured datatype name
+   duplicate-type         error    two different files declare the same type name
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -280,23 +280,30 @@ or an a2l file that does not do what the description says - or that does not com
        unique: each component gets a generated header named after it.
    * - ``duplicate-type``
      - error
-     - two different files declare a structured datatype of the same name. Which of two
-       layouts the generated c would get is not something an include order should decide, so
-       the second is refused rather than allowed to win.
+     - two different files declare a type of the same name. Which of two answers the generated
+       c would get is not something an include order should decide, so the second is refused
+       rather than allowed to win.
    * - ``unknown-type``
      - error
-     - a structure member nests a structured datatype that no file of the project declares. It
-       is refused rather than skipped, because a member of unknown size makes every offset
-       after it in the enclosing structure wrong, and wrong offsets are addresses that point
-       at the wrong bytes without anything looking broken.
+     - a ``datatype`` names neither one of the base datatypes nor a type any file of the
+       project declares - on a component declaration or on a structure member alike. It is
+       refused rather than skipped, because an object of unknown storage has no limits, no
+       size and nothing later to check against. The nearest known name is suggested, which is
+       what answers a transposition like ``unit16`` that the contract cannot catch on its own.
+   * - ``type-kind``
+     - error
+     - a declared type is used where its shape does not fit: a declaration naming a structure
+       while being a curve, a map, an axis or a value block, all of which refer to other
+       objects or are arrays of one datatype, or one stating an ``init``, which for a
+       structure is written by the code that starts it rather than by the description.
    * - ``type-cycle``
      - error
-     - structured datatypes nest each other, directly or through others. The finding names the
-       chain, ``A -> B -> C -> A``, because that says which member to remove; a structure that
+     - structures nest each other, directly or through others. The finding names the chain,
+       ``A -> B -> C -> A``, because that says which member to remove; a structure that
        contains itself has no size at all.
    * - ``reserved-identifier``
      - error
-     - a component, variable, enum or enumerator name is a c keyword, or is declared by one of
+     - a component, variable, type, enum or enumerator name is a c keyword, or is declared by one of
        the headers the generated code includes (everything ``<stdint.h>`` and ``<stdbool.h>``
        bring in, so ``uint16_t`` is out), or is reserved for the implementation by C11 7.1.3 -
        any name containing a double underscore, or starting with an underscore followed by a
@@ -305,10 +312,10 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - two names that are distinct in the description files would become the same c identifier
        or the same generated file: an enumerator and a variable, a variable and the name of an
-       enum (which the types header makes a typedef name, in the same file scope namespace as
-       the variables), an enumerator claimed by two enums (all enumerators share one c
-       namespace), or two component names differing only in case, which ask for the same header
-       on a case insensitive filesystem.
+       enum or of a declared type (both of which the types header makes typedef names, in the
+       same file scope namespace as the variables), an enumerator claimed by two enums (all
+       enumerators share one c namespace), or two component names differing only in case, which
+       ask for the same header on a case insensitive filesystem.
    * - ``duplicate-declaration``
      - error
      - one component declares the same variable twice, for instance once as ``input`` and once

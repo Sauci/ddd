@@ -305,6 +305,47 @@ class TestDiagnostics:
         )
         assert finding["severity"] == 3  # information, not error
 
+    def test_a_file_no_build_claims_is_checked_through_the_project_above_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The state of every checkout nobody has configured a build in.
+
+        Read on its own, a component has no types, so a declaration naming one resolves to
+        nothing and the variable disappears from the run - silently, because the check that
+        would have said so is one of those a lone file cannot answer. Finding the project
+        restores the whole answer, and it is the same one the jumps and the hover give.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "components/a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
+                        }
+                    ]
+                },
+                "components/a.ddd.json": component("A", declare("output", "X", datatype="S_t")),
+            },
+        )
+        document = tmp_path / "components" / "a.ddd.json"
+        reports = service.collect([], [document], tmp_path)
+        # The project's own file is in the report, which is how it was reached at all.
+        assert (tmp_path / "p.ddd.json") in reports
+        codes = {entry["code"] for findings in reports.values() for entry in findings}
+        assert "unknown-type" not in codes
+        assert codes == {"unused-output"}
+
+    def test_a_file_no_project_claims_falls_back_to_reading_it_alone(self, tmp_path: Path) -> None:
+        """A thin answer, but the only honest one when there is nothing else to read."""
+        write_tree(tmp_path, {"lonely.ddd.json": component("A", declare("local", "X"))})
+        document = tmp_path / "lonely.ddd.json"
+        reports = service.collect([], [document], tmp_path)
+        assert set(reports) == {document}
+
     def test_a_file_no_build_claims_says_nothing_the_file_cannot_answer(
         self, tmp_path: Path
     ) -> None:
@@ -538,6 +579,56 @@ class TestNavigation:
         (site,) = definition(built, read(path, {}), path, "types[1].members[0].datatype")
         assert site.pointer == "types[0]"
 
+    def test_a_declaration_naming_a_type_jumps_to_the_type(self, tmp_path: Path) -> None:
+        """The type is what is under the pointer, so that is where the jump goes.
+
+        A base datatype names no file and falls through to the ordinary jump, which lands on
+        the declaration that produces the object - the behaviour a reader resting on ``uint16``
+        already expects.
+        """
+        from ddd.lsp.navigation import definition, references
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm"}
+                    ]
+                },
+                "a.ddd.json": component("A", declare("output", "S", datatype="Speed_t")),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        built = self.index_of(tmp_path / "p.ddd.json")
+        document = read(path, {})
+        pointer = "component.declarations[0].definition.datatype"
+        (site,) = definition(built, document, path, pointer)
+        assert site.path == tmp_path / "t.ddd.json"
+        # And the declaration counts as a use of the type, so find-references lists it.
+        assert {found.pointer for found in references(built, document, pointer)} == {
+            "types[0]",
+            pointer,
+        }
+
+    def test_a_base_datatype_answers_about_the_object_rather_than_a_type(
+        self, tmp_path: Path
+    ) -> None:
+        """``uint16`` names nothing this project declares, so the question is the ordinary one.
+
+        Falling through rather than answering nothing is what keeps the jump and the hover
+        agreeing from every position inside a declaration.
+        """
+        from ddd.lsp.navigation import references
+
+        root = self.workspace(tmp_path)
+        path = tmp_path / "b.ddd.json"
+        found = references(
+            self.index_of(root), read(path, {}), "component.declarations[0].definition.datatype"
+        )
+        assert {site.path.name for site in found} == {"a.ddd.json", "b.ddd.json"}
+
     def test_an_unknown_name_leads_nowhere_rather_than_anywhere(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import definition, references
 
@@ -730,6 +821,225 @@ class TestHover:
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
         return resolve([info], tmp_path / "a.ddd.json")
+
+    def structured(self, tmp_path: Path) -> Any:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "scalar",
+                            "name": "Temp_t",
+                            "datatype": "uint16",
+                            "unit": "degC",
+                            "conversion": {"factor": 0.1, "offset": -40},
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Sensor_t",
+                            "description": "Everything one sensor measures",
+                            "members": [
+                                {"name": "latest", "member": "value", "datatype": "Temp_t"},
+                                {
+                                    "name": "history",
+                                    "member": "value",
+                                    "datatype": "uint16",
+                                    "dimensions": [4],
+                                },
+                                {
+                                    "name": "ready",
+                                    "member": "bits",
+                                    "datatype": "uint16",
+                                    "bits": 1,
+                                },
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Inlet",
+                        datatype="Sensor_t",
+                        volatile=True,
+                        description="The inlet sensor as this ecu sees it",
+                    ),
+                ),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        return resolve([info], tmp_path / "a.ddd.json")
+
+    def test_a_component_finds_the_project_above_it_when_no_build_claims_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Otherwise a structured declaration resolves to nothing in an unconfigured tree.
+
+        A component read on its own has no types at all, so ``Sensor_t`` names nothing, the
+        declaration is dropped and there is no variable left to describe. That is the ordinary
+        state of a checkout nobody has run cmake in, which is where an editor is most useful.
+
+        A search rather than a guess: the project is loaded and asked whether it includes this
+        file, so one that does not is discarded however close it sits.
+        """
+        from ddd.lsp.hover import describe, resolve
+
+        dictionary = self.structured(tmp_path)
+        assert dictionary is not None
+        # Same document, but resolved with no build record at all.
+        found = resolve([], tmp_path / "a.ddd.json", tmp_path)
+        assert found is not None
+        assert describe(found, "Inlet") is not None
+
+    def test_the_project_may_be_a_directory_or_more_above_the_component(
+        self, tmp_path: Path
+    ) -> None:
+        """The ordinary layout: a project at the top, its components in a folder beneath it."""
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "components/a.ddd.json"),
+                "components/a.ddd.json": component("A", declare("local", "Deep")),
+            },
+        )
+        found = resolve([], tmp_path / "components" / "a.ddd.json", tmp_path)
+        assert found is not None
+        assert describe(found, "Deep") is not None
+
+    def test_a_component_no_project_claims_is_still_read_on_its_own(self, tmp_path: Path) -> None:
+        """A thin answer, but a real one: the file is what there is."""
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(tmp_path, {"lonely.ddd.json": component("A", declare("local", "X"))})
+        found = resolve([], tmp_path / "lonely.ddd.json", tmp_path)
+        assert found is not None
+        assert describe(found, "X") is not None
+
+    def test_a_project_that_does_not_include_the_document_is_not_used(self, tmp_path: Path) -> None:
+        """Proximity is not membership, which is why each candidate is asked rather than assumed."""
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "other.ddd.json": project("Other", "elsewhere.ddd.json"),
+                "elsewhere.ddd.json": component("B", declare("local", "Y")),
+                "mine.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        found = resolve([], tmp_path / "mine.ddd.json", tmp_path)
+        assert found is not None
+        # Read on its own, so it knows X and has never heard of Y.
+        assert describe(found, "X") is not None
+        assert describe(found, "Y") is None
+
+    def test_a_structured_variable_is_described_by_its_members(self, tmp_path: Path) -> None:
+        """Which is the whole reason for hovering one.
+
+        The file under the cursor says ``"datatype": "Sensor_t"`` and stops there; what is
+        inside that name lives in another file, and what each member *means* - the unit and
+        the limits the project worked out - is in neither.
+
+        It used to answer nothing at all: a structured variable is not among the objects, and
+        that is the only place the hover looked.
+        """
+        from ddd.lsp.hover import describe
+
+        described = describe(self.structured(tmp_path), "Inlet")
+        assert described is not None
+        assert "**Inlet** — measurement, `Sensor_t`" in described
+        assert "The inlet sensor as this ecu sees it" in described
+        assert "| volatile | yes |" in described
+        assert "**3 members**" in described
+        # The storage as c spells it, and the meaning the project resolved.
+        assert "| `latest` | `uint16` | degC | -40 .. 6513.5 |" in described
+        assert "| `history` | `uint16[4]` |" in described
+        assert "| `ready` | `uint16:1` | *none* | 0 .. 1 |" in described
+
+    def test_a_structured_variable_answers_from_anywhere_inside_the_declaration(
+        self, tmp_path: Path
+    ) -> None:
+        """The same rule every other declaration follows, and the position people land on."""
+        from ddd.lsp.hover import describe
+        from ddd.lsp.navigation import subject_at
+
+        dictionary = self.structured(tmp_path)
+        path = tmp_path / "a.ddd.json"
+        document = read(path, {})
+        for pointer in (
+            "component.declarations[0]",
+            "component.declarations[0].definition",
+            "component.declarations[0].definition.datatype",
+            "component.declarations[0].definition.volatile",
+        ):
+            name = subject_at(document, pointer)
+            assert name == "Inlet", pointer
+            assert describe(dictionary, name) is not None, pointer
+
+    def test_an_array_of_structures_says_so(self, tmp_path: Path) -> None:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Cell_t",
+                            "members": [{"name": "raw", "member": "value", "datatype": "uint16"}],
+                        }
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "Pack", datatype="Cell_t", dimensions=[2])
+                ),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        described = describe(resolve([info], tmp_path / "a.ddd.json"), "Pack")
+        assert described is not None
+        assert "| shape | `[2]` |" in described
+        assert "| `[0].raw` |" in described
+
+    def test_a_structured_variable_with_a_condition_says_so(self, tmp_path: Path) -> None:
+        from ddd.build_info import BuildInfo
+        from ddd.lsp.hover import describe, resolve
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
+                        }
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X", datatype="S_t", condition="defined(FEAT)"),
+                ),
+            },
+        )
+        info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
+        described = describe(resolve([info], tmp_path / "a.ddd.json"), "X")
+        assert described is not None
+        assert "| condition | `defined(FEAT)` |" in described
+        assert "Local to **A**." in described
 
     def test_a_curve_reports_what_its_axis_decided(self, tmp_path: Path) -> None:
         """The shape and the span come from the axis; the file says neither."""

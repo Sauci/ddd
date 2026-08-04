@@ -13,8 +13,14 @@ from ddd.backends.c.literals import (
     sanitize_comment,
 )
 from ddd.backends.c.options import COptions
-from ddd.backends.c.types import needs_stdbool, needs_stdint
-from ddd.ir import DataDictionary, ResolvedComponent, ResolvedObject
+from ddd.backends.c.types import C_TYPE, needs_stdbool, needs_stdint
+from ddd.ir import (
+    DataDictionary,
+    ResolvedComponent,
+    ResolvedInstance,
+    ResolvedObject,
+    ResolvedStruct,
+)
 from ddd.models import EnumConversion, ObjectKind, Scope
 
 UNRESOLVED_GROUP = "<unresolved>"
@@ -64,6 +70,39 @@ class ObjectView:
         # Calibration data already carries const, and c refuses a repeated qualifier.
         prefix = "const " if const and not self.constant else ""
         return f"extern {prefix}{self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
+
+
+@dataclass(frozen=True, slots=True)
+class MemberView:
+    """One member of a structure, prepared for the c templates."""
+
+    name: str
+    c_type: str
+    """The spelling of the member's type: ``uint16_t``, or the name of another structure."""
+
+    array_suffix: str
+    bits: int | None
+    comment: str | None
+
+    @property
+    def declaration(self) -> str:
+        """``uint16_t history[8]`` or ``uint16_t ready : 1``, without the semicolon.
+
+        Composed here rather than in the template because the width of a bitfield goes after
+        the declarator and not after the type, which is a rule about c rather than about house
+        style - and getting it wrong produces a header that does not compile.
+        """
+        text = f"{self.c_type} {self.name}{self.array_suffix}"
+        return f"{text} : {self.bits}" if self.bits is not None else text
+
+
+@dataclass(frozen=True, slots=True)
+class StructView:
+    """One structure, prepared for the c templates."""
+
+    name: str
+    comment: str | None
+    members: tuple[MemberView, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +176,13 @@ class CodeModel:
     generator: str
     options: COptions
     enums: tuple[EnumView, ...]
+    structures: tuple[StructView, ...]
+    """The structures the project declares, each after every structure it nests.
+
+    A template may loop over them and write each one out as it comes: c needs a nested
+    structure to be complete first, and the order here already guarantees it.
+    """
+
     groups: tuple[ComponentGroup, ...]
     headers: tuple[ComponentHeaderView, ...]
     needs_stdint: bool
@@ -154,7 +200,8 @@ class CodeModel:
 
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
     """Turn the dictionary into the flat structures used by the templates."""
-    views = {entry.name: _object_view(entry) for entry in dictionary.objects}
+    views: dict[str, ObjectView] = {entry.name: _object_view(entry) for entry in dictionary.objects}
+    views.update({entry.name: _instance_view(entry) for entry in dictionary.instances})
 
     groups = [
         group
@@ -162,7 +209,7 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
             _group(
                 component.name,
                 component.description,
-                dictionary.owned_by(component.name),
+                dictionary.owned_by(component.name) + dictionary.instances_owned_by(component.name),
                 views,
             )
             for component in dictionary.components
@@ -184,6 +231,7 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         generator=generator,
         options=options,
         enums=tuple(_enum_view(enum) for enum in dictionary.enums),
+        structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
         headers=tuple(_header(component, views, options) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
@@ -208,10 +256,29 @@ def _enum_view(enum: EnumConversion) -> EnumView:
     )
 
 
+def _struct_view(entry: ResolvedStruct) -> StructView:
+    return StructView(
+        name=entry.name,
+        comment=sanitize_comment(entry.description) or None,
+        members=tuple(
+            MemberView(
+                name=member.name,
+                # One of the two is always set: a member is spelled with a base datatype or it
+                # is another structure, and the analysis has already worked out which.
+                c_type=C_TYPE[member.datatype] if member.datatype is not None else str(member.type),
+                array_suffix=declarator_suffix(member.shape),
+                bits=member.bits,
+                comment=sanitize_comment(member.description) or None,
+            )
+            for member in entry.members
+        ),
+    )
+
+
 def _group(
     name: str,
     description: str,
-    owned: tuple[ResolvedObject, ...],
+    owned: tuple[ResolvedObject | ResolvedInstance, ...],
     views: dict[str, ObjectView],
 ) -> ComponentGroup | None:
     if not owned:
@@ -224,6 +291,27 @@ def _group(
             views[entry.name] for entry in ordered if entry.kind is ObjectKind.MEASUREMENT
         ),
         calibration=tuple(views[entry.name] for entry in ordered if entry.is_calibration),
+    )
+
+
+def _instance_view(entry: ResolvedInstance) -> ObjectView:
+    """A structured variable, which declares exactly like any other - with a longer type name.
+
+    It has no initialiser: what a structure starts as is written by the code that starts it,
+    which is why the contract refuses ``init`` on one.
+    """
+    return ObjectView(
+        name=entry.name,
+        kind=entry.kind,
+        c_type=entry.type,
+        array_suffix=declarator_suffix(entry.shape),
+        constant=entry.is_calibration,
+        volatile=entry.volatile,
+        initializer=None,
+        comment=sanitize_comment(entry.description) or None,
+        condition=entry.condition,
+        owner=entry.owner or UNRESOLVED_GROUP,
+        consumers=entry.consumers,
     )
 
 

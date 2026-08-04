@@ -17,6 +17,26 @@
         }
       },
       {
+        "scope": "output",
+        "definition": {
+          "name": "Inlet",
+          "kind": "measurement",
+          "description": "The inlet sensor as this ecu sees it",
+          "datatype": "Sensor_t",
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "InletCal",
+          "kind": "parameter",
+          "description": "What the calibration tool may change about the inlet sensor",
+          "datatype": "SensorCal_t",
+          "volatile": true
+        }
+      },
+      {
         "scope": "local",
         "definition": {
           "name": "SampleCount",

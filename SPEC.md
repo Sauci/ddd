@@ -256,6 +256,27 @@ their own words, and DDD does not compare them. `condition` is per declaration a
 should agree, and `condition-mismatch` says so as a warning rather than an error, since
 components legitimately guarded by different expressions is a thing a project does.
 
+#### 3.3.2 Naming a declared type
+
+`datatype` accepts one of the base datatypes **or** the name of a type the project declares in a
+types file (section 3.8). One key names a type everywhere - on a component declaration and on a
+structure member alike - rather than a second key beside it: a `type` key would have to mean "the
+name of a declared type" in those two places and "which shape this entry has" at the top of a
+types entry, and one key with one meaning is worth what it costs.
+
+What it costs is that the published schema can no longer say `datatype` is one of eleven values.
+A mistyped base datatype is a well formed *name*, so a name that reads as a storage stem with the
+digits wrong - `uint166`, `int16`, `float3`, `sint_16` - is refused outright to put the rejection
+back where the typo is made. What that cannot catch, a transposition such as `unit16`, is reported
+as `unknown-type` with the nearest name suggested.
+
+Naming a type and then restating what it fixes is an error rather than an override, so that "where
+is this object's unit written down" has one answer.
+
+A declaration naming a **scalar type** is an ordinary object whose datatype, unit, conversion and
+limits come from the type. A declaration naming a **structure** is a structured object: it
+generates one c variable, and reaches the a2l as one object per member (section 5.2).
+
 ### 3.4 Conversions
 
 ```json
@@ -294,6 +315,31 @@ A `memory` attribute shall select the memory the object is placed in
 (`ram`, `rom`, `internal_ram`) and optionally name an explicit linker section. The generated
 code shall carry the corresponding section attribute and the a2l shall describe the memory
 layout with `MOD_PAR` / `MEMORY_SEGMENT`.
+
+### 3.8 Type description
+
+A `types` file declares the types a project names, so that components agree by naming rather than
+by each copying out the same answer. Its top level key is `types`, and every entry states its
+`type`:
+
+* a **scalar** type fixes `datatype`, `unit`, `conversion` and `limits` - exactly what makes two
+  declarations interchangeable, and nothing else. `kind`, `dimensions`, `init`, `volatile` and
+  `a2l` stay on the variable, because two measurements of one type may differ in whether an
+  interrupt writes one of them.
+* a **struct** type declares `members`, in the order they are laid out. A member is a `value` - a
+  datatype, base or declared, optionally an array - or a `bits`, an integer datatype and a width.
+
+A member says what its bytes mean as well as where they are: it carries `unit`, `conversion`,
+`limits` and `a2l` of its own, or names a scalar type that fixes them, never both. It carries no
+`init` and no `volatile`, which belong to a variable rather than to a type, and no `kind`: a
+storage class qualifies a whole c object, so the declaration decides and a structure mixing
+measured and calibrated members is not something this format can express.
+
+Bit positions and member offsets are not stated and never will be. C leaves both to the compiler,
+so DDD reads them back out of the build rather than predicting them - which is why the address map
+of section 6 is keyed on access paths. The limits of a bitfield do follow from its stated width,
+since offering a two bit field over the whole range of the word carrying it would invite a value
+it cannot hold.
 
 ### 3.7 Build record
 
@@ -351,7 +397,7 @@ Errors:
   decided by the component that produces it, so a reader stating one is claiming storage it
   does not own, rather than holding an opinion to be outvoted
 * `duplicate-component` - two files declare the same component name
-* `duplicate-type` - two files declare the same structured datatype name
+* `duplicate-type` - two files declare the same type name
 * `unknown-type`, `type-kind`, `type-cycle` - a `datatype` names neither a base datatype nor a
   type any file of the project declares, a declared type is used where its shape does not fit,
   or structures nest each other so that neither has a size
@@ -362,8 +408,8 @@ Errors:
   headers the generated code includes already declares
 * `name-collision` - two names that are distinct in the description files become the same
   c identifier or the same generated file: enumerators of different enums, an enumerator and
-  a variable, a variable and the name of an enum, or two component names differing only in
-  case
+  a variable, a variable and the name of an enum or of a declared type, or two component names
+  differing only in case
 * `naming` - a declared name does not follow the naming convention of the project
 * `file-extension` - a description file is not named `*.ddd.json`
 * `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
@@ -591,5 +637,6 @@ nothing for is not a second class one.
 | 7 command line interface | implemented |
 | 7 data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
 | 7.1 build system integration | implemented (`cmake/Ddd.cmake`, `ddd cmake-dir`) |
+| 3.8 type description, scalar and struct types | implemented (`ddd schema types`, `examples/structures`); a2l bitfield members await a build that reports their bits |
 | 3.7 build record | implemented (`ddd build-info`, written by `ddd_generate`) |
 | 7.2 editor integration | implemented (`ddd lsp`: diagnostics, navigation, hover, rename, quick fixes; VS Code launcher extension) |

@@ -133,7 +133,203 @@ class ResolvedObject(_Frozen):
         return self.kind.is_calibration
 
 
-DICTIONARY_FORMAT = 1
+class ResolvedMember(_Frozen):
+    """One member of a structure, as the c templates need it to declare the member.
+
+    Only what a declaration takes. The meaning of the member - its unit, its conversion, its
+    limits - travels with the *leaf* instead, because that is the form the a2l consumes and
+    there is no second place a reader should have to look.
+    """
+
+    name: Identifier
+    """Name of the member, as it is written in the c struct."""
+
+    description: str = ""
+    """What the member is, for a comment beside its declaration."""
+
+    datatype: Datatype | None = None
+    """Storage of the member when it is a base one; ``None`` when it names a structure."""
+
+    type: str | None = None
+    """Name of the structure this member is, when it is one; ``None`` when it is a datatype."""
+
+    shape: tuple[PositiveInt, ...] = ()
+    """Array dimensions, empty for a scalar."""
+
+    bits: int | None = None
+    """Width in bits when the member is a c bitfield; ``None`` when it is not."""
+
+
+class ResolvedStruct(_Frozen):
+    """One structure, in an order a c file can be written out in.
+
+    The order of :attr:`DataDictionary.types` matters and is not alphabetical: a structure
+    appears after every structure it nests, because a c compiler needs the nested one to be
+    complete first. The members keep the order the author wrote them in, which is the order the
+    compiler lays them out.
+    """
+
+    name: Identifier
+    """Name of the structure, which is the name of the generated typedef."""
+
+    description: str = ""
+    """What the structure is, for a comment above it."""
+
+    members: tuple[ResolvedMember, ...] = ()
+    """The members, in declaration order."""
+
+
+class ResolvedInstance(_Frozen):
+    """One variable whose datatype is a structure.
+
+    Kept apart from :class:`ResolvedObject` rather than widening it: an object with no datatype
+    and no limits would turn every reader of those two fields into a branch, and they are read
+    unconditionally in a dozen places on the strength of always being there.
+    """
+
+    name: Identifier
+    """Name of the variable; its c identifier and the root of every leaf path."""
+
+    type: str
+    """Name of the structure it is, which is the c type of the declaration."""
+
+    kind: ObjectKind
+    """``measurement`` or ``parameter``: what the whole object is, and so how it is qualified."""
+
+    description: str = ""
+    """What the object is; the comment in the generated c."""
+
+    shape: tuple[PositiveInt, ...] = ()
+    """Array dimensions of the variable itself, empty for a single structure.
+
+    An array of structures reaches the a2l as its elements: there is no one address that
+    describes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own
+    leaves at its own path.
+    """
+
+    volatile: bool = False
+    """Whether the declaration carries ``volatile``, which qualifies the whole object."""
+
+    condition: str | None = None
+    """Preprocessor condition of the producing declaration, if any."""
+
+    owner: str | None = None
+    """Component owning the object; ``None`` only when the project is inconsistent."""
+
+    consumers: tuple[str, ...] = ()
+    """Components declaring the object as an input, sorted."""
+
+    local: bool = False
+    """Owned exclusively by ``owner``; no other component may declare it."""
+
+    a2l: A2lObjectOptions = A2lObjectOptions()
+    """What the whole object asks of the a2l; a member may ask for more of its own."""
+
+    @property
+    def is_calibration(self) -> bool:
+        return self.kind.is_calibration
+
+
+class ResolvedLeaf(_Frozen):
+    """One member of one structured variable, at the end of one access path.
+
+    The flattening. A structure reaches the a2l as an object per member rather than as an a2l
+    structure, so this is the form that backend consumes - an ordinary object in every respect
+    but its name, which is a path rather than an identifier.
+    """
+
+    path: str
+    """The c expression that reads this member: ``Inlet.latest.value``, ``Inlet.cell[2].raw``.
+
+    Both the name the a2l gives the object and the symbol it links it to. Written the way it
+    would be written in c, so that a reader of the a2l, of the generated c and of a map file is
+    looking at one string rather than at three spellings of one thing.
+    """
+
+    instance: Identifier
+    """Name of the variable this leaf belongs to, which is the root of :attr:`path`."""
+
+    kind: ObjectKind
+    """Taken from the variable: every leaf of one object has the storage class of the whole."""
+
+    datatype: Datatype
+    """Storage of one element."""
+
+    description: str = ""
+    """What this member is; the a2l long identifier."""
+
+    unit: str = ""
+    """Physical unit, from the member or from the type it names."""
+
+    conversion: Conversion
+    """Always present: the member's conversion, or the identity when none was given."""
+
+    limits: Limits
+    """Always present: stated, or derived from the storage - a bitfield's from its width."""
+
+    shape: tuple[PositiveInt, ...] = ()
+    """Array dimensions of this member; empty for a scalar."""
+
+    bits: int | None = None
+    """Width in bits when the member is a c bitfield.
+
+    Such a leaf has no address of its own - ``&s.ready`` does not compile - so it reaches no
+    a2l until a build tells DDD both where the word is and which bits inside it to read.
+    """
+
+    volatile: bool = False
+    """From the variable, which carries the qualifier for all of its members at once."""
+
+    condition: str | None = None
+    """Preprocessor condition of the producing declaration, if any."""
+
+    owner: str | None = None
+    """Component owning the variable this leaf belongs to."""
+
+    consumers: tuple[str, ...] = ()
+    """Components declaring the variable as an input, sorted."""
+
+    local: bool = False
+    """Owned exclusively by ``owner``."""
+
+    a2l: A2lObjectOptions = A2lObjectOptions()
+    """The member's own a2l options; a member may be kept out of the file on its own."""
+
+    @property
+    def name(self) -> str:
+        """The name this member is published under, which is its path.
+
+        A leaf is an object to everything downstream - it is compared, counted and listed like
+        one - and the path is what it is called in the a2l. Having it answer to ``name`` is
+        what lets one comparison serve both without a second spelling of every rule.
+        """
+        return self.path
+
+    @property
+    def init(self) -> None:
+        """Never stated: what a structure starts as is written by the code that starts it."""
+        return None
+
+    @property
+    def references(self) -> dict[str, str]:
+        """None: a structure member cannot name an axis, so it refers to no other object."""
+        return {}
+
+    @property
+    def is_calibration(self) -> bool:
+        return self.kind.is_calibration
+
+
+Comparable = ResolvedObject | ResolvedLeaf
+"""What one delivery offers another: a plain object, or a member of a structured one.
+
+The two are compared, counted and listed identically, because to a consumer they are the same
+kind of thing - a place with a datatype, a unit and limits, which can be removed, retyped or
+rescaled. They differ only in what they are called, and a leaf answers to its path.
+"""
+
+
+DICTIONARY_FORMAT = 2
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -179,13 +375,72 @@ class DataDictionary(_Frozen):
     enums: tuple[EnumConversion, ...] = ()
     """Distinct enumerations used by the objects, sorted by name."""
 
+    types: tuple[ResolvedStruct, ...] = ()
+    """The structures the project declares, each after every structure it nests.
+
+    Dependency order rather than alphabetical, because a template that simply loops over them
+    has to be able to write them out as they come: c needs a nested structure to be complete
+    before the one that contains it.
+    """
+
+    instances: tuple[ResolvedInstance, ...] = ()
+    """Variables whose datatype is a structure, sorted by name."""
+
+    leaves: tuple[ResolvedLeaf, ...] = ()
+    """Every member of every structured variable, flattened, sorted by path.
+
+    Written out rather than worked out on demand, because the dictionary is a produced
+    document: a generator DDD does not ship reads it without importing python, and no backend
+    should repeat resolution the analysis has already done.
+    """
+
     @property
     def by_name(self) -> dict[str, ResolvedObject]:
         return {entry.name: entry for entry in self.objects}
 
     @property
+    def comparable(self) -> dict[str, Comparable]:
+        """Every object one delivery offers another, keyed by the name it offers it under.
+
+        The members of a structured variable are in here as ordinary objects under their access
+        paths, because that is what they are to a consumer: ``Inlet.latest.value`` is a place
+        with a datatype and a unit, and it can be removed, retyped or rescaled exactly as any
+        other can. Leaving them out made a delivery that dropped every structure look identical
+        to the one before it.
+        """
+        entries: tuple[Comparable, ...] = (*self.objects, *self.leaves)
+        return {entry.name: entry for entry in entries}
+
+    @property
     def datatypes(self) -> set[Datatype]:
-        return {entry.datatype for entry in self.objects}
+        """Every base datatype the generated c has to be able to spell.
+
+        The members of the structures count. A project whose only ``uint8`` sits inside one
+        would otherwise get a header spelling ``uint8_t`` that never includes ``<stdint.h>``.
+        """
+        return (
+            {entry.datatype for entry in self.objects}
+            | {leaf.datatype for leaf in self.leaves}
+            | {
+                member.datatype
+                for structure in self.types
+                for member in structure.members
+                if member.datatype is not None
+            }
+        )
+
+    @property
+    def listed(self) -> tuple[Comparable, ...]:
+        """What the tool counts and lists: the plain objects and the structured members.
+
+        A summary that counted only the plain ones told a project with four objects that it
+        had two, which is the sort of quiet wrongness that costs somebody an afternoon.
+        """
+        return tuple(sorted(self.comparable.values(), key=lambda entry: entry.name))
+
+    def instances_owned_by(self, component: str) -> tuple[ResolvedInstance, ...]:
+        """The structured variables one component owns, in the order they are published."""
+        return tuple(entry for entry in self.instances if entry.owner == component)
 
     def owned_by(self, component: str) -> tuple[ResolvedObject, ...]:
         return tuple(entry for entry in self.objects if entry.owner == component)

@@ -359,7 +359,7 @@ def _command_check(args: argparse.Namespace) -> int:
     if args.format == "json":
         return EXIT_FINDINGS if bag.has_errors else EXIT_OK
     if dictionary is not None and not len(bag):
-        count = len(dictionary.objects)
+        count = len(dictionary.listed)
         components = len(dictionary.components)
         print(
             f"ok: {count} variable{'s' if count != 1 else ''} in "
@@ -455,7 +455,7 @@ def _command_list(args: argparse.Namespace) -> int:
                     "components": [
                         component.model_dump(mode="json") for component in dictionary.components
                     ],
-                    "variables": [entry.model_dump(mode="json") for entry in dictionary.objects],
+                    "variables": [entry.model_dump(mode="json") for entry in dictionary.listed],
                     "diagnostics": [d.to_dict() for d in bag.sorted],
                 },
                 indent=2,
@@ -778,7 +778,7 @@ def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
 
 def _print_table(dictionary: DataDictionary) -> None:
     rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "PRODUCER", "CONSUMERS")]
-    for entry in dictionary.objects:
+    for entry in dictionary.listed:
         owner = entry.owner or "<unresolved>"
         rows.append(
             (

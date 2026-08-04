@@ -27,6 +27,7 @@ from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Severity, SeverityPolicy
 from ddd.loading import load_workspace
+from ddd.lsp.navigation import containing_projects
 from ddd.lsp.ranges import Document, read
 
 SOURCE: Final = "ddd"
@@ -87,12 +88,19 @@ def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]
 
 
 def collect(
-    builds: Sequence[BuildInfo], documents: Iterable[Path] = ()
+    builds: Sequence[BuildInfo],
+    documents: Iterable[Path] = (),
+    root: Path | None = None,
 ) -> dict[Path, list[dict[str, Any]]]:
     """Findings for every file the given builds cover, plus any document they do not.
 
     The result has an entry for every file that was looked at, whether or not anything is
     wrong with it, because an empty entry is what withdraws a finding that has been fixed.
+
+    A document no build claims is checked through the project that includes it, if one lies
+    above it, and only on its own when none does. That is the same order the hover and the
+    jumps follow, and they have to agree: a squiggle saying a datatype names nothing, next to a
+    hover that describes it in full, is worse than either answer on its own.
     """
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
@@ -102,6 +110,13 @@ def collect(
         _group(bag, Path(info.project), grouped)
     for document in documents:
         if document in covered:
+            continue
+        containing = containing_projects(document, root)
+        if containing:
+            for project in containing:
+                bag, sources = _run(project, DiagnosticBag())
+                covered |= sources
+                _group(bag, project, grouped)
             continue
         bag, sources = analyse_standalone(document)
         covered |= sources

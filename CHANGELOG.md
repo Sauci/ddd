@@ -93,30 +93,129 @@ a typedef name at file scope in the same namespace as the variables, so `uint8_t
 it is a redeclaration.  It was caught for the enumerators and not for the name they are
 declared under, which left it to the compiler and to a message about a generated file.
 
-### Structured datatypes, first part
+### Structured datatypes
 
-A new description file kind, `types`, declares structures that a project shares between its
-components.  A member is a `value` (a datatype, optionally an array), a `bits` (a c bitfield) or
-a `struct` (another declared structure), and each shape carries only the keys it needs:
+A `types` description file declares the types a project names, and a declaration names one with
+the key it already had:
 
 ```json
-{ "types": [ { "name": "Status_t", "members": [
-  { "name": "ready", "member": "bits", "kind": "measurement", "datatype": "uint16", "bits": 1 }
-] } ] }
+{ "types": [
+  { "type": "scalar", "name": "Temperature_t", "datatype": "uint16", "unit": "degC",
+    "conversion": { "factor": 0.1, "offset": -40 }, "limits": { "min": -40, "max": 150 } },
+
+  { "type": "struct", "name": "Sample_t", "members": [
+    { "name": "value",     "member": "value", "datatype": "Temperature_t" },
+    { "name": "timestamp", "member": "value", "datatype": "uint32", "unit": "ms" },
+    { "name": "ready",     "member": "bits",  "datatype": "uint16", "bits": 1 } ] }
+] }
 ```
 
-The file is listed in the `includes` of a project, `ddd schema types` publishes its schema, and
-`examples/structures` is a working one.  Three checks come with it: `duplicate-type`,
-`unknown-type` and `type-cycle`.
+```json
+{ "scope": "output", "definition": {
+    "name": "Inlet", "kind": "measurement", "datatype": "Sample_t", "volatile": true } }
+```
 
-A member states no bit position and no offset, and never will: c leaves both to the compiler, so
-DDD will read the real layout back out of the build rather than predict it.
+**One key names a type, everywhere.**  `datatype` accepts one of the eleven base datatypes or the
+name of a type the project declares, on a structure member and on a component declaration alike.
+There is no second key beside it: a `type` key would have to mean "the name of a declared type" in
+those two places and "which shape this entry has" at the top of a types entry, and one key with
+one meaning is worth what it costs.
 
-**Not yet available**: referring to a structure from a component declaration, so no variable has
-one yet, and nothing structured reaches the generated c or the a2l.  When it does, a structure
-will be flattened into one a2l object per member rather than described as an a2l structure -
-CANape 15 accepts the native `TYPEDEF_STRUCTURE` form and then displays nothing for it, which is
-recorded under "what the calibration tools actually implement" in the developer documentation.
+**A scalar type is agreement by naming rather than by copying.**  Three components consuming an
+engine speed used to write out the datatype, the unit, the scaling and the limits, leaving DDD to
+notice when one of them was wrong.  If all three say `Speed_t`, there is nothing left to disagree
+about.  A type fixes exactly `datatype`, `unit`, `conversion` and `limits`; `kind`, `dimensions`,
+`init`, `volatile` and `a2l` stay on the variable, because two measurements of one type may well
+differ in whether an interrupt writes one of them.  Naming a type and then restating what it
+fixes is an error rather than an override, so "where is this unit written down" keeps one answer.
+
+**A member says what its bytes mean as well as where they are.**  It carries `unit`, `conversion`,
+`limits` and `a2l` of its own, or names a scalar type that fixes them - never both.  It carries
+no `init` and no `volatile`, because those belong to a variable rather than to a type: two
+variables of one structure may start at different values, and a qualifier applies to a whole c
+object.  For the same reason a member states no `kind`; the declaration decides, so a structure
+mixing measured and calibrated members is not something the format can express rather than
+something DDD has to report.
+
+**The limits of a bitfield come from its width.**  A two bit `mode` offered to a calibration tool
+as `0 .. 65535` lets somebody enter a value the field cannot hold, and the software then reads
+back something else.
+
+#### What it generates
+
+The structures reach `ddd_types.h`, each after every structure it nests, because c needs the
+nested one complete first - a template may loop over `model.structures` and write them out as
+they come:
+
+```c
+typedef struct
+{
+    uint16_t value;           /**< The reading itself */
+    uint32_t timestamp;       /**< Milliseconds since the last reset */
+    uint16_t ready : 1;       /**< Set once the sensor has produced a first reading */
+} Sample_t;
+```
+
+A scalar type is not a c typedef: `Temperature_t` says what a number *means*, and the storage it
+means it in is a `uint16_t`.  Carrying the name into the generated c would be a second feature -
+it needs the dictionary to record which type each object came from - and it is not this one.
+
+```c
+volatile Sample_t Inlet;
+extern volatile Sample_t Inlet;
+```
+
+In the a2l a structure is **flattened into one object per member**, named by the c expression that
+reads it, so the a2l, the generated c and a map file all spell one thing one way:
+
+```
+/begin MEASUREMENT Inlet.value "The reading itself"
+  UWORD CM_LIN_DEGC 0 0 -40 150
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "Inlet.value" 0
+/end MEASUREMENT
+```
+
+The offset in `SYMBOL_LINK` is `0` and means it: the offset of a symbol from itself.  DDD predicts
+no member offset and no bit position - c leaves both to the compiler - and `--address-map` is
+keyed on these paths, so a build reports them the way it already reports the address of any other
+symbol.  An array of structures contributes its elements, `Inlet.cell[0].raw` and the rest, since
+no single record describes two of them at once; an array of values stays one record with a
+`MATRIX_DIM`.
+
+**A bitfield member reaches no a2l.**  `&s.ready` does not compile, so no build can report where
+that member is, and a `SYMBOL_LINK` carries a byte offset with nowhere to put a bit position:
+leaving the mask out would claim the whole word and writing zero would claim nothing.  Both are
+wrong answers dressed as output, so the member waits for a build that can say.  Everything else
+about it - the c declaration, the width, the limits - is generated as usual.
+
+#### The rest of it
+
+`ddd schema types` publishes the contract, `examples/structures` is a working project, and the
+language server jumps from a `datatype` to the type it names and lists the declarations that use
+one.  Six checks: `duplicate-type`, `unknown-type`, `type-kind` and `type-cycle`, plus
+`name-collision` and `reserved-identifier` reaching type names.
+
+The rest of the tool sees a structured variable as the objects it is made of: `ddd list` and the
+`ddd check` summary count its members, and `ddd compare` compares them, so a delivery that drops
+or retypes one is reported the way any other removal is.  What it does not yet report is a member
+*reordered* within a structure, which moves every address after it.
+
+`unknown-type` is the price of one key naming both, and it is worth stating.  A mistyped base
+datatype is a well formed *name*, so the schema can no longer reject `uint166` as you type -
+except that a name reading as a storage stem with the digits wrong is refused outright, which
+catches `uint166`, `int16`, `float3` and `sint_16`.  What that cannot catch, a transposition like
+`unit16`, is answered by the check: *did you mean 'uint16'?*
+
+**The dictionary format is now 2.**  It carries `types`, `instances` and `leaves` beside the
+objects, so a dump written by this version cannot be read by an older DDD - which is what the
+format stamp exists to say plainly rather than have it misread.
+
+**Migrating**: a `types` file entry needs `"type": "struct"`; a member that nested a structure
+writes `"datatype": "Other_t"` instead of `"member": "struct", "type": "Other_t"`; and a member's
+`"kind"` is deleted.  Nothing else in a description changes.  A project that copied
+`examples/templates` should take the new `ddd_types.h.jinja2`, which renders the structures -
+without it a structured variable is declared against a type its header never defines.
 
 ### Storage, interface and presentation are told apart
 

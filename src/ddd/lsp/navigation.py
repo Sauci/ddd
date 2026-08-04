@@ -116,6 +116,10 @@ def index(workspace: Workspace) -> Index:
             for key, target in declaration.definition.references.items():
                 where = loaded.declaration_location(position, f"definition.{key}")
                 built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
+            named = declaration.definition.declared_type
+            if named is not None:
+                where = loaded.declaration_location(position, "definition.datatype")
+                built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
             conversion = declaration.definition.conversion
             if isinstance(conversion, EnumConversion):
                 built.occupied[conversion.name] = f"the name of enum '{conversion.name}'"
@@ -123,6 +127,7 @@ def index(workspace: Workspace) -> Index:
                     built.occupied[enumerator.name] = f"an enumerator of enum '{conversion.name}'"
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
+        built.occupied[entry.name] = f"the name of the type '{entry.name}'"
         structure = entry.structure
         if structure is None:
             continue
@@ -136,11 +141,20 @@ def index(workspace: Workspace) -> Index:
     return built
 
 
-def workspaces(builds: Sequence[BuildInfo], document: Path) -> list[Workspace]:
+def workspaces(
+    builds: Sequence[BuildInfo], document: Path, root: Path | None = None
+) -> list[Workspace]:
     """The projects that contain a document, or the document read on its own.
 
     Loaded per request rather than kept: a jump is something a person asks for, so the cost
     lands on a keypress somebody chose to make, and never on a keystroke they did not.
+
+    Three answers are tried in order of how much they know. A build that named this file knows
+    most, because it knows which components are linked together. Failing that, a project file
+    lying above the document that turns out to include it knows nearly as much - and finding it
+    is what lets an editor answer at all in a tree nobody has configured a build for. Only when
+    neither exists is the file read on its own, which is a real answer but a thin one: a
+    component alone has no types, no producers for its inputs and no readers for its outputs.
     """
     found = []
     for info in builds:
@@ -148,10 +162,57 @@ def workspaces(builds: Sequence[BuildInfo], document: Path) -> list[Workspace]:
         if workspace is not None and document in workspace.sources():
             found.append(workspace)
     if not found:
+        found.extend(
+            workspace
+            for workspace in (
+                load_workspace(project, DiagnosticBag())
+                for project in containing_projects(document, root)
+            )
+            if workspace is not None
+        )
+    if not found:
         alone = load_workspace(document, DiagnosticBag())
         if alone is not None:
             found.append(alone)
     return found
+
+
+def containing_projects(document: Path, root: Path | None) -> list[Path]:
+    """Descriptions lying at or above the document that turn out to include it.
+
+    A search rather than a guess: every candidate is loaded and asked whether this file is one
+    of its sources, so one that does not include the document is discarded however close it
+    sits. What it buys is the case an editor meets constantly - a description opened in a tree
+    where no build has been configured - in which the alternative is a component with no types,
+    whose structured declarations resolve to nothing at all.
+
+    Bounded by the editor's own root, so the walk cannot wander up into a home directory.
+    """
+    stop = root.resolve() if root is not None else document.parent.resolve()
+    directories = []
+    current = document.parent.resolve()
+    while True:
+        directories.append(current)
+        if current == stop or current.parent == current or stop not in current.parents:
+            break
+        current = current.parent
+
+    for directory in directories:
+        found = [
+            candidate
+            for candidate in sorted(directory.glob("*.ddd.json"))
+            if candidate != document and _includes(candidate, document)
+        ]
+        if found:
+            # The nearest wins; one further up as well is a sub-project of it, and answering
+            # from both would say everything twice.
+            return found
+    return []
+
+
+def _includes(candidate: Path, document: Path) -> bool:
+    workspace = load_workspace(candidate, DiagnosticBag())
+    return workspace is not None and document in workspace.sources()
 
 
 def variable_at(document: Document, pointer: str) -> str | None:
@@ -207,9 +268,14 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
     if isinstance(value, str):
         if pointer.startswith(_INCLUDES) or pointer == _NAMING:
             return _files(path.parent, value)
+        # A datatype that names a declared type goes to that type, wherever it is written -
+        # the type is what is under the pointer. A base datatype names no file, so it falls
+        # through to the declaration jump, which is what somebody resting there expects.
+        found = built.types.get(value)
+        if found is not None and (pointer.startswith(_TYPES) or _key(pointer) == "datatype"):
+            return [found]
         if pointer.startswith(_TYPES):
-            found = built.types.get(value)
-            return [found] if found is not None else []
+            return []
     name = subject_at(document, pointer)
     if name is not None:
         return list(built.producers.get(name, ()))
@@ -224,10 +290,12 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     a use of it, and which one is "the" declaration is the question the jump above answers.
     """
     value = document.value_at(pointer)
-    if isinstance(value, str) and pointer.startswith(_TYPES):
+    if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "datatype"):
         declared = built.types.get(value)
-        found = [declared] if declared is not None else []
-        return found + list(built.type_uses.get(value, ()))
+        if declared is not None:
+            return [declared, *built.type_uses.get(value, ())]
+        if pointer.startswith(_TYPES):
+            return []
     name = subject_at(document, pointer)
     if name is not None:
         return list(built.declarations.get(name, ()))

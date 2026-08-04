@@ -140,7 +140,9 @@ class Server:
         # A record naming a project that is not there is dropped rather than analysed. Running
         # it produces one finding, "file does not exist", published against a file nobody can
         # open - and the thing actually wrong is the record, which the log has just said.
-        reports = collect([info for info in builds if Path(info.project).is_file()], [document])
+        reports = collect(
+            [info for info in builds if Path(info.project).is_file()], [document], self.root
+        )
         # Only files with something to say, plus the ones that had something to say last time
         # and no longer do - those need an empty list to withdraw what is on screen.
         current = {path for path, findings in reports.items() if findings}
@@ -198,7 +200,7 @@ class Server:
         document = read(path, cache)
         pointer = document.pointer_at(params["position"])
         found: list[Site] = []
-        for workspace in workspaces(discover(self.root, self.build_directories), path):
+        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
             built = index(workspace)
             if method == _DEFINITION:
                 found.extend(definition(built, document, path, pointer))
@@ -218,7 +220,7 @@ class Server:
         name = subject_at(document, pointer)
         if name is None:
             return None
-        dictionary = resolve(discover(self.root, self.build_directories), path)
+        dictionary = resolve(discover(self.root, self.build_directories), path, self.root)
         described = describe(dictionary, name) if dictionary else None
         if described is None:
             return None
@@ -260,7 +262,7 @@ class Server:
         # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
         # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
-        for workspace in workspaces(discover(self.root, self.build_directories), path):
+        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
             built = index(workspace)
             refused = rename_problem(built, wanted)
             if refused is not None:
@@ -287,7 +289,7 @@ class Server:
         pointer = document.pointer_at(params["range"]["start"])
         reported = params.get("context", {}).get("diagnostics", [])
         offered: list[dict[str, Any]] = []
-        for workspace in workspaces(discover(self.root, self.build_directories), path):
+        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
             offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
         return offered
 

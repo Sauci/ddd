@@ -26,7 +26,7 @@ from typing import Final
 from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import DiagnosticBag
-from ddd.ir import DataDictionary, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
 from ddd.lsp.navigation import workspaces
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range
@@ -75,7 +75,9 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
     return [values[start : start + width] for start in range(0, len(values), width)]
 
 
-def resolve(builds: Sequence[BuildInfo], document: Path) -> DataDictionary | None:
+def resolve(
+    builds: Sequence[BuildInfo], document: Path, root: Path | None = None
+) -> DataDictionary | None:
     """The resolved project containing the document, or nothing if none resolves.
 
     Resolved on the spot rather than kept, for the reason navigation is: a hover is something
@@ -86,13 +88,16 @@ def resolve(builds: Sequence[BuildInfo], document: Path) -> DataDictionary | Non
     The findings will already be saying what is wrong with it; refusing to answer what a
     variable is on top of that helps nobody.
     """
-    for workspace in workspaces(builds, document):
+    for workspace in workspaces(builds, document, root):
         return analyze(workspace, DiagnosticBag())
     return None
 
 
 def describe(dictionary: DataDictionary, name: str) -> str | None:
     """The markdown an editor shows for one data object, or nothing if it has none."""
+    instance = next((entry for entry in dictionary.instances if entry.name == name), None)
+    if instance is not None:
+        return _describe_instance(dictionary, instance)
     entry = dictionary.by_name.get(name)
     if entry is None:
         return None
@@ -106,7 +111,54 @@ def describe(dictionary: DataDictionary, name: str) -> str | None:
     return "\n".join(lines)
 
 
-def _ownership(entry: ResolvedObject) -> str:
+def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> str:
+    """What a structured variable is: the type it names, and what that type holds.
+
+    The members are the whole point of hovering one. The file under the cursor says
+    ``"datatype": "Sensor_t"`` and nothing else; what a reader wants is what is inside it,
+    which lives in another file - and, for each member, the unit and limits the project worked
+    out rather than the ones anybody wrote down.
+    """
+    lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.type}`", ""]
+    if entry.description:
+        lines += [entry.description, ""]
+    lines += [_ownership(entry), ""]
+    facts = [("type", f"`{entry.type}`")]
+    if entry.shape:
+        facts.append(("shape", f"`{format_shape(tuple(entry.shape))}`"))
+    if entry.condition:
+        facts.append(("condition", f"`{entry.condition}`"))
+    facts.append(("volatile", "yes" if entry.volatile else "no"))
+    lines += ["| | |", "|---|---|"]
+    lines += [f"| {label} | {value} |" for label, value in facts]
+
+    # Never empty: a structure declares at least one member, and every member of every one it
+    # nests arrives here too, so there is no "holds nothing" case to write a branch for.
+    leaves = [leaf for leaf in dictionary.leaves if leaf.instance == entry.name]
+    lines += ["", f"**{len(leaves)} member{'s' if len(leaves) != 1 else ''}**", ""]
+    lines += ["| member | type | unit | limits |", "|---|---|---|---|"]
+    lines += [
+        f"| `{leaf.path.removeprefix(entry.name).lstrip('.')}` "
+        f"| `{_member_storage(leaf)}` "
+        f"| {leaf.unit or '*none*'} "
+        f"| {format_number(leaf.limits.min)} .. {format_number(leaf.limits.max)} |"
+        for leaf in leaves
+    ]
+    return "\n".join(lines)
+
+
+def _member_storage(leaf: ResolvedLeaf) -> str:
+    """``uint16``, ``uint16[8]`` or ``uint16:2``, which is how the c spells it."""
+    if leaf.bits is not None:
+        return f"{leaf.datatype.value}:{leaf.bits}"
+    return (
+        f"{leaf.datatype.value}{format_shape(tuple(leaf.shape))}"
+        if leaf.shape
+        else (leaf.datatype.value)
+    )
+
+
+def _ownership(entry: ResolvedObject | ResolvedInstance) -> str:
     """Who writes it and who reads it, which is the whole point of a data dictionary."""
     if entry.owner is None:
         return "*No component produces this.*"

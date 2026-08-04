@@ -1,0 +1,698 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Naming conventions &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=fbf08ad5" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Comparing deliveries" href="comparing_deliveries.html" />
+    <link rel="prev" title="Consistency checks" href="consistency_checks.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Naming conventions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#why-a-sequence-of-segments-and-not-one-regular-expression">Why a sequence of segments and not one regular expression</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-convention-file">The convention file</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#segments">segments</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-rules-that-keep-a-name-splittable">The rules that keep a name splittable</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#how-a-name-is-judged">How a name is judged</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#explaining-a-name">Explaining a name</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#locating-what-is-wrong">Locating what is wrong</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#completing-a-partially-typed-name">Completing a partially typed name</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#shell-completion">Shell completion</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-convention-in-the-project">The convention in the project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#only-variable-names-are-checked">Only variable names are checked</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Naming conventions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/naming_conventions.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="naming-conventions">
+<h1>Naming conventions<a class="headerlink" href="#naming-conventions" title="Link to this heading"></a></h1>
+<p>Most teams already agree that a variable name means something. One part says what the value
+<em>is</em> - a measurement, a flag, a counter, a calibratable parameter - one part says what it is
+<em>about</em>, and one part says how it was <em>conditioned</em>, raw or filtered or converted to the
+physical quantity. That agreement usually lives in a slide, a wiki page or in the head of
+whoever wrote the first component, and it decays exactly as fast as the team grows. DDD can
+hold the agreement in a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file instead, check every declared name against it on
+every run, explain an unfamiliar name to whoever reads it, and complete a name in the shell
+while it is being typed.</p>
+<p>The convention is optional. A project that does not point at one is checked for everything
+else and never sees a naming finding; nothing else in the tool depends on it.</p>
+<section id="why-a-sequence-of-segments-and-not-one-regular-expression">
+<h2>Why a sequence of segments and not one regular expression<a class="headerlink" href="#why-a-sequence-of-segments-and-not-one-regular-expression" title="Link to this heading"></a></h2>
+<p>A regular expression can decide whether a name is acceptable, and that is all it can do. When
+<code class="docutils literal notranslate"><span class="pre">vl_InletTemperature_flt</span></code> fails to match <code class="docutils literal notranslate"><span class="pre">^(val|flg|cnt)_[A-Z][A-Za-z0-9]*(_(raw|flt))?$</span></code>,
+the expression has no way of saying that it was the <em>first</em> part that went wrong, that the
+first part is called the role, that the roles are <code class="docutils literal notranslate"><span class="pre">val</span></code>, <code class="docutils literal notranslate"><span class="pre">flg</span></code> and <code class="docutils literal notranslate"><span class="pre">cnt</span></code>, or that <code class="docutils literal notranslate"><span class="pre">val</span></code>
+is one edit away from what was typed. It fails as a whole, so it can only report the whole
+name.</p>
+<p>The same limitation shows up from the other side. A calibration engineer looking at
+<code class="docutils literal notranslate"><span class="pre">val_InletTemperature_flt</span></code> for the first time wants to know what <code class="docutils literal notranslate"><span class="pre">val</span></code> and <code class="docutils literal notranslate"><span class="pre">flt</span></code> stand
+for; an expression that merely accepts the name carries none of that. And a developer half way
+through typing <code class="docutils literal notranslate"><span class="pre">val_Inlet</span></code> wants the shell to offer the endings that are still allowed, which
+an expression cannot enumerate either, because a match is a yes-or-no answer over a complete
+string.</p>
+<p>DDD therefore describes a name as an ordered sequence of <strong>segments</strong> joined by a fixed
+<strong>separator</strong>, and says for each segment what may stand there. Because the description is
+positional, the tool always knows which position it is looking at:</p>
+<ul class="simple">
+<li><p>a rejected name can be <strong>located</strong> - the offending part is underlined with carets and named
+after its segment, and the vocabulary of that segment is offered as the correction,</p></li>
+<li><p>an accepted name can be <strong>explained</strong> - each part is printed next to the meaning the
+convention gives it,</p></li>
+<li><p>a partially typed name can be <strong>completed</strong> - at any position the allowed tokens are known,
+so a shell can offer them.</p></li>
+</ul>
+<p>This is why the segmented form is required rather than merely convenient: it is the only form
+that supports the two things beyond validation that make a convention worth writing down.</p>
+</section>
+<section id="the-convention-file">
+<h2>The convention file<a class="headerlink" href="#the-convention-file" title="Link to this heading"></a></h2>
+<p>A convention is a json file whose top level key is <code class="docutils literal notranslate"><span class="pre">naming</span></code>, named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> like the
+other description files so that one pattern still matches everything belonging to DDD. It is
+not listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project - a project points at it with its <code class="docutils literal notranslate"><span class="pre">naming</span></code> key -
+and a convention that is listed in <code class="docutils literal notranslate"><span class="pre">includes</span></code> anyway is not left to fail obscurely as a file
+that is neither a project nor a component, but is recognised for what it is:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check wrong-include.ddd.json
+convention.ddd.json: error[file-kind]: this is a naming convention; point the &#39;naming&#39; key of the project at it instead of listing it in &#39;includes&#39;
+1 error
+</pre></div>
+</div>
+<p>The full example below is <code class="docutils literal notranslate"><span class="pre">examples/naming/convention.ddd.json</span></code>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;demo-convention&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Names are &lt;role&gt;_&lt;Subject&gt;[_&lt;Subject&gt;...][_&lt;qualifier&gt;]&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;separator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;_&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;segments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;role&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;what part the value plays in the software&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;val&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a measured or computed value&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flg&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a boolean flag&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cnt&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a counter&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;par&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a calibratable parameter&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;axs&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;axis break points&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;crv&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a calibratable curve&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;map&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a calibratable map&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tbl&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a calibratable value block&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;subject&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;what the value is about, in upper camel case&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[A-Z][A-Za-z0-9]*$&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;repeatable&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;qualifier&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;how the value is conditioned&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;optional&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;raw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unconditioned, straight from the source&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flt&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;filtered&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;phys&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;converted to the physical quantity&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a request, not a measurement&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;an upper bound&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;min&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a lower bound&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="p">]</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">naming</span></code> object itself carries five keys:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 15.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>required</p></td>
+<td><p>How the convention calls itself. It is printed next to every explained name, so that a
+reader who sees two different verdicts knows which set of rules produced each.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Free text for the humans reading the file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">separator</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;_&quot;</span></code></p></td>
+<td><p>The string that joins the segments. A name is split on it before its parts are judged.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">segments</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The ordered positions of a name; at least one.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">case_sensitive</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Whether a token has to be spelled exactly as the convention spells it.</p></td>
+</tr>
+</tbody>
+</table>
+<p>With <code class="docutils literal notranslate"><span class="pre">case_sensitive</span></code> set to <code class="docutils literal notranslate"><span class="pre">false</span></code>, a token typed in another case is accepted and still
+resolves to its meaning, and the completion offers the token as the convention spells it, so
+the canonical spelling is what ends up on the command line.</p>
+<section id="segments">
+<h3>segments<a class="headerlink" href="#segments" title="Link to this heading"></a></h3>
+<p>A segment is one position in a name. It carries either a controlled <strong>vocabulary</strong> of tokens
+with their meanings, or a <strong>pattern</strong> for a free position - never both, and never neither. A
+segment with both would leave it undecided which of the two decides, and a segment with
+neither would accept anything, which is indistinguishable from not describing the position at
+all; both are refused when the file is read.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 15.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>required</p></td>
+<td><p>What this position means, in c identifier form. It is what the messages call the
+position: <em>is not a known</em> <strong>role</strong>, <em>does not match the</em> <strong>subject</strong> <em>pattern</em>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Shown when a name is explained and when a required position is missing, so a
+description here is what a newcomer actually reads.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tokens</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>The controlled vocabulary of this position. Each token is an object with a <code class="docutils literal notranslate"><span class="pre">value</span></code>
+and an optional <code class="docutils literal notranslate"><span class="pre">description</span></code>; the completions and the “did you mean” suggestions
+come from here.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pattern</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
+<td><p>A regular expression for a free position, matched against the whole part. Use it where
+the vocabulary is open, typically for the descriptive part of a name.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optional</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>A trailing position that a name may leave out.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repeatable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>The position may be filled more than once, for a multi-word descriptive part.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The pattern is compiled while the convention file is read rather than when the first name is
+judged. A typo in the expression is therefore reported as a finding about the convention,
+against the file and the segment it belongs to, instead of surfacing as a crash somewhere in
+the middle of a project check.</p>
+</section>
+<section id="the-rules-that-keep-a-name-splittable">
+<h3>The rules that keep a name splittable<a class="headerlink" href="#the-rules-that-keep-a-name-splittable" title="Link to this heading"></a></h3>
+<p>Splitting a name into positions only works if the split is unique. Three rules make sure of
+that, and all three are enforced when the convention file is loaded rather than when a name
+happens to run into them:</p>
+<ul class="simple">
+<li><p><strong>``optional`` may only appear at the end.</strong> If a required segment followed an optional one,
+a name that is one part short would fit two readings - the optional part left out, or the
+required part left out - and the tool would have no basis for choosing. The message names
+the segment that breaks the rule: <code class="docutils literal notranslate"><span class="pre">segment</span> <span class="pre">'subject'</span> <span class="pre">is</span> <span class="pre">required</span> <span class="pre">but</span> <span class="pre">follows</span> <span class="pre">an</span> <span class="pre">optional</span>
+<span class="pre">one,</span> <span class="pre">so</span> <span class="pre">a</span> <span class="pre">name</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">split</span> <span class="pre">unambiguously</span></code>.</p></li>
+<li><p><strong>At most one segment may be ``repeatable``.</strong> With two stretchable positions, a name with
+spare parts could be divided between them in several ways, and the explanation of the name
+would depend on an arbitrary choice. The message lists the offenders: <code class="docutils literal notranslate"><span class="pre">only</span> <span class="pre">one</span> <span class="pre">segment</span> <span class="pre">may</span>
+<span class="pre">be</span> <span class="pre">repeatable,</span> <span class="pre">got</span> <span class="pre">role,</span> <span class="pre">subject</span></code>.</p></li>
+<li><p><strong>A token may not contain the separator.</strong> The name is split on the separator first, so such
+a token could never appear as a single part; the completion would offer it and the check
+would then reject it, which is the tool contradicting itself. It is refused outright:
+<code class="docutils literal notranslate"><span class="pre">token</span> <span class="pre">'val_raw'</span> <span class="pre">of</span> <span class="pre">segment</span> <span class="pre">'role'</span> <span class="pre">contains</span> <span class="pre">the</span> <span class="pre">separator</span> <span class="pre">'_',</span> <span class="pre">so</span> <span class="pre">no</span> <span class="pre">name</span> <span class="pre">could</span> <span class="pre">ever</span> <span class="pre">match</span>
+<span class="pre">it</span></code>. For the same reason a token may not contain whitespace.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>These are <code class="docutils literal notranslate"><span class="pre">schema</span></code> findings against the convention file, and <code class="docutils literal notranslate"><span class="pre">schema</span></code> is one of the
+checks whose severity cannot be relaxed - a convention that cannot be interpreted has
+nothing further to say. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span></code> on such a file exits with <code class="docutils literal notranslate"><span class="pre">2</span></code>, the usage exit code,
+rather than pretending to judge names against rules it could not read.</p>
+</div>
+<p>The machine readable form of all of this is available with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">naming</span></code>, which prints
+the json schema of the convention file.</p>
+</section>
+</section>
+<section id="how-a-name-is-judged">
+<h2>How a name is judged<a class="headerlink" href="#how-a-name-is-judged" title="Link to this heading"></a></h2>
+<p>A name is first split on the separator, and the resulting parts are then laid over the
+segments. Because a convention may have trailing optional segments and one repeatable segment,
+several <strong>layouts</strong> can accommodate the same number of parts: with the demo convention above,
+three parts can be read as role + subject + qualifier, or as role + subject + subject.</p>
+<p>DDD does not decide that greedily. It enumerates every layout the convention allows for that
+number of parts, judges the name under each, and keeps the layout the name actually fits. This
+matters for a very ordinary case - a multi-word subject:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd name -c convention.ddd.json val_Inlet_Temperature
+val_Inlet_Temperature  (demo-convention)
+  val                      role         a measured or computed value
+  Inlet                    subject      what the value is about, in upper camel case
+  Temperature              subject      what the value is about, in upper camel case
+</pre></div>
+</div>
+<p>A greedy reading would hand <code class="docutils literal notranslate"><span class="pre">Temperature</span></code> to the qualifier, find it in none of the six
+qualifiers and blame the author for a name the convention allows. Trying all layouts and
+keeping the one that fits removes that entire class of false findings. When no layout fits,
+the layout with the fewest problems is the one reported, so the diagnostics point at the
+reading that was closest to working rather than at an arbitrary one.</p>
+<p>Layouts that use more of the optional segments are tried first, which is what makes a part that
+could be read either as a vocabulary token or as free text be reported as the token, together
+with its meaning. That is the reading a human would give it, and it is the one that produces
+the more useful explanation.</p>
+<p>A name that stops before a required position is a different kind of failure from a name with a
+wrong part, and is reported as such - there is nothing to underline, so the missing position is
+named instead, with its description:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd name -c convention.ddd.json val
+val
+
+  the subject part is missing: what the value is about, in upper camel case
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">repeatable</span></code> widens how many parts a position may take; it does not make the position
+optional. A repeatable segment still has to appear at least once, which is why the subject
+is reported as missing above.</p>
+</div>
+</section>
+<section id="explaining-a-name">
+<h2>Explaining a name<a class="headerlink" href="#explaining-a-name" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span> <span class="pre">-c</span> <span class="pre">CONV</span> <span class="pre">NAME...</span></code> takes one or more names and prints, for each, what the convention
+makes of it. For a name that fits, the output is the reading of the name: the convention that
+judged it, then one line per part with the position it occupies and what that part means.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd name -c convention.ddd.json val_InletTemperature_flt
+val_InletTemperature_flt  (demo-convention)
+  val                      role         a measured or computed value
+  InletTemperature         subject      what the value is about, in upper camel case
+  flt                      qualifier    filtered
+</pre></div>
+</div>
+<p>The meaning printed for a part comes from the token’s <code class="docutils literal notranslate"><span class="pre">description</span></code> where the position has a
+vocabulary, and from the segment’s <code class="docutils literal notranslate"><span class="pre">description</span></code> where it is a free position. This is the
+half of the job that has nothing to do with policing: a calibration engineer who meets
+<code class="docutils literal notranslate"><span class="pre">crv_InletCompensation</span></code> in a measurement tool can ask the same command what it is, and the
+answer comes from the file the developers maintain rather than from a glossary that drifts.</p>
+</section>
+<section id="locating-what-is-wrong">
+<h2>Locating what is wrong<a class="headerlink" href="#locating-what-is-wrong" title="Link to this heading"></a></h2>
+<p>For a name that does not fit, the output points at the part at fault, and offers the closest
+tokens of that position as a correction. Several names can be looked at in one call:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd name -c convention.ddd.json vl_InletTemperature_flt flg_Valid_fltr
+vl_InletTemperature_flt
+^^
+  &#39;vl&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean &#39;val&#39;?
+flg_Valid_fltr
+          ^^^^
+  &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
+</pre></div>
+</div>
+<p>The carets sit under the offending part because the tool knows the offset of that part in the
+whole name, and the message names the position and lists its vocabulary because the convention
+described that position rather than the name as a whole. Up to three suggestions are offered,
+taken from the vocabulary of the position and ordered by closeness to what was typed; a part
+that resembles nothing in the vocabulary simply gets no suggestion rather than a misleading
+one.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span></code> exits with <code class="docutils literal notranslate"><span class="pre">0</span></code> when every name fits, <code class="docutils literal notranslate"><span class="pre">1</span></code> when at least one does not, and <code class="docutils literal notranslate"><span class="pre">2</span></code>
+when the convention file itself could not be read - which makes it usable as a small gate of
+its own, for instance over the names in a review. With <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> it prints the same
+verdict machine readably, including the offset and length of every part, the segment it was
+judged against, its meaning, the problem and the suggestions, so a ci job or an editor
+integration can render it however it likes.</p>
+</section>
+<section id="completing-a-partially-typed-name">
+<h2>Completing a partially typed name<a class="headerlink" href="#completing-a-partially-typed-name" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">complete</span> <span class="pre">-c</span> <span class="pre">CONV</span> <span class="pre">PREFIX</span></code> prints the names the prefix could grow into, one candidate per
+line. It is meant to be called by a shell completion, and it is built around that: it <strong>always
+exits zero and never prints a diagnostic</strong>, because a completion that reports an error is worse
+than one that offers nothing - the error would land in the middle of the line being typed. A
+missing or unreadable convention file therefore produces no output and exit code <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
+<p>With nothing typed yet, the vocabulary of the first position is offered:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd complete -c convention.ddd.json &#39;&#39;
+val
+flg
+cnt
+par
+axs
+crv
+map
+tbl
+</pre></div>
+</div>
+<p>A partially typed part is filtered on, so a single character is usually enough:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd complete -c convention.ddd.json v
+val
+</pre></div>
+</div>
+<p>Once the subject has been typed, the offer moves on to what may follow it. A free position has
+no vocabulary of its own, so there would be nothing to propose there; instead of giving up, the
+completion checks that what stands in the free position is acceptable and then offers the
+vocabulary of the <em>next</em> position:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd complete -c convention.ddd.json val_Inlet
+val_Inlet_raw
+val_Inlet_flt
+val_Inlet_phys
+val_Inlet_req
+val_Inlet_max
+val_Inlet_min
+</pre></div>
+</div>
+<p>A prefix that ends in the separator asks for the next position outright, and a further
+character narrows it down to one:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd complete -c convention.ddd.json val_InletTemperature_
+val_InletTemperature_raw
+val_InletTemperature_flt
+val_InletTemperature_phys
+val_InletTemperature_req
+val_InletTemperature_max
+val_InletTemperature_min
+
+$ ddd complete -c convention.ddd.json val_InletTemperature_f
+val_InletTemperature_flt
+</pre></div>
+</div>
+<p>Only positions that are reachable <strong>given the parts already typed</strong> are offered, which is what
+keeps the completion and the check from ever contradicting each other: a candidate the
+completion proposes is a name the same convention accepts. The other side of that rule is that
+a prefix which is already wrong yields nothing at all - <code class="docutils literal notranslate"><span class="pre">xyz_Inlet</span></code> starts with a role that
+does not exist, and <code class="docutils literal notranslate"><span class="pre">val_inlet</span></code> has a subject that does not match the pattern, so neither has
+a valid continuation to offer:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd complete -c convention.ddd.json xyz_Inlet
+$ ddd complete -c convention.ddd.json val_inlet
+$
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>An empty offer also happens in a perfectly healthy situation: <code class="docutils literal notranslate"><span class="pre">val_</span></code> asks for the subject,
+which is a free position with no vocabulary, so there is nothing to enumerate. Silence from
+the completion means “nothing to propose here”, not “this is wrong” - the judgement of a
+name is <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span></code>’s job, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">complete</span></code> deliberately never speaks for it.</p>
+</div>
+<section id="shell-completion">
+<h3>Shell completion<a class="headerlink" href="#shell-completion" title="Link to this heading"></a></h3>
+<p>The repository ships a bash completion script in <code class="docutils literal notranslate"><span class="pre">completion/ddd.bash</span></code>, which also works in
+zsh through <code class="docutils literal notranslate"><span class="pre">bashcompinit</span></code>. It needs to know which convention to complete against, and takes
+it from the <code class="docutils literal notranslate"><span class="pre">DDD_CONVENTION</span></code> environment variable - the natural place for it, since a
+developer works on one project at a time and the setting then belongs in the shell profile
+alongside the rest of the project environment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">DDD_CONVENTION</span><span class="o">=</span>/path/to/convention.ddd.json
+<span class="nb">source</span><span class="w"> </span>/path/to/ddd/completion/ddd.bash
+
+ddd<span class="w"> </span>name<span class="w"> </span>val_Inlet&lt;TAB&gt;<span class="w">          </span><span class="c1"># offers the qualifiers once the subject is typed</span>
+</pre></div>
+</div>
+<p>Three properties of the script are worth knowing, because they are what makes it unobtrusive:</p>
+<ul class="simple">
+<li><p>It only completes names for the <code class="docutils literal notranslate"><span class="pre">name</span></code> subcommand. Everywhere else it leaves the reply
+untouched and the shell falls back to file name completion (<code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">default</span></code>), so registering
+it does not break the completion of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">&lt;TAB&gt;</span></code>.</p></li>
+<li><p>It registers with <code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">nospace</span></code>. A completed segment is rarely the end of a name, so the
+cursor stays glued to the separator and the next <code class="docutils literal notranslate"><span class="pre">TAB</span></code> carries on where this one stopped.</p></li>
+<li><p>It reads the candidates as data, with <code class="docutils literal notranslate"><span class="pre">mapfile</span></code>, and not through <code class="docutils literal notranslate"><span class="pre">compgen</span> <span class="pre">-W</span></code>. <code class="docutils literal notranslate"><span class="pre">compgen</span>
+<span class="pre">-W</span></code> would re-parse the list as shell words and perform command substitution on it, which
+means a token from somebody else’s convention file would run in your shell the moment
+<code class="docutils literal notranslate"><span class="pre">TAB</span></code> was pressed. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">complete</span></code> has already filtered on the prefix, so <code class="docutils literal notranslate"><span class="pre">compgen</span></code>
+would add nothing anyway.</p></li>
+</ul>
+<p>Every early return in the script leaves the reply untouched for the same reason the command
+always exits zero: an unset <code class="docutils literal notranslate"><span class="pre">DDD_CONVENTION</span></code>, a convention file that has been moved away, or
+a <code class="docutils literal notranslate"><span class="pre">ddd</span></code> that is not on the path all result in the shell’s normal behaviour rather than in
+noise on the command line.</p>
+</section>
+</section>
+<section id="the-convention-in-the-project">
+<h2>The convention in the project<a class="headerlink" href="#the-convention-in-the-project" title="Link to this heading"></a></h2>
+<p>Checking names by hand is a reminder, not a rule. A project makes the convention binding by
+pointing at it with its <code class="docutils literal notranslate"><span class="pre">naming</span></code> key, after which every declared name is checked on every
+run, by everybody, as part of the ordinary <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NamedDevice&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A project whose names follow a convention, checked on every run&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;convention.ddd.json&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;sensing.ddd.json&quot;</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The path is relative to the project file that contains it, like every other path in a
+description file. <code class="docutils literal notranslate"><span class="pre">examples/naming/</span></code> is exactly this project, and it passes:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+ok: 7 variables in 1 component are consistent
+</pre></div>
+</div>
+<p>The point of putting the convention in the project rather than on the command line is that the
+verdict does not depend on who runs the tool. Whoever checks the project - the developer, the
+integrator, the ci job - gets the same answer as whoever wrote it, and nobody has to remember a
+flag. The convention file is also part of the project’s inputs for the build system:
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> lists it next to the description files, so editing the convention makes the
+generated artefacts out of date exactly as editing a component does.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources project.ddd.json
+/home/you/ddd/examples/naming/convention.ddd.json
+/home/you/ddd/examples/naming/project.ddd.json
+/home/you/ddd/examples/naming/sensing.ddd.json
+</pre></div>
+</div>
+<p>A name that does not follow the convention is reported as the <code class="docutils literal notranslate"><span class="pre">naming</span></code> check, an error by
+default. Had the component declared <code class="docutils literal notranslate"><span class="pre">InletPressure_raw</span></code> and <code class="docutils literal notranslate"><span class="pre">cnt_InletSensorFaults_fltr</span></code>
+instead:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensing&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;InletPressure_raw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">                       </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cnt_InletSensorFaults_fltr&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">                       </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+sensing.ddd.json#component.declarations[0].definition.name: error[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+    note: InletPressure_raw
+          ^^^^^^^^^^^^^ ^^^
+sensing.ddd.json#component.declarations[0].definition.name: error[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+    note: InletPressure_raw
+          ^^^^^^^^^^^^^ ^^^
+sensing.ddd.json#component.declarations[1].definition.name: error[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
+    note: cnt_InletSensorFaults_fltr
+                                ^^^^
+3 errors
+</pre></div>
+</div>
+<p>The finding carries the same underlined name that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span></code> prints, as a note under a
+location that points at the exact declaration in the exact file - a two-part name against a
+three-part convention produces one finding per offending part, so both problems of
+<code class="docutils literal notranslate"><span class="pre">InletPressure_raw</span></code> are reported rather than only the first. <code class="docutils literal notranslate"><span class="pre">naming</span></code> is a check like any
+other, so a project adopting a convention on an existing code base can relax it while the
+renaming is under way:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json -W naming=warning
+sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+    note: InletPressure_raw
+          ^^^^^^^^^^^^^ ^^^
+sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+    note: InletPressure_raw
+          ^^^^^^^^^^^^^ ^^^
+sensing.ddd.json#component.declarations[1].definition.name: warning[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
+    note: cnt_InletSensorFaults_fltr
+                                ^^^^
+3 warnings
+</pre></div>
+</div>
+<p>which no longer fails the run, while <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">naming=ignore</span></code> silences it entirely and <code class="docutils literal notranslate"><span class="pre">--strict</span></code>
+would turn it back into an error along with every other warning.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The convention of the <strong>root</strong> project is the one that applies. A sub-project pulled in
+through <code class="docutils literal notranslate"><span class="pre">includes</span></code> cannot impose its own convention on the project that includes it -
+otherwise a component would be judged by different rules depending on which image it is
+built into, and a shared component could never be renamed to satisfy both. Checking that
+sub-project on its own still applies its convention. For the same reason, checking a single
+component file directly applies no convention at all: a component file has no <code class="docutils literal notranslate"><span class="pre">naming</span></code>
+key, because a component does not get to choose the rules of the project it is delivered
+into.</p>
+</div>
+</section>
+<section id="only-variable-names-are-checked">
+<h2>Only variable names are checked<a class="headerlink" href="#only-variable-names-are-checked" title="Link to this heading"></a></h2>
+<p>The convention applies to the names of the data objects - measurements, parameters, value
+blocks, curves, maps and axes - and to nothing else. Component names are not subject to it, and
+neither are enum type names or enumerator names.</p>
+<p>The reason is that these live in different namespaces with different conventions. A component
+is called <code class="docutils literal notranslate"><span class="pre">Sensing</span></code> or <code class="docutils literal notranslate"><span class="pre">UserInterface</span></code>, and the generated header takes its name from it;
+a variable is called <code class="docutils literal notranslate"><span class="pre">val_InletTemperature_flt</span></code>. A convention written for variables asks for
+a role token followed by an upper camel case subject, and every component name in every project
+would fail it on the first part - which would not be a finding about the project, it would be a
+finding about applying the wrong rule. Restricting the check to variable names is therefore not
+a limitation to be lifted later; it is what makes the check mean something.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>A convention constrains names, not identifiers. A name that follows the convention perfectly
+can still be rejected by the <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code> check for colliding with a c keyword or
+with something the generated code’s includes already declare, or by <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> when
+two distinct names would produce the same c identifier or the same generated file. Those
+checks are about what the c compiler will accept and are described with the other
+<a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>; they are never relaxed by a convention and
+never replaced by one.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="consistency_checks.html" class="btn btn-neutral float-left" title="Consistency checks" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="comparing_deliveries.html" class="btn btn-neutral float-right" title="Comparing deliveries" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

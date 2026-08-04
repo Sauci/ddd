@@ -1,0 +1,692 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comparing deliveries &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=fbf08ad5" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Generated artefacts" href="generated_artefacts.html" />
+    <link rel="prev" title="Naming conventions" href="naming_conventions.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Comparing deliveries</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#two-questions-not-one">Two questions, not one</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-second-question-needs-an-archived-dictionary">Why the second question needs an archived dictionary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-workflow">The workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-comparison-checks">The comparison checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-worked-example">A worked example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-delivery-that-went-out">The delivery that went out</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-delivery-that-wants-to-replace-it">The delivery that wants to replace it</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#an-object-that-nobody-read">An object that nobody read</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#both-questions-one-exit-code">Both questions, one exit code</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#limits-widening-is-silent-narrowing-is-not">Limits: widening is silent, narrowing is not</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#a-symptom-is-not-reported-under-its-cause">A symptom is not reported under its cause</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#a-rescaled-conversion-is-an-error">A rescaled conversion is an error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-baseline-is-the-wrong-file">When the baseline is the wrong file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-baseline-s-own-findings-are-not-findings-of-this-run">The baseline’s own findings are not findings of this run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#in-a-build-pipeline">In a build pipeline</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Comparing deliveries</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/comparing_deliveries.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="comparing-deliveries">
+<h1>Comparing deliveries<a class="headerlink" href="#comparing-deliveries" title="Link to this heading"></a></h1>
+<p>A project that passes <a class="reference internal" href="consistency_checks.html"><span class="doc">every consistency check</span></a> is internally
+sound: its components agree with each other, every input has a producer, every reference
+resolves. That verdict says nothing at all about the software already running in the field,
+in a test bench or in somebody else’s integration, and about whether the delivery being
+prepared can be dropped in where that one sits today. The two are different questions, they
+are wrong in different ways, and DDD answers them with two different commands.</p>
+<section id="two-questions-not-one">
+<h2>Two questions, not one<a class="headerlink" href="#two-questions-not-one" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> answers <strong>do these components fit together</strong>. It reads the description files of
+the project, resolves them into a <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> and reports every
+disagreement it finds inside that one delivery. Everything it needs is on disk in front of
+it, which is why it can run on a developer’s machine before the first compilation.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> answers <strong>can this delivery replace the one already out there</strong>. That is a
+question about two deliveries, and it is <em>directional</em>: it asks whether everything the
+previous delivery offered is still there and still means the same thing, not whether the two
+are identical. A delivery that adds ten new measurements is a perfectly good replacement; a
+delivery that quietly turns a <code class="docutils literal notranslate"><span class="pre">uint16</span></code> into a <code class="docutils literal notranslate"><span class="pre">uint32</span></code> is not, even though it is
+internally just as consistent as its predecessor.</p>
+<p>The two questions stay separate on purpose, because a project can be internally consistent
+and still be an invalid replacement, and a project can be a faithful replacement while being
+internally broken. Neither answer implies the other.</p>
+</section>
+<section id="why-the-second-question-needs-an-archived-dictionary">
+<h2>Why the second question needs an archived dictionary<a class="headerlink" href="#why-the-second-question-needs-an-archived-dictionary" title="Link to this heading"></a></h2>
+<p>The obvious way to compare two deliveries would be to compare their description files, but
+the sources of the previous delivery have moved on. The working tree that produced it has
+been committed over, the components have been renamed or split, the include patterns now
+match different files, and the paths inside them point at a directory layout that no longer
+exists. Reconstructing the released delivery from a version control tag is possible in
+principle and unreliable in practice, and it is impossible altogether when the delivery came
+from another company as a binary with an a2l next to it.</p>
+<p>The artefact to archive is therefore not the sources but the <strong>dictionary</strong> they resolve to.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes it as a single self-contained json document, with every value already
+worked out: the shape of each object, the limits (as given, or as derived from the datatype
+and the conversion), the owning component and the list of components that read it.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>dump<span class="w"> </span>release/pressure.ddd.json<span class="w"> </span>&gt;<span class="w"> </span>release/PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValveDuty&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint8&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Commanded valve duty cycle&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;shape&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;references&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">  </span><span class="nt">&quot;owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Controller&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;consumers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;Actuator&quot;</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;local&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;export&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;display_identifier&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Nothing in that document refers to a file, a glob or a directory, so it keeps its meaning for
+as long as the binary it was archived next to is in use. It carries a <code class="docutils literal notranslate"><span class="pre">&quot;format&quot;</span></code> version at
+its top level, and its schema is published with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">dictionary</span></code>, so a delivery
+archived today stays readable by a later release of the tool and by tools DDD does not ship.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes the dictionary to stdout and its diagnostics to stderr, in both output
+formats. That is what makes <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span> <span class="pre">baseline.json</span></code> safe: a second
+json document can never end up in the archived file.</p>
+</div>
+</section>
+<section id="the-workflow">
+<h2>The workflow<a class="headerlink" href="#the-workflow" title="Link to this heading"></a></h2>
+<p>Archiving happens once, at release time, next to the binary and the a2l that were released
+with it. Comparing happens on every candidate that comes after it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>dump<span class="w"> </span>project.ddd.json<span class="w"> </span>&gt;<span class="w"> </span>baseline.json<span class="w">               </span><span class="c1"># at release time</span>
+ddd<span class="w"> </span>compare<span class="w"> </span>baseline.json<span class="w"> </span>project.ddd.json<span class="w">              </span><span class="c1"># later, for the next delivery</span>
+ddd<span class="w"> </span>check<span class="w"> </span>project.ddd.json<span class="w"> </span>--baseline<span class="w"> </span>baseline.json<span class="w">     </span><span class="c1"># both questions, one exit code</span>
+</pre></div>
+</div>
+<p class="plantuml">
+<img src="_images/plantuml-03c130b266af8f7282bd1e50f093bb6c4c4db880.svg" alt="left to right direction
+
+collections &quot;working tree at release time\n(the ~*.ddd.json files)&quot; as src_old
+collections &quot;working tree today\n(the ~*.ddd.json files)&quot; as src_new
+component &quot;ddd dump&quot; as dump
+artifact &quot;PressureLoop-1.4.0.json\narchived next to the binary&quot; as baseline
+component &quot;ddd compare&quot; as compare
+artifact &quot;verdict\n(build gate)&quot; as verdict
+
+src_old --&gt; dump
+dump --&gt; baseline : the resolved dictionary,\nself-contained
+baseline --&gt; compare : baseline
+src_new --&gt; compare : candidate
+compare --&gt; verdict : can the candidate\nstand in for the baseline?"/></p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span></code> exists because a ci job wants one command and one exit code. It runs
+the consistency checks on the project and, on the same dictionary, the comparison against the
+archived one, and reports both sets of findings together. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> does the same for
+its candidate side: when the candidate is a project description rather than a dump, its own
+consistency findings are reported alongside the comparison.</p>
+<p><strong>Either side may be a dump or a description.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> looks at what a file contains
+rather than at its name, so an archived dictionary, a project description and a single
+component description are all acceptable on either side. Comparing two archived dumps is the
+release-to-release case, comparing a dump with the working tree is the daily case, and
+comparing two working trees is how a branch is judged against the trunk it will be merged
+into. Nothing has to be staged into a temporary file first.</p>
+</section>
+<section id="the-comparison-checks">
+<h2>The comparison checks<a class="headerlink" href="#the-comparison-checks" title="Link to this heading"></a></h2>
+<p>Every difference between the two dictionaries is graded by what it costs the people who
+already depend on the baseline. An error means their software is now wrong, whether or not it
+still compiles; a warning means behaviour or tooling changes but no consumer becomes wrong;
+information means the candidate offers something the baseline did not. The identifiers below
+are the same kind of stable identifier as the consistency checks, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> prints
+them together with everything else.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 26.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>severity</p></th>
+<th class="head"><p>check</p></th>
+<th class="head"><p>reported when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">removed-object</span></code></p></td>
+<td><p>an object of the baseline is gone and somebody read it</p></td>
+</tr>
+<tr class="row-odd"><td><p>error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
+<td><p>kind, datatype, unit, scaling, shape, axes or locality of an object changed</p></td>
+</tr>
+<tr class="row-even"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>
+<td><p>an object of the baseline is gone; no component read it</p></td>
+</tr>
+<tr class="row-odd"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
+<td><p>the initial value or volatility of an object changed</p></td>
+</tr>
+<tr class="row-even"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
+<td><p>the physical limits of an object got tighter, so calibrated data may not fit</p></td>
+</tr>
+<tr class="row-odd"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">changed-owner</span></code></p></td>
+<td><p>another component produces the object now</p></td>
+</tr>
+<tr class="row-even"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">changed-condition</span></code></p></td>
+<td><p>the preprocessor condition of an object changed</p></td>
+</tr>
+<tr class="row-odd"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code></p></td>
+<td><p>the a2l entry of an object changed</p></td>
+</tr>
+<tr class="row-even"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">project-mismatch</span></code></p></td>
+<td><p>the two sides of a comparison describe differently named projects</p></td>
+</tr>
+<tr class="row-odd"><td><p>info</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">added-object</span></code></p></td>
+<td><p>the candidate declares an object the baseline did not</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> is one check rather than seven because the seven properties it covers -
+kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
+component local - are the properties a consumer compiles against and calibrates against. Any
+one of them changing makes the consumer wrong in the same way, and the message names which
+ones differ. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the two properties that change how an object behaves
+rather than what it means, the initial value and <code class="docutils literal notranslate"><span class="pre">volatile</span></code>; <code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the
+export flag, the display format and the display identifier, which move labels around in a
+calibration tool without touching the software.</p>
+<p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> is graded differently here than it is <em>inside</em> a project, where it is interface
+and a disagreement is a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> error - see <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a>. The
+difference is who is left describing the object wrongly. Inside one project two components are
+compiled together against one address, so one of them is compiled against an assumption that
+does not hold. Between two deliveries there is only one answer at a time and every consumer is
+regenerated and recompiled against it, so nobody is left wrong; what changed is how the object
+behaves. On a calibration object, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> losing
+its <code class="docutils literal notranslate"><span class="pre">true</span></code> is more than a change of behaviour in the abstract: the compiler is then entitled
+to fold the value it was built with into the code that reads it, so the parameter keeps its
+address and its a2l entry but stops being tunable while the software runs.</p>
+<p>Two removals are distinguished because they cost different things. An object that a component
+read cannot simply disappear: the baseline names the components that read it, so DDD knows
+that the software which was built against it no longer builds, and that is an error. An
+object that no component read may still be named in a calibration dataset, in a measurement
+configuration or in an external tool that addresses it by name. DDD cannot see any of those,
+so its removal is a warning: it is reported so that somebody who can see them makes the
+decision, rather than a build being failed on a suspicion.</p>
+</section>
+<section id="a-worked-example">
+<h2>A worked example<a class="headerlink" href="#a-worked-example" title="Link to this heading"></a></h2>
+<p>The example below is a small project called <code class="docutils literal notranslate"><span class="pre">PressureLoop</span></code>, with three components: a
+<code class="docutils literal notranslate"><span class="pre">Sensor</span></code> producing the raw measurements, a <code class="docutils literal notranslate"><span class="pre">Controller</span></code> computing a valve duty cycle from
+them, and an <code class="docutils literal notranslate"><span class="pre">Actuator</span></code> consuming that duty cycle. The layout is the ordinary one, a
+project file next to a directory of components:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>release/
+  pressure.ddd.json           the project
+  components/
+    sensor.ddd.json
+    controller.ddd.json
+    actuator.ddd.json
+</pre></div>
+</div>
+<section id="the-delivery-that-went-out">
+<h3>The delivery that went out<a class="headerlink" href="#the-delivery-that-went-out" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">Sensor</span></code> publishes three measurements and keeps one calibration parameter to itself:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PressureRaw&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Manifold pressure&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;kPa&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;TemperatureRaw&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Manifold temperature&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SupplyVoltage&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor supply voltage&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;V&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;FilterGain&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parameter&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Low pass gain of the pressure signal&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint8&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">Controller</span></code> reads <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> and <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> and produces <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code>
+(<code class="docutils literal notranslate"><span class="pre">uint8</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>, factor 0.5, limits 0 to 100); <code class="docutils literal notranslate"><span class="pre">Actuator</span></code> reads <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> and
+<code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code>. The project is consistent, so it is released, and its dictionary is
+archived under the name of the release:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check release/pressure.ddd.json
+ok: 5 variables in 3 components are consistent
+
+$ ddd dump release/pressure.ddd.json &gt; release/PressureLoop-1.4.0.json
+</pre></div>
+</div>
+</section>
+<section id="the-delivery-that-wants-to-replace-it">
+<h3>The delivery that wants to replace it<a class="headerlink" href="#the-delivery-that-wants-to-replace-it" title="Link to this heading"></a></h3>
+<p>Development continues in <code class="docutils literal notranslate"><span class="pre">work/</span></code>, and by the time the next delivery is prepared five things
+have changed. <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> was widened from <code class="docutils literal notranslate"><span class="pre">uint16</span></code> to <code class="docutils literal notranslate"><span class="pre">uint32</span></code> to leave room for a
+finer resolution later. <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> was dropped, because the controller now reads the
+temperature over the bus instead. The limits of <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> were tightened from 0 .. 100 to
+0 .. 80, to protect a valve that turned out not to like being driven fully open. The limits
+of <code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code> were relaxed from 0 .. 16 to 0 .. 18, so that an 18 V supply variant fits.
+And a new measurement, <code class="docutils literal notranslate"><span class="pre">AmbientPressure</span></code>, was added.</p>
+<p>Each of those is a defensible change, and the candidate passes the consistency checks exactly
+as its predecessor did, because the components were all updated together:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json
+ok: 5 variables in 3 components are consistent
+</pre></div>
+</div>
+<p>Against the archived dictionary, the same five changes look rather different:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
+work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (datatype: uint32 != uint16), read by Controller
+work/pressure.ddd.json: error[removed-object]: &#39;TemperatureRaw&#39; is gone, but was read by Controller
+work/pressure.ddd.json: warning[narrowed-limits]: &#39;ValveDuty&#39;: limits tightened from [0, 100] to [0, 80]
+work/pressure.ddd.json: info[added-object]: &#39;AmbientPressure&#39; is new in PressureLoop (measurement, produced by Sensor)
+2 errors, 1 warning, 1 info
+pressure.ddd.json cannot replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>Four findings for five changes. Widening <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> is an error because every consumer
+was compiled against a two-byte object and a calibration tool reads two bytes at its address;
+removing <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> is an error because the baseline records that <code class="docutils literal notranslate"><span class="pre">Controller</span></code> read
+it. Tightening <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> is a warning, because the code is unaffected but a calibration
+dataset holding 90 % no longer fits inside the new range. Adding <code class="docutils literal notranslate"><span class="pre">AmbientPressure</span></code> is
+information, since nothing that worked against the baseline can be disturbed by an object it
+never knew about. And relaxing the limits of <code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code> produces nothing at all, for
+the reason given two sections further down.</p>
+<p>The last line names the two <strong>files</strong>, not the two projects, because two deliveries of one
+project share its name and naming the projects would print the same word twice.</p>
+</section>
+<section id="an-object-that-nobody-read">
+<h3>An object that nobody read<a class="headerlink" href="#an-object-that-nobody-read" title="Link to this heading"></a></h3>
+<p>Suppose instead that the only change is the removal of <code class="docutils literal notranslate"><span class="pre">FilterGain</span></code>, the calibration
+parameter that <code class="docutils literal notranslate"><span class="pre">Sensor</span></code> declared <code class="docutils literal notranslate"><span class="pre">local</span></code> and that therefore no other component ever read:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
+work/pressure.ddd.json: warning[removed-unused-object]: &#39;FilterGain&#39; is gone; no component read it, but a calibration dataset or an external tool still might
+1 warning
+pressure.ddd.json can replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>No component stops linking, so this is not the error that <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> was, and the
+delivery is still a valid replacement. It is not nothing either: the object had a label in
+the a2l, a value in every calibration dataset and possibly a line in a test bench
+configuration, and all of those now refer to something that has ceased to exist. The message
+says so in as many words, and the decision is left to the reader.</p>
+</section>
+<section id="both-questions-one-exit-code">
+<h3>Both questions, one exit code<a class="headerlink" href="#both-questions-one-exit-code" title="Link to this heading"></a></h3>
+<p>A ci job normally does not want to run two commands and combine two exit codes.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span></code> runs the consistency checks and the comparison over the same
+resolved dictionary, and reports everything in one list. Here the five-change candidate
+additionally reads a <code class="docutils literal notranslate"><span class="pre">ValvePosition</span></code> that nobody produces:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json --baseline release/PressureLoop-1.4.0.json
+work/components/actuator.ddd.json#component.declarations[2]: error[missing-producer]: &#39;ValvePosition&#39; is read by component &#39;Actuator&#39; but no component declares it as output
+work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (datatype: uint32 != uint16), read by Controller
+work/pressure.ddd.json: error[removed-object]: &#39;TemperatureRaw&#39; is gone, but was read by Controller
+work/pressure.ddd.json: warning[narrowed-limits]: &#39;ValveDuty&#39;: limits tightened from [0, 100] to [0, 80]
+work/pressure.ddd.json: info[added-object]: &#39;AmbientPressure&#39; is new in PressureLoop (measurement, produced by Sensor)
+work/pressure.ddd.json: info[added-object]: &#39;ValvePosition&#39; is new in PressureLoop (measurement, produced by nobody)
+3 errors, 1 warning, 2 infos
+</pre></div>
+</div>
+<p>The consistency findings point at the declaration that caused them, down to the json pointer
+inside the file, while the comparison findings point at the project as a whole, because a
+difference between two dictionaries belongs to the delivery rather than to one line of one
+description file.</p>
+</section>
+</section>
+<section id="limits-widening-is-silent-narrowing-is-not">
+<h2>Limits: widening is silent, narrowing is not<a class="headerlink" href="#limits-widening-is-silent-narrowing-is-not" title="Link to this heading"></a></h2>
+<p>Limits are the one property where the direction of the change decides the verdict, and that
+is why <code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code> produced no finding above. Its range grew from 0 .. 16 V to
+0 .. 18 V, and every value the baseline permitted is still permitted, so there is nothing a
+consumer or a calibration dataset can trip over. Reporting it would train the reader to
+ignore the check.</p>
+<p>The opposite direction is a warning, because a value that used to be legal may not be any
+more. A calibration dataset written against the baseline can hold a value outside the new
+range, an operator can have a test case that drives the signal there, and a calibration tool
+will refuse the write or clip it. Neither the compiler nor the linker has anything to say
+about it, which is exactly why the tool must:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
+work/pressure.ddd.json: warning[narrowed-limits]: &#39;PressureRaw&#39;: limits tightened from [0, 400] to [0, 250]
+1 warning
+pressure.ddd.json can replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>That run exits <code class="docutils literal notranslate"><span class="pre">0</span></code>: a narrowing is worth knowing about and worth a conscious decision, but
+it is not by itself a reason to refuse the delivery. A project that wants it to be one turns
+it into an error, either individually with <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">narrowed-limits=error</span></code> or for every warning
+at once with <code class="docutils literal notranslate"><span class="pre">--strict</span></code>.</p>
+<section id="a-symptom-is-not-reported-under-its-cause">
+<h3>A symptom is not reported under its cause<a class="headerlink" href="#a-symptom-is-not-reported-under-its-cause" title="Link to this heading"></a></h3>
+<p>Tighter limits are very often a <em>consequence</em> of something bigger, and reporting the
+consequence next to the cause buries the cause. When the interface of an object has changed,
+the narrowing that follows from it is therefore not reported separately. The next section
+shows the same 400 to 250 narrowing as above, this time accompanied by a rescaled conversion,
+and the <code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code> warning is gone: there is one thing to fix, and once it is fixed
+the limits question can be asked again on its own terms.</p>
+</section>
+</section>
+<section id="a-rescaled-conversion-is-an-error">
+<h2>A rescaled conversion is an error<a class="headerlink" href="#a-rescaled-conversion-is-an-error" title="Link to this heading"></a></h2>
+<p>Of everything the comparison looks at, a changed conversion is the one that deserves the most
+attention, because it is the failure that compiles, links, runs, and reports every value
+wrong by a constant factor. Suppose the resolution of <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> is improved from
+0.1 kPa per count to 0.01 kPa per count, and its limits are brought down to 250 kPa to match
+what the new raw range can express. The datatype is untouched, so every consumer still
+compiles and every access is still to a two-byte object at the same address. The project is
+internally consistent, because all its components were updated together:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json
+ok: 5 variables in 3 components are consistent
+</pre></div>
+</div>
+<p>Nothing in the build says a word. What has happened is that a calibration dataset from the
+previous delivery, a logged measurement file, a test limit written into a test bench and a
+threshold in a diagnostic tool now all mean ten times what they used to. The comparison is
+the only place where that can be caught, so it is an error and not a warning:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
+work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (conversion: linear(factor=0.01, offset=0) != linear(factor=0.1, offset=0)), read by Controller
+1 error
+pressure.ddd.json cannot replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>The differing properties are spelled out candidate first and baseline second, so
+<code class="docutils literal notranslate"><span class="pre">factor=0.01</span> <span class="pre">!=</span> <span class="pre">factor=0.1</span></code> reads as “it is 0.01 now, it was 0.1 before”. The narrowing of
+the limits from 400 to 250 is not listed: it is the symptom of the rescaling, and it is the
+rescaling that has to be discussed.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Rescaling a released object is not a change that can be made compatible by editing the
+description files, because the incompatibility lives in every artefact that was produced
+against the previous scaling. Either the previous scaling is kept, or the object is given
+a new name so that the old and the new value are visibly two different things.</p>
+</div>
+</section>
+<section id="when-the-baseline-is-the-wrong-file">
+<h2>When the baseline is the wrong file<a class="headerlink" href="#when-the-baseline-is-the-wrong-file" title="Link to this heading"></a></h2>
+<p>A comparison against the wrong archived dump does not fail. It produces a confident, fully
+formed report of hundreds of removals and changes that means nothing at all, and the time
+lost to reading it is the point of the <code class="docutils literal notranslate"><span class="pre">project-mismatch</span></code> warning. Two deliveries of one
+project share the project name, so when the two sides name different projects, the most
+likely explanation is that the wrong file was picked up:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
+work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (datatype: uint32 != uint16), read by Controller
+work/pressure.ddd.json: error[removed-object]: &#39;TemperatureRaw&#39; is gone, but was read by Controller
+work/pressure.ddd.json: warning[narrowed-limits]: &#39;ValveDuty&#39;: limits tightened from [0, 100] to [0, 80]
+work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project &#39;PressureLoop&#39; and the candidate describes &#39;AirLoop&#39;; the comparison below only makes sense if that rename was intended
+work/pressure.ddd.json: info[added-object]: &#39;AmbientPressure&#39; is new in AirLoop (measurement, produced by Sensor)
+2 errors, 2 warnings, 1 info
+pressure.ddd.json cannot replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>The comparison is carried out anyway, and it is a warning rather than an error, because
+renaming a project is a legitimate thing to do and the report is then exactly what the reader
+wants. It is a warning that should be looked at before anything below it is believed.</p>
+<p>A baseline that cannot be read at all is a different matter, and it stops the run:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.3.0.json work/pressure.ddd.json
+release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file &#39;release/PressureLoop-1.3.0.json&#39; does not exist
+1 error
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">in</span> <span class="pre">the</span> <span class="pre">baseline:</span></code> prefix is there so that a missing or malformed file on the reference
+side is never mistaken for a problem with the delivery being judged.</p>
+</section>
+<section id="the-baseline-s-own-findings-are-not-findings-of-this-run">
+<h2>The baseline’s own findings are not findings of this run<a class="headerlink" href="#the-baseline-s-own-findings-are-not-findings-of-this-run" title="Link to this heading"></a></h2>
+<p>When the baseline is given as a project description rather than as a dump, DDD has to analyse
+it to obtain its dictionary, and that analysis produces findings about <em>that</em> delivery: an
+output nobody read two releases ago, a component that has since been removed, a naming
+convention that has since been tightened. Those findings are not this run’s business. Reported
+here they would be attributed to the candidate, they would appear twice whenever both sides
+are the same tree, and a clean delivery could be failed because of the state of its
+predecessor.</p>
+<p>They are therefore collected in a bag of their own and dropped. Here is an older working tree
+whose <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> was read by nobody:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check v1.3/pressure.ddd.json
+v1.3/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValveDuty&#39; is written by component &#39;Controller&#39; but read by nobody
+1 warning
+</pre></div>
+</div>
+<p>Used as the baseline of a comparison, that warning does not reappear:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare v1.3/pressure.ddd.json release/pressure.ddd.json
+pressure.ddd.json can replace pressure.ddd.json
+</pre></div>
+</div>
+<p>The one exception is an error that stops the baseline from being read in the first place, as
+in the missing-file example above: those are carried over, because they explain a comparison
+that could not happen at all.</p>
+</section>
+<section id="in-a-build-pipeline">
+<h2>In a build pipeline<a class="headerlink" href="#in-a-build-pipeline" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span></code> follow the same conventions as every other
+command that produces findings: <code class="docutils literal notranslate"><span class="pre">0</span></code> when the run is clean, <code class="docutils literal notranslate"><span class="pre">1</span></code> when there are findings of
+error severity, <code class="docutils literal notranslate"><span class="pre">2</span></code> on a usage error, and <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> for a machine readable report
+carrying the same identifiers, severities and messages. In the text format the findings, the
+summary and the verdict line all go to stderr and stdout is left empty; with <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>
+the report is the whole of stdout and the verdict line is dropped, since a json document that
+a job is about to parse must not have a sentence appended to it.</p>
+<p>Severities are tuned the same way as everywhere else, so a project that has decided a
+narrowing is acceptable but wants the new objects out of its build log can say so:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
+work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (datatype: uint32 != uint16), read by Controller
+work/pressure.ddd.json: error[removed-object]: &#39;TemperatureRaw&#39; is gone, but was read by Controller
+2 errors
+pressure.ddd.json cannot replace PressureLoop-1.4.0.json
+</pre></div>
+</div>
+<p>A pipeline that treats the comparison as a release gate rather than as a report runs it with
+<code class="docutils literal notranslate"><span class="pre">--strict</span></code>, which turns every warning into an error, so that a narrowed limit, a changed
+owner or a moved a2l entry also has to be acknowledged before the delivery goes out.</p>
+<p>The remaining piece is discipline about the archive itself. The dump has to be produced from
+the same sources that produced the binary, stored with it, and named after the release, so
+that the question “which delivery is this candidate replacing” has a file as its answer rather
+than a memory. Everything else about the comparison follows from that one habit.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> reports the difference between two data dictionaries, and a dictionary
+describes data rather than code. A delivery whose comparison is clean can still behave
+differently, because its algorithms changed; what a clean comparison guarantees is that
+everything built, calibrated and measured against the previous delivery still addresses the
+same objects, with the same layout, the same scaling and the same meaning.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="naming_conventions.html" class="btn btn-neutral float-left" title="Naming conventions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generated_artefacts.html" class="btn btn-neutral float-right" title="Generated artefacts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

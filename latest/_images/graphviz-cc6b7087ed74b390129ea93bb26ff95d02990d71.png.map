@@ -1,0 +1,42 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="675,5,940,117"/>
+<area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="1084,91,1201,203"/>
+<area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="722,165,893,221"/>
+<area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="724,269,891,381"/>
+<area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="689,563,926,675"/>
+<area shape="rect" id="node6" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="723,430,892,514"/>
+<area shape="rect" id="node7" title="ddd.models.objects.ValueBlock
+
+An array of calibratable constants.
+" alt="" coords="5,100,531,436"/>
+</map>

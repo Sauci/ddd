@@ -1,0 +1,95 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.ir.ComponentDeclaration
+
+One entry of a component interface, in the order the component declared it.
+
+A reference to an object rather than the object itself: the definition lives once, under
+``objects``, and is the one the producing component gave. Two components declaring the
+same name appear here twice and in ``objects`` once.
+" alt="" coords="1185,119,1374,231"/>
+<area shape="rect" id="node2" title="ddd.ir.DataDictionary
+
+The resolved data of one project.
+
+What ``ddd dump`` writes and every backend reads. Unlike the description files, this one
+is produced rather than authored: every derived property is already worked out, so a
+consumer never has to repeat the resolution and two consumers can never disagree about it.
+" alt="" coords="5,331,336,639"/>
+<area shape="rect" id="node3" title="ddd.ir.ResolvedComponent
+
+A component and the objects it declares.
+" alt="" coords="568,5,915,145"/>
+<area shape="rect" id="node4" title="ddd.ir.ResolvedInstance
+
+One variable whose datatype is a structure.
+
+Kept apart from :class:`ResolvedObject` rather than widening it: an object with no datatype
+and no limits would turn every reader of those two fields into a branch, and they are read
+unconditionally in a dozen places on the strength of always being there.
+" alt="" coords="626,1502,857,1838"/>
+<area shape="rect" id="node5" title="ddd.ir.ResolvedLeaf
+
+One member of one structured variable, at the end of one access path.
+
+The flattening. A structure reaches the a2l as an object per member rather than as an a2l
+structure, so this is the form that backend consumes &#45; an ordinary object in every respect
+but its name, which is a path rather than an identifier.
+" alt="" coords="480,817,1003,1293"/>
+<area shape="rect" id="node6" title="ddd.ir.ResolvedObject
+
+One data object, with every derived property already worked out.
+" alt="" coords="480,293,1003,769"/>
+<area shape="rect" id="node7" title="ddd.ir.ResolvedStruct
+
+One structure, in an order a c file can be written out in.
+
+The order of :attr:`DataDictionary.types` matters and is not alphabetical: a structure
+appears after every structure it nests, because a c compiler needs the nested one to be
+complete first. The members keep the order the author wrote them in, which is the order the
+compiler lays them out.
+" alt="" coords="591,1342,891,1454"/>
+<area shape="rect" id="node8" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="1147,462,1412,574"/>
+<area shape="rect" id="node9" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="1161,1267,1398,1379"/>
+<area shape="rect" id="node10" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="1194,661,1365,717"/>
+<area shape="rect" id="node11" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="1196,842,1363,954"/>
+<area shape="rect" id="node12" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="1195,1023,1364,1107"/>
+<area shape="rect" id="node13" title="ddd.ir.ResolvedMember
+
+One member of a structure, as the c templates need it to declare the member.
+
+Only what a declaration takes. The meaning of the member &#45; its unit, its conversion, its
+limits &#45; travels with the *leaf* instead, because that is the form the a2l consumes and
+there is no second place a reader should have to look.
+" alt="" coords="1171,1428,1387,1624"/>
+<area shape="rect" id="node14" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="1556,547,1673,659"/>
+</map>

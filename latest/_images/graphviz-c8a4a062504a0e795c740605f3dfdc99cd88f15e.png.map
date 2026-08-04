@@ -1,0 +1,78 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.component.Component
+
+The interface specification of one software component.
+" alt="" coords="383,839,644,951"/>
+<area shape="rect" id="node2" title="ddd.models.component.Declaration
+
+One entry of the ``declarations`` list of a component.
+" alt="" coords="788,925,1313,1037"/>
+<area shape="rect" id="node4" title="ddd.models.objects.Axis
+
+Shared axis points; several curves and maps may be interpolated over one axis.
+" alt="" coords="1459,5,1981,369"/>
+<area shape="rect" id="node5" title="ddd.models.objects.Curve
+
+A one dimensional calibratable table.
+" alt="" coords="1459,418,1981,754"/>
+<area shape="rect" id="node6" title="ddd.models.objects.Map
+
+A two dimensional calibratable table, stored as ``[y][x]``.
+" alt="" coords="1459,803,1981,1167"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Measurement
+
+An online value: written by the software, only measured by the calibration tool.
+" alt="" coords="1457,1215,1983,1551"/>
+<area shape="rect" id="node8" title="ddd.models.objects.Parameter
+
+A single calibratable constant.
+" alt="" coords="1459,1600,1981,1908"/>
+<area shape="rect" id="node9" title="ddd.models.objects.ValueBlock
+
+An array of calibratable constants.
+" alt="" coords="1457,1957,1983,2293"/>
+<area shape="rect" id="node3" title="ddd.models.component.ComponentFile
+
+Root object of a ``*.ddd.json`` software component description.
+
+``component`` is the top level key that makes this a component file rather than a project,
+a types or a naming file; DDD decides what a file is from that key alone, so exactly one
+of the four appears here.
+" alt="" coords="5,781,239,865"/>
+<area shape="rect" id="node10" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="2127,929,2392,1041"/>
+<area shape="rect" id="node12" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="2174,1089,2345,1145"/>
+<area shape="rect" id="node13" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="2176,1193,2343,1305"/>
+<area shape="rect" id="node14" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="2141,1486,2378,1598"/>
+<area shape="rect" id="node15" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="2175,1353,2344,1437"/>
+<area shape="rect" id="node11" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="2536,1014,2653,1126"/>
+</map>

@@ -1,0 +1,924 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Variable definition &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=fbf08ad5" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Conversions" href="conversions.html" />
+    <link rel="prev" title="Component description" href="component.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../naming_conventions.html">Naming conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Variable definition</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/variable_definition.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="variable-definition">
+<h1>Variable definition<a class="headerlink" href="#variable-definition" title="Link to this heading"></a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">definition</span></code> object of a declaration is where a variable is actually described. It is
+the same object whatever the component and whatever the scope, and it deliberately says more
+than a c declaration could: a c declaration knows how many bytes a value occupies, but not
+what the number in those bytes <em>means</em>. <code class="docutils literal notranslate"><span class="pre">uint16_t</span> <span class="pre">Speed;</span></code> and <code class="docutils literal notranslate"><span class="pre">uint16_t</span> <span class="pre">Pressure;</span></code> are the
+same declaration; <code class="docutils literal notranslate"><span class="pre">uint16</span></code> scaled by 0.25 in Hz between 0 and 8000 and <code class="docutils literal notranslate"><span class="pre">uint16</span></code> scaled by
+0.001 in bar between 0 and 5 are two different things, and the difference is exactly what a
+calibration tool needs, what a consuming component has to agree with, and what a review of two
+json files can actually catch.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueE&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Measurement used as the input quantity of AxisA&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hz&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8000</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<section id="the-common-attributes">
+<h2>The common attributes<a class="headerlink" href="#the-common-attributes" title="Link to this heading"></a></h2>
+<p>Every kind of data object carries the attributes below. The kind specific ones -
+<code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">size</span></code>, <code class="docutils literal notranslate"><span class="pre">input</span></code>, <code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> - are described in the
+sections that follow, and a key that does not belong to the kind that was selected is rejected
+rather than ignored.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 15.0%" />
+<col style="width: 67.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The identifier of the object, used unchanged as the c identifier and as the a2l name.
+Letters, digits and underscore, not starting with a digit, at most 128 characters -
+the ASAP2 1.6.1 limit, which is tighter than what a c compiler would accept and is
+therefore the one enforced.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></td>
+<td><p>required</p></td>
+<td><p>What sort of object this is: <code class="docutils literal notranslate"><span class="pre">measurement</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter</span></code>, <code class="docutils literal notranslate"><span class="pre">value_block</span></code>, <code class="docutils literal notranslate"><span class="pre">axis</span></code>,
+<code class="docutils literal notranslate"><span class="pre">curve</span></code> or <code class="docutils literal notranslate"><span class="pre">map</span></code>. It is stated rather than inferred, and it decides which of the
+kind specific keys the definition may carry.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The storage the target uses: <code class="docutils literal notranslate"><span class="pre">boolean</span></code>, <code class="docutils literal notranslate"><span class="pre">uint8</span></code>, <code class="docutils literal notranslate"><span class="pre">sint8</span></code>, <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, <code class="docutils literal notranslate"><span class="pre">sint16</span></code>,
+<code class="docutils literal notranslate"><span class="pre">uint32</span></code>, <code class="docutils literal notranslate"><span class="pre">sint32</span></code>, <code class="docutils literal notranslate"><span class="pre">uint64</span></code>, <code class="docutils literal notranslate"><span class="pre">sint64</span></code>, <code class="docutils literal notranslate"><span class="pre">float32</span></code> or <code class="docutils literal notranslate"><span class="pre">float64</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
+<td><p>required</p></td>
+<td><p>Whether the generated declaration carries the c qualifier of the same name, which
+forbids the compiler to assume it already knows the value. A measurement needs it when
+something outside the reading component writes the variable - an interrupt, a second
+core, a peripheral - and calibration data needs it when a calibration tool is to change
+the value in a running ecu, because without it the compiler is entitled to fold the
+initialiser into the code that reads it - within one translation unit at every
+optimisation level, <code class="docutils literal notranslate"><span class="pre">-O0</span></code> included, and across them under <code class="docutils literal notranslate"><span class="pre">-flto</span></code>. The whole
+account, with the compiler output it was measured from, is in
+<a class="reference internal" href="../generated_artefacts.html"><span class="doc">Generated artefacts</span></a>. There is no default because there is no answer DDD could derive, and
+because the two answers have different costs that only the project can weigh:
+<code class="docutils literal notranslate"><span class="pre">true</span></code> keeps a value tunable while it runs and, on a typical toolchain, moves a
+calibration object out of read only memory, since the compiler treats a volatile access
+as a side effect and stops putting the object in <code class="docutils literal notranslate"><span class="pre">.rodata</span></code>; <code class="docutils literal notranslate"><span class="pre">false</span></code> leaves it in
+flash and lets the optimiser keep the value in a register. DDD states no preference and
+reports nothing about the choice - it renders what the description says, and
+<a class="reference internal" href="../generated_artefacts.html"><span class="doc">generated artefacts</span></a> follows what that costs into the
+image.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Free text. It is offered to the c templates as the text of the comment above the
+generated declaration - what surrounds it is theirs to decide - and it is the long
+identifier of the a2l object, so it is the sentence a calibration engineer reads next
+to the value. An object without one gets its own name as the a2l long identifier,
+which is legal and useless.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>The physical unit, as free text: <code class="docutils literal notranslate"><span class="pre">Hz</span></code>, <code class="docutils literal notranslate"><span class="pre">degC</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>. It is shown in the c comment
+in brackets, and it is part of the a2l <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>. Components sharing a variable
+have to agree on it, because two components using the same variable in different units
+is the failure that compiles and links and is wrong by a constant factor.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
+<td><p>identity</p></td>
+<td><p>How the stored number maps to the physical one; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></td>
+<td><p>derived</p></td>
+<td><p>An object with <code class="docutils literal notranslate"><span class="pre">min</span></code> and <code class="docutils literal notranslate"><span class="pre">max</span></code>, in <strong>physical</strong> units. When it is left out, DDD
+derives the limits from the datatype and the conversion, so the a2l always carries a
+range.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
+<td><p>The initial value, in <strong>raw</strong> units. <code class="docutils literal notranslate"><span class="pre">null</span></code> means no initialiser is written at all
+and the startup code zero-initialises the object.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l</span></code></p></td>
+<td><p>export</p></td>
+<td><p>Per object settings for the a2l backend, and nothing else reads them.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Four of those are required, and none of them is something DDD could invent a value for, so
+the simplest possible definition still says four things:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Counter&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint32&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">limits</span></code> and <code class="docutils literal notranslate"><span class="pre">init</span></code> are on different sides of the conversion, and that is not an
+inconsistency but the only arrangement that works. Limits are what a calibration engineer
+types into a tool, so they are physical; the initial value is what the compiler writes into
+the image, so it is raw. With a factor of 0.1 a variable whose limits are <code class="docutils literal notranslate"><span class="pre">-40</span></code> and
+<code class="docutils literal notranslate"><span class="pre">150</span></code> degC is initialised with <code class="docutils literal notranslate"><span class="pre">-400</span></code>, which is -40.0 degC.</p>
+</div>
+<section id="datatypes">
+<h3>Datatypes<a class="headerlink" href="#datatypes" title="Link to this heading"></a></h3>
+<p>The datatype names are DDD’s own, not c’s, because a description file is not a c file and the
+same description generates a2l as well. Each one maps to a c type and to an ASAP2 type:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 16.0%" />
+<col style="width: 12.0%" />
+<col style="width: 20.0%" />
+<col style="width: 22.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>datatype</p></th>
+<th class="head"><p>bytes</p></th>
+<th class="head"><p>c</p></th>
+<th class="head"><p>a2l</p></th>
+<th class="head"><p>raw range</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">boolean</span></code></p></td>
+<td><p>1</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UBYTE</span></code></p></td>
+<td><p>0 .. 1</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uint8</span></code></p></td>
+<td><p>1</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uint8_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UBYTE</span></code></p></td>
+<td><p>0 .. 255</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sint8</span></code></p></td>
+<td><p>1</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int8_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SBYTE</span></code></p></td>
+<td><p>-128 .. 127</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uint16</span></code></p></td>
+<td><p>2</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uint16_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UWORD</span></code></p></td>
+<td><p>0 .. 65535</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sint16</span></code></p></td>
+<td><p>2</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int16_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SWORD</span></code></p></td>
+<td><p>-32768 .. 32767</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uint32</span></code></p></td>
+<td><p>4</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uint32_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ULONG</span></code></p></td>
+<td><p>0 .. 4294967295</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sint32</span></code></p></td>
+<td><p>4</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int32_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SLONG</span></code></p></td>
+<td><p>-2147483648 .. 2147483647</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uint64</span></code></p></td>
+<td><p>8</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uint64_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">A_UINT64</span></code></p></td>
+<td><p>0 .. 18446744073709551615</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sint64</span></code></p></td>
+<td><p>8</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int64_t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">A_INT64</span></code></p></td>
+<td><p>-9223372036854775808 .. 9223372036854775807</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">float32</span></code></p></td>
+<td><p>4</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FLOAT32_IEEE</span></code></p></td>
+<td><p>the IEEE 754 single range</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">float64</span></code></p></td>
+<td><p>8</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">double</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FLOAT64_IEEE</span></code></p></td>
+<td><p>the IEEE 754 double range</p></td>
+</tr>
+</tbody>
+</table>
+<p>The c spellings come from <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code>. The model tells the templates
+which of the two a project actually needs - <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code> is false for a project
+without a <code class="docutils literal notranslate"><span class="pre">boolean</span></code> - so the example templates include neither header for nothing. Literals are
+written with the suffix the type asks for, so the generated code survives <code class="docutils literal notranslate"><span class="pre">-Wconversion</span></code>:
+<code class="docutils literal notranslate"><span class="pre">0U</span></code> for the unsigned types, <code class="docutils literal notranslate"><span class="pre">1.5F</span></code> for <code class="docutils literal notranslate"><span class="pre">float32</span></code>, <code class="docutils literal notranslate"><span class="pre">18446744073709551615ULL</span></code> for
+<code class="docutils literal notranslate"><span class="pre">uint64</span></code>.</p>
+</section>
+<section id="names-and-what-a-name-may-not-be">
+<h3>Names, and what a name may not be<a class="headerlink" href="#names-and-what-a-name-may-not-be" title="Link to this heading"></a></h3>
+<p>The name is used unchanged in the generated c, which means the description file can produce
+code that does not compile, and DDD checks for that rather than letting the compiler explain
+it in a generated file nobody wants to read. A name that is a c keyword, or that
+<code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> or <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> already declare, is refused:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check reserved.ddd.json
+reserved.ddd.json#component.declarations[0].definition.name: error[reserved-identifier]: variable name &#39;signed&#39; is reserved by the c language
+reserved.ddd.json#component.declarations[1].definition.name: error[reserved-identifier]: variable name &#39;uint8_t&#39; is reserved by the c language
+2 errors
+</pre></div>
+</div>
+<p>So is a name that collides with something else DDD itself generates - an enumerator of an enum
+conversion lives in the same c namespace as a variable:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumcoll.ddd.json
+enumcoll.ddd.json#component.declarations[0].definition.name: error[name-collision]: &#39;STATE_OFF&#39; is declared as a variable and is also an enumerator of enum &#39;S_t&#39;; both become the same c identifier
+    note: enumcoll.ddd.json#component.declarations[1].definition.conversion: enumerator declared here
+1 error
+</pre></div>
+</div>
+<p>Two names differing only in case compile perfectly well and are merely a warning, because they
+are legal and occasionally intended - but they are also the classic way for a value to be read
+from the wrong variable for a year:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check similar.ddd.json
+similar.ddd.json#component.declarations[1].definition.name: warning[name-similar]: &#39;valuea&#39; and &#39;ValueA&#39; differ only in upper/lower case
+    note: similar.ddd.json#component.declarations[0].definition: other variable
+1 warning
+</pre></div>
+</div>
+<p>If the project points at a <a class="reference internal" href="../naming_conventions.html"><span class="doc">naming convention</span></a>, the name is checked
+against it as well, and the finding says which <em>part</em> of the name is wrong.</p>
+</section>
+<section id="initial-values">
+<h3>Initial values<a class="headerlink" href="#initial-values" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">init</span></code> is a raw value: a scalar, or a nested list matching the shape of the object. Leaving
+it out is not the same as writing <code class="docutils literal notranslate"><span class="pre">0</span></code>. With <code class="docutils literal notranslate"><span class="pre">init</span></code> absent no initialiser is generated at
+all, and the object lands in the zero-initialised section that the startup code clears, which
+for a large array is the difference between a few bytes of image and a few kilobytes:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Floating point measurement without a conversion [degC] */</span>
+<span class="kt">float</span><span class="w"> </span><span class="n">ValueC</span><span class="p">;</span>
+<span class="cm">/** Component local measurement, kept out of the a2l */</span>
+<span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueD</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+</pre></div>
+</div>
+<p>A <strong>scalar given for an array shaped object initialises every element</strong>, which is what makes a
+table of a hundred identical starting values one character long instead of a hundred. The demo
+uses it for <code class="docutils literal notranslate"><span class="pre">CurveB</span></code>, whose <code class="docutils literal notranslate"><span class="pre">&quot;init&quot;:</span> <span class="pre">200</span></code> covers all six points of the axis it lies over:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Second calibratable curve over the same shared axis [%] (calibration curve over AxisA) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">CurveB</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">200U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<p>Everything about an initial value is checked against the object it belongs to. A value outside
+the raw range of the datatype, a fractional value in an integer object, and a nested list of
+the wrong shape are all errors, each naming what it actually is:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check ranges.ddd.json
+ranges.ddd.json#component.declarations[0].definition.init: error[init-invalid]: init value 300 does not fit into uint8 (0 .. 255)
+ranges.ddd.json#component.declarations[2].definition.init: error[init-invalid]: init value 1.5 is written as a fractional number, but &#39;Fractional&#39; has the integer datatype uint8
+ranges.ddd.json#component.declarations[1].definition.limits: warning[limits-out-of-range]: limits [0, 200] exceed the range [0, 127.5] that uint8 can represent with this conversion
+2 errors, 1 warning
+</pre></div>
+</div>
+<p>The warning in that transcript is the same idea applied to <code class="docutils literal notranslate"><span class="pre">limits</span></code>: a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> scaled by
+0.5 reaches 127.5, so a maximum of 200 is a promise the storage cannot keep. It is a warning
+rather than an error because limits are a statement of intent about the data and never reach
+the compiler - but it is the finding that stops a calibration engineer from entering a value
+the software will silently wrap. Limits are also checked for being the right way round:
+<code class="docutils literal notranslate"><span class="pre">min</span></code> greater than <code class="docutils literal notranslate"><span class="pre">max</span></code> is refused when the file is read.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check misc.ddd.json
+misc.ddd.json#component.declarations[0].definition.limits: error[schema]: Value error, min (10) is greater than max (5) (got: {&#39;min&#39;: 10, &#39;max&#39;: 5})
+1 error
+</pre></div>
+</div>
+</section>
+<section id="the-a2l-block">
+<h3>The a2l block<a class="headerlink" href="#the-a2l-block" title="Link to this heading"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">a2l</span></code> object holds what one object asks of the a2l backend. Nothing else in DDD reads
+it, and a project generating no a2l can ignore it entirely.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 15.0%" />
+<col style="width: 63.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">export</span></code></p></td>
+<td><p>unstated</p></td>
+<td><p>Set to <code class="docutils literal notranslate"><span class="pre">false</span></code> to keep the object out of the a2l. The c code is generated as usual;
+only the calibration tool never sees it. The key has three states rather than two:
+unstated, which is what an object gets when it says nothing and means the same as
+<code class="docutils literal notranslate"><span class="pre">true</span></code>, and the two spelled out answers. See <a class="reference internal" href="#who-asks-for-an-export"><span class="std std-ref">Who asks for an export</span></a> for why
+the difference matters when several components declare the object.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">format</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
+<td><p>The a2l <code class="docutils literal notranslate"><span class="pre">FORMAT</span></code> string: <code class="docutils literal notranslate"><span class="pre">%</span></code>, the total display width, a dot, the number of decimal
+places, as in <code class="docutils literal notranslate"><span class="pre">&quot;%8.3&quot;</span></code>. It overrides the display format the conversion would
+otherwise imply.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">display_identifier</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
+<td><p>An alternative name for the calibration tool to show, for a variable whose c identifier
+is unhelpful or too long to read in a measurement list.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueLong&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Long name shown shorter in the tool&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hz&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%8.3&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;display_identifier&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValLong&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueLong &quot;Long name shown shorter in the tool&quot;
+  UWORD CM_LIN_HZ 0 0 0 16383.75
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK &quot;ValueLong&quot; 0
+  FORMAT &quot;%8.3&quot;
+  DISPLAY_IDENTIFIER ValLong
+/end MEASUREMENT
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> is the right setting for a component internal scratch variable that would
+only clutter the measurement list. The demo uses it twice, on <code class="docutils literal notranslate"><span class="pre">ValueD</span></code> and <code class="docutils literal notranslate"><span class="pre">ValueK</span></code>; both
+reach the c templates like every other object, and neither appears anywhere in
+<code class="docutils literal notranslate"><span class="pre">DemoDevice.a2l</span></code>, not even in the <code class="docutils literal notranslate"><span class="pre">GROUP</span></code> of the component that owns them.</p>
+</section>
+<section id="who-asks-for-an-export">
+<span id="id1"></span><h3>Who asks for an export<a class="headerlink" href="#who-asks-for-an-export" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">export</span></code> is the one a2l setting that is not the producer’s alone. Which signals a
+calibration engineer needs to see is not a property of whoever happens to write the variable: a
+component reading a value out of a library it does not own has as good a claim to measuring it
+as the library has to hiding it.</p>
+<p>The stated answers are therefore combined rather than ranked. The object reaches the a2l if
+<strong>any</strong> declaration states <code class="docutils literal notranslate"><span class="pre">true</span></code>, and is left out only when every declaration that says
+anything says <code class="docutils literal notranslate"><span class="pre">false</span></code>; a declaration that stays silent is not a vote either way, and an
+object nobody says anything about is exported. Two consumers can never conflict over it, so
+there is no finding for a disagreement, and the verdict does not depend on which components an
+image happens to link.</p>
+<p>This is also what makes the key safe to leave out. A dictionary written before the key existed,
+or handed over by a third party with no <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block at all, exports its objects the way it
+always did rather than quietly emptying the a2l file.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> on an <strong>axis</strong> that a curve or a map refers to is overruled. The
+<code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> of the curve carries an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code> naming that axis, and an
+<code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code> without the <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code> it points at would not be a valid a2l file - the
+calibration tool would refuse the whole file, not just the one object. A referenced axis is
+therefore always exported.</p>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">format</span></code> string is constrained rather than passed through, and a value that does not
+match is refused when the file is read:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badfmt.ddd.json
+badfmt.ddd.json#component.declarations[0].definition.a2l.format: error[schema]: String should match pattern &#39;^%\d*\.\d+$&#39; (got: &#39;%8&#39;)
+1 error
+</pre></div>
+</div>
+<p>The reason is that the value ends up inside a quoted a2l string literal. A quote or a backslash
+in it would unbalance that literal and no calibration tool would parse the file at all, which
+would cost a whole delivery for one typo in one description.</p>
+</section>
+</section>
+<section id="kinds-of-data-object">
+<h2>Kinds of data object<a class="headerlink" href="#kinds-of-data-object" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">kind</span></code> decides what the object <em>is</em>, and with it how it is stored and what the a2l calls it.
+The division that matters is between the one kind the software writes and the five it does
+not: a <code class="docutils literal notranslate"><span class="pre">measurement</span></code> is an online value that the software produces and the calibration tool
+only observes, while everything else is calibration data - the software never writes it, so it
+is generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and a calibration tool changes it through its address.</p>
+<p>Whether it also ends up in read only memory is the other question, and the one <code class="docutils literal notranslate"><span class="pre">volatile</span></code>
+answers. <code class="docutils literal notranslate"><span class="pre">const</span></code> says who writes the object from inside the software, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> says
+whether anything writes it from outside, and the two are independent: a parameter that a tool
+is meant to tune while the ecu runs is <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code>, and a parameter that is only ever
+changed between builds is plain <code class="docutils literal notranslate"><span class="pre">const</span></code> and stays in flash.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 24.0%" />
+<col style="width: 30.0%" />
+<col style="width: 28.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>kind</p></th>
+<th class="head"><p>extra keys</p></th>
+<th class="head"><p>c</p></th>
+<th class="head"><p>a2l</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">measurement</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
+<td><p>writable variable</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parameter</span></code></p></td>
+<td><ul class="simple">
+<li></li>
+</ul>
+</td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> scalar, <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> where stated</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">VALUE</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value_block</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code> (required)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> array, <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> where stated</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">VAL_BLK</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">axis</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">size</span></code> (required), <code class="docutils literal notranslate"><span class="pre">input</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> array <code class="docutils literal notranslate"><span class="pre">[size]</span></code>, <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> where stated</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">curve</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">axis</span></code> (required)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> array <code class="docutils literal notranslate"><span class="pre">[size</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">axis]</span></code>, <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> where stated</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">CURVE</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">map</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> (required)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">const</span></code> array <code class="docutils literal notranslate"><span class="pre">[size</span> <span class="pre">of</span> <span class="pre">y][size</span> <span class="pre">of</span> <span class="pre">x]</span></code>, <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> where stated</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">MAP</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The extra keys are what the kind adds to the common attributes, which is why <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is
+not among them: every kind states it, and where the answer is <code class="docutils literal notranslate"><span class="pre">true</span></code> the c column gains that
+word - a measurement becomes <code class="docutils literal notranslate"><span class="pre">volatile</span> <span class="pre">uint16_t</span> <span class="pre">Speed;</span></code> and a parameter
+<code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span> <span class="pre">uint16_t</span> <span class="pre">Gain</span> <span class="pre">=</span> <span class="pre">3U;</span></code>.</p>
+<p>Every example below is taken from <code class="docutils literal notranslate"><span class="pre">examples/demo/</span></code>, and every generated fragment is what
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">examples/demo/demo.ddd.json</span> <span class="pre">-o</span> <span class="pre">build/gen</span> <span class="pre">-t</span> <span class="pre">examples/templates</span></code> actually
+writes - the c ones as the example templates render them, the a2l ones as DDD writes them.</p>
+<section id="measurement">
+<h3>measurement<a class="headerlink" href="#measurement" title="Link to this heading"></a></h3>
+<p>A measurement is a value the software computes and writes, declared with
+<code class="docutils literal notranslate"><span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;measurement&quot;</span></code> like every other kind. One key is its own: <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, a list of
+array dimensions that is empty for a scalar. It is also the one kind that is not generated
+<code class="docutils literal notranslate"><span class="pre">const</span></code>, so the <code class="docutils literal notranslate"><span class="pre">volatile</span></code> every definition states is the whole of its qualifier -
+<code class="docutils literal notranslate"><span class="pre">ValueB</span></code> says <code class="docutils literal notranslate"><span class="pre">true</span></code>, which is the answer for a value written by an interrupt or by
+another task, and keeps the compiler from caching it in a register.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueB&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Array measurement with four elements&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;V&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Array measurement with four elements [V] */</span>
+<span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueB</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">0U</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueB &quot;Array measurement with four elements&quot;
+  UWORD CM_LIN_V 0 0 0 65.535
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK &quot;ValueB&quot; 0
+  MATRIX_DIM 4 1 1
+/end MEASUREMENT
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ValueB</span></code> gives no <code class="docutils literal notranslate"><span class="pre">limits</span></code>, so the pair <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">65.535</span></code> in the a2l is derived: a <code class="docutils literal notranslate"><span class="pre">uint16</span></code>
+reaches 65535 and the factor is 0.001. <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> lists the dimensions in the a2l’s x, y, z
+order, which is the reverse of the c subscripts - a <code class="docutils literal notranslate"><span class="pre">uint8_t</span> <span class="pre">M3[2][3][4]</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span> <span class="pre">4</span> <span class="pre">3</span> <span class="pre">2</span></code>. ASAP2 1.6.1 carries three dimensions there; an object with more is
+generated anyway, with a <code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code> warning saying that only a 1.7 reader will
+understand the extra ones.</p>
+</section>
+<section id="parameter">
+<h3>parameter<a class="headerlink" href="#parameter" title="Link to this heading"></a></h3>
+<p>A parameter is a single calibratable constant: one value the software reads and the
+calibration tool writes. It has no extra keys at all, since a scalar has no shape - but like
+every other kind it states <code class="docutils literal notranslate"><span class="pre">volatile</span></code>, and a constant very much has a volatility. Volatility
+is not about whether the software ever assigns to the object; it is about whether the value
+can change while the program runs, and a calibratable constant exists precisely so that
+somebody outside the program can change it. Say <code class="docutils literal notranslate"><span class="pre">false</span></code> and the compiler is free to fold
+the initialiser into the code that reads the value wherever it can see it - at <code class="docutils literal notranslate"><span class="pre">-O0</span></code> as
+well, since that is the front end substituting a value it knows rather than the optimiser at
+work - so a tool writing a new value through the object’s address changes memory the software
+has stopped reading. Say
+<code class="docutils literal notranslate"><span class="pre">true</span></code> and every read is a load from the address, at the price of the object leaving read
+only memory.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parameter&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ParameterA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Single calibratable constant&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hz&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3200</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Single calibratable constant [Hz] (calibration parameter) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ParameterA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3200U</span><span class="p">;</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC ParameterA &quot;Single calibratable constant&quot;
+  VALUE 0x00000000 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
+  SYMBOL_LINK &quot;ParameterA&quot; 0
+/end CHARACTERISTIC
+</pre></div>
+</div>
+<p>The raw <code class="docutils literal notranslate"><span class="pre">init</span></code> of 3200 is 800 Hz with a factor of 0.25, comfortably inside the physical
+limits of 500 and 1500 that the calibration tool will enforce. <code class="docutils literal notranslate"><span class="pre">local</span></code> is the usual scope
+for a parameter, since data that only tunes one component has no business being visible to the
+others.</p>
+<p>Every calibration object of the demo says <code class="docutils literal notranslate"><span class="pre">&quot;volatile&quot;:</span> <span class="pre">false</span></code>, which is why all of them are
+plain <code class="docutils literal notranslate"><span class="pre">const</span></code> here. The same definition with <code class="docutils literal notranslate"><span class="pre">true</span></code> differs by one word in the c and by
+nothing at all in the a2l, since a calibration tool is told the same address either way - the
+difference is whether the code that reads the value goes back to that address:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Single calibratable constant [Hz] (calibration parameter) */</span>
+<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ParameterA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3200U</span><span class="p">;</span>
+</pre></div>
+</div>
+</section>
+<section id="value-block">
+<h3>value_block<a class="headerlink" href="#value-block" title="Link to this heading"></a></h3>
+<p>A value block is an array of calibratable constants that is not indexed by an axis - a bit
+mask table, a set of coefficients, a lookup with an index the software computes itself.
+<code class="docutils literal notranslate"><span class="pre">dimensions</span></code> is required, since an array with no shape is a contradiction.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value_block&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BlockA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Calibratable array of constants&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint8&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">52</span><span class="p">,</span><span class="w"> </span><span class="mi">84</span><span class="p">,</span><span class="w"> </span><span class="mi">124</span><span class="p">,</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span><span class="w"> </span><span class="mi">255</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Calibratable array of constants (calibration value block) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">BlockA</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">12U</span><span class="p">,</span><span class="w"> </span><span class="mi">28U</span><span class="p">,</span><span class="w"> </span><span class="mi">52U</span><span class="p">,</span><span class="w"> </span><span class="mi">84U</span><span class="p">,</span><span class="w"> </span><span class="mi">124U</span><span class="p">,</span><span class="w"> </span><span class="mi">180U</span><span class="p">,</span><span class="w"> </span><span class="mi">255U</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC BlockA &quot;Calibratable array of constants&quot;
+  VAL_BLK 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255
+  SYMBOL_LINK &quot;BlockA&quot; 0
+  MATRIX_DIM 8 1 1
+/end CHARACTERISTIC
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code> may have more than one entry, and the c declaration then has one subscript per
+entry, in the order they are written: <code class="docutils literal notranslate"><span class="pre">&quot;dimensions&quot;:</span> <span class="pre">[2,</span> <span class="pre">3]</span></code> gives <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">uint8_t</span>
+<span class="pre">Block2D[2][3]</span></code> and a <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span> <span class="pre">3</span> <span class="pre">2</span> <span class="pre">1</span></code>.</p>
+</section>
+<section id="axis">
+<h3>axis<a class="headerlink" href="#axis" title="Link to this heading"></a></h3>
+<p>An axis is the set of break points a curve or a map is interpolated over. It exists as an
+object of its own rather than as a property of the curve, and that is the single most useful
+thing about the way DDD models tables: <strong>several curves and maps over the same break points
+store them once</strong>, and a calibration engineer who moves a break point moves it for all of
+them. That is what the a2l calls a <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code>, a common axis.</p>
+<p><code class="docutils literal notranslate"><span class="pre">size</span></code> is required and gives the number of points. <code class="docutils literal notranslate"><span class="pre">input</span></code> optionally names the
+measurement that indexes the axis - the physical quantity the tool should show along it. It has
+to be a measurement, and it has to exist.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;axis&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AxisA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Shared axis indexed by ValueE&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hz&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8000</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueE&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3200</span><span class="p">,</span><span class="w"> </span><span class="mi">6400</span><span class="p">,</span><span class="w"> </span><span class="mi">12800</span><span class="p">,</span><span class="w"> </span><span class="mi">19200</span><span class="p">,</span><span class="w"> </span><span class="mi">32000</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">AxisA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">3200U</span><span class="p">,</span><span class="w"> </span><span class="mi">6400U</span><span class="p">,</span><span class="w"> </span><span class="mi">12800U</span><span class="p">,</span><span class="w"> </span><span class="mi">19200U</span><span class="p">,</span><span class="w"> </span><span class="mi">32000U</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin AXIS_PTS AxisA &quot;Shared axis indexed by ValueE&quot;
+  0x00000000 ValueE RL_AXIS_UWORD 0 CM_LIN_HZ 6 0 8000
+  SYMBOL_LINK &quot;AxisA&quot; 0
+/end AXIS_PTS
+</pre></div>
+</div>
+<p>The scope of an axis follows the same rule as everything else. <code class="docutils literal notranslate"><span class="pre">AxisA</span></code> is an <code class="docutils literal notranslate"><span class="pre">output</span></code> of
+<code class="docutils literal notranslate"><span class="pre">Controller</span></code> because <code class="docutils literal notranslate"><span class="pre">UserInterface</span></code> also puts a curve over it and therefore declares it as
+an <code class="docutils literal notranslate"><span class="pre">input</span></code>; <code class="docutils literal notranslate"><span class="pre">AxisB</span></code>, which only <code class="docutils literal notranslate"><span class="pre">Controller</span></code> uses, is <code class="docutils literal notranslate"><span class="pre">local</span></code>. Omitting <code class="docutils literal notranslate"><span class="pre">input</span></code>
+is allowed and produces <code class="docutils literal notranslate"><span class="pre">NO_INPUT_QUANTITY</span></code> in its place - honest, and less useful to whoever
+opens the file.</p>
+</section>
+<section id="curve">
+<h3>curve<a class="headerlink" href="#curve" title="Link to this heading"></a></h3>
+<p>A curve is a one dimensional calibratable table laid over one axis. It names that axis with
+<code class="docutils literal notranslate"><span class="pre">axis</span></code> and gives <strong>no shape of its own</strong>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;curve&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CurveA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Calibratable curve over AxisA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ms&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;axis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AxisA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1200</span><span class="p">,</span><span class="w"> </span><span class="mi">900</span><span class="p">,</span><span class="w"> </span><span class="mi">800</span><span class="p">,</span><span class="w"> </span><span class="mi">750</span><span class="p">,</span><span class="w"> </span><span class="mi">700</span><span class="p">,</span><span class="w"> </span><span class="mi">650</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">CurveA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">1200U</span><span class="p">,</span><span class="w"> </span><span class="mi">900U</span><span class="p">,</span><span class="w"> </span><span class="mi">800U</span><span class="p">,</span><span class="w"> </span><span class="mi">750U</span><span class="p">,</span><span class="w"> </span><span class="mi">700U</span><span class="p">,</span><span class="w"> </span><span class="mi">650U</span><span class="w"> </span><span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC CurveA &quot;Calibratable curve over AxisA&quot;
+  CURVE 0x00000000 RL_VALUES_UWORD 0 CM_LIN_MS 0 655.35
+  SYMBOL_LINK &quot;CurveA&quot; 0
+  /begin AXIS_DESCR
+    COM_AXIS ValueE CM_LIN_HZ 6 0 8000
+    AXIS_PTS_REF AxisA
+  /end AXIS_DESCR
+/end CHARACTERISTIC
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">[6]</span></code> in the c declaration was never written down anywhere: DDD takes it from
+<code class="docutils literal notranslate"><span class="pre">AxisA</span></code>, whose <code class="docutils literal notranslate"><span class="pre">size</span></code> is 6. Repeating the size on the curve would be a second place for it
+to be wrong, and a table with one more entry than its axis is the kind of mistake that reads
+correctly and interpolates rubbish. Since the shape is derived, the init data is checked
+against it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badshape.ddd.json
+badshape.ddd.json#component.declarations[1].definition.init: error[init-invalid]: &#39;CurveS&#39; has the shape [3] given by its axes: init has 2 elements, expected 3
+1 error
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">AXIS_DESCR</span></code> block is where the sharing becomes visible. <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code> says that the break
+points are not stored inside this characteristic but somewhere else, and <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code>
+says where. <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> in the demo carries exactly the same block, pointing at the same
+<code class="docutils literal notranslate"><span class="pre">AxisA</span></code>, and the six break points exist once in the image.</p>
+</section>
+<section id="map">
+<h3>map<a class="headerlink" href="#map" title="Link to this heading"></a></h3>
+<p>A map is a two dimensional calibratable table over two axes, named with <code class="docutils literal notranslate"><span class="pre">x_axis</span></code> and
+<code class="docutils literal notranslate"><span class="pre">y_axis</span></code>. Like a curve it declares no shape.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;map&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;MapA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Calibratable map over AxisA and AxisB&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint8&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;x_axis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AxisA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;y_axis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AxisB&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">[</span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">],</span>
+<span class="w">      </span><span class="p">[</span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">26</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">],</span>
+<span class="w">      </span><span class="p">[</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">],</span>
+<span class="w">      </span><span class="p">[</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">]</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">AxisA</span></code> has 6 points and <code class="docutils literal notranslate"><span class="pre">AxisB</span></code> has 4, and the generated array is <code class="docutils literal notranslate"><span class="pre">[4][6]</span></code> - <strong>the size
+of y first, then the size of x</strong>. That is the row major layout, the one a2l calls <code class="docutils literal notranslate"><span class="pre">ROW_DIR</span></code>:
+a row of the c array is a row of the table, so a whole row of y is contiguous in memory and
+the interpolation walks it the way the hardware likes. Written in the same order in the json,
+the init data reads exactly like the table it is:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and AxisB) */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">int8_t</span><span class="w"> </span><span class="n">MapA</span><span class="p">[</span><span class="mi">4</span><span class="p">][</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">26</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="p">}</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC MapA &quot;Calibratable map over AxisA and AxisB&quot;
+  MAP 0x00000000 RL_VALUES_SBYTE 0 CM_LIN_PCT -64 63.5
+  SYMBOL_LINK &quot;MapA&quot; 0
+  /begin AXIS_DESCR
+    COM_AXIS ValueE CM_LIN_HZ 6 0 8000
+    AXIS_PTS_REF AxisA
+  /end AXIS_DESCR
+  /begin AXIS_DESCR
+    COM_AXIS ValueA CM_LIN_PCT 4 0 100
+    AXIS_PTS_REF AxisB
+  /end AXIS_DESCR
+/end CHARACTERISTIC
+</pre></div>
+</div>
+<p>The two <code class="docutils literal notranslate"><span class="pre">AXIS_DESCR</span></code> blocks are in x, y order, which is the a2l’s convention and the
+opposite of the c subscripts - one more reason not to have written the shape by hand. The
+limits <code class="docutils literal notranslate"><span class="pre">-64</span> <span class="pre">63.5</span></code> are derived, as <code class="docutils literal notranslate"><span class="pre">MapA</span></code> gives none: an <code class="docutils literal notranslate"><span class="pre">sint8</span></code> scaled by 0.5 covers
+-64 to 63.5.</p>
+</section>
+<section id="references-between-objects">
+<h3>References between objects<a class="headerlink" href="#references-between-objects" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> and <code class="docutils literal notranslate"><span class="pre">input</span></code> name other objects, and the object they name may
+be declared by <strong>any</strong> component of the project - which is what makes a shared axis possible
+in the first place. Both halves of such a reference are checked: that the name exists at all,
+and that it points at the right kind of thing.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check refs.ddd.json
+refs.ddd.json#component.declarations[1].definition.axis: error[unknown-reference]: curve &#39;CurveMissing&#39; refers to &#39;NoSuchAxis&#39; as its axis, but no component declares &#39;NoSuchAxis&#39;
+refs.ddd.json#component.declarations[2].definition.axis: error[reference-kind]: the axis of curve &#39;CurveWrong&#39; must be of kind &#39;axis&#39;, but &#39;NotAnAxis&#39; is of kind &#39;parameter&#39;
+2 errors
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check axinput.ddd.json
+axinput.ddd.json#component.declarations[1].definition.input: error[reference-kind]: the input of axis &#39;Ax1&#39; must be of kind &#39;measurement&#39;, but &#39;NotAMeas&#39; is of kind &#39;parameter&#39;
+axinput.ddd.json#component.declarations[2].definition.input: error[unknown-reference]: axis &#39;Ax2&#39; refers to &#39;Nowhere&#39; as its input, but no component declares &#39;Nowhere&#39;
+2 errors
+</pre></div>
+</div>
+<p>Getting the kind wrong is the more interesting of the two, because it is the one that would
+otherwise produce an a2l a calibration tool accepts and then misreads: an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code>
+pointing at a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> is not break points, it is a table being read as if it were.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="component.html" class="btn btn-neutral float-left" title="Component description" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="conversions.html" class="btn btn-neutral float-right" title="Conversions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

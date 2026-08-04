@@ -1,0 +1,50 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="1052,81,1317,193"/>
+<area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="1461,166,1579,278"/>
+<area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="1099,241,1270,297"/>
+<area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="1101,345,1268,457"/>
+<area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="1066,638,1303,750"/>
+<area shape="rect" id="node6" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="1100,505,1269,589"/>
+<area shape="rect" id="node7" title="ddd.models.types.Member
+
+One member of a structure, in the order the structure declares it.
+
+Order is significant: it is the order the c struct is generated in, and therefore the order
+the compiler lays out. &#160;Reordering members of a released structure moves every address after
+the change, which is why a comparison against a baseline reports it.
+" alt="" coords="383,119,908,427"/>
+<area shape="rect" id="node8" title="ddd.models.types.StructType
+
+One structured datatype: a name and the members it lays out, in order.
+" alt="" coords="5,5,239,145"/>
+</map>

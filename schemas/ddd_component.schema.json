@@ -65,8 +65,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -230,8 +241,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -603,8 +625,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -729,8 +762,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -847,8 +891,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",
@@ -970,8 +1025,19 @@
           "type": "string"
         },
         "datatype": {
-          "$ref": "#/$defs/Datatype",
-          "description": "Storage type of one element, from ``boolean`` through the integers to ``float64``."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
+          "title": "Datatype"
         },
         "description": {
           "default": "",

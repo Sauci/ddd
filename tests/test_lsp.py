@@ -491,14 +491,14 @@ class TestNavigation:
         types = {
             "types": [
                 {
+                    "type": "struct",
                     "name": "Inner_t",
-                    "members": [
-                        {"name": "v", "member": "value", "kind": "measurement", "datatype": "uint8"}
-                    ],
+                    "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
                 },
                 {
+                    "type": "struct",
                     "name": "Outer_t",
-                    "members": [{"name": "inner", "member": "struct", "type": "Inner_t"}],
+                    "members": [{"name": "inner", "member": "value", "datatype": "Inner_t"}],
                 },
             ]
         }
@@ -506,12 +506,37 @@ class TestNavigation:
         path = tmp_path / "t.ddd.json"
         built = self.index_of(tmp_path / "p.ddd.json")
         document = read(path, {})
-        (site,) = definition(built, document, path, "types[1].members[0].type")
+        (site,) = definition(built, document, path, "types[1].members[0].datatype")
         assert site.pointer == "types[0]"
         assert {found.pointer for found in references(built, document, "types[0].name")} == {
             "types[0]",
-            "types[1].members[0].type",
+            "types[1].members[0].datatype",
         }
+
+    def test_a_scalar_type_is_indexed_although_it_has_no_members(self, tmp_path: Path) -> None:
+        """It can be jumped to like any other type; there is simply nothing inside it to use."""
+        from ddd.lsp.navigation import definition
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm"},
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [{"name": "v", "member": "value", "datatype": "Speed_t"}],
+                        },
+                    ]
+                },
+            },
+        )
+        path = tmp_path / "t.ddd.json"
+        built = self.index_of(tmp_path / "p.ddd.json")
+        (site,) = definition(built, read(path, {}), path, "types[1].members[0].datatype")
+        assert site.pointer == "types[0]"
 
     def test_an_unknown_name_leads_nowhere_rather_than_anywhere(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import definition, references
@@ -524,8 +549,9 @@ class TestNavigation:
                 "t.ddd.json": {
                     "types": [
                         {
+                            "type": "struct",
                             "name": "T_t",
-                            "members": [{"name": "n", "member": "struct", "type": "Absent_t"}],
+                            "members": [{"name": "n", "member": "value", "datatype": "Absent_t"}],
                         }
                     ]
                 },
@@ -541,8 +567,8 @@ class TestNavigation:
         )
         types = tmp_path / "t.ddd.json"
         document = read(types, {})
-        assert definition(built, document, types, "types[0].members[0].type") == []
-        assert references(built, document, "types[0].members[0].type") == []
+        assert definition(built, document, types, "types[0].members[0].datatype") == []
+        assert references(built, document, "types[0].members[0].datatype") == []
 
     @pytest.mark.parametrize("pointer", ["project.includes[0]", "project.naming"])
     def test_a_path_leads_to_the_file_it_names(self, tmp_path: Path, pointer: str) -> None:

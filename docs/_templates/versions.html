@@ -1,0 +1,31 @@
+{#
+  The theme ships an empty versions.html and includes it at the end of every page: it is the
+  hole its own hosted flyout drops into, and this fills the same hole with ours. Every class
+  below is the theme's, so the box in the corner, the caret and the panel that expands are
+  positioned, painted and wired by the theme's own stylesheet and script. versions.js only
+  fills in the list.
+
+  The list cannot be baked in at build time. A version published today would then be missing
+  from the menu of every version built before it - which is exactly the menu somebody reading
+  an old page is looking at. So it is fetched on load from versions.json at the root of the
+  site, which the publishing workflow rewrites on every deployment.
+
+  data-root is the way back out: pathto('', 1) reaches the root of this build, and one level
+  above that is the root of the site, where the versions live side by side. Hidden until the
+  fetch succeeds, so a local build - which has nothing above it to fetch - shows no menu at
+  all rather than an empty one.
+#}
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="{{ pathto('', 1) }}../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div>

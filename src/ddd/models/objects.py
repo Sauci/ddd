@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
-from ddd.models.common import A2lFormat, Datatype, Identifier, Number, Real, format_number
+from ddd.models.common import (
+    A2lFormat,
+    Datatype,
+    DatatypeRef,
+    Identifier,
+    Number,
+    Real,
+    format_number,
+)
 from ddd.models.conversion import IDENTITY, Conversion, EnumConversion, conversion_range
 
 type InitValue = bool | int | Real | tuple[InitValue, ...]
@@ -45,7 +53,11 @@ class ObjectKind(StrEnum):
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        use_attribute_docstrings=True,
+    )
 
 
 class Limits(_Frozen):
@@ -110,6 +122,41 @@ class A2lObjectOptions(_Frozen):
         return (self.exported, self.format, self.display_identifier)
 
 
+MEANING_KEYS: Final = ("unit", "conversion", "limits")
+"""What says how a raw number is read: the keys a scalar type exists to fix once.
+
+Written directly on the thing that has them, or fixed by a named type - never both. Which of
+the two an author picks is a matter of whether the answer is shared: a unit written on one
+member of one structure says it once, and a ``Speed_t`` says it for every component that names
+it. The rule against restating is what keeps "where is this object's unit written down" a
+question with one answer.
+"""
+
+
+def refuse_restating(datatype: DatatypeRef, stated: Container[str]) -> None:
+    """Refuse stating what a named type already fixes; an error rather than an override.
+
+    The same rule wherever a datatype can be named - on a declaration and on a structure member
+    alike - because the confusion it prevents is the same one. An override rule would make the
+    answer to "where is this unit written down" be "in one of two places, and you have to know
+    which of them wins".
+
+    Only the meaning keys are refused here. The rest of the difference between a scalar type and
+    a structure - a structure has no room for a unit at all - needs to know which kind of type
+    the name refers to, and that is a check rather than a contract rule.
+    """
+    if isinstance(datatype, Datatype):
+        return
+    restated = [key for key in MEANING_KEYS if key in stated]
+    if restated:
+        listed = ", ".join(f"'{key}'" for key in restated)
+        msg = (
+            f"'{datatype}' is a declared type and already fixes what this value means, so "
+            f"{listed} may not be stated here as well"
+        )
+        raise ValueError(msg)
+
+
 def resolve_export(stated: Iterable[bool | None]) -> bool:
     """Whether an object reaches the a2l, given what every component said about it.
 
@@ -132,8 +179,14 @@ class DataObject(_Frozen):
     name: Identifier
     """C identifier of the object; also its name in the a2l."""
 
-    datatype: Datatype
-    """Storage type of one element, from ``boolean`` through the integers to ``float64``."""
+    datatype: DatatypeRef
+    """Storage of one element: a base datatype, or the name of a type the project declares.
+
+    One key names a type here exactly as it does on a structure member. Naming a structure is
+    what makes this object a structured one; naming a scalar type is what lets several
+    components agree about a value by naming it rather than by each copying out its unit, its
+    scaling and its limits - and a declaration that names a type may not restate any of them.
+    """
 
     description: str = ""
     """What the object is, offered to the c templates and used as the a2l long identifier."""
@@ -230,14 +283,38 @@ class DataObject(_Frozen):
         """Names of other data objects this one refers to, keyed by the field name."""
         return {}
 
+    @property
+    def declared_type(self) -> str | None:
+        """The type this definition names, or nothing if its datatype is a base one."""
+        return None if isinstance(self.datatype, Datatype) else self.datatype
+
+    @property
+    def storage(self) -> Datatype:
+        """The base datatype this object is stored as.
+
+        Only ever asked of a definition the analysis has already resolved: one that named a
+        type has had it filled in, and one that named a type nobody declares was reported and
+        dropped before anything got this far. The assertion is what says so to a reader and to
+        a type checker, rather than each caller quietly narrowing the union again.
+        """
+        assert isinstance(self.datatype, Datatype)
+        return self.datatype
+
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> DataObject:
-        if isinstance(self.conversion, EnumConversion) and not self.datatype.is_integer:
+        if isinstance(self.datatype, Datatype) and (
+            isinstance(self.conversion, EnumConversion) and not self.datatype.is_integer
+        ):
             msg = (
                 f"enum conversion '{self.conversion.name}' requires an integer datatype, "
                 f"got '{self.datatype.value}'"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _a_named_type_is_not_restated(self) -> DataObject:
+        refuse_restating(self.datatype, self.model_fields_set)
         return self
 
     @model_validator(mode="after")
@@ -251,10 +328,15 @@ class DataObject(_Frozen):
         return self
 
     def physical_limits(self) -> Limits:
-        """Explicit limits, or the full range implied by datatype and conversion."""
+        """Explicit limits, or the full range implied by datatype and conversion.
+
+        Only ever asked of a definition whose datatype is a base one: a definition naming a type
+        has its datatype, unit, conversion and limits filled in from that type by the analysis
+        before anything reads them.
+        """
         if self.limits is not None:
             return self.limits
-        low, high = conversion_range(self.conversion, self.datatype)
+        low, high = conversion_range(self.conversion, self.storage)
         return Limits(min=low, max=high)
 
     def scalar_values(self) -> tuple[float | int | bool, ...]:

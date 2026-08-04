@@ -587,11 +587,33 @@ class TestPublishedDocumentation:
             f"the published documentation is built without -W: {command.strip()}"
         )
 
-    def test_only_master_is_ever_published(self) -> None:
-        """The deploy job is conditional on the branch rather than only on the event.
+    def test_only_master_and_a_release_are_ever_published(self) -> None:
+        """The deploy job names the two things it publishes rather than only an event.
 
         A pull request from a fork proposes arbitrary content and runs on this workflow
         definition. Guarding the deployment by event alone would leave opening one enough to
-        publish somebody else's revision as the product's documentation.
+        publish somebody else's revision as the product's documentation - and ``pull_request``
+        is neither of the two conditions below, which is the whole point of spelling them out.
         """
-        assert "if: github.ref == 'refs/heads/master'" in DOCS_WORKFLOW
+        deploy = DOCS_WORKFLOW.split("\n  deploy:\n", 1)[1]
+        condition = next(line for line in deploy.splitlines() if line.strip().startswith("if:"))
+        assert "github.ref == 'refs/heads/master'" in condition, (
+            f"the deployment is not guarded by the branch: {condition.strip()}"
+        )
+        assert "github.event_name == 'release'" in condition, (
+            f"a release does not deploy its own documentation: {condition.strip()}"
+        )
+
+    def test_the_archive_history_is_not_published(self) -> None:
+        """The site is assembled in a git working tree, and only the tree gets uploaded.
+
+        Past versions are restored from the ``gh-pages`` branch, so the directory handed to
+        the upload is a checkout: it carries the branch's whole history, and on a first run
+        the credentials the push authenticated with are sitting in its remote url. Publishing
+        that changes nothing a reader can see, which is exactly why it has to be pinned here.
+        """
+        steps = DOCS_WORKFLOW.split("upload-pages-artifact")
+        assert len(steps) == 2, "the workflow no longer uploads exactly one Pages artifact"
+        assert "rm -rf site/.git" in steps[0], (
+            "the archive's git directory is uploaded to the Pages site along with the html"
+        )

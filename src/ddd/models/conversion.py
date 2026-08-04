@@ -170,11 +170,21 @@ Conversion = Annotated[
 IDENTITY = IdentityConversion()
 
 
-def conversion_range(conversion: Conversion, datatype: Datatype) -> tuple[float, float]:
-    """The physical range covered by the full raw range of ``datatype``."""
+def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tuple[float, float]:
+    """The physical range a raw range covers, in the order a reader expects.
+
+    Takes the raw ends rather than a datatype, because they do not always come from one: a
+    bitfield's ends come from its width, and offering a two bit field over the whole range of
+    the ``uint16`` carrying it would be an invitation to enter a value it cannot hold.
+    """
     if isinstance(conversion, EnumConversion):
         values = conversion.values
         return float(min(values)), float(max(values))
-    low = conversion.to_physical(datatype.raw_min)
-    high = conversion.to_physical(datatype.raw_max)
+    low = conversion.to_physical(raw_min)
+    high = conversion.to_physical(raw_max)
     return (low, high) if low <= high else (high, low)
+
+
+def conversion_range(conversion: Conversion, datatype: Datatype) -> tuple[float, float]:
+    """The physical range covered by the full raw range of ``datatype``."""
+    return physical_range(conversion, datatype.raw_min, datatype.raw_max)

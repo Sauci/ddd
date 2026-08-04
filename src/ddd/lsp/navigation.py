@@ -37,6 +37,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
+    Datatype,
     EnumConversion,
     is_reserved_identifier,
 )
@@ -122,10 +123,16 @@ def index(workspace: Workspace) -> Index:
                     built.occupied[enumerator.name] = f"an enumerator of enum '{conversion.name}'"
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
-        for position, member in enumerate(entry.structure.members):
-            if member.type is not None:
-                where = entry.location(f"members[{position}].type")
-                built.type_uses.setdefault(member.type, []).append(Site(where.path, where.pointer))
+        structure = entry.structure
+        if structure is None:
+            continue
+        for position, member in enumerate(structure.members):
+            # A member naming a base datatype names no type; the union keeps the two apart.
+            if not isinstance(member.datatype, Datatype):
+                where = entry.location(f"members[{position}].datatype")
+                built.type_uses.setdefault(member.datatype, []).append(
+                    Site(where.path, where.pointer)
+                )
     return built
 
 

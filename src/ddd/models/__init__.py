@@ -4,7 +4,9 @@ from ddd.models.common import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
     Datatype,
+    DatatypeRef,
     Identifier,
+    TypeName,
     format_number,
 )
 from ddd.models.component import Component, ComponentFile, Declaration, Scope
@@ -45,10 +47,13 @@ from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
 from ddd.models.types import (
     BITS_PER_BYTE,
     MEMBER_OBJECT_KINDS,
+    AnyType,
     Member,
     MemberKind,
+    ScalarType,
     StructType,
     TypesFile,
+    bitfield_range,
 )
 
 __all__ = [
@@ -60,6 +65,7 @@ __all__ = [
     "MEMBER_OBJECT_KINDS",
     "A2lObjectOptions",
     "AnyDataObject",
+    "AnyType",
     "Axis",
     "Component",
     "ComponentFile",
@@ -68,6 +74,7 @@ __all__ = [
     "Curve",
     "DataObject",
     "Datatype",
+    "DatatypeRef",
     "Declaration",
     "EnumConversion",
     "Enumerator",
@@ -86,13 +93,16 @@ __all__ = [
     "Parameter",
     "Project",
     "ProjectFile",
+    "ScalarType",
     "Scope",
     "Segment",
     "Shape",
     "StructType",
     "Token",
+    "TypeName",
     "TypesFile",
     "ValueBlock",
+    "bitfield_range",
     "broadcast",
     "check_shape",
     "conversion_range",

@@ -349,10 +349,47 @@ Publishing this documentation
 -----------------------------
 
 ``.github/workflows/docs.yml`` builds the html and publishes it to
-`GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and on a push
-to ``master`` it also deploys, so what is published is the documentation of the current
-``master`` rather than of the last release. The deployment authenticates the same way the
-release upload does, with a short lived OIDC token rather than a stored secret.
+`GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and deploys on
+two events: a push to ``master``, and a published release. The deployment authenticates the
+same way the release upload does, with a short lived OIDC token rather than a stored secret.
+
+The site keeps one directory per version, and a menu in the bottom left corner of every page
+switches between them:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Directory
+     - Written by
+     - Rewritten
+   * - ``latest``
+     - a push to ``master``
+     - every push
+   * - ``v0.2.0``, ``v0.3.0``, ...
+     - publishing that release
+     - never
+
+Old documentation describes old code, so nothing rebuilds a released version. That is not
+only a saving: a tag from two years ago would have to keep building under the sphinx of the
+day, and the run that failed would be the one publishing the *current* release.
+
+Since a deployment replaces the whole site, the versions that are not being built have to
+come from somewhere. The ``gh-pages`` branch is that archive - storage rather than the
+published thing, restored at the start of the job and pushed back at the end of it. Pages
+still serves the artifact the workflow uploads, so its ``Source`` setting stays on
+*GitHub Actions*. The branch is created by the first deployment; there is nothing to set up.
+
+The menu cannot be baked into a page at build time, or a version released today would be
+missing from the menu of every page built before it - which is the menu somebody reading an
+old page is looking at. So ``docs/_templates/versions.html`` renders an empty menu and
+``docs/_static/js/versions.js`` fills it in on load from ``versions.json`` at the root of the
+site, which the workflow rewrites from what is on disk on every deployment. A build with no
+such file above it - a local one, a pull request one - shows no menu at all, which is honest:
+there is nothing to switch to.
+
+The root of the site redirects to the newest release rather than to ``latest``. Somebody
+arriving without a version in the url wants the documentation of what they can install, not
+``master``'s account of features that are not released yet.
 
 The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
 runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf
@@ -367,10 +404,10 @@ Two things are worth knowing before the first run.
 that setting is made the deployment step fails with a message about a missing Pages site.
 There is nothing to change in the repository to fix it: correct the setting and re-run.
 
-**A pull request builds but never deploys.** The deploy job is conditional on the branch, not
-merely on the event, because a pull request from a fork proposes arbitrary content: without
-that condition, opening one would be enough to publish somebody else's revision as the
-product's documentation.
+**A pull request builds but never deploys.** The deploy job names the branch and the release
+event it publishes, rather than resting on the event alone, because a pull request from a
+fork proposes arbitrary content: without that condition, opening one would be enough to
+publish somebody else's revision as the product's documentation.
 
 Publishing a release
 --------------------

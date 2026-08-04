@@ -13,6 +13,7 @@ from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.models import (
     AnyDataObject,
+    AnyType,
     Component,
     ComponentFile,
     Conversion,
@@ -95,21 +96,27 @@ class LoadedProject:
 
 @dataclass(frozen=True, slots=True)
 class LoadedType:
-    """One structured datatype together with where it was declared.
+    """One declared type together with where it was declared.
 
-    One per structure rather than one per file, because everything downstream refers to a
-    structure by name and a finding about it has to point at the entry that declared it.
+    One per type rather than one per file, because everything downstream refers to a type by
+    name and a finding about it has to point at the entry that declared it.
     """
 
     path: Path
     index: int
     """Position in the ``types`` list of its file, which is what the location points at."""
 
-    structure: StructType
+    declared: AnyType
+    """The entry itself: a structure or a scalar type."""
 
     @property
     def name(self) -> str:
-        return self.structure.name
+        return self.declared.name
+
+    @property
+    def structure(self) -> StructType | None:
+        """The entry as a structure, or nothing if it names a scalar."""
+        return self.declared if isinstance(self.declared, StructType) else None
 
     def location(self, suffix: str = "") -> Location:
         pointer = f"types[{self.index}]"
@@ -399,10 +406,10 @@ class _Loader:
         return loaded
 
     def _load_types(self, path: Path, data: dict[str, Any]) -> None:
-        """Read a structured datatype description and register what it declares.
+        """Read a type description and register what it declares.
 
-        A structure is registered under its name, so the second file to declare ``Engine_t``
-        is refused rather than quietly winning or losing: which of two layouts the generated c
+        A type is registered under its name, so the second file to declare ``Engine_t`` is
+        refused rather than quietly winning or losing: which of two layouts the generated c
         would get is not something an include order should decide.
         """
         try:
@@ -411,13 +418,13 @@ class _Loader:
             self._report_validation_error(path, error)
             return
 
-        for index, structure in enumerate(model.types):
-            loaded = LoadedType(path=path, index=index, structure=structure)
+        for index, declared in enumerate(model.types):
+            loaded = LoadedType(path=path, index=index, declared=declared)
             previous = self._types_by_name.get(loaded.name)
             if previous is not None:
                 self._bag.add(
                     "duplicate-type",
-                    f"structured datatype '{loaded.name}' is declared twice",
+                    f"type '{loaded.name}' is declared twice",
                     loaded.location(),
                     notes=[("first declared here", previous.location())],
                 )
@@ -558,11 +565,28 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
 
 
 def _report_validation_error(path: Path, error: ValidationError, bag: DiagnosticBag) -> None:
-    for item in _meaningful(error.errors(include_url=False)):
+    for item in _one_per_place(_meaningful(error.errors(include_url=False))):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
         bag.add("schema", message, Location(path, _pointer(item["loc"])))
+
+
+def _one_per_place(items: list[Any]) -> list[Any]:
+    """One finding per place, however many ways the value failed to be what was wanted.
+
+    A union that is not discriminated fails once per branch, so a mistyped ``datatype`` arrives
+    as two errors about one key: it is not one of the eleven base datatypes, *and* it does not
+    look like a type name. Both are true and the reader needs neither of them twice.
+
+    The first is kept, because pydantic reports the branches in the order they are declared and
+    that order is chosen to put the likely reading first - for ``datatype``, "one of these
+    eleven" says far more than a regular expression does.
+    """
+    kept: dict[str, Any] = {}
+    for item in items:
+        kept.setdefault(_pointer(item["loc"]), item)
+    return list(kept.values())
 
 
 def _meaningful(items: list[Any]) -> list[Any]:
@@ -608,9 +632,10 @@ def _resolve(path: Path) -> Path:
 def _pointer(loc: tuple[int | str, ...]) -> str:
     parts: list[str] = []
     for item in loc:
-        if item in _UNION_TAGS:
-            # pydantic reports the selected variant of a tagged union as a path segment;
-            # 'definition.measurement.datatype' would only confuse the reader.
+        if item in _UNION_TAGS or _is_branch_tag(item):
+            # pydantic reports the selected variant of a tagged union as a path segment, and
+            # the tried branch of a plain one the same way; 'definition.measurement.datatype'
+            # and 'datatype.str-enum[Datatype]' would both only confuse the reader.
             continue
         if isinstance(item, int):
             parts.append(f"[{item}]")
@@ -619,6 +644,16 @@ def _pointer(loc: tuple[int | str, ...]) -> str:
         else:
             parts.append(str(item))
     return "".join(parts)
+
+
+def _is_branch_tag(item: int | str) -> bool:
+    """Whether a path segment names a union branch rather than a key of the document.
+
+    pydantic spells those as ``str-enum[Datatype]`` or ``constrained-str``, neither of which
+    can be a key: a key is an identifier, and these are not. Recognised by shape rather than
+    by a list of names, so a new branch needs nothing added here.
+    """
+    return isinstance(item, str) and not item.replace("_", "").replace("$", "").isalnum()
 
 
 def _short(value: Any, limit: int = 60) -> str:

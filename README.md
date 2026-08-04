@@ -402,7 +402,8 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
 | error | `duplicate-type` | two files declare the same structured datatype name |
-| error | `unknown-type` | a structure member nests a structure nobody declares |
+| error | `unknown-type` | a datatype names neither a base datatype nor a type any file declares |
+| error | `type-kind` | a declared type is used where its shape does not fit |
 | error | `type-cycle` | structures nest each other, so neither has a size |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |

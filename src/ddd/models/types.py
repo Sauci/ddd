@@ -1,34 +1,54 @@
-"""Contract for the structured datatype description file.
+"""Contract for the type description file.
 
-A ``types`` file declares composite datatypes - structures - that component descriptions then
-refer to.  It is a file of its own rather than a section of a component, because a structure is
+A ``types`` file declares the types a project names: structures, and scalars that fix what a
+number means.  It is a file of its own rather than a section of a component, because a type is
 usually shared: the point of declaring ``Engine_t`` once is that two components can agree on it
 without either owning it.
 
-What a member may be is deliberately narrow, and the boundary is layout:
+**One key names a type, everywhere.**  ``datatype`` accepts one of the base datatypes or the
+name of a type declared here, on a structure member and on a component declaration alike.
+There is no second key beside it: a ``type`` key would have to mean "the name of a declared
+type" in those two places and "which shape this entry has" at the top of an entry here, and one
+key with one meaning is worth what it costs.
 
-* a **value** member is a datatype, optionally an array,
-* a **bits** member is a datatype and a width in bits, which is a c bitfield,
-* a **struct** member is another declared structure.
+What a structure member may be is deliberately narrow, and the boundary is layout:
 
-Nothing here describes conversions, limits or a2l options.  Those belong to the objects a
-structure is *instantiated* as, and adding them to a member would mean two places to state the
-same thing.  A member says where the bytes are; a declaration says what they mean.
+* a **value** member is a datatype - base or declared - optionally an array,
+* a **bits** member is an integer datatype and a width in bits, which is a c bitfield.
+
+A member states no storage class.  Whether an object is measured or calibrated qualifies the
+whole c object - ``const`` cannot apply to half a structure - so it is the *declaration* that
+decides, and a structure mixing the two is not something this file can express rather than
+something DDD has to report.
+
+A member says what its number means as well as where its bytes are, because after a structure
+is flattened into the a2l each member *is* an object: it needs a unit and limits like any other.
+It may say so directly, or name a scalar type that fixes it, and never both - which is the same
+rule a declaration follows, one level up.  Which of the two to reach for is a question of
+whether the answer is shared: a unit written on a member says it for that member, and a
+``Temperature_t`` says it once for everything in the project that names it.
+
+What a member does *not* carry is what belongs to a variable rather than to a type: ``init``,
+because two variables of one structure may start at different values, and ``volatile``, because
+a qualifier applies to a whole c object and not to a member of one.
 
 The bit positions of a bitfield are not stated, and cannot be: c leaves the allocation order
 within a storage unit implementation defined, so the position of ``Ready : 1`` is a property of
-the compiler rather than of this file.  DDD reads the real positions back out of the build and
-never predicts them - see the layout probe.
+the compiler rather than of this file.  The same holds for the offset of every member.  DDD
+reads both back out of the build and never predicts them - see the address map, which is keyed
+on access paths for exactly this reason.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
-from ddd.models.common import Datatype, FileRoot, Identifier
-from ddd.models.objects import ObjectKind
+from ddd.models.common import Datatype, DatatypeRef, FileRoot, Identifier, Number, TypeName
+from ddd.models.conversion import IDENTITY, Conversion, physical_range
+from ddd.models.objects import A2lObjectOptions, Limits, ObjectKind, refuse_restating
 
 BITS_PER_BYTE = 8
 
@@ -38,20 +58,20 @@ class MemberKind(StrEnum):
 
     Stated rather than inferred from which keys are present: a file that omits a key by mistake
     should be told which member shape it failed to describe, not silently become another one.
+    A forgotten ``bits`` would otherwise turn a one bit flag into a full width member and move
+    every offset after it.
     """
 
     VALUE = "value"
-    """A datatype, scalar or array."""
+    """A datatype, scalar or array; the datatype may be a declared type."""
 
     BITS = "bits"
-    """A datatype and a width in bits: a c bitfield."""
-
-    STRUCT = "struct"
-    """Another declared structure, nested in this one."""
+    """An integer datatype and a width in bits: a c bitfield."""
 
 
-#: Which object kinds a member may be. A structure member is a plain value or a calibratable
-#: one; a curve, a map or an axis refers to other objects, which a member cannot do.
+#: Which object kinds may instantiate a structure. A structured variable is a plain value or a
+#: calibratable one; a curve, a map or an axis refers to other objects, which a structure
+#: cannot do.
 MEMBER_OBJECT_KINDS = (ObjectKind.MEASUREMENT, ObjectKind.PARAMETER)
 
 
@@ -71,11 +91,10 @@ class Member(BaseModel):
     member: MemberKind
     """Which shape this member has, and with it which other keys the member may carry.
 
-    * ``value`` needs ``kind`` and ``datatype``, and may add ``dimensions``,
-    * ``bits`` needs ``kind``, ``datatype`` and ``bits``,
-    * ``struct`` needs ``type`` and takes nothing else.
+    * ``value`` needs ``datatype`` and may add ``dimensions``,
+    * ``bits`` needs ``datatype`` and ``bits``.
 
-    A key belonging to another shape is refused rather than ignored: ``bits`` together with
+    A key belonging to the other shape is refused rather than ignored: ``bits`` together with
     ``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping
     one of the two would put a structure in the generated c that this file does not describe.
     """
@@ -83,15 +102,13 @@ class Member(BaseModel):
     description: str = ""
     """Free text describing the member, offered to the c templates."""
 
-    kind: ObjectKind | None = None
-    """Whether the member is measured or calibrated; required unless it is a nested structure.
+    datatype: DatatypeRef
+    """Storage of this member: a base datatype, or the name of a declared type.
 
-    Only ``measurement`` and ``parameter`` are allowed here. A curve, a map, a value block or
-    an axis refers to other objects by name, which a member of a structure cannot do.
+    A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what
+    its number means.  A ``bits`` member has to name a base integer datatype: a bitfield has no
+    room for a structure, and a scalar type would carry limits the width contradicts.
     """
-
-    datatype: Datatype | None = None
-    """Storage of a ``value`` or ``bits`` member; required on both."""
 
     dimensions: tuple[PositiveInt, ...] = ()
     """Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.
@@ -100,19 +117,57 @@ class Member(BaseModel):
     """
 
     bits: PositiveInt | None = None
-    """Width of a ``bits`` member, in bits; required on one, refused on the others.
+    """Width of a ``bits`` member, in bits; required on one, refused on the other.
 
     It has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype
     has to be an integer, since c allows a bitfield in nothing else.
     """
 
-    type: str | None = Field(default=None, min_length=1, max_length=128)
-    """Name of the structure a ``struct`` member nests; declared anywhere in the project.
+    unit: str = ""
+    """Physical unit of this member, e.g. ``"degC"``.
 
-    The name is not pattern checked here on purpose. A structure that does not exist, or whose
-    name is not a usable identifier, is reported against the structure that refers to it and
-    with a location, which says more than a pattern violation on a key seen out of context.
+    Written here, or fixed by a scalar type this member names, and never both.  Which of the
+    two to reach for is a question of whether the answer is shared: a unit written here says it
+    for this member of this structure, and a ``Temperature_t`` says it for everything that
+    names it, across every component of the project.
     """
+
+    conversion: Conversion = IDENTITY
+    """How this member's raw value maps to a physical one: identity, linear or an enumeration."""
+
+    limits: Limits | None = None
+    """Physical limits of this member; derived from its storage and conversion if omitted.
+
+    For a ``bits`` member the derivation uses the *width*, not the datatype carrying it: a two
+    bit field offered to a calibration tool as ``0 .. 65535`` invites somebody to enter a value
+    the field cannot hold and the software then reads back something else.
+    """
+
+    a2l: A2lObjectOptions = A2lObjectOptions()
+    """What this member asks of the a2l file once the structure is flattened into it.
+
+    Per member rather than per structure, because that is the granularity the a2l ends up with:
+    each member becomes an object of its own, so keeping one of them out of the file, or giving
+    one of them a display format, is a decision about that member alone.
+    """
+
+    def physical_limits(self) -> Limits:
+        """Stated limits, or the range this member's storage and conversion imply."""
+        if self.limits is not None:
+            return self.limits
+        assert isinstance(self.datatype, Datatype)
+        raw = (
+            bitfield_range(self.datatype, self.bits)
+            if self.bits is not None
+            else (self.datatype.raw_min, self.datatype.raw_max)
+        )
+        low, high = physical_range(self.conversion, *raw)
+        return Limits(min=low, max=high)
+
+    @model_validator(mode="after")
+    def _a_named_type_is_not_restated(self) -> Member:
+        refuse_restating(self.datatype, self.model_fields_set)
+        return self
 
     @model_validator(mode="after")
     def _shape_and_keys_agree(self) -> Member:
@@ -123,45 +178,33 @@ class Member(BaseModel):
         - and quietly ignoring one of the two would put a structure in the generated c that the
         description does not describe.
         """
-        allowed: dict[MemberKind, tuple[str, ...]] = {
-            MemberKind.VALUE: ("kind", "datatype", "dimensions"),
-            MemberKind.BITS: ("kind", "datatype", "bits"),
-            MemberKind.STRUCT: ("type",),
-        }
-        required: dict[MemberKind, tuple[str, ...]] = {
-            MemberKind.VALUE: ("kind", "datatype"),
-            MemberKind.BITS: ("kind", "datatype", "bits"),
-            MemberKind.STRUCT: ("type",),
-        }
-        for field in ("kind", "datatype", "bits", "type"):
-            if getattr(self, field) is not None and field not in allowed[self.member]:
-                msg = f"a '{self.member.value}' member has no '{field}'"
+        if self.member is MemberKind.BITS:
+            if self.dimensions:
+                msg = "a 'bits' member has no 'dimensions'"
                 raise ValueError(msg)
-        if self.dimensions and "dimensions" not in allowed[self.member]:
-            msg = f"a '{self.member.value}' member has no 'dimensions'"
-            raise ValueError(msg)
-        for field in required[self.member]:
-            if getattr(self, field) is None:
-                msg = f"a '{self.member.value}' member needs a '{field}'"
+            if self.bits is None:
+                msg = "a 'bits' member needs a 'bits'"
                 raise ValueError(msg)
-        if self.kind is not None and self.kind not in MEMBER_OBJECT_KINDS:
-            offered = ", ".join(kind.value for kind in MEMBER_OBJECT_KINDS)
-            msg = (
-                f"a structure member cannot be a '{self.kind.value}': it would have to refer to "
-                f"other objects. Use one of: {offered}"
-            )
+        elif self.bits is not None:
+            msg = "a 'value' member has no 'bits'"
             raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def _a_bitfield_fits_its_storage(self) -> Member:
-        """A width no wider than the datatype, and an integer to put it in.
+        """A width no wider than the datatype, and a base integer to put it in.
 
-        A field wider than its storage does not compile, and one in a float or a boolean is not
-        a bitfield at all - c allows a bitfield only in an integer type.
+        A field wider than its storage does not compile, and one in a float, a boolean or a
+        declared type is not a bitfield at all - c allows a bitfield only in an integer type.
         """
-        if self.bits is None or self.datatype is None:
+        if self.bits is None:
             return self
+        if not isinstance(self.datatype, Datatype):
+            msg = (
+                f"a bitfield needs a base integer datatype, got the declared type "
+                f"'{self.datatype}'; only an integer can carry one in c"
+            )
+            raise ValueError(msg)
         if not self.datatype.is_integer:
             msg = (
                 f"a bitfield needs an integer datatype, got '{self.datatype.value}'; only an "
@@ -179,12 +222,19 @@ class Member(BaseModel):
 
 
 class StructType(BaseModel):
-    """One structured datatype."""
+    """One structured datatype: a name and the members it lays out, in order."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
-    name: Identifier
-    """Name of the structure; every structure of a project needs a distinct one."""
+    type: Literal["struct"]
+    """Says this entry describes a structure; stated on every entry of a types file."""
+
+    name: TypeName
+    """Name of the structure; every type of a project needs a distinct one.
+
+    Refused if it reads as a base datatype, which would be a type nothing could ever refer to:
+    where a name is written, a base datatype wins the union.
+    """
 
     description: str = ""
     """Free text describing the structure, offered to the c templates."""
@@ -203,25 +253,98 @@ class StructType(BaseModel):
         return self
 
 
+class ScalarType(BaseModel):
+    """A name for what a number means, so components agree by naming rather than by copying.
+
+    Three components consuming an engine speed each used to write out the datatype, the unit,
+    the scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three
+    say ``Speed_t`` instead, there is nothing left to disagree about - which is checking turned
+    into construction.
+
+    It fixes exactly the four things that make two declarations interchangeable, and nothing
+    else.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:
+    they are properties of one object rather than of the type, and two measurements of the same
+    type may well differ in whether an interrupt writes one of them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+
+    type: Literal["scalar"]
+    """Says this entry names a scalar rather than describing a structure."""
+
+    name: TypeName
+    """Name of the type; every type of a project needs a distinct one.
+
+    Refused if it reads as a base datatype, for the reason a structure's name is.
+    """
+
+    description: str = ""
+    """Free text describing what the type is, offered to the c templates."""
+
+    datatype: Datatype
+    """Storage of the value: one of the base datatypes.
+
+    A base datatype rather than another declared type, so that a scalar type cannot be defined
+    in terms of a second one.  A chain of names would have to be resolved, could form a cycle,
+    and buys nothing a reader of the one entry could not already see.
+    """
+
+    unit: str = ""
+    """Physical unit of the value, e.g. ``"rpm"``."""
+
+    conversion: Conversion = IDENTITY
+    """How a raw value maps to a physical one: identity, linear scaling or an enumeration."""
+
+    limits: Limits | None = None
+    """Physical limits, in the unit above; derived from datatype and conversion if omitted."""
+
+
+AnyType = Annotated[StructType | ScalarType, Field(discriminator="type")]
+"""Any entry of a types file, told apart by its required ``type``.
+
+Discriminated on a stated key rather than inferred from which other keys are present, for the
+reason the member shapes already give: a file that omits a key by mistake should be told which
+shape it failed to describe, not silently become another one.
+"""
+
+
 class TypesFile(FileRoot):
-    """Root object of a ``*.ddd.json`` structured datatype description.
+    """Root object of a ``*.ddd.json`` type description.
 
     ``types`` is the top level key that makes this a types file rather than a project, a
     component or a naming file; DDD decides what a file is from that key alone, so exactly one
     of the four appears here.
     """
 
-    model_config = ConfigDict(title="DDD structured datatype description")
+    model_config = ConfigDict(title="DDD type description")
 
-    types: tuple[StructType, ...] = Field(min_length=1)
-    """The structures this file declares."""
+    types: tuple[AnyType, ...] = Field(min_length=1)
+    """The types this file declares."""
 
     @model_validator(mode="after")
     def _type_names_are_distinct(self) -> TypesFile:
         seen: set[str] = set()
-        for structure in self.types:
-            if structure.name in seen:
-                msg = f"structure '{structure.name}' is declared twice in this file"
+        for entry in self.types:
+            if entry.name in seen:
+                msg = f"type '{entry.name}' is declared twice in this file"
                 raise ValueError(msg)
-            seen.add(structure.name)
+            seen.add(entry.name)
         return self
+
+
+def bitfield_range(datatype: Datatype, bits: int) -> tuple[Number, Number]:
+    """The raw values a bitfield of that width holds, for deriving its limits.
+
+    A two bit ``mode`` offered to a calibration tool as ``0 .. 65535`` is worse than no limits
+    at all: the tool lets somebody enter a value the field cannot store, and the software reads
+    back something else. The width is the only thing that says otherwise, and the description
+    states it.
+
+    A signed field spends one bit on the sign, so ``sint8 : 4`` runs ``-8 .. 7``. No clamp
+    against the storage is needed: a member may not be wider than the datatype carrying it, and
+    at exactly that width the two answers are the same one.
+    """
+    if datatype.info.is_signed:
+        top = (1 << (bits - 1)) - 1
+        return (-top - 1, top)
+    return (0, (1 << bits) - 1)

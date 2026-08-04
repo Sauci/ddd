@@ -35,6 +35,10 @@ extensions = [
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 nitpicky = False
 
+# _templates/versions.html overrides the empty file of that name the theme ships purely to be
+# overridden, and is where the version menu of the published site is drawn.
+templates_path = ["_templates"]
+
 # No intersphinx: the documentation has to build in an offline container, and an inventory
 # that cannot be fetched turns every build into a warning.
 
@@ -47,6 +51,7 @@ html_theme_options = {
     "navigation_depth": 3,
 }
 html_css_files = ["css/custom.css"]
+html_js_files = ["js/versions.js"]
 # The theme puts the logo on the dark block at the top of the sidebar, so it is the dark
 # variant that goes there; custom.css repaints that block in the ink the mark is drawn for.
 # Both paths are relative to this file, and sphinx copies what they name into _static.

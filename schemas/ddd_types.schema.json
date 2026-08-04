@@ -1,6 +1,57 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "A2lObjectOptions": {
+      "additionalProperties": false,
+      "description": "What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out.",
+      "properties": {
+        "export": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so - see ``resolve_export``.",
+          "title": "Export"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "pattern": "^%\\d*\\.\\d+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.",
+          "title": "Format"
+        },
+        "display_identifier": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alternative name shown by the calibration tool.",
+          "title": "Display Identifier"
+        }
+      },
+      "title": "A2lObjectOptions",
+      "type": "object"
+    },
     "Datatype": {
       "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
@@ -32,6 +83,148 @@
       "title": "Datatype",
       "type": "string"
     },
+    "EnumConversion": {
+      "additionalProperties": false,
+      "description": "A verbal conversion table; the raw value *is* the physical value.\n\nAccepts both the explicit form:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\",\n     \"enumerators\": [{\"name\": \"STATE_OFF\", \"value\": 0}]}\n\nand the mapping shorthand:\n\n    {\"kind\": \"enum\", \"name\": \"StateA\", \"enumerators\": {\"STATE_OFF\": 0}}",
+      "properties": {
+        "kind": {
+          "const": "enum",
+          "default": "enum",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "C identifier of the generated ``typedef enum``; shared enums must agree everywhere.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "enumerators": {
+          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
+          "items": {
+            "$ref": "#/$defs/Enumerator"
+          },
+          "minItems": 1,
+          "title": "Enumerators",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "enumerators"
+      ],
+      "title": "EnumConversion",
+      "type": "object"
+    },
+    "Enumerator": {
+      "additionalProperties": false,
+      "description": "One named value of an enum conversion, and what that value means.",
+      "properties": {
+        "name": {
+          "description": "C identifier of the enumerator; enumerators of all enums share one c namespace.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The raw value; every enumerator of one enum needs a value of its own.",
+          "title": "Value",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "What the value means; documentation, not interface.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "Enumerator",
+      "type": "object"
+    },
+    "IdentityConversion": {
+      "additionalProperties": false,
+      "description": "``physical == raw``; the default for every variable.",
+      "properties": {
+        "kind": {
+          "const": "identity",
+          "default": "identity",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "IdentityConversion",
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "Physical lower/upper limit of a data object.",
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Smallest physical value the object may take.",
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Largest physical value the object may take; at least ``min``.",
+          "title": "Max"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "LinearConversion": {
+      "additionalProperties": false,
+      "description": "``physical = raw * factor + offset``, the scaling of a fixed point value.",
+      "properties": {
+        "kind": {
+          "const": "linear",
+          "default": "linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "factor": {
+          "default": 1.0,
+          "description": "Scaling; must not be zero, or nothing could be converted back.",
+          "title": "Factor",
+          "type": "number"
+        },
+        "offset": {
+          "default": 0.0,
+          "description": "What raw zero stands for, in the physical unit.",
+          "title": "Offset",
+          "type": "number"
+        }
+      },
+      "title": "LinearConversion",
+      "type": "object"
+    },
     "Member": {
       "additionalProperties": false,
       "description": "One member of a structure, in the order the structure declares it.\n\nOrder is significant: it is the order the c struct is generated in, and therefore the order\nthe compiler lays out.  Reordering members of a released structure moves every address after\nthe change, which is why a comparison against a baseline reports it.",
@@ -46,7 +239,7 @@
         },
         "member": {
           "$ref": "#/$defs/MemberKind",
-          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``kind`` and ``datatype``, and may add ``dimensions``,\n* ``bits`` needs ``kind``, ``datatype`` and ``bits``,\n* ``struct`` needs ``type`` and takes nothing else.\n\nA key belonging to another shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
+          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``datatype`` and may add ``dimensions``,\n* ``bits`` needs ``datatype`` and ``bits``.\n\nA key belonging to the other shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
         },
         "description": {
           "default": "",
@@ -54,29 +247,20 @@
           "title": "Description",
           "type": "string"
         },
-        "kind": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObjectKind"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether the member is measured or calibrated; required unless it is a nested structure.\n\nOnly ``measurement`` and ``parameter`` are allowed here. A curve, a map, a value block or\nan axis refers to other objects by name, which a member of a structure cannot do."
-        },
         "datatype": {
           "anyOf": [
             {
               "$ref": "#/$defs/Datatype"
             },
             {
-              "type": "null"
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
             }
           ],
-          "default": null,
-          "description": "Storage of a ``value`` or ``bits`` member; required on both."
+          "description": "Storage of this member: a base datatype, or the name of a declared type.\n\nA ``value`` member may name a structure, which nests it, or a scalar type, which fixes what\nits number means.  A ``bits`` member has to name a base integer datatype: a bitfield has no\nroom for a structure, and a scalar type would carry limits the width contradicts.",
+          "title": "Datatype"
         },
         "dimensions": {
           "default": [],
@@ -99,77 +283,180 @@
             }
           ],
           "default": null,
-          "description": "Width of a ``bits`` member, in bits; required on one, refused on the others.\n\nIt has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype\nhas to be an integer, since c allows a bitfield in nothing else.",
+          "description": "Width of a ``bits`` member, in bits; required on one, refused on the other.\n\nIt has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype\nhas to be an integer, since c allows a bitfield in nothing else.",
           "title": "Bits"
         },
-        "type": {
+        "unit": {
+          "default": "",
+          "description": "Physical unit of this member, e.g. ``\"degC\"``.\n\nWritten here, or fixed by a scalar type this member names, and never both.  Which of the\ntwo to reach for is a question of whether the answer is shared: a unit written here says it\nfor this member of this structure, and a ``Temperature_t`` says it for everything that\nnames it, across every component of the project.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
           "anyOf": [
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
+              "$ref": "#/$defs/Limits"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Name of the structure a ``struct`` member nests; declared anywhere in the project.\n\nThe name is not pattern checked here on purpose. A structure that does not exist, or whose\nname is not a usable identifier, is reported against the structure that refers to it and\nwith a location, which says more than a pattern violation on a key seen out of context.",
-          "title": "Type"
+          "description": "Physical limits of this member; derived from its storage and conversion if omitted.\n\nFor a ``bits`` member the derivation uses the *width*, not the datatype carrying it: a two\nbit field offered to a calibration tool as ``0 .. 65535`` invites somebody to enter a value\nthe field cannot hold and the software then reads back something else."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": null,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."
         }
       },
       "required": [
         "name",
-        "member"
+        "member",
+        "datatype"
       ],
       "title": "Member",
       "type": "object"
     },
     "MemberKind": {
-      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.\n\n* ``value`` - A datatype, scalar or array.\n* ``bits`` - A datatype and a width in bits: a c bitfield.\n* ``struct`` - Another declared structure, nested in this one.",
+      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.\nA forgotten ``bits`` would otherwise turn a one bit flag into a full width member and move\nevery offset after it.\n\n* ``value`` - A datatype, scalar or array; the datatype may be a declared type.\n* ``bits`` - An integer datatype and a width in bits: a c bitfield.",
       "enum": [
         "value",
-        "bits",
-        "struct"
+        "bits"
       ],
       "enumDescriptions": [
-        "A datatype, scalar or array.",
-        "A datatype and a width in bits: a c bitfield.",
-        "Another declared structure, nested in this one."
+        "A datatype, scalar or array; the datatype may be a declared type.",
+        "An integer datatype and a width in bits: a c bitfield."
       ],
       "title": "MemberKind",
       "type": "string"
     },
-    "ObjectKind": {
-      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes and the calibration tool only reads.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
-      "enum": [
-        "measurement",
-        "parameter",
-        "value_block",
-        "curve",
-        "map",
-        "axis"
+    "ScalarType": {
+      "additionalProperties": false,
+      "description": "A name for what a number means, so components agree by naming rather than by copying.\n\nThree components consuming an engine speed each used to write out the datatype, the unit,\nthe scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three\nsay ``Speed_t`` instead, there is nothing left to disagree about - which is checking turned\ninto construction.\n\nIt fixes exactly the four things that make two declarations interchangeable, and nothing\nelse.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:\nthey are properties of one object rather than of the type, and two measurements of the same\ntype may well differ in whether an interrupt writes one of them.",
+      "properties": {
+        "type": {
+          "const": "scalar",
+          "description": "Says this entry names a scalar rather than describing a structure.",
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the type; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, for the reason a structure's name is.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing what the type is, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage of the value: one of the base datatypes.\n\nA base datatype rather than another declared type, so that a scalar type cannot be defined\nin terms of a second one.  A chain of names would have to be resolved, could form a cycle,\nand buys nothing a reader of the one entry could not already see."
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit of the value, e.g. ``\"rpm\"``.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "default": {
+            "kind": "identity"
+          },
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits, in the unit above; derived from datatype and conversion if omitted."
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "datatype"
       ],
-      "enumDescriptions": [
-        "An online value the software writes and the calibration tool only reads.",
-        "A single calibratable constant.",
-        "An array of calibratable constants.",
-        "A one dimensional calibratable table over one axis.",
-        "A two dimensional calibratable table over two axes.",
-        "Shared axis points a curve or map is interpolated over."
-      ],
-      "title": "ObjectKind",
-      "type": "string"
+      "title": "ScalarType",
+      "type": "object"
     },
     "StructType": {
       "additionalProperties": false,
-      "description": "One structured datatype.",
+      "description": "One structured datatype: a name and the members it lays out, in order.",
       "properties": {
+        "type": {
+          "const": "struct",
+          "description": "Says this entry describes a structure; stated on every entry of a types file.",
+          "title": "Type",
+          "type": "string"
+        },
         "name": {
-          "description": "Name of the structure; every structure of a project needs a distinct one.",
+          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, which would be a type nothing could ever refer to:\nwhere a name is written, a base datatype wins the union.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -190,6 +477,7 @@
         }
       },
       "required": [
+        "type",
         "name",
         "members"
       ],
@@ -198,7 +486,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.ddd.json`` structured datatype description.\n\n``types`` is the top level key that makes this a types file rather than a project, a\ncomponent or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
+  "description": "Root object of a ``*.ddd.json`` type description.\n\n``types`` is the top level key that makes this a types file rather than a project, a\ncomponent or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
   "properties": {
     "$schema": {
       "anyOf": [
@@ -214,9 +502,23 @@
       "title": "$Schema"
     },
     "types": {
-      "description": "The structures this file declares.",
+      "description": "The types this file declares.",
       "items": {
-        "$ref": "#/$defs/StructType"
+        "discriminator": {
+          "mapping": {
+            "scalar": "#/$defs/ScalarType",
+            "struct": "#/$defs/StructType"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/StructType"
+          },
+          {
+            "$ref": "#/$defs/ScalarType"
+          }
+        ]
       },
       "minItems": 1,
       "title": "Types",
@@ -226,6 +528,6 @@
   "required": [
     "types"
   ],
-  "title": "DDD structured datatype description",
+  "title": "DDD type description",
   "type": "object"
 }

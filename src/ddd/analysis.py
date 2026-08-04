@@ -8,10 +8,11 @@ thing it hands to the backends is the dictionary.
 from __future__ import annotations
 
 import dataclasses
+import difflib
 import math
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import ComponentDeclaration, DataDictionary, ResolvedComponent, ResolvedObject
@@ -24,9 +25,11 @@ from ddd.models import (
     Declaration,
     EnumConversion,
     Map,
+    Member,
     ObjectKind,
     Scope,
     Shape,
+    StructType,
     check_shape,
     conversion_range,
     format_number,
@@ -34,7 +37,7 @@ from ddd.models import (
     is_reserved_identifier,
     resolve_export,
 )
-from ddd.naming import check_names
+from ddd.naming import check_names, or_list
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
@@ -117,7 +120,7 @@ def _conversion_value(definition: DataObject) -> object:
 # What every component sharing an object has to agree on: a disagreement is an error.
 _INTERFACE_FIELDS = (
     _ComparedField("kind", lambda d: d.kind.value, lambda d: d.kind.value),
-    _ComparedField("datatype", lambda d: d.datatype.value, lambda d: d.datatype.value),
+    _ComparedField("datatype", lambda d: str(d.datatype), lambda d: str(d.datatype)),
     _ComparedField("unit", lambda d: d.unit, lambda d: f"'{d.unit}'"),
     _ComparedField("shape", lambda d: d.declared_shape, _describe_shape),
     _ComparedField("conversion", _conversion_value, lambda d: d.conversion.describe()),
@@ -188,6 +191,13 @@ class DeclarationRef:
     owner: LoadedComponent
     index: int
     declaration: Declaration
+    resolved: DataObject | None = None
+    """The definition with the type it names filled in, once that has been worked out.
+
+    Everything downstream reads :attr:`definition` and never learns that a type was involved,
+    which is what keeps the comparison tables, the backends and ``compare`` untouched by the
+    feature.
+    """
 
     @property
     def component_name(self) -> str:
@@ -199,7 +209,7 @@ class DeclarationRef:
 
     @property
     def definition(self) -> DataObject:
-        return self.declaration.definition
+        return self.declaration.definition if self.resolved is None else self.resolved
 
     @property
     def name(self) -> str:
@@ -272,6 +282,23 @@ def analyze(workspace: Workspace, bag: DiagnosticBag) -> DataDictionary:
     return _Analysis(workspace, bag).run()
 
 
+def _nested_types(entry: LoadedType) -> list[tuple[int, Member, str]]:
+    """The members of a structure that name a type, with their position.
+
+    A member whose datatype is one of the base ones names nothing, and a scalar type nests
+    nothing either - only a structure has members of its own. Both are told apart by the caller,
+    which has the declared types to hand; here the question is only which members name a name.
+    """
+    structure = entry.structure
+    if structure is None:
+        return []
+    return [
+        (index, member, member.datatype)
+        for index, member in enumerate(structure.members)
+        if not isinstance(member.datatype, Datatype)
+    ]
+
+
 def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ...]:
     """The chain of nested structures leading from ``start`` back to a name already on it.
 
@@ -286,13 +313,10 @@ def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ..
             return (*chain[chain.index(name) :], name)
         entry = declared.get(name)
         if entry is None:
-            # An undeclared structure has no members to follow; it is reported as unknown-type.
+            # An undeclared type has no members to follow; it is reported as unknown-type.
             return ()
         chain.append(name)
-        for member in entry.structure.members:
-            nested = member.type
-            if nested is None:
-                continue
+        for _, _, nested in _nested_types(entry):
             found = walk(nested)
             if found:
                 return found
@@ -337,6 +361,8 @@ class _Analysis:
         self._workspace = workspace
         self._bag = bag
         self._enums = _EnumRegistry()
+        self._types = {entry.name: entry for entry in workspace.types}
+        """Every type the project declares, by name - structures and scalars alike."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -392,17 +418,15 @@ class _Analysis:
         and the generated addresses would silently point at the wrong bytes; a structure that
         contains itself has no size at all.
         """
-        declared = {entry.name: entry for entry in self._workspace.types}
+        declared = self._types
         for entry in self._workspace.types:
-            for index, member in enumerate(entry.structure.members):
-                nested = member.type
-                if nested is None:
-                    continue
-                if nested not in declared:
+            for index, member, nested in _nested_types(entry):
+                target = declared.get(nested)
+                if target is None:
                     self._bag.add(
                         "unknown-type",
-                        f"member '{member.name}' nests structured datatype '{nested}', which no "
-                        f"file of this project declares",
+                        f"member '{member.name}' names datatype '{nested}', which is neither a "
+                        f"base datatype nor a type any file of this project declares",
                         entry.location(f"members[{index}]"),
                     )
 
@@ -476,6 +500,63 @@ class _Analysis:
                     notes=[("enum declared here", declared[1])],
                 )
 
+    def _nearest_type(self, named: str) -> str:
+        """`` - did you mean 'uint16'?``, or nothing when nothing is close.
+
+        The contract already refuses a name that reads as a base datatype with a digit wrong,
+        so what reaches here is the rest: a transposition like ``unit16``, or a type name
+        somebody misremembered. Both are answered by the same question, and the project asks it
+        the same way for a name that does not fit its convention.
+        """
+        candidates = tuple(datatype.value for datatype in Datatype) + tuple(sorted(self._types))
+        matches = difflib.get_close_matches(named.lower(), candidates, n=3, cutoff=0.6)
+        return f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+
+    def _resolve_type(self, ref: DeclarationRef) -> DeclarationRef | None:
+        """Fill in the type a declaration names, or report that it names nothing.
+
+        Done before anything else looks at the declaration, because a definition whose type is
+        unknown has no datatype: every later check on it would be reasoning about nothing. What
+        comes out the other side is an ordinary definition with its storage and its meaning
+        spelled out, so nothing downstream needs to know a type was ever involved.
+        """
+        definition = ref.declaration.definition
+        named = definition.declared_type
+        if named is None:
+            return ref
+        declared = self._types.get(named)
+        if declared is None:
+            self._bag.add(
+                "unknown-type",
+                f"'{ref.name}' is declared as '{named}', which is neither a base datatype nor a "
+                f"type any file of this project declares{self._nearest_type(named)}",
+                ref.location("definition.datatype"),
+            )
+            return None
+        entry = declared.declared
+        if isinstance(entry, StructType):
+            self._bag.add(
+                "type-kind",
+                f"'{ref.name}' is declared as the structure '{named}'; a declaration cannot "
+                f"name a structure yet, only a scalar type",
+                ref.location("definition.datatype"),
+                notes=[("declared here", declared.location())],
+            )
+            return None
+        # A scalar type fixes what the value means and nothing about the variable, so only the
+        # four it fixes are filled in. The definition already refused to restate any of them.
+        return replace(
+            ref,
+            resolved=definition.model_copy(
+                update={
+                    "datatype": entry.datatype,
+                    "unit": entry.unit,
+                    "conversion": entry.conversion,
+                    "limits": entry.limits,
+                }
+            ),
+        )
+
     def _collect_component(self, loaded: LoadedComponent) -> None:
         component = loaded.component
         if is_reserved_identifier(component.name):
@@ -493,7 +574,11 @@ class _Analysis:
 
         seen: dict[str, DeclarationRef] = {}
         for index, declaration in enumerate(component.declarations):
-            ref = DeclarationRef(loaded, index, declaration)
+            ref = self._resolve_type(DeclarationRef(loaded, index, declaration))
+            if ref is None:
+                # Its datatype names nothing this project declares, which is already reported.
+                # Everything after this point would be reasoning about a value with no storage.
+                continue
             previous = seen.get(ref.name)
             if previous is not None:
                 self._bag.add(
@@ -538,7 +623,7 @@ class _Analysis:
             self._check_enum_fits(definition, conversion, location)
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
-        datatype = definition.datatype
+        datatype = definition.storage
         for value in definition.scalar_values():
             if datatype is Datatype.BOOLEAN:
                 if not isinstance(value, bool) and value not in (0, 1):
@@ -569,14 +654,14 @@ class _Analysis:
     def _check_limits(self, definition: DataObject, location: Location) -> None:
         if definition.limits is None:
             return
-        low, high = conversion_range(definition.conversion, definition.datatype)
+        low, high = conversion_range(definition.conversion, definition.storage)
         limits = definition.limits
         if _below(limits.min, low) or _above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
                 f"range [{format_number(low)}, {format_number(high)}] that "
-                f"{definition.datatype.value} can represent with this conversion",
+                f"{definition.storage.value} can represent with this conversion",
                 location,
             )
 
@@ -666,7 +751,7 @@ class _Analysis:
     def _check_enum_fits(
         self, definition: DataObject, conversion: EnumConversion, location: Location
     ) -> None:
-        datatype = definition.datatype
+        datatype = definition.storage
         outside = [
             enumerator
             for enumerator in conversion.enumerators

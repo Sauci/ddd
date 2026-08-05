@@ -367,9 +367,9 @@ class TestPublishedSchemas:
     """
 
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
-        from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile
+        from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile, UnitsFile
 
-        for model in (ProjectFile, ComponentFile, NamingFile, TypesFile):
+        for model in (ProjectFile, ComponentFile, NamingFile, TypesFile, UnitsFile):
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
 

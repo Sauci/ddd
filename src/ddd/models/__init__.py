@@ -54,6 +54,7 @@ from ddd.models.types import (
     TypesFile,
     bitfield_range,
 )
+from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
 __all__ = [
     "BITS_PER_BYTE",
@@ -99,6 +100,9 @@ __all__ = [
     "Token",
     "TypeName",
     "TypesFile",
+    "Unit",
+    "UnitDeclaration",
+    "UnitsFile",
     "ValueBlock",
     "bitfield_range",
     "broadcast",

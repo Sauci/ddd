@@ -23,6 +23,8 @@ from ddd.models import (
     ProjectFile,
     StructType,
     TypesFile,
+    UnitDeclaration,
+    UnitsFile,
     discriminator_tags,
 )
 
@@ -36,7 +38,7 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
-FILE_KINDS = ("project", "component", "types")
+FILE_KINDS = ("project", "component", "types", "units")
 """Top level keys that identify a description file, in the order they are offered.
 
 A naming convention is not among them: it is pointed at by the ``naming`` key of a project
@@ -145,6 +147,28 @@ class LoadedType:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedUnit:
+    """One declared unit together with where it was declared.
+
+    One per unit rather than one per file, for the reason :class:`LoadedType` gives: a
+    finding about a unit has to point at the entry that declared it.
+    """
+
+    path: Path
+    index: int
+    """Position in the ``units`` list of its file, which is what the location points at."""
+
+    declared: UnitDeclaration
+
+    @property
+    def unit(self) -> str:
+        return self.declared.unit
+
+    def location(self) -> Location:
+        return Location(self.path, f"units[{self.index}]")
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -159,6 +183,13 @@ class Workspace:
     Sorted rather than in include order so that a project produces the same output whichever
     way its ``includes`` happen to expand; the order of *members* inside a structure is the
     author's and is preserved, because that one decides the layout.
+    """
+
+    units: tuple[LoadedUnit, ...] = ()
+    """The unit vocabulary the project declares, sorted by spelling; empty means unchecked.
+
+    An empty vocabulary is the opt-out: no units file, no constraint. Once any file declares
+    one, every stated unit is checked against the union of what every units file declares.
     """
 
     naming: NamingConvention | None = None
@@ -268,6 +299,7 @@ class _Loader:
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
         self._types_by_name: dict[str, LoadedType] = {}
+        self._units_by_name: dict[str, LoadedUnit] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
 
@@ -289,6 +321,15 @@ class _Loader:
                 "file-kind",
                 "this is a structured datatype description; list it in the 'includes' of the "
                 "project that uses it instead of analysing it on its own",
+                Location(root),
+            )
+            return None
+
+        if kind == "units":
+            self._bag.add(
+                "file-kind",
+                "this is a unit vocabulary; list it in the 'includes' of the project whose "
+                "units it declares instead of analysing it on its own",
                 Location(root),
             )
             return None
@@ -317,6 +358,7 @@ class _Loader:
             components=tuple(self._components),
             projects=tuple(self._projects),
             types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
+            units=tuple(sorted(self._units_by_name.values(), key=lambda entry: entry.unit)),
             naming=load_convention(naming_path, self._bag) if naming_path else None,
             naming_path=naming_path,
             read_paths=tuple(sorted(self._read_paths)),
@@ -454,6 +496,32 @@ class _Loader:
                 continue
             self._types_by_name[loaded.name] = loaded
 
+    def _load_units(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a unit vocabulary and register what it declares.
+
+        A unit is registered under its spelling, so the second file to declare ``Nm`` is
+        refused rather than merged: two files declaring one unit is either a copy that will
+        drift or a disagreement about its description, and neither is worth keeping quiet.
+        """
+        try:
+            model = UnitsFile.model_validate(data)
+        except ValidationError as error:
+            self._report_validation_error(path, error)
+            return
+
+        for index, declared in enumerate(model.units):
+            loaded = LoadedUnit(path=path, index=index, declared=declared)
+            previous = self._units_by_name.get(loaded.unit)
+            if previous is not None:
+                self._bag.add(
+                    "duplicate-unit",
+                    f"unit '{loaded.unit}' is declared twice",
+                    loaded.location(),
+                    notes=[("first declared here", previous.location())],
+                )
+                continue
+            self._units_by_name[loaded.unit] = loaded
+
     def _load_project(
         self,
         path: Path,
@@ -540,6 +608,8 @@ class _Loader:
             self._load_project(path, data, parents, stack)
         elif kind == "types":
             self._load_types(path, data)
+        elif kind == "units":
+            self._load_units(path, data)
 
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)

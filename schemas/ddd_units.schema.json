@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "UnitDeclaration": {
+      "additionalProperties": false,
+      "description": "One unit of the vocabulary, with what it stands for.",
+      "properties": {
+        "unit": {
+          "description": "The spelling, exactly as every description file writes it: ``Nm``, ``rpm``, ``degC``.\n\nCase counts - ``mV`` and ``MV`` are different units - and the empty string is not an\nentry, because a dimensionless value states no unit at all.",
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "What the unit stands for, e.g. ``torque, newton metre``.\n\nThis is where the vocabulary of a project is written down once, instead of being implied\nby every object that happens to use it.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit"
+      ],
+      "title": "UnitDeclaration",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.ddd.json`` unit vocabulary description.\n\n``units`` is the top level key that makes this a units file rather than a project, a\ncomponent or a types file; DDD decides what a file is from that key alone.  The file is\nlisted in the ``includes`` of a project like any other description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "units": {
+      "description": "The units this project spells, in any order; an empty vocabulary is no file at all.",
+      "items": {
+        "$ref": "#/$defs/UnitDeclaration"
+      },
+      "minItems": 1,
+      "title": "Units",
+      "type": "array"
+    }
+  },
+  "required": [
+    "units"
+  ],
+  "title": "DDD unit vocabulary",
+  "type": "object"
+}

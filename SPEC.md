@@ -24,6 +24,7 @@
     - [3.5 Memory placement *(planned)*](#35-memory-placement-planned)
     - [3.6 Build record](#36-build-record)
     - [3.7 Type description](#37-type-description)
+    - [3.8 Unit vocabulary](#38-unit-vocabulary)
   - [4 Consistency checks](#4-consistency-checks)
     - [4.1 Comparing two deliveries](#41-comparing-two-deliveries)
   - [5 Generated artefacts](#5-generated-artefacts)
@@ -168,7 +169,8 @@ order mark is tolerated on reading, since Windows editors like to prepend one - 
 named `*.ddd.json` (`file-extension`), so that a description file is recognisable as such in a project that
 contains JSON for other purposes. The top level key of a file decides what the file is:
 `project` ([section 3.1](#31-project-description)), `component` ([section 3.2](#32-software-component-description))
-or `types` ([section 3.7](#37-type-description)); only the first two can be the root of a
+`types` ([section 3.7](#37-type-description))
+or `units` ([section 3.8](#38-unit-vocabulary)); only the first two can be the root of a
 run. JSON allows one object to spell the same key twice - `"init": 0, "init": 255` - and
 parsers generally resolve that silently, the last spelling winning: the value the author
 reads first is not the value a tool would use, which in a grown description file is a
@@ -178,13 +180,13 @@ are rejected, with one exception: a top level `$schema` key **shall** be accepte
 since it is the standard way an editor binds a JSON file to its schema and thereby turns the
 published contract into completion, hover documentation and as-you-type validation. The
 formal contract is published by the tool itself as a JSON schema (`ddd schema`), one file
-per format - project, component, types and the data dictionary - and every authored
+per format - project, component, types, units and the data dictionary - and every authored
 field of it **shall** carry its documentation. The binding is per file rather than per directory
 because the kind of a description is in its content and not in its name.
 
 ### 3.1 Project description
 
-Contains a list of components, types files and/or other (sub-)projects.
+Contains a list of components, types files, units files and/or other (sub-)projects.
 
 ```json
 {
@@ -198,7 +200,7 @@ Contains a list of components, types files and/or other (sub-)projects.
 
 - `"name"` (required) - C identifier of the project, also used as A2L project and module name
 - `"description"` (optional) - free text
-- `"includes"` (optional) - paths to component, types or sub-project files, relative to this file. The
+- `"includes"` (optional) - paths to component, types, units or sub-project files, relative to this file. The
   kind of each included file is detected from its content. A file reached through several
   paths is loaded once - identity being the resolved path: absolute, symlinks followed, case
   compared as the platform compares it - and include cycles are an error.
@@ -252,7 +254,7 @@ Attributes common to every kind:
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
-| `unit` | `""` | physical unit |
+| `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)) |
 | `conversion` | required beside `datatype` | raw to physical conversion, [section 3.4](#34-conversions); a `typename` fixes it instead |
 | `limits` | derived | physical `min`/`max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
@@ -589,6 +591,37 @@ of [section 6](#6-address-information) is keyed on access paths. The limits of a
 since offering a two bit field over the whole range of the word carrying it would invite a value
 it cannot hold.
 
+### 3.8 Unit vocabulary
+
+A `units` file declares the units a project spells, so that one quantity cannot drift into
+two spellings. `unit` is free text wherever it is written - DDD cannot know that `Nm` and
+`newton_meter` mean the same thing - and without a vocabulary the drift is invisible: each
+object agrees with itself, the A2L grows one `COMPU_METHOD` per spelling
+([section 5.2](#52-a2l)), and the calibration tool shows two units for one quantity.
+
+```json
+{
+  "units": [
+    "rpm",
+    { "unit": "Nm", "description": "torque, newton metre" },
+    { "unit": "degC", "description": "temperature" }
+  ]
+}
+```
+
+The file is listed in the `includes` of a project ([section 3.1](#31-project-description))
+like a types file, and only there: handed to the tool as the root of a run it is refused,
+with a hint at the include that carries it. An entry is a bare spelling, or an object adding
+a `description` - which is where the meaning of a unit is written down once, instead of
+being implied by every object that happens to use it. Case counts: `mV` and `MV` are
+different units. The same unit declared twice, by one file or by two, is `duplicate-unit`.
+
+Declaring the vocabulary is opt-in: a project without a units file keeps its units free.
+With one, every stated unit - on a definition, on a structure member, on a scalar type - is
+checked where it is written (`unknown-unit`), with the nearest declared spelling suggested.
+The empty unit is always allowed: a dimensionless value states no unit rather than a
+spelling of one.
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -603,8 +636,9 @@ option is repeatable; for one check the last override wins, and `--strict` then 
 is still a warning to an error. Overriding a check that cannot be relaxed is a usage error
 rather than a finding, like naming an unknown check or severity.
 
-Four checks need every component of a project to mean anything - `unknown-type`,
-`missing-producer`, `unknown-reference` and `unused-output` - and it is exactly these the
+Five checks need every component of a project to mean anything - `unknown-type`,
+`unknown-unit`, `missing-producer`, `unknown-reference` and `unused-output` - and it is
+exactly these the
 language server holds back when it checks a file belonging to no project ([section 7.2](#72-editor-integration)).
 
 The `schema` check carries every violation of the published file contracts ([section 3](#3-file-formats)), including the
@@ -635,9 +669,13 @@ Errors:
   does not own, rather than holding an opinion to be outvoted
 - `duplicate-component` - two files declare the same component name
 - `duplicate-type` - two files declare the same type name
+- `duplicate-unit` - two files declare the same unit ([section 3.8](#38-unit-vocabulary))
 - `unknown-type`, `type-kind`, `type-cycle` - a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit,
   or structures nest each other so that neither has a size
+- `unknown-unit` - a unit is not in the vocabulary the project declares
+  ([section 3.8](#38-unit-vocabulary)); declared nowhere, units stay free text and the
+  check never fires
 - `enum-conflict` - one enum name is used with different enumerators: the ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do not
 - `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
@@ -975,7 +1013,7 @@ searching the build directories the client names - or, unconfigured, the usual s
 A file claimed by several builds is checked under each of them and the findings published
 together: a component linked into two images is in two projects, and the answer to which one
 the reader cares about is both. A file belonging to no configured build is still checked, on
-its own, with the four checks that need every component of a project ([section 4](#4-consistency-checks)) held back: a
+its own, with the five checks that need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in
 front of the reader. Each check declares whether it needs the whole project, so the two modes
@@ -1000,6 +1038,7 @@ nothing for is not a second class one.
 | [3.5](#35-memory-placement-planned) memory placement | planned |
 | [3.6](#36-build-record) build record | implemented (`ddd build-info`, written by `ddd_generate`) |
 | [3.7](#37-type-description) type description, scalar and struct types | implemented (`ddd schema types`, `examples/structures`); A2L bitfield members await a build that reports their bits |
+| [3.8](#38-unit-vocabulary) unit vocabulary | implemented (`ddd schema units`, `unknown-unit`, `duplicate-unit`) |
 | [4](#4-consistency-checks) consistency checks | implemented |
 | [4.1](#41-comparing-two-deliveries) comparing two deliveries | implemented (`ddd compare`, `ddd check --baseline`) |
 | [5.1](#51-c-code) C code generation from project templates | implemented (`--template-dir`, `ddd templates-dir`); per-file assignment planned |

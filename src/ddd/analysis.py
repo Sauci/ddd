@@ -440,6 +440,7 @@ class _Analysis:
     def run(self) -> DataDictionary:
         workspace = self._workspace
         self._check_types()
+        self._check_units()
         self._check_component_names()
         for loaded in workspace.components:
             self._collect_component(loaded)
@@ -553,6 +554,47 @@ class _Analysis:
         declared = self._types.get(member.typename)
         entry = declared.declared if declared is not None else None
         return member.typename if isinstance(entry, StructType) else None
+
+    def _check_units(self) -> None:
+        """Every stated unit is in the vocabulary, where the project declares one.
+
+        Declared nowhere, units stay free text and nothing here runs: the vocabulary is an
+        opt-in. Declared anywhere, every spelling is checked where it is written - on a
+        declaration, on a structure member, on a scalar type - because one quantity spelled
+        two ways is invisible per object: each object agrees with itself, the a2l grows one
+        ``COMPU_METHOD`` per spelling, and the calibration tool shows two units for one
+        quantity. The empty unit is always allowed; a dimensionless value states no unit
+        rather than a spelling of one.
+        """
+        vocabulary = {entry.unit for entry in self._workspace.units}
+        if not vocabulary:
+            return
+
+        def check(unit: str, where: Location) -> None:
+            if unit and unit not in vocabulary:
+                matches = difflib.get_close_matches(unit, sorted(vocabulary), n=3, cutoff=0.5)
+                nearest = f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+                self._bag.add(
+                    "unknown-unit",
+                    f"'{unit}' is not a unit this project declares{nearest}",
+                    where,
+                )
+
+        for loaded in self._workspace.components:
+            for index, declaration in enumerate(loaded.component.interface):
+                check(
+                    declaration.definition.unit,
+                    loaded.declaration_location(index, "definition.unit"),
+                )
+        for entry in self._workspace.types:
+            scalar = entry.declared
+            if isinstance(scalar, ScalarType):
+                check(scalar.unit, entry.location("unit"))
+                continue
+            structure = entry.structure
+            assert structure is not None
+            for position, member in enumerate(structure.members):
+                check(member.unit, entry.location(f"members[{position}].unit"))
 
     def _check_types(self) -> None:
         """Every nested structure is declared, and no structure contains itself.

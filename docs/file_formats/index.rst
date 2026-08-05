@@ -58,7 +58,7 @@ the message, because the usual cause is a file that was never meant for DDD at a
    1 error
 
    $ ddd check neither.ddd.json
-   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types' (found: components, version)
+   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units' (found: components, version)
    1 error
 
 Unknown keys are rejected
@@ -169,3 +169,4 @@ right.
    variable_definition
    conversions
    types
+   units

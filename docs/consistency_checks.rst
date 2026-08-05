@@ -52,6 +52,7 @@ down should be read after a DDD upgrade:
    include-empty          error    an include pattern matches no file
    duplicate-component    error    two different files declare the same component name
    duplicate-type         error    two different files declare the same type name
+   duplicate-unit         error    two different files declare the same unit
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -285,11 +286,23 @@ or an a2l file that does not do what the description says - or that does not com
        rather than allowed to win.
    * - ``unknown-type``
      - error
-     - a ``datatype`` names neither one of the base datatypes nor a type any file of the
-       project declares - on a component declaration or on a structure member alike. It is
-       refused rather than skipped, because an object of unknown storage has no limits, no
-       size and nothing later to check against. The nearest known name is suggested, which is
-       what answers a transposition like ``unit16`` that the contract cannot catch on its own.
+     - a ``typename`` names no type any file of the project declares - on a component
+       declaration or on a structure member alike. It is refused rather than skipped, because
+       an object of unknown storage has no limits, no size and nothing later to check
+       against. The nearest known name is suggested, which is what answers a transposition
+       like ``unit16``.
+   * - ``duplicate-unit``
+     - error
+     - two different files declare the same unit. The vocabulary is a set of spellings, so a
+       second entry is either a copy that will drift or a disagreement about the description,
+       and neither is worth keeping quiet.
+   * - ``unknown-unit``
+     - error
+     - a unit is not in the vocabulary the project declares (see the
+       :doc:`units file <file_formats/units>`). Declared nowhere, units stay free text and
+       the check never fires; declared anywhere, every stated unit is checked where it is
+       written, with the nearest declared spelling suggested. The empty unit is always
+       allowed - a dimensionless value states no unit rather than a spelling of one.
    * - ``type-kind``
      - error
      - a declared type is used where its shape does not fit: a declaration naming a structure

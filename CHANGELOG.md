@@ -10,6 +10,29 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### A project can declare its unit vocabulary
+
+`unit` is free text, so one quantity could drift into two spellings - `Nm` here,
+`newton_meter` there - with nothing to say so: each object agrees with itself, and the a2l
+grows one `COMPU_METHOD` per spelling.  A new file kind pins the spellings once:
+
+```json
+{ "units": ["rpm", { "unit": "Nm", "description": "torque, newton metre" }] }
+```
+
+Listed in the `includes` of a project like a types file.  Declaring it is opt-in - without
+a units file nothing changes - and with one, every stated unit is checked where it is
+written, on declarations, structure members and scalar types alike:
+
+```text
+a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'newton_meter' is not a unit this project declares
+```
+
+A near miss is answered with the declared spelling (`'nm' - did you mean 'Nm'?`), the empty
+unit stays always allowed, and the same unit declared twice is `duplicate-unit`.  Both new
+checks are relaxable; `unknown-unit` needs the whole project, so the language server holds
+it back for a file no build claims.  `ddd schema units` prints the published contract.
+
 ### A `datatype` states its `conversion`, and the two spellings of a no-op stay two
 
 **Breaking.**  `conversion` used to default to the identity.  It is required now wherever

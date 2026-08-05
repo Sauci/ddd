@@ -133,7 +133,7 @@ class TestReadingTypes:
         _, bag = load(tree, {"stray.ddd.json": {"stuff": 1}}, root="stray.ddd.json")
         assert findings(bag) == ["file-kind"]
         rendered = first(bag).render()
-        assert "'project', 'component', 'types'" in rendered
+        assert "'project', 'component', 'types', 'units'" in rendered
         assert "found: stuff" in rendered
 
 

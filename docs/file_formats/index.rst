@@ -75,13 +75,13 @@ finding that names the offending key and points at it:
 .. code-block:: text
 
    $ ddd check typo.ddd.json
-   typo.ddd.json#component.declarations[0].definition: error[schema]: Field required
-   typo.ddd.json#component.declarations[0].definiton: error[schema]: Extra inputs are not permitted (got: {'name': 'ValueA', 'datatype': 'uint8'})
+   typo.ddd.json#component.interface[0].definition: error[schema]: Field required
+   typo.ddd.json#component.interface[0].definiton: error[schema]: Extra inputs are not permitted (got: {'name': 'ValueA', 'datatype': 'uint8'})
    2 errors
 
 The location after the ``#`` is a path into the json document rather than a line number,
 because a line number in a file that is often generated or reformatted means very little,
-whereas ``component.declarations[0].definiton`` is exactly where the key sits whatever the
+whereas ``component.interface[0].definiton`` is exactly where the key sits whatever the
 formatting. Both halves of the mistake are reported: the key that should not be there, and the
 key that is now missing because of it.
 

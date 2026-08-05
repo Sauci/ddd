@@ -10,6 +10,40 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### The component's list of declarations is the `interface`, and it is required
+
+**Breaking.**  The key ``declarations`` read as the C declarations it is not, so it is named
+for what it is - the component's explicitly declared data interface:
+
+```json
+{ "component": { "name": "Controller", "interface": [ ... ] } }
+```
+
+It is also required now, with no default, for the reason `volatile` and `kind` are: a
+component with nothing to declare says so with an explicit `[]`, rather than with a key that
+might merely have been forgotten. A component file spelling `declarations`, or omitting the
+key, no longer loads:
+
+```text
+a.ddd.json#component.declarations: error[schema]: Extra inputs are not permitted
+a.ddd.json#component.interface: error[schema]: Field required
+```
+
+Finding pointers follow the key (`component.interface[2].definition`). The data dictionary
+is untouched: its `components` section keeps its own `declarations` key, and its `format`
+stays 2.
+
+### A repeated key inside one json object is refused
+
+**Breaking.**  json allows `{"init": 0, "init": 255}` and parsers resolve it silently, the
+last spelling winning - so the value the author reads first is not the value the tool uses.
+A description file spelling any key twice in one object no longer loads:
+
+```text
+a.ddd.json: error[json-syntax]: key 'init' appears twice in one object; json would silently
+keep the last spelling, so decide which one stays
+```
+
 ### `volatile` is a key of every kind, and every definition states it
 
 **Breaking.**  `volatile` used to belong to the measurement alone, where it was optional and
@@ -168,7 +202,7 @@ extern volatile Sample_t Inlet;
 In the a2l a structure is **flattened into one object per member**, named by the c expression that
 reads it, so the a2l, the generated c and a map file all spell one thing one way:
 
-```
+```text
 /begin MEASUREMENT Inlet.value "The reading itself"
   UWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000

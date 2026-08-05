@@ -3,7 +3,7 @@
   "component": {
     "name": "ComponentB",
     "description": "Writes the shared value as well - only one writer is allowed",
-    "declarations": [
+    "interface": [
       {
         "scope": "output",
         "definition": {

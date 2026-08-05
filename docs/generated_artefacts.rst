@@ -835,7 +835,7 @@ the situation rather than silently truncating:
 .. code-block:: text
 
    $ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
-   cube.ddd.json#component.declarations[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+   cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
    wrote       build/gen/ddd_globals.c (created)
    ...

@@ -180,7 +180,7 @@ class TestContractStrictness:
 
     def test_component_requires_a_name(self) -> None:
         with pytest.raises(ValidationError):
-            ComponentFile.model_validate({"component": {"declarations": []}})
+            ComponentFile.model_validate({"component": {"interface": []}})
 
     def test_definitions_are_hashable(self) -> None:
         assert len({definition(), definition()}) == 1
@@ -190,7 +190,7 @@ class TestContractStrictness:
             {
                 "component": {
                     "name": "C",
-                    "declarations": [
+                    "interface": [
                         {
                             "scope": "output",
                             "condition": "   ",
@@ -205,7 +205,7 @@ class TestContractStrictness:
                 }
             }
         )
-        assert model.component.declarations[0].condition is None
+        assert model.component.interface[0].condition is None
 
     def test_json_schema_is_generated(self) -> None:
         for model in (ProjectFile, ComponentFile):

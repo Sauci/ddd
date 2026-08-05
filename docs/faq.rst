@@ -63,13 +63,13 @@ Ignoring both is what makes the result meaningful:
 .. code-block:: text
 
    $ ddd check examples/demo/components/controller.ddd.json
-   examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
-   examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
-   examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    2 errors, 5 warnings
 
    $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
@@ -175,8 +175,8 @@ being wrong about the data:
 .. code-block:: text
 
    $ ddd check device.ddd.json
-   controller.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l than 'SensorHub' (format='%8.3' != unset); the value of 'SensorHub' is used
-       note: sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
+   controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l than 'SensorHub' (format='%8.3' != unset); the value of 'SensorHub' is used
+       note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    1 warning
 
 .. code-block:: c
@@ -208,8 +208,8 @@ Stating limits that differ from the producer's *is* a disagreement, and it is re
    ok: 1 variable in 2 components are consistent
 
    $ ddd check device.ddd.json    # after the consumer changed its limits to [0, 150]
-   controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'InletTemperature' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 150] != [-40, 150])
-       note: sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
+   controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'InletTemperature' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 150] != [-40, 150])
+       note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    1 error
 
 The limits that reach the a2l are the producer's either way - a consumer never widens or
@@ -242,11 +242,11 @@ be named like an enumerator; both are reported as ``name-collision``:
 .. code-block:: text
 
    $ ddd check enums.ddd.json
-   enums.ddd.json#component.declarations[0].definition.conversion: error[reserved-identifier]: enum name '__state_t' is reserved by the c language
-   enums.ddd.json#component.declarations[1].definition.conversion: error[name-collision]: enumerator 'OFF' is defined by enum 'Mode_t' and by enum '__state_t'; enumerators of different enums share one c namespace
-       note: enums.ddd.json#component.declarations[0].definition.conversion: first defined here
-   enums.ddd.json#component.declarations[2].definition.name: error[name-collision]: 'ON' is declared as a variable and is also an enumerator of enum '__state_t'; both become the same c identifier
-       note: enums.ddd.json#component.declarations[0].definition.conversion: enumerator declared here
+   enums.ddd.json#component.interface[0].definition.conversion: error[reserved-identifier]: enum name '__state_t' is reserved by the c language
+   enums.ddd.json#component.interface[1].definition.conversion: error[name-collision]: enumerator 'OFF' is defined by enum 'Mode_t' and by enum '__state_t'; enumerators of different enums share one c namespace
+       note: enums.ddd.json#component.interface[0].definition.conversion: first defined here
+   enums.ddd.json#component.interface[2].definition.name: error[name-collision]: 'ON' is declared as a variable and is also an enumerator of enum '__state_t'; both become the same c identifier
+       note: enums.ddd.json#component.interface[0].definition.conversion: enumerator declared here
    3 errors
 
 The third rule is about a name being reused rather than refused: two components may declare
@@ -257,9 +257,9 @@ out both sides so that it is obvious which of the two moved:
 .. code-block:: text
 
    $ ddd check p.ddd.json
-   b.ddd.json#component.declarations[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
+   b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
        note: here: OFF=0, ON=1, FAULT=2
-       note: a.ddd.json#component.declarations[0].definition.conversion: first defined as: OFF=0, ON=1
+       note: a.ddd.json#component.interface[0].definition.conversion: first defined as: OFF=0, ON=1
    1 error
 
 .. note::
@@ -428,7 +428,7 @@ only a 1.7 reader understands, and says so:
 .. code-block:: text
 
    $ ddd generate buffers.ddd.json -o gen -t templates
-   buffers.ddd.json#component.declarations[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+   buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
    wrote       gen/ddd_globals.c (created)
    ...

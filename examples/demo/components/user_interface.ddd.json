@@ -3,7 +3,7 @@
   "component": {
     "name": "UserInterface",
     "description": "Reads the values of the other components and drives the display",
-    "declarations": [
+    "interface": [
       {
         "scope": "input",
         "definition": {

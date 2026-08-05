@@ -87,7 +87,7 @@ to ask - which is the wrong way round for a fix.
 """
 
 
-_WITHIN_DEFINITION: Final = re.compile(r"^component\.declarations\[\d+\]\.definition")
+_WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
 
 

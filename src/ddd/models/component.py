@@ -28,7 +28,7 @@ class Scope(StrEnum):
 
 
 class Declaration(BaseModel):
-    """One entry of the ``declarations`` list of a component."""
+    """One entry of the ``interface`` list of a component."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
@@ -90,8 +90,13 @@ class Component(BaseModel):
     description: str = ""
     """Free text describing the component, offered to the c templates."""
 
-    declarations: tuple[Declaration, ...] = ()
-    """The data interface: everything the component produces, consumes or keeps to itself."""
+    interface: tuple[Declaration, ...]
+    """The data interface: everything the component produces, consumes or keeps to itself.
+
+    Required with no default, so that a component with nothing to declare says so with an
+    empty list rather than by a key that might merely have been forgotten - the same
+    reasoning that makes ``volatile`` and ``kind`` required on a definition.
+    """
 
 
 class ComponentFile(FileRoot):

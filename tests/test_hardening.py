@@ -521,13 +521,13 @@ class TestVerdictsThatWereWrong:
         assert "display_identifier: 'FiltGain' -> none" in messages(back)
 
     def test_findings_of_one_file_are_ordered_by_declaration(self) -> None:
-        location = Location(Path("a.ddd.json"), "component.declarations[{}]")
+        location = Location(Path("a.ddd.json"), "component.interface[{}]")
         bag = DiagnosticBag()
         for index in (10, 2):
-            bag.add("naming", "x", Location(Path("a.ddd.json"), f"component.declarations[{index}]"))
+            bag.add("naming", "x", Location(Path("a.ddd.json"), f"component.interface[{index}]"))
         assert [d.location.pointer for d in bag.sorted if d.location] == [
-            "component.declarations[2]",
-            "component.declarations[10]",
+            "component.interface[2]",
+            "component.interface[10]",
         ]
         assert location.pointer  # the template itself is not a diagnostic
 
@@ -536,9 +536,9 @@ class TestInputTheToolMustSurvive:
     """Every one of these used to end the run with a traceback or a silent pass."""
 
     def test_nan_is_refused(self, tree: Path) -> None:
-        write_tree(tree, {"a.ddd.json": '{"component": {"name": "A", "declarations": []}}'})
+        write_tree(tree, {"a.ddd.json": '{"component": {"name": "A", "interface": []}}'})
         (tree / "a.ddd.json").write_text(
-            '{"component": {"name": "A", "declarations": [{"scope": "local", "definition": '
+            '{"component": {"name": "A", "interface": [{"scope": "local", "definition": '
             '{"name": "X", "datatype": "uint16", "limits": {"min": NaN, "max": 10}}}]}}',
             encoding="utf-8",
         )
@@ -549,7 +549,7 @@ class TestInputTheToolMustSurvive:
     def test_a_literal_that_overflows_to_infinity_is_refused(self, tree: Path) -> None:
         """`1e400` is well formed json, and python reads it as inf: the models catch it."""
         (tree / "a.ddd.json").write_text(
-            '{"component": {"name": "A", "declarations": [{"scope": "local", "definition": '
+            '{"component": {"name": "A", "interface": [{"scope": "local", "definition": '
             '{"name": "X", "datatype": "float64", "conversion": {"factor": 1e400}}}]}}',
             encoding="utf-8",
         )

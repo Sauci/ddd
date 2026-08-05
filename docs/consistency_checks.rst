@@ -66,15 +66,15 @@ zero or more indented notes:
 .. code-block:: text
 
    $ ddd check examples/inconsistent/project.ddd.json
-   examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-       note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
+   examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
    ...
 
 The part before the first colon is the location: the path of the description file, relative to
 the working directory when it lies below it, followed by ``#`` and a dotted json pointer into
 the document. The pointer is what makes a finding actionable in a project of a hundred
-components - ``component.declarations[0]`` is the first entry of the ``declarations`` array,
-and ``component.declarations[0].definition`` narrows it further to the definition object inside
+components - ``component.interface[0]`` is the first entry of the ``interface`` array,
+and ``component.interface[0].definition`` narrows it further to the definition object inside
 it. A finding about the file as a whole rather than about a place inside it carries a line and
 a column instead, because for a file that does not parse there is no pointer to give:
 
@@ -94,7 +94,7 @@ same mechanism to underline the part of a name that is wrong:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition.name: error[naming]: 'vl' is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean 'val'?
+   sensing.ddd.json#component.interface[0].definition.name: error[naming]: 'vl' is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean 'val'?
        note: vl_InletTemperature_flt
              ^^
 
@@ -156,7 +156,7 @@ it has consciously decided to live with.
 
    $ ddd check examples/inconsistent/project.ddd.json --strict -W unused-output=info
    ...
-   examples/inconsistent/component_a.ddd.json#component.declarations[1]: info[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+   examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
    4 errors, 1 info
 
 The policy belongs to the project rather than to the engineer who happens to be typing: whoever
@@ -172,9 +172,9 @@ written once into the build system - the CMake integration takes them as ``SEVER
    .. code-block:: text
 
       $ ddd check examples/demo/components/controller.ddd.json
-      examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
-      examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
-      examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+      examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+      examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+      examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
       ...
       2 errors, 5 warnings
 
@@ -509,8 +509,8 @@ change:
 
 .. code-block:: text
 
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-       note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
+   examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
 
 The second is that a property which merely shapes how the a2l *presents* the object does not
 have to stop the build, precisely because the outcome is defined. Given a producer and a
@@ -528,8 +528,8 @@ the check names the value that is going to be used:
 
 .. code-block:: text
 
-   consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l than 'Producer' (format='%8.3' != unset); the value of 'Producer' is used
-       note: producer.ddd.json#component.declarations[0].definition: reference declaration
+   consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l than 'Producer' (format='%8.3' != unset); the value of 'Producer' is used
+       note: producer.ddd.json#component.interface[0].definition: reference declaration
 
 Two other properties used to be settled this way, and left in opposite directions.
 
@@ -590,14 +590,14 @@ gives:
 .. code-block:: text
 
    $ ddd check examples/inconsistent/project.ddd.json
-   examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-       note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
-   examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-       note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
-   examples/inconsistent/component_c.ddd.json#component.declarations[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
-   examples/inconsistent/component_c.ddd.json#component.declarations[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
-       note: examples/inconsistent/component_a.ddd.json#component.declarations[2]: declared local here
-   examples/inconsistent/component_a.ddd.json#component.declarations[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+   examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+   examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+   examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+   examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+       note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+   examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
    4 errors, 1 warning
 
 Five findings, and each one is a different kind of mistake.
@@ -693,7 +693,7 @@ document begins:
          "message": "'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed",
          "location": {
            "path": "C:/work/project/component_b.ddd.json",
-           "pointer": "component.declarations[0]",
+           "pointer": "component.interface[0]",
            "line": null,
            "column": null
          },
@@ -702,7 +702,7 @@ document begins:
              "message": "also written here",
              "location": {
                "path": "C:/work/project/component_a.ddd.json",
-               "pointer": "component.declarations[0]",
+               "pointer": "component.interface[0]",
                "line": null,
                "column": null
              }

@@ -236,7 +236,7 @@ The delivery that went out
    {
      "component": {
        "name": "Sensor",
-       "declarations": [
+       "interface": [
          {
            "scope": "output",
            "definition": {
@@ -378,7 +378,7 @@ additionally reads a ``ValvePosition`` that nobody produces:
 .. code-block:: text
 
    $ ddd check work/pressure.ddd.json --baseline release/PressureLoop-1.4.0.json
-   work/components/actuator.ddd.json#component.declarations[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
+   work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
    work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
@@ -519,7 +519,7 @@ whose ``ValveDuty`` was read by nobody:
 .. code-block:: text
 
    $ ddd check v1.3/pressure.ddd.json
-   v1.3/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
+   v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
    1 warning
 
 Used as the baseline of a comparison, that warning does not reappear:

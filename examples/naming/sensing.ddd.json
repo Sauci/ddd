@@ -3,7 +3,7 @@
   "component": {
     "name": "Sensing",
     "description": "Every name here is <role>_<Subject>[_<qualifier>]",
-    "declarations": [
+    "interface": [
       {
         "scope": "local",
         "definition": {

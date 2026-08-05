@@ -58,6 +58,25 @@ def _reject_constant(name: str) -> float:
     raise ValueError(msg)
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Refuse an object that spells the same key twice, which json itself allows.
+
+    Parsers resolve the duplication silently - the last spelling wins - so the value the
+    author reads first is not the value the tool would use, and in a grown description
+    file that is a debugging session. Refusing it turns the guess into a finding.
+    """
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            msg = (
+                f"key '{key}' appears twice in one object; json would silently keep the "
+                f"last spelling, so decide which one stays"
+            )
+            raise ValueError(msg)
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class LoadedComponent:
     """A component description together with where it came from."""
@@ -75,7 +94,7 @@ class LoadedComponent:
         return Location(self.path, pointer)
 
     def declaration_location(self, index: int, suffix: str = "") -> Location:
-        pointer = f"component.declarations[{index}]"
+        pointer = f"component.interface[{index}]"
         if suffix:
             pointer = f"{pointer}.{suffix}"
         return Location(self.path, pointer)
@@ -319,7 +338,11 @@ class _Loader:
             return None
 
         try:
-            data = json.loads(text, parse_constant=_reject_constant)
+            data = json.loads(
+                text,
+                parse_constant=_reject_constant,
+                object_pairs_hook=_reject_duplicate_keys,
+            )
         except json.JSONDecodeError as error:
             self._bag.add(
                 "json-syntax",

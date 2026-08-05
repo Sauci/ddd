@@ -47,7 +47,7 @@ DEFINITION = TypeAdapter(AnyDataObject)
 
 class TestLoadingFailures:
     def test_a_root_component_that_does_not_match_the_contract(self, tree: Path) -> None:
-        write_tree(tree, {"a.ddd.json": {"component": {"name": "A", "bogus": 1}}})
+        write_tree(tree, {"a.ddd.json": {"component": {"name": "A", "interface": [], "bogus": 1}}})
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert checks(bag) == ["schema"]
@@ -83,7 +83,7 @@ class TestLoadingFailures:
                 "a.ddd.json": {
                     "component": {
                         "name": "A",
-                        "declarations": [
+                        "interface": [
                             {
                                 "scope": "local",
                                 "definition": {
@@ -116,7 +116,7 @@ class TestLoadingFailures:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json"),
-                "a.ddd.json": {"component": {"declarations": []}},
+                "a.ddd.json": {"component": {"interface": []}},
             },
         )
         assert checks(bag) == ["schema"]
@@ -170,10 +170,10 @@ class TestSeverityPolicy:
 class TestModelEdges:
     def test_an_explicit_null_condition(self) -> None:
         model = component("A", declare("local", "X"))
-        model["component"]["declarations"][0]["condition"] = None
+        model["component"]["interface"][0]["condition"] = None
         from ddd.models import ComponentFile
 
-        assert ComponentFile.model_validate(model).component.declarations[0].condition is None
+        assert ComponentFile.model_validate(model).component.interface[0].condition is None
 
     def test_an_empty_conversion_object_means_identity(self) -> None:
         definition = DEFINITION.validate_python(

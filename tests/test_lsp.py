@@ -114,21 +114,21 @@ class TestRanges:
 
     DOCUMENT = (
         '{\n  "component": {\n    "name": "A",\n'
-        '    "declarations": [\n      {"scope": "output"},\n'
+        '    "interface": [\n      {"scope": "output"},\n'
         '      {"scope": "input", "condition": null}\n    ],\n'
         '    "empty": {},\n    "none": [],\n    "flag": true\n  }\n}\n'
     )
 
     def test_a_member_is_underlined_from_its_key(self) -> None:
         """Underlining the value alone leaves the reader to look left for the key."""
-        found = Document(self.DOCUMENT).range_of("component.declarations[1].condition")
+        found = Document(self.DOCUMENT).range_of("component.interface[1].condition")
         line = self.DOCUMENT.splitlines()[5]
         assert found["start"]["line"] == found["end"]["line"] == 5
         assert line[found["start"]["character"] : found["end"]["character"]] == '"condition": null'
 
     @pytest.mark.parametrize(
         "pointer",
-        ["component", "component.name", "component.declarations", "component.empty",
+        ["component", "component.name", "component.interface", "component.empty",
          "component.none", "component.flag", ""],
     )  # fmt: skip
     def test_every_shape_of_value_is_located(self, pointer: str) -> None:
@@ -137,14 +137,14 @@ class TestRanges:
     def test_an_unknown_pointer_falls_back_to_its_parent(self) -> None:
         """A finding shown one level up beats a finding nobody sees."""
         document = Document(self.DOCUMENT)
-        assert document.range_of("component.declarations[0].absent") == document.range_of(
-            "component.declarations[0]"
+        assert document.range_of("component.interface[0].absent") == document.range_of(
+            "component.interface[0]"
         )
 
     def test_an_index_is_stripped_as_readily_as_a_key(self) -> None:
         document = Document(self.DOCUMENT)
-        assert document.range_of("component.declarations[7]") == document.range_of(
-            "component.declarations"
+        assert document.range_of("component.interface[7]") == document.range_of(
+            "component.interface"
         )
 
     def test_a_file_that_is_not_json_puts_everything_at_the_top(self) -> None:
@@ -268,7 +268,7 @@ class TestDiagnostics:
 
     def test_a_finding_is_not_mirrored_onto_itself(self) -> None:
         """A note pointing where the finding already is would double it in place."""
-        location = Location(Path("a.ddd.json"), "component.declarations[0]")
+        location = Location(Path("a.ddd.json"), "component.interface[0]")
         finding = Diagnostic(
             "duplicate-declaration", Severity.ERROR, "twice", location, (("here", location),)
         )
@@ -475,10 +475,10 @@ class TestNavigation:
         built = self.index_of(self.workspace(tmp_path))
         consumer = tmp_path / "b.ddd.json"
         document = read(consumer, {})
-        pointer = "component.declarations[0].definition.name"
+        pointer = "component.interface[0].definition.name"
         (site,) = definition(built, document, consumer, pointer)
         assert site.path == tmp_path / "a.ddd.json"
-        assert site.pointer == "component.declarations[0].definition"
+        assert site.pointer == "component.interface[0].definition"
 
     def test_a_local_counts_as_its_own_producer(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import definition
@@ -487,9 +487,9 @@ class TestNavigation:
         producer = tmp_path / "a.ddd.json"
         document = read(producer, {})
         (site,) = definition(
-            self.index_of(root), document, producer, "component.declarations[1].definition.name"
+            self.index_of(root), document, producer, "component.interface[1].definition.name"
         )
-        assert site.pointer == "component.declarations[1].definition"
+        assert site.pointer == "component.interface[1].definition"
 
     def test_references_reach_both_sides(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import references
@@ -498,7 +498,7 @@ class TestNavigation:
         consumer = tmp_path / "b.ddd.json"
         document = read(consumer, {})
         found = references(
-            self.index_of(root), document, "component.declarations[0].definition.name"
+            self.index_of(root), document, "component.interface[0].definition.name"
         )
         assert {site.path.name for site in found} == {"a.ddd.json", "b.ddd.json"}
 
@@ -522,9 +522,9 @@ class TestNavigation:
             self.index_of(tmp_path / "p.ddd.json"),
             read(path, {}),
             path,
-            "component.declarations[1].definition.axis",
+            "component.interface[1].definition.axis",
         )
-        assert site.pointer == "component.declarations[0].definition"
+        assert site.pointer == "component.interface[0].definition"
 
     def test_a_nested_structure_leads_to_its_declaration(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import definition, references
@@ -603,7 +603,7 @@ class TestNavigation:
         path = tmp_path / "a.ddd.json"
         built = self.index_of(tmp_path / "p.ddd.json")
         document = read(path, {})
-        pointer = "component.declarations[0].definition.datatype"
+        pointer = "component.interface[0].definition.datatype"
         (site,) = definition(built, document, path, pointer)
         assert site.path == tmp_path / "t.ddd.json"
         # And the declaration counts as a use of the type, so find-references lists it.
@@ -625,7 +625,7 @@ class TestNavigation:
         root = self.workspace(tmp_path)
         path = tmp_path / "b.ddd.json"
         found = references(
-            self.index_of(root), read(path, {}), "component.declarations[0].definition.datatype"
+            self.index_of(root), read(path, {}), "component.interface[0].definition.datatype"
         )
         assert {site.path.name for site in found} == {"a.ddd.json", "b.ddd.json"}
 
@@ -653,7 +653,7 @@ class TestNavigation:
         # An input nobody writes: the jump has nowhere to go, which is the same thing the
         # missing-producer check reports about it.
         assert (
-            definition(built, read(path, {}), path, "component.declarations[0].definition.name")
+            definition(built, read(path, {}), path, "component.interface[0].definition.name")
             == []
         )
         types = tmp_path / "t.ddd.json"
@@ -730,11 +730,11 @@ class TestNavigation:
     @pytest.mark.parametrize(
         "pointer",
         [
-            "component.declarations[0].definition.name",
-            "component.declarations[0].definition.datatype",
-            "component.declarations[0].definition",
-            "component.declarations[0].scope",
-            "component.declarations[0]",
+            "component.interface[0].definition.name",
+            "component.interface[0].definition.datatype",
+            "component.interface[0].definition",
+            "component.interface[0].scope",
+            "component.interface[0]",
         ],
     )
     def test_a_jump_answers_from_anywhere_the_hover_does(
@@ -773,7 +773,7 @@ class TestNavigation:
             self.index_of(tmp_path / "p.ddd.json"),
             read(path, {}),
             path,
-            "component.declarations[0].definition.limits.min",
+            "component.interface[0].definition.limits.min",
         )
         assert site.path == tmp_path / "a.ddd.json"
 
@@ -975,10 +975,10 @@ class TestHover:
         path = tmp_path / "a.ddd.json"
         document = read(path, {})
         for pointer in (
-            "component.declarations[0]",
-            "component.declarations[0].definition",
-            "component.declarations[0].definition.datatype",
-            "component.declarations[0].definition.volatile",
+            "component.interface[0]",
+            "component.interface[0].definition",
+            "component.interface[0].definition.datatype",
+            "component.interface[0].definition.volatile",
         ):
             name = subject_at(document, pointer)
             assert name == "Inlet", pointer
@@ -1245,10 +1245,10 @@ class TestHover:
     @pytest.mark.parametrize(
         "pointer",
         [
-            "component.declarations[1].definition.name",
-            "component.declarations[1].definition.datatype",
-            "component.declarations[1].scope",
-            "component.declarations[1]",
+            "component.interface[1].definition.name",
+            "component.interface[1].definition.datatype",
+            "component.interface[1].scope",
+            "component.interface[1]",
         ],
     )
     def test_a_hover_anywhere_in_a_declaration_is_about_that_object(
@@ -1285,7 +1285,7 @@ class TestHover:
             },
         )
         document = read(tmp_path / "a.ddd.json", {})
-        assert subject_at(document, "component.declarations[1].definition.axis") == "Axis"
+        assert subject_at(document, "component.interface[1].definition.axis") == "Axis"
 
     @pytest.mark.parametrize("pointer", ["component.name", "component", ""])
     def test_outside_a_declaration_there_is_no_subject(self, tmp_path: Path, pointer: str) -> None:
@@ -1298,8 +1298,8 @@ class TestHover:
         """Caught mid edit: the pointer is built rather than scanned, so it may lead nowhere."""
         from ddd.lsp.navigation import subject_at
 
-        document = Document('{"component": {"declarations": [{"scope": "input"}]}}')
-        assert subject_at(document, "component.declarations[0].scope") is None
+        document = Document('{"component": {"interface": [{"scope": "input"}]}}')
+        assert subject_at(document, "component.interface[0].scope") is None
 
     def test_a_name_no_component_declares_has_nothing_to_show(self, tmp_path: Path) -> None:
         from ddd.lsp.hover import describe
@@ -1389,7 +1389,7 @@ class TestRename:
         edits = rename_edits(
             self.index_of(root),
             read(path, cache),
-            "component.declarations[0].definition.name",
+            "component.interface[0].definition.name",
             "EngineSpeed",
             cache,
         )
@@ -1397,7 +1397,7 @@ class TestRename:
             uri_to_path(uri): apply_edits(uri_to_path(uri), found) for uri, found in edits.items()
         }
         assert {path.name for path in rewritten} == {"a.ddd.json", "b.ddd.json"}
-        produced = json.loads(rewritten[tmp_path / "a.ddd.json"])["component"]["declarations"]
+        produced = json.loads(rewritten[tmp_path / "a.ddd.json"])["component"]["interface"]
         assert produced[0]["definition"]["name"] == "EngineSpeed"
         assert produced[1]["definition"]["input"] == "EngineSpeed"
         assert "Speed" not in rewritten[tmp_path / "b.ddd.json"].replace("EngineSpeed", "")
@@ -1412,7 +1412,7 @@ class TestRename:
         edits = rename_edits(
             self.index_of(root),
             read(path, cache),
-            "component.declarations[0].definition.name",
+            "component.interface[0].definition.name",
             "X",
             cache,
         )
@@ -1435,11 +1435,11 @@ class TestRename:
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Speed"))})
         path = tmp_path / "a.ddd.json"
         built = Index(
-            mentions={"Speed": [Site(path, "component.declarations[0].definition.dimensions")]}
+            mentions={"Speed": [Site(path, "component.interface[0].definition.dimensions")]}
         )
         cache: dict[Path, Document] = {}
         found = rename_edits(
-            built, read(path, cache), "component.declarations[0].definition.name", "X", cache
+            built, read(path, cache), "component.interface[0].definition.name", "X", cache
         )
         assert found == {}
 
@@ -1505,7 +1505,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
@@ -1526,7 +1526,7 @@ class TestPropagating:
         write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", volatile=True))})
         (tmp_path / "b.ddd.json").write_text(
-            '{"component": {"name": "B", "declarations": [{"scope": "input", "definition":'
+            '{"component": {"name": "B", "interface": [{"scope": "input", "definition":'
             ' {"name": "S", "kind": "measurement", "datatype": "uint8"}}]}}\n',
             encoding="utf-8",
         )
@@ -1536,7 +1536,7 @@ class TestPropagating:
         cache: dict[Path, Document] = {}
         path = tmp_path / "b.ddd.json"
         offered = actions(
-            built, path, read(path, cache), "component.declarations[0].definition", cache
+            built, path, read(path, cache), "component.interface[0].definition", cache
         )
         titles = [entry["title"] for entry in offered]
         assert titles == ["Use the volatile declared in a"]
@@ -1563,11 +1563,11 @@ class TestPropagating:
             "b.ddd.json": component("B", declare("input", "S")),
         }
         from_curve, _ = self.offer(
-            tmp_path, "a.ddd.json", "component.declarations[0].definition.axis", **files
+            tmp_path, "a.ddd.json", "component.interface[0].definition.axis", **files
         )
         assert from_curve == []
         from_measurement, _ = self.offer(
-            tmp_path, "b.ddd.json", "component.declarations[0].definition", **files
+            tmp_path, "b.ddd.json", "component.interface[0].definition", **files
         )
         assert from_measurement == []
 
@@ -1581,7 +1581,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.kind",
+            "component.interface[0].definition.kind",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", kind="parameter")),
                 "b.ddd.json": component("B", declare("input", "Speed", kind="measurement")),
@@ -1594,7 +1594,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed")),
@@ -1603,7 +1603,7 @@ class TestPropagating:
         spread = next(a for a in offered if a["title"].startswith("Apply"))
         (edits,) = spread["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
-        declared = json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        declared = json.loads(rewritten)["component"]["interface"][0]["definition"]
         assert declared["unit"] == "rpm"
 
     def test_a_value_is_copied_as_written_rather_than_re_serialised(self, tmp_path: Path) -> None:
@@ -1614,7 +1614,7 @@ class TestPropagating:
 
         write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
         (tmp_path / "a.ddd.json").write_text(
-            '{"component": {"name": "A", "declarations": [{"scope": "output", "definition":'
+            '{"component": {"name": "A", "interface": [{"scope": "output", "definition":'
             ' {"name": "S", "kind": "measurement", "datatype": "uint8",'
             ' "conversion": { "kind": "linear", "factor": 0.25 }}}]}}',
             encoding="utf-8",
@@ -1627,7 +1627,7 @@ class TestPropagating:
             built,
             path,
             read(path, cache),
-            "component.declarations[0].definition.conversion",
+            "component.interface[0].definition.conversion",
             cache,
         )
         spread = next(a for a in offered if a["title"].startswith("Apply"))
@@ -1641,7 +1641,7 @@ class TestPropagating:
         write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
         (tmp_path / "b.ddd.json").write_text(
-            '{"component": {"name": "B", "declarations": [{"scope": "input", "definition":'
+            '{"component": {"name": "B", "interface": [{"scope": "input", "definition":'
             ' {"name": "S", "kind": "measurement", "datatype": "uint8", "volatile": false}}]}}\n',
             encoding="utf-8",
         )
@@ -1649,13 +1649,13 @@ class TestPropagating:
         cache: dict[Path, Document] = {}
         path = tmp_path / "a.ddd.json"
         offered = actions(
-            built, path, read(path, cache), "component.declarations[0].definition.unit", cache
+            built, path, read(path, cache), "component.interface[0].definition.unit", cache
         )
         spread = next(entry for entry in offered if entry["title"].startswith("Apply"))
         (edits,) = spread["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
         assert rewritten.count("\n") == 1  # still one line, plus the trailing newline
-        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+        assert json.loads(rewritten)["component"]["interface"][0]["definition"]["unit"] == "rpm"
 
     def test_the_action_carries_the_finding_it_settles(self, tmp_path: Path) -> None:
         """What puts the lightbulb on the squiggle rather than leaving the fix to be guessed."""
@@ -1678,7 +1678,7 @@ class TestPropagating:
             built,
             path,
             read(path, cache),
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             cache,
             reported,
         )
@@ -1690,7 +1690,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
@@ -1708,7 +1708,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
@@ -1723,7 +1723,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
@@ -1735,7 +1735,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
@@ -1744,13 +1744,13 @@ class TestPropagating:
         (uri,) = offered[0]["edit"]["changes"]
         assert uri_to_path(uri).name == "b.ddd.json"
         rewritten = apply_edits(tmp_path / "b.ddd.json", offered[0]["edit"]["changes"][uri])
-        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+        assert json.loads(rewritten)["component"]["interface"][0]["definition"]["unit"] == "rpm"
 
     def test_a_consumer_lacking_a_key_takes_it_from_the_producer(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition",
+            "component.interface[0].definition",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed")),
@@ -1763,7 +1763,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "c.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("output", "Speed", unit="rpm")),
@@ -1783,7 +1783,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1796,14 +1796,14 @@ class TestPropagating:
         rewritten = apply_edits(
             tmp_path / "b.ddd.json", next(iter(offered[0]["edit"]["changes"].values()))
         )
-        assert "unit" not in json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        assert "unit" not in json.loads(rewritten)["component"]["interface"][0]["definition"]
 
     def test_a_key_somebody_else_states_is_not_offered_for_removal(self, tmp_path: Path) -> None:
         """Removing it would settle nothing: the other declaration would still have one."""
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="1/min")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1815,7 +1815,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("input", "Speed")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1841,10 +1841,10 @@ class TestPropagating:
         )
         path = tmp_path / "a.ddd.json"
         document = read(path, {})
-        edit = _erase(document, "component.declarations[0].definition", key)
+        edit = _erase(document, "component.interface[0].definition", key)
         assert edit is not None
         rewritten = apply_edits(path, [edit])
-        declared = json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        declared = json.loads(rewritten)["component"]["interface"][0]["definition"]
         assert key not in declared
         assert declared["name"] == "S"
 
@@ -1852,14 +1852,14 @@ class TestPropagating:
         """What to leave between the braces is a judgement about style, not about the data."""
         from ddd.lsp.edits import _erase
 
-        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
-        assert _erase(document, "component.declarations[0].definition", "unit") is None
+        document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
+        assert _erase(document, "component.interface[0].definition", "unit") is None
 
     def test_a_key_that_is_not_there_is_not_removed(self) -> None:
         from ddd.lsp.edits import _erase
 
-        document = Document('{"component": {"declarations": [{"definition": {"name": "S"}}]}}')
-        assert _erase(document, "component.declarations[0].definition", "unit") is None
+        document = Document('{"component": {"interface": [{"definition": {"name": "S"}}]}}')
+        assert _erase(document, "component.interface[0].definition", "unit") is None
 
     def test_a_declaration_missing_a_key_is_offered_the_one_the_others_agree_on(
         self, tmp_path: Path
@@ -1872,7 +1872,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition",
+            "component.interface[0].definition",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1887,7 +1887,7 @@ class TestPropagating:
         take = offered[1]
         (edits,) = take["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "a.ddd.json", edits)
-        assert json.loads(rewritten)["component"]["declarations"][0]["definition"]["unit"] == "rpm"
+        assert json.loads(rewritten)["component"]["interface"][0]["definition"]["unit"] == "rpm"
 
     def test_a_key_the_others_disagree_about_is_not_taken(self, tmp_path: Path) -> None:
         """Which of two answers is right is a question, and answering it silently is not help.
@@ -1898,7 +1898,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition",
+            "component.interface[0].definition",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1914,7 +1914,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
@@ -1926,12 +1926,12 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{"a.ddd.json": component("A", declare("local", "Speed", unit="rpm"))},
         )
         assert offered == []
 
-    @pytest.mark.parametrize("pointer", ["component.declarations[0].scope", "component.name", ""])
+    @pytest.mark.parametrize("pointer", ["component.interface[0].scope", "component.name", ""])
     def test_outside_a_definition_nothing_is_offered(self, tmp_path: Path, pointer: str) -> None:
         offered, _ = self.offer(
             tmp_path,
@@ -1947,10 +1947,10 @@ class TestPropagating:
     @pytest.mark.parametrize(
         "pointer",
         [
-            "component.declarations[0].definition",
-            "component.declarations[0].definition.name",
-            "component.declarations[0].definition.description",
-            "component.declarations[0].definition.limits.min",
+            "component.interface[0].definition",
+            "component.interface[0].definition.name",
+            "component.interface[0].definition.description",
+            "component.interface[0].definition.limits.min",
         ],
     )
     def test_asking_anywhere_in_a_declaration_offers_every_differing_key(
@@ -1994,7 +1994,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "a.ddd.json",
-            "component.declarations[0].definition.unit",
+            "component.interface[0].definition.unit",
             **{
                 "a.ddd.json": component(
                     "A", declare("output", "Speed", "sint16", unit="rpm", description="ours")
@@ -2011,9 +2011,9 @@ class TestPropagating:
 
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
         path = tmp_path / "a.ddd.json"
-        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
+        document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
         assert (
-            actions(Index(), path, document, "component.declarations[0].definition.unit", {}) == []
+            actions(Index(), path, document, "component.interface[0].definition.unit", {}) == []
         )
 
     def test_something_that_is_not_an_object_states_no_keys(self) -> None:
@@ -2035,7 +2035,7 @@ class TestPropagating:
         offered, _ = self.offer(
             tmp_path,
             "b.ddd.json",
-            "component.declarations[0].definition",
+            "component.interface[0].definition",
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="Hz")),
                 "b.ddd.json": component("B", declare("input", "Speed")),
@@ -2047,21 +2047,21 @@ class TestPropagating:
         ]
         (edits,) = offered[1]["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "a.ddd.json", edits)
-        assert "unit" not in json.loads(rewritten)["component"]["declarations"][0]["definition"]
+        assert "unit" not in json.loads(rewritten)["component"]["interface"][0]["definition"]
 
     def test_a_target_whose_key_cannot_be_cut_out_is_left_alone(self, tmp_path: Path) -> None:
         from ddd.lsp.edits import _remove_elsewhere
         from ddd.lsp.navigation import Index, Site
 
         (tmp_path / "b.ddd.json").write_text(
-            '{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}', encoding="utf-8"
+            '{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}', encoding="utf-8"
         )
-        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
-        document = Document('{"component": {"declarations": [{"definition": {"name": "S"}}]}}')
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
+        document = Document('{"component": {"interface": [{"definition": {"name": "S"}}]}}')
         assert (
             _remove_elsewhere(
                 Index(declarations={"S": [elsewhere]}),
-                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                Site(tmp_path / "a.ddd.json", "component.interface[0].definition"),
                 document,
                 "S",
                 "unit",
@@ -2076,12 +2076,12 @@ class TestPropagating:
         from ddd.lsp.navigation import Index, Site
 
         write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S"))})
-        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
-        document = Document('{"component": {"declarations": [{"definition": {"unit": "rpm"}}]}}')
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
+        document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
         assert (
             _remove_here(
                 Index(declarations={"S": [elsewhere]}),
-                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                Site(tmp_path / "a.ddd.json", "component.interface[0].definition"),
                 document,
                 "S",
                 "unit",
@@ -2097,12 +2097,12 @@ class TestPropagating:
         from ddd.lsp.navigation import Index, Site
 
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
-        producer = Site(tmp_path / "a.ddd.json", "component.declarations[0].definition")
-        document = Document('{"component": {"declarations": [{"definition": {}}]}}')
+        producer = Site(tmp_path / "a.ddd.json", "component.interface[0].definition")
+        document = Document('{"component": {"interface": [{"definition": {}}]}}')
         assert (
             _from_producer(
                 Index(producers={"S": [producer]}),
-                Site(tmp_path / "b.ddd.json", "component.declarations[0].definition"),
+                Site(tmp_path / "b.ddd.json", "component.interface[0].definition"),
                 document,
                 "S",
                 "unit",
@@ -2118,12 +2118,12 @@ class TestPropagating:
         from ddd.lsp.navigation import Index, Site
 
         write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "S", unit="rpm"))})
-        elsewhere = Site(tmp_path / "b.ddd.json", "component.declarations[0].definition")
-        document = Document('{"component": {"declarations": [{"definition": {}}]}}')
+        elsewhere = Site(tmp_path / "b.ddd.json", "component.interface[0].definition")
+        document = Document('{"component": {"interface": [{"definition": {}}]}}')
         assert (
             _adopt(
                 Index(declarations={"S": [elsewhere]}),
-                Site(tmp_path / "a.ddd.json", "component.declarations[0].definition"),
+                Site(tmp_path / "a.ddd.json", "component.interface[0].definition"),
                 document,
                 "S",
                 "unit",
@@ -2136,8 +2136,8 @@ class TestPropagating:
         """Belt and braces around the insertion: there is nowhere to insert into."""
         from ddd.lsp.edits import _insert
 
-        document = Document('{"component": {"declarations": [{"definition": 7}]}}')
-        assert _insert(document, "component.declarations[0].definition", "unit", '"rpm"') is None
+        document = Document('{"component": {"interface": [{"definition": 7}]}}')
+        assert _insert(document, "component.interface[0].definition", "unit", '"rpm"') is None
 
 
 class TestPositions:
@@ -2325,7 +2325,7 @@ class TestServer:
     def test_definition_answers_with_the_producing_declaration(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
         position = Document(consumer.read_text(encoding="utf-8")).range_of(
-            "component.declarations[0].definition.name"
+            "component.interface[0].definition.name"
         )["start"]
         writer = io.BytesIO()
         Server(
@@ -2340,7 +2340,7 @@ class TestServer:
     def test_references_answer_with_every_declaration(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
         position = Document(consumer.read_text(encoding="utf-8")).range_of(
-            "component.declarations[0].definition.name"
+            "component.interface[0].definition.name"
         )["start"]
         writer = io.BytesIO()
         Server(
@@ -2367,7 +2367,7 @@ class TestServer:
 
     def test_hover_answers_with_markdown(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
-        result = self.hovered(tmp_path, consumer, "component.declarations[0].definition.name")
+        result = self.hovered(tmp_path, consumer, "component.interface[0].definition.name")
         assert result["contents"]["kind"] == "markdown"
         assert "**Shared**" in result["contents"]["value"]
         # Written by A even though the hover happened in B, which is the point of resolving.
@@ -2380,7 +2380,7 @@ class TestServer:
     def test_hover_works_from_any_key_of_a_declaration(self, tmp_path: Path) -> None:
         """Not only from the name, which is what asking on a datatype used to give: nothing."""
         consumer = self.shared_workspace(tmp_path)
-        result = self.hovered(tmp_path, consumer, "component.declarations[0].definition.datatype")
+        result = self.hovered(tmp_path, consumer, "component.interface[0].definition.datatype")
         assert "**Shared**" in result["contents"]["value"]
 
     def test_hover_on_a_reference_to_nothing_says_nothing(self, tmp_path: Path) -> None:
@@ -2398,7 +2398,7 @@ class TestServer:
         )
         build_record(tmp_path, tmp_path / "p.ddd.json")
         result = self.hovered(
-            tmp_path, tmp_path / "a.ddd.json", "component.declarations[0].definition.axis"
+            tmp_path, tmp_path / "a.ddd.json", "component.interface[0].definition.axis"
         )
         assert result is None
 
@@ -2441,7 +2441,7 @@ class TestServer:
         Server(
             framed(
                 self.rename_request(
-                    consumer, "component.declarations[0].definition.name", "Renamed"
+                    consumer, "component.interface[0].definition.name", "Renamed"
                 )
             ),
             writer,
@@ -2458,7 +2458,7 @@ class TestServer:
         writer = io.BytesIO()
         Server(
             framed(
-                self.rename_request(consumer, "component.declarations[0].definition.name", "int")
+                self.rename_request(consumer, "component.interface[0].definition.name", "int")
             ),
             writer,
             root=tmp_path,
@@ -2469,7 +2469,7 @@ class TestServer:
     def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
         position = Document(consumer.read_text(encoding="utf-8")).range_of(
-            "component.declarations[0].definition.name"
+            "component.interface[0].definition.name"
         )["start"]
         writer = io.BytesIO()
         Server(
@@ -2481,7 +2481,7 @@ class TestServer:
         assert answer["result"]["placeholder"] == "Shared"
 
     @pytest.mark.parametrize(
-        "pointer", ["component.declarations[0].definition.datatype", "component.name"]
+        "pointer", ["component.interface[0].definition.datatype", "component.name"]
     )
     def test_preparing_a_rename_away_from_a_name_is_declined(
         self, tmp_path: Path, pointer: str
@@ -2520,7 +2520,7 @@ class TestServer:
         Server(
             framed(
                 self.rename_request(
-                    tmp_path / "a.ddd.json", "component.declarations[0].definition.name", "Other"
+                    tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Other"
                 )
             ),
             writer,
@@ -2550,7 +2550,7 @@ class TestServer:
         build_record(tmp_path, tmp_path / "p.ddd.json")
         producer = tmp_path / "a.ddd.json"
         span = Document(producer.read_text(encoding="utf-8")).range_of(
-            "component.declarations[0].definition.unit"
+            "component.interface[0].definition.unit"
         )
         writer = io.BytesIO()
         Server(

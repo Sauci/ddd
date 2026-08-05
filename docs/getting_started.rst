@@ -128,7 +128,7 @@ say so:
      "component": {
        "name": "SensorHub",
        "description": "Reads the sensors and publishes their conditioned values",
-       "declarations": [
+       "interface": [
          {
            "scope": "output",
            "definition": {
@@ -171,7 +171,7 @@ calibration parameter of its own with scope ``local``:
      "component": {
        "name": "Controller",
        "description": "Decides when to heat, from the cabin temperature",
-       "declarations": [
+       "interface": [
          {
            "scope": "input",
            "definition": {
@@ -512,13 +512,13 @@ told - and check the project again:
 .. code-block:: text
 
    $ ddd check thermostat.ddd.json
-   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
-       note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
-   components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+   components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
+       note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+   components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
    1 error, 1 warning
 
 Read the first finding from the left. The location is not just a file name but a path into the
-file - ``#component.declarations[0].definition`` - because a description file has no line an
+file - ``#component.interface[0].definition`` - because a description file has no line an
 editor could jump to that means anything on its own, whereas that path is exactly where the
 offending value sits. Then comes the severity and the identifier of the check,
 ``definition-mismatch``: the identifier is part of the public interface of the tool and does
@@ -545,9 +545,9 @@ agreed on are worse than no sources:
 .. code-block:: text
 
    $ ddd generate thermostat.ddd.json -o gen2 -t templates
-   components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
-       note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
-   components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+   components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
+       note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+   components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
    1 error, 1 warning
 
 .. warning::

@@ -57,7 +57,7 @@ being a single component wide - nothing else in it reads what ``Sensing`` writes
 .. code-block:: text
 
    $ ddd check examples/structures/project.ddd.json
-   examples/structures/sensing.ddd.json#component.declarations[1]: warning[unused-output]: 'Inlet' is written by component 'Sensing' but read by nobody
+   examples/structures/sensing.ddd.json#component.interface[1]: warning[unused-output]: 'Inlet' is written by component 'Sensing' but read by nobody
    1 warning
 
 A types file on its own is not a project, so pointing ``ddd check`` straight at one is refused
@@ -135,7 +135,7 @@ question a reader would have asked:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition.datatype: error[unknown-type]: 'Count' is declared as 'unit16', which is neither a base datatype nor a type any file of this project declares - did you mean 'uint16' or 'uint64' or 'sint16'?
+   sensing.ddd.json#component.interface[0].definition.datatype: error[unknown-type]: 'Count' is declared as 'unit16', which is neither a base datatype nor a type any file of this project declares - did you mean 'uint16' or 'uint64' or 'sint16'?
    1 error
 
 Scalar types
@@ -189,7 +189,7 @@ same one:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'datatype': 'Tem...)
+   sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'datatype': 'Tem...)
    types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'datatype': 'Tempera...)
    2 errors
 
@@ -497,9 +497,9 @@ type so that both ends are on screen:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but a 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
+   sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but a 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
        note: types.ddd.json#types[0]: declared here
-   sensing.ddd.json#component.declarations[1].definition: error[type-kind]: 'Preset' is declared as the structure 'Sample_t', but the initial value of a structure is written by the code that starts it
+   sensing.ddd.json#component.interface[1].definition: error[type-kind]: 'Preset' is declared as the structure 'Sample_t', but the initial value of a structure is written by the code that starts it
        note: types.ddd.json#types[0]: declared here
    2 errors
 
@@ -516,7 +516,7 @@ one of the two and the author needs to see both before choosing which:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition.name: error[name-collision]: 'Sample_t' is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
+   sensing.ddd.json#component.interface[0].definition.name: error[name-collision]: 'Sample_t' is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
        note: types.ddd.json#types[0]: type declared here
    types.ddd.json#types[1].name: error[reserved-identifier]: type name 'uint8_t' is reserved by the c language
    2 errors

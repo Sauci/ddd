@@ -3,7 +3,7 @@
   "component": {
     "name": "EventLogger",
     "description": "Counts events; lives in a sub project of its own",
-    "declarations": [
+    "interface": [
       {
         "scope": "input",
         "definition": {

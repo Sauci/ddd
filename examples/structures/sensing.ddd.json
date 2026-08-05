@@ -3,7 +3,7 @@
   "component": {
     "name": "Sensing",
     "description": "Produces the readings the structured datatypes describe",
-    "declarations": [
+    "interface": [
       {
         "scope": "local",
         "definition": {

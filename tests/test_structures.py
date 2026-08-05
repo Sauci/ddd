@@ -282,7 +282,7 @@ class TestNamingAType:
         assert findings(bag) == ["unknown-type"]
         rendered = first(bag).render()
         assert "neither a base datatype nor a type" in rendered
-        assert "a.ddd.json#component.declarations[0].definition.datatype" in rendered
+        assert "a.ddd.json#component.interface[0].definition.datatype" in rendered
 
     def test_restating_what_the_type_fixes_is_refused_by_the_contract(self, tree: Path) -> None:
         """An error rather than an override, so there is one answer to where a unit is written.
@@ -352,7 +352,7 @@ class TestATypeNameCannotBeADatatypeInDisguise:
         )
         assert findings(bag) == ["schema"]
         rendered = first(bag).render()
-        assert "a.ddd.json#component.declarations[0].definition.datatype" in rendered
+        assert "a.ddd.json#component.interface[0].definition.datatype" in rendered
         assert "Input should be" in rendered
 
     def test_the_eleven_ways_to_fail_at_one_key_are_one_finding(self, tree: Path) -> None:

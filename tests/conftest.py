@@ -34,7 +34,7 @@ def project(name: str = "TestProject", *includes: str, **extra: Any) -> dict[str
 
 
 def component(name: str, *declarations: dict[str, Any], **extra: Any) -> dict[str, Any]:
-    return {"component": {"name": name, "declarations": list(declarations), **extra}}
+    return {"component": {"name": name, "interface": list(declarations), **extra}}
 
 
 def declare(

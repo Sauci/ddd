@@ -160,7 +160,7 @@ CHECKS: Final[dict[str, CheckInfo]] = {
 def _pointer_order(pointer: str) -> tuple[int | str, ...]:
     """Sort key for a json pointer, with the indices ordered as numbers.
 
-    Sorted as plain text, ``declarations[10]`` comes before ``declarations[2]`` and the
+    Sorted as plain text, ``interface[10]`` comes before ``interface[2]`` and the
     findings of one file are listed in an order that has nothing to do with the file.
     """
     return tuple(
@@ -174,7 +174,7 @@ class Location:
 
     path: Path
     pointer: str = ""
-    """Dotted path inside the json document, e.g. ``component.declarations[2].definition``."""
+    """Dotted path inside the json document, e.g. ``component.interface[2].definition``."""
 
     line: int | None = None
     column: int | None = None

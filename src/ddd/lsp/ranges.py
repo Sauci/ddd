@@ -1,6 +1,6 @@
 """Where in the text a json pointer points.
 
-DDD locates a finding at ``component.declarations[2].definition.unit`` rather than at a line,
+DDD locates a finding at ``component.interface[2].definition.unit`` rather than at a line,
 and the reason is written down in the file formats documentation: a line number in a file that
 is often generated or reformatted means very little, while the pointer is exactly where the
 key sits whatever the formatting. An editor, though, draws on lines and columns, so somebody

@@ -3,7 +3,7 @@
   "component": {
     "name": "ComponentA",
     "description": "Writes the shared value",
-    "declarations": [
+    "interface": [
       {
         "scope": "output",
         "definition": {

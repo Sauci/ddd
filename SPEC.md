@@ -168,7 +168,12 @@ order mark is tolerated on reading, since Windows editors like to prepend one - 
 named `*.ddd.json` (`file-extension`), so that a description file is recognisable as such in a project that
 contains JSON for other purposes. The top level key of a file decides what the file is:
 `project` ([section 3.1](#31-project-description)), `component` ([section 3.2](#32-software-component-description))
-or `types` ([section 3.7](#37-type-description)). Unknown keys
+or `types` ([section 3.7](#37-type-description)); only the first two can be the root of a
+run. JSON allows one object to spell the same key twice - `"init": 0, "init": 255` - and
+parsers generally resolve that silently, the last spelling winning: the value the author
+reads first is not the value a tool would use, which in a grown description file is a
+debugging session. A key **must not** be repeated inside one object; the file is refused
+(`json-syntax`) rather than read with the surviving value. Unknown keys
 are rejected, with one exception: a top level `$schema` key **shall** be accepted and ignored,
 since it is the standard way an editor binds a JSON file to its schema and thereby turns the
 published contract into completion, hover documentation and as-you-type validation. The
@@ -191,18 +196,21 @@ Contains a list of components, types files and/or other (sub-)projects.
 }
 ```
 
-* `"name"` - C identifier of the project, also used as A2L project and module name
-* `"description"` - optional free text
-* `"includes"` - paths to component, types or sub-project files, relative to this file. The
+- `"name"` (required) - C identifier of the project, also used as A2L project and module name
+- `"description"` (optional) - free text
+- `"includes"` (optional) - paths to component, types or sub-project files, relative to this file. The
   kind of each included file is detected from its content. A file reached through several
   paths is loaded once - identity being the resolved path: absolute, symlinks followed, case
   compared as the platform compares it - and include cycles are an error.
 
 An entry of `includes` containing one of `*`, `?` or `[` is a wildcard pattern, expanded
 with the usual shell rules: `*` and `?` match within one path component, `[...]` is a
-character class, and `**` matches directories recursively. Only regular files are matched,
-and the matches are processed in sorted order of their resolved paths, so which component
-loads first does not depend on how a file system happens to enumerate a directory. A
+character class, and `**` matches directories recursively. A dot prefixed file is matched
+like any other, and whether matching honours case follows the platform, like the file
+identity above. Only regular files are matched, and the matches are processed in sorted
+order of their resolved paths - ordered, again, as the platform compares them - so which
+component loads first does not depend on how a file system happens to enumerate a
+directory. A
 pattern that matches nothing is `include-empty`. An entry without a wildcard character is a
 literal path naming exactly one file, and if that file does not exist the finding is
 `file-not-found` rather than `include-empty` - a pattern **may** legitimately be empty, a named
@@ -210,20 +218,23 @@ file **may** not be missing.
 
 ### 3.2 Software component description
 
-The top level key `"component"` is mandatory, and it contains the following elements:
+The top level key `"component"` is required, and it contains the following elements:
 
-* `"name"` The name of the component - a C identifier, since it becomes the name of a
-  generated header and of an A2L group; every component of a project needs a distinct one
-* `"description"` Optional free text
-* `"declarations"` A list of declarations; each declares one data object
+- `"name"` (required) The name of the component - a C identifier, since it becomes the name
+  of a generated header and of an A2L group; every component of a project needs a distinct one
+- `"description"` (optional) Free text
+- `"interface"` (required) The data interface, a list of declarations; each declares one
+  data object. Required with no default, so a component with nothing to declare states an
+  empty list rather than a key that might merely have been forgotten - the reasoning that
+  makes `volatile` and `kind` required on a definition
 
 Each declaration contains:
 
-* `"scope"` One of input/output/local, indicating the scope of the declaration
+- `"scope"` (required) One of input/output/local, indicating the scope of the declaration
   ([section 2.1](#21-scope))
-* `"condition"` A C preprocessor conditional expression which will wrap the generated
-  declarations of the object (optional; [section 3.3.1](#331-one-object-several-declarations))
-* `"definition"` A definition object ([section 3.3](#33-data-object-definition))
+- `"condition"` (optional) A C preprocessor conditional expression which will wrap the
+  generated declarations of the object ([section 3.3.1](#331-one-object-several-declarations))
+- `"definition"` (required) A definition object ([section 3.3](#33-data-object-definition))
 
 ### 3.3 Data object definition
 
@@ -242,7 +253,7 @@ Attributes common to every kind:
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
 | `unit` | `""` | physical unit |
 | `conversion` | identity | raw to physical conversion, [section 3.4](#34-conversions) |
-| `limits` | derived | physical `min`/`max`; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
+| `limits` | derived | physical `min`/`max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | `export`, `format`, `display_identifier` |
 | `volatile` | required | whether the generated C carries `volatile`, i.e. whether the value can change without the reading code having written it |
@@ -260,37 +271,60 @@ object appears in the A2L at all ([section 3.3.1](#331-one-object-several-declar
 `display_identifier` is an alternative display name, a C identifier. The latter two are
 emitted as the A2L keywords of the same names when stated, and left out of the A2L when not.
 
-`boolean` is one byte holding 0 or 1: its raw range - and, under the identity conversion, its
-derived limits - is 0..1, the generated C type is `bool` (`<stdbool.h>` is included where
-needed), the A2L describes it as `UBYTE`, and it does not count as an integer datatype for an
-enum conversion.
+The datatypes map to C and to the A2L as follows, and their raw ranges are what derived
+limits start from:
+
+| datatype | C type | raw range | A2L type |
+| --- | --- | --- | --- |
+| `boolean` | `bool` (`<stdbool.h>`) | 0..1 | `UBYTE` |
+| `uint8` | `uint8_t` | 0..255 | `UBYTE` |
+| `sint8` | `int8_t` | -128..127 | `SBYTE` |
+| `uint16` | `uint16_t` | 0..65535 | `UWORD` |
+| `sint16` | `int16_t` | -32768..32767 | `SWORD` |
+| `uint32` | `uint32_t` | 0..4294967295 | `ULONG` |
+| `sint32` | `int32_t` | -2147483648..2147483647 | `SLONG` |
+| `uint64` | `uint64_t` | 0..18446744073709551615 | `A_UINT64` |
+| `sint64` | `int64_t` | -9223372036854775808..9223372036854775807 | `A_INT64` |
+| `float32` | `float` | ±3.4028234663852886e38 | `FLOAT32_IEEE` |
+| `float64` | `double` | ±1.7976931348623157e308 | `FLOAT64_IEEE` |
+
+Derived limits are the raw range pushed through the conversion: under the identity they are
+the raw ends themselves, under a linear conversion each end is converted and the pair swapped
+into order when `factor` is negative. `boolean` does not count as an integer datatype: an
+enum conversion refuses it, and so does a `bits` member ([section 3.7](#37-type-description)).
+
+Every name is a C identifier of at most 128 characters - the bound the A2L format puts on an
+identifier, tighter than C's - and the cap holds wherever a name is written: objects,
+components, projects, enums, enumerators, types, members, `display_identifier`.
 
 Kind specific attributes:
 
 | kind | additional keys | storage | A2L |
 | --- | --- | --- | --- |
-| `measurement` | `dimensions` | writable RAM variable | `MEASUREMENT` |
+| `measurement` | `dimensions` (optional) | writable RAM variable | `MEASUREMENT` |
 | `parameter` | - | `const` or `const volatile` scalar | `CHARACTERISTIC ... VALUE` |
-| `value_block` | `dimensions` (mandatory) | `const` or `const volatile` array | `CHARACTERISTIC ... VAL_BLK` |
-| `axis` | `size` (mandatory), `input` | `const` or `const volatile` array `[size]` | `AXIS_PTS` |
-| `curve` | `axis` (mandatory) | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
-| `map` | `x_axis`, `y_axis` (both mandatory) | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
+| `value_block` | `dimensions` (required) | `const` or `const volatile` array | `CHARACTERISTIC ... VAL_BLK` |
+| `axis` | `size` (required), `input` (optional) | `const` or `const volatile` array `[size]` | `AXIS_PTS` |
+| `curve` | `axis` (required) | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
+| `map` | `x_axis`, `y_axis` (both required) | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
-* `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`; a measurement
+- `dimensions` is a list of array dimensions, e.g. `[3, 4]` for `x[3][4]`; a measurement
   without it is a scalar. In the A2L the same object is described by a `MATRIX_DIM` listing
   the fastest running index first, i.e. in the reverse order - describing it in C order
-  would state a transposed object.
-* `init` is a scalar or a nested list matching the shape of the object. A scalar given for an
-  array shaped object initialises every element.
-* `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
+  would state a transposed object - padded with ones to the three entries 1.6.1 expects.
+- `init` is a scalar or a nested list matching the shape of the object. A scalar given for an
+  array shaped object initialises every element. An initial value **must** fit the raw range
+  of its datatype (`init-invalid`); it is compared neither against the limits - they are
+  physical, `init` is raw - nor against the enumerators of an enum conversion.
+- `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (A2L `COM_AXIS`).
   Referring is not using: the reference resolves against every declaration of the project
   and obliges the referring component to nothing, so an axis no `input` declaration reads is
   still `unused-output`, and a component that wants the axis in its own header declares it
   as its `input`.
-* `input` names the measurement that indexes an axis (A2L input quantity); when omitted the
+- `input` names the measurement that indexes an axis (A2L input quantity); when omitted the
   A2L uses `NO_INPUT_QUANTITY`.
-* Calibration objects (everything except `measurement`) are always generated `const`, since
+- Calibration objects (everything except `measurement`) are always generated `const`, since
   the software never writes them, and additionally `volatile` when the declaration says so.
   An object a calibration tool changes in a running ECU needs both: plain `const` entitles the
   compiler to fold the initial value into the code that reads it wherever that value is
@@ -308,7 +342,7 @@ Kind specific attributes:
   nothing about the choice: a project that calibrates online states `true` and places the
   object itself in its linker script, DDD's own memory placement being planned rather than
   implemented ([section 3.5](#35-memory-placement-planned)), and one that does not states `false` and keeps its data in flash.
-* `volatile` buys freshness and gives up coherence, which is worth knowing before turning it
+- `volatile` buys freshness and gives up coherence, which is worth knowing before turning it
   on for a whole dictionary: the compiler has to re-read the object at every mention, so a set
   of parameters read at several points of one control step can straddle a calibration write
   and be used half old and half new, and a loop over a `const volatile` value is not
@@ -391,8 +425,9 @@ A mistyped base datatype is a well formed *name*, so a name that reads as a stor
 digits wrong - `uint166`, `int16`, `float3`, `sint_16` - is refused outright to put the rejection
 back where the typo is made. The refused class is precise: one of the stems `bool`, `boolean`,
 `int`, `uint`, `sint`, `float`, `double`, `char`, `short`, `long`, `byte`, `word` - compared
-without regard to case - followed by nothing but digits and underscores. `Int16_t` and
-`intensity` pass; `UINT16` and `word_8` do not. The refusal is part of the published contract,
+without regard to case - followed by digits and underscores or by nothing at all: the bare
+stem `Word` is as refused as `word_8`. `Int16_t` and
+`intensity` pass; `UINT16` does not. The refusal is part of the published contract,
 so it is reported as `schema` rather than under a name of its own, and it applies where a type
 is named into being - the `name` of a types file entry - as much as where one is used, so a
 type that could never be referenced cannot be declared either. What that cannot catch, a
@@ -413,16 +448,16 @@ generates one C object, and reaches the A2L as one object per member ([section 5
 { "kind": "enum", "name": "StateA_t", "enumerators": { "STATE_OFF": 0, "STATE_FAULT": 15 } }
 ```
 
-* `identity` has no further keys.
-* `linear` means `physical = raw * factor + offset`; `factor` defaults to 1.0 and **must not** be
+- `identity` has no further keys.
+- `linear` means `physical = raw * factor + offset`; `factor` defaults to 1.0 and **must not** be
   zero, `offset` defaults to 0.0, and both **must** be finite.
-* `enum` requires an integer datatype. `name` is required: it is the C identifier of the
+- `enum` requires an integer datatype. `name` is required: it is the C identifier of the
   generated `typedef enum`, the identity under which `enum-conflict` compares enumerator
   lists, and the name of the A2L `COMPU_VTAB`. `enumerators` is required and non-empty;
   it **may** also be given as a list of `{"name", "value", "description"}` objects. An enum
   converts nothing - physical and raw value coincide - so the limits of an enum object,
   stated or derived, are enumerator values.
-* `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys decide it:
+- `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys decide it:
   a conversion stating `enumerators` or `name` is an `enum`, one stating `factor` or `offset`
   is `linear`, and one stating nothing - `{}` - is the identity. Unknown keys are rejected as
   everywhere, so a conversion cannot match two kinds at once.
@@ -473,8 +508,9 @@ it does not understand is one it declines rather than misreads.
 
 A `types` file declares the types a project names, so that components agree by naming rather
 than by each copying out the same answer. It is listed in the `includes` of a project
-([section 3.1](#31-project-description)) like a
-component file and recognised by its top level key: `types`, a list of entries, each stating
+([section 3.1](#31-project-description)) like a component file, and only there: handed to
+the tool as the root of a run it is refused, with a hint that it belongs in a project's
+`includes`. It is recognised by its top level key: `types`, a list of entries, each stating
 its `type` - `scalar` or `struct`.
 
 ```json
@@ -500,15 +536,19 @@ its `type` - `scalar` or `struct`.
 }
 ```
 
-* a **scalar** type fixes `datatype`, `unit`, `conversion` and `limits` - exactly what makes two
-  declarations interchangeable, and nothing else. `kind`, `dimensions`, `init`, `volatile` and
+- a **scalar** type fixes `datatype`, `unit`, `conversion` and `limits` - exactly what makes two
+  declarations interchangeable, and nothing else; `name` and `datatype` are required, the
+  rest optional. `kind`, `dimensions`, `init`, `volatile` and
   `a2l` stay on the declaration, because two measurements of one type can differ in whether an
   interrupt writes one of them. Its `datatype` is a base datatype: a scalar type cannot be
   declared in terms of a second one, so a chain of aliases - and with it a scalar cycle -
   cannot be written at all.
-* a **struct** type declares `members`, in the order they are laid out. `member` states the
-  shape of each: a `value` - a datatype, base or declared, optionally an array (`dimensions`) -
-  or `bits`, an integer datatype and a width (`bits`). A `bits` member takes no `dimensions`.
+- a **struct** type declares `members` (required), in the order they are laid out. Every
+  member states `name`, `member` and `datatype` (required); `member` is the shape: a
+  `value` - a datatype, base or declared, optionally an array (`dimensions`) - or `bits`, a
+  base integer datatype - a declared type carries no bitfield - and a width (`bits`,
+  required there) of at least one bit and at most what that datatype holds. A `bits` member
+  takes no `dimensions`.
 
 A member says what its bytes mean as well as where they are: it carries `unit`, `conversion`
 and `limits` of its own, or names a scalar type that fixes them, never both. Its `a2l` block
@@ -559,60 +599,69 @@ rules this document states in prose - a zero `factor`, an enum conversion on a n
 datatype, a key restated that a named type already fixes: they are shape errors of one file,
 located where they are written, and need no identifier of their own.
 
+A finding about several declarations of one object is reported once per declaration that
+deviates, anchored where the deviation is written, with a note pointing at the reference -
+the producer's declaration, or the first loaded ([section 3.3.1](#331-one-object-several-declarations)).
+So `multiple-producers` is reported on every producer after the first, `missing-producer`
+once per consumer, and `unused-output` once, on the producer. A scope clash involving a
+`local` declaration is `local-conflict` alone, never `multiple-producers` as well.
+
 Errors:
 
-* `multiple-producers` - an object is produced by more than one component
-* `missing-producer` - an input object is produced by nobody
-* `local-conflict` - a component local object is declared by another component as well
-* `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
+- `multiple-producers` - an object is produced by more than one component
+- `missing-producer` - an input object is produced by nobody
+- `local-conflict` - a component local object is declared by another component as well
+- `definition-mismatch` - components disagree on kind, datatype, unit, scaling, shape,
   volatility, referenced objects - axes and the `input` of an axis - or on limits where both
   of them state limits: a declaration
   that omits limits defers to the producer rather than disagreeing with it, a relaxation
   `volatile` has no use for, being required on every definition ([section 3.3.1](#331-one-object-several-declarations))
-* `duplicate-declaration` - a component declares the same object more than once
-* `consumer-storage` - an `input` declaration states `init`. What an object starts out as is
+- `duplicate-declaration` - a component declares the same object more than once
+- `consumer-storage` - an `input` declaration states `init`. What an object starts out as is
   decided by the component that produces it, so a reader stating one is claiming storage it
   does not own, rather than holding an opinion to be outvoted
-* `duplicate-component` - two files declare the same component name
-* `duplicate-type` - two files declare the same type name
-* `unknown-type`, `type-kind`, `type-cycle` - a `datatype` names neither a base datatype nor a
+- `duplicate-component` - two files declare the same component name
+- `duplicate-type` - two files declare the same type name
+- `unknown-type`, `type-kind`, `type-cycle` - a `datatype` names neither a base datatype nor a
   type any file of the project declares, a declared type is used where its shape does not fit,
   or structures nest each other so that neither has a size
-* `enum-conflict` - one enum name is used with different enumerators
-* `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
-* `unknown-reference`, `reference-kind` - a curve, map or axis refers to an object that does not exist or has the wrong kind
-* `reserved-identifier` - a name collides with a C keyword, with a name `<stdint.h>` or
+- `enum-conflict` - one enum name is used with different enumerators: the ordered name and
+  value pairs are compared, so a reordering conflicts and the free text descriptions do not
+- `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
+- `unknown-reference`, `reference-kind` - a curve, map or axis refers to an object that does not exist or has the wrong kind
+- `reserved-identifier` - a name collides with a C keyword, with a name `<stdint.h>` or
   `<stdbool.h>` declares, or with an identifier the C standard reserves for the
   implementation - a double underscore anywhere, or a leading underscore followed by a
   capital. The set is fixed by the standard rather than read out of any header, so the
   verdict does not depend on a toolchain
-* `name-collision` - two names that are distinct in the description files become the same
-  C identifier or the same generated file: enumerators of different enums, an enumerator and
-  a data object, a data object and the name of an enum or of a declared type, or two component names
-  differing only in case
-* `file-extension` - a description file is not named `*.ddd.json`
-* `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
+- `name-collision` - two names that are distinct in the description files become the same
+  C identifier or the same generated file. Exactly these pairs are compared: enumerators of
+  different enums, an enumerator and a data object, a data object and the name of an enum or
+  of a declared type, and two component names differing only in case
+- `file-extension` - a description file is not named `*.ddd.json`
+- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle` - the file tree
   cannot be read; these five are the ones whose severity cannot be changed
-* `include-empty` - a wildcard include matches no file; relaxable, because a pattern that is
+- `include-empty` - a wildcard include matches no file; relaxable, because a pattern that is
   legitimately empty in one variant of a project is a normal thing to allow. A literal
   include naming a missing file is `file-not-found` instead ([section 3.1](#31-project-description))
 
 Warnings:
 
-* `storage-mismatch` - components disagree on how the A2L presents the object; the producer
+- `storage-mismatch` - components disagree on how the A2L presents the object; the producer
   wins
-* `condition-mismatch` - declarations of one object use different preprocessor conditions
-* `unused-output` - an output is read by nobody
-* `limits-out-of-range` - limits exceed what the datatype can represent
-* `enum-duplicate-value` - two enumerators share a value
-* `name-similar` - two object names differ only in upper/lower case
-* `a2l-unrepresentable` - an object cannot be fully described by the A2L version DDD writes;
+- `condition-mismatch` - declarations of one object use different preprocessor conditions
+- `unused-output` - an output is read by nobody
+- `limits-out-of-range` - limits exceed what the datatype can represent under the
+  conversion; for an enum that is the span of its enumerators
+- `enum-duplicate-value` - two enumerators share a value
+- `name-similar` - two object names differ only in upper/lower case
+- `a2l-unrepresentable` - an object cannot be fully described by the A2L version DDD writes;
   today that is an array of more than three dimensions, which `MATRIX_DIM` of 1.6.1 cannot
   carry
 
 Information:
 
-* `empty-component` - a component declares no data object at all
+- `empty-component` - a component declares no data object at all
 
 ### 4.1 Comparing two deliveries
 
@@ -626,28 +675,30 @@ A change **shall** be graded by what it costs the consumers:
 
 Errors - the consumers of the object become wrong, whether or not they still compile:
 
-* `removed-object` - an object is gone that a component read
-* `changed-interface` - kind, datatype, unit, scaling, shape, referenced objects or locality
+- `removed-object` - an object is gone that a component read
+- `changed-interface` - kind, datatype, unit, scaling, shape, referenced objects or locality
   changed; locality is whether the object is local to its component ([section 2.1](#21-scope)), since a
   local object becoming shared - or the reverse - changes who **may** use it
 
 Warnings - behaviour or tooling changes, but no consumer becomes wrong:
 
-* `removed-unused-object` - an object is gone that no component read
-* `changed-storage` - the initial value or the volatility changed; on a calibration object the
+- `removed-unused-object` - an object is gone that no component read
+- `changed-storage` - the initial value or the volatility changed; on a calibration object the
   volatility also decides whether a tool can still change the value in a running ECU, and
   which memory the object ends up in
-* `narrowed-limits` - the physical limits got tighter, so calibrated data **may** no longer fit
-* `changed-owner` - another component produces the object now
-* `changed-condition` - the preprocessor condition changed; the producer's, which is the one
+- `narrowed-limits` - the physical limits got tighter, so calibrated data **may** no longer fit
+- `changed-owner` - another component produces the object now
+- `changed-condition` - the preprocessor condition changed; the producer's, which is the one
   the dictionary records on the object ([section 3.3.1](#331-one-object-several-declarations))
-* `changed-a2l` - the A2L entry changed
-* `project-mismatch` - the two dictionaries name different projects, so the baseline is
+- `changed-a2l` - the resolved A2L presentation changed: the export (compared as resolved,
+  [section 3.3.1](#331-one-object-several-declarations)), `format` or `display_identifier`;
+  a changed unit is `changed-interface`, and descriptions are not compared
+- `project-mismatch` - the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate
 
 Information:
 
-* `added-object` - the candidate declares an object the baseline did not
+- `added-object` - the candidate declares an object the baseline did not
 
 Widening a limit **shall** be silent, since every value the baseline allowed still fits. Limits
 that got tighter **shall not** be reported on an object whose interface changed as well: the
@@ -732,7 +783,9 @@ every one of them; per-component sources it does not compile, for the reason abo
 Generated output is deterministic to the byte: objects are sorted by name within their
 component's group, member paths by path, components keep the include order of the project,
 and wildcard includes expand in sorted order ([section 3.1](#31-project-description)) - the same project generates the
-same bytes on any machine. Files are written UTF-8, and a rendered file whose content has not
+same bytes on any machine. Names sort by code point - an upper case name before every lower
+case one, `cell[10]` before `cell[2]` - a spelling rule rather than a locale's; only file
+paths order as the platform compares them. Files are written UTF-8, and a rendered file whose content has not
 changed is left untouched, so a regeneration does not cascade into a rebuild.
 
 Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
@@ -741,19 +794,46 @@ Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 
 ASAM MCD-2 MC output containing:
 
-* `MEASUREMENT` for every measurement, `CHARACTERISTIC` for parameters, value blocks, curves
+- `MEASUREMENT` for every measurement, `CHARACTERISTIC` for parameters, value blocks, curves
   and maps, `AXIS_PTS` for axes
-* `RECORD_LAYOUT` per datatype and storage category; maps are stored row wise, i.e. the C
+- `RECORD_LAYOUT` per datatype and storage category; maps are stored row wise, i.e. the C
   declaration is `[y][x]` and the A2L index mode is `ROW_DIR`
-* `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map
-* `COMPU_METHOD` shared between objects with the same conversion and unit, `COMPU_VTAB` per
+- `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map
+- `COMPU_METHOD` shared between objects with the same conversion and unit, `COMPU_VTAB` per
   enum
-* one `GROUP` per component, referencing the measurements and characteristics it declares
-* the address field of every object taken from the address information (`ECU_ADDRESS` is
+- one `GROUP` per component, referencing the measurements and characteristics it declares
+- the address field of every object taken from the address information (`ECU_ADDRESS` is
   the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
   information does not cover keeps address `0x00000000` ([section 6](#6-address-information))
-* deterministic order: records sorted by object name, member paths by path, `GROUP`s in the
+- deterministic order: records sorted by object name, member paths by path, `GROUP`s in the
   component order of the project
+
+The file opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
+after the project ([section 3.1](#31-project-description)), and a `MOD_COMMON` stating the
+byte order and fixed alignments (1/2/4/8, floats 4/8). The byte order is the build's to
+state (`ddd generate --byte-order little|big`, default little, emitted as
+`MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
+and a tool reading multi byte values under the wrong one misreads every value.
+
+Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
+`RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
+`CM_LIN_<unit>` and `CM_IDENT_<unit>` - the unit slugged into identifier characters, `_2`,
+`_3` appended on a collision - and one `COMPU_VTAB` named `VTAB_<enum>` per enum. An enum
+is a `TAB_VERB` referring to its `COMPU_VTAB`; a linear conversion is a `RAT_FUNC` whose
+`COEFFS` state raw as a function of physical, so the stated slope is the inverse of
+`factor`; an identity with a unit is `IDENTICAL`, and one without a unit gets no method at
+all - the record says `NO_COMPU_METHOD`. What the description files do not carry is emitted
+neutrally: resolution and accuracy of a `MEASUREMENT` and the `MaxDiff` of a
+`CHARACTERISTIC` are 0, and the display format defaults to `%8.0` for integral values and
+`%8.3` otherwise, overridden per object by `format` ([section 3.3](#33-data-object-definition)).
+Quoted strings escape backslash and quote and replace control characters by a space, and
+numbers are written in their shortest round trip form, an integral value without a decimal
+point.
+
+Export is closed over references: an exported curve or map pulls the axes it refers to into
+the A2L, and a pulled in axis pulls the measurement indexing it, whatever their own `export`
+says - an `AXIS_PTS_REF` to an absent axis would be an invalid file rather than a smaller
+one.
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one object per value-holding member,
 named by its C access path - `Inlet.latest.value`, `Inlet.cell[2].raw` - which is at once the
@@ -787,7 +867,8 @@ cross-checking the linked symbols against the declarations is *planned*.
 
 DDD is a command line tool, so that it can be driven from make, batch and CI jobs. It offers
 at least: checking a project (`ddd check`, [section 4](#4-consistency-checks)), comparing two
-deliveries (`ddd compare`, or `ddd check --baseline` for both questions in one exit code;
+deliveries (`ddd compare`, the baseline before the candidate, or `ddd check --baseline` for
+both questions in one exit code;
 [section 4.1](#41-comparing-two-deliveries)), generating the artefacts
 (`ddd generate`, [section 5](#5-generated-artefacts)), listing the resolved data objects
 (`ddd list`), writing out the data
@@ -800,13 +881,27 @@ a tool outside the build can apply the same project and the same severities, ser
 checks to an editor over the Language Server Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)),
 listing the available
 checks (`ddd checks`), and reporting where its build system integration and its example
-templates live (`ddd cmake-dir`, `ddd templates-dir`). Every command that reports findings
-can produce machine readable JSON, and the exit code distinguishes clean runs (0), findings
-(1) and usage errors (2). A findings exit is reserved for findings reported *as errors*: a
-run whose findings are all warnings is a clean run unless `--strict` says otherwise.
+templates live (`ddd cmake-dir`, `ddd templates-dir`). The root handed to a command is a
+project or a single component file; a component alone is checked with every check, the whole
+project ones included - holding them back is the editor's leniency
+([section 7.2](#72-editor-integration)), not the command line's.
+
+Every command that reports findings can produce machine readable JSON (`--format json`): a
+`diagnostics` list - each finding carrying `check`, `severity`, `message`, a `location` of
+`path`, `pointer`, `line` and `column`, and `notes` of the same shape - and a `summary`
+counting by severity. `generate` adds the files it wrote with their status, and `dump` keeps
+its stdout for the dictionary, reporting findings on stderr. The exit code distinguishes
+clean runs (0), findings (1) and usage errors (2). A findings exit is reserved for findings
+reported *as errors*: a run whose findings are all warnings is a clean run unless `--strict`
+says otherwise. `ddd generate` with error findings writes nothing - stale artefacts beat
+wrong ones half written into a build - unless `--force` asks for them anyway; the exit stays
+a findings exit either way.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD does not
-ship can consume it without depending on the implementation.
+ship can consume it without depending on the implementation. The dictionary names its own
+format (`format`, today `2`), raised only when the document's shape changes, so an archived
+delivery says which shape it carries - what the build record's `format` does for it
+([section 3.6](#36-build-record)).
 
 ### 7.1 Build system integration
 
@@ -820,14 +915,28 @@ object no compiled code references is not dropped ([section 5.1](#51-c-code)).
 `ddd_generate` knows two modes. In the collected mode - the default - the registered
 descriptions travel the link graph as a transitive target property, and the project
 description is assembled in the build directory from the closure the image actually links
-([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across links. With
+([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across links. The
+assembled project is named by `NAME`, defaulting to the image's name sanitised into an
+identifier, and that name becomes the A2L project, module and file name
+([section 5.2](#52-a2l)); its includes keep the link graph's traversal order, first
+occurrence kept, which orders the components and with them the `GROUP`s - the objects
+themselves sort by name regardless ([section 5.1](#51-c-code)). With
 `PROJECT <file>` a hand written project description is used instead - the mode for an older
-CMake, or for a project layout the link graph does not mirror. An `ADDRESS_MAP <file>` names
+CMake, or for a project layout the link graph does not mirror - and `NAME` is ignored for
+the name written inside the file. An `ADDRESS_MAP <file>` names
 the address map of [section 6](#6-address-information): the map is a
 dependency of the generation, so rewriting it after linking is what makes the next build run
 DDD a second time with real addresses ([section 1.6](#16-position-in-the-build-process)) - the
 C sources that second run re-renders are byte identical and trigger no rebuild
 ([section 5.1](#51-c-code)).
+
+The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
+`--template-dir`), `OUTPUT_DIRECTORY` (defaulting into the build tree), `BYTE_ORDER`,
+`CONST_INPUTS`, `NO_A2L`, `STRICT` and repeatable `SEVERITY` entries written `check=severity`
+([section 4](#4-consistency-checks)) - the latter two also recorded in the build record -
+plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for extra
+generation dependencies, and `NO_PROPAGATE_HEADERS` to stop the generated headers being
+linked into every registered component.
 
 ### 7.2 Editor integration
 
@@ -858,6 +967,10 @@ component read alone has inputs nobody produces and outputs nobody reads by cons
 rather than by mistake, and reporting those buries the findings that are about the file in
 front of the reader. Each check declares whether it needs the whole project, so the two modes
 cannot drift apart.
+
+The server speaks the protocol on stdin and stdout, and takes the build directories as
+repeatable `-b` arguments; the shipped VS Code extension exposes them as the setting
+`ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
 
 An editor extension **shall** do no more than launch the server and point it at the build
 directories: everything a reader sees is the tool's answer, so that an editor DDD ships

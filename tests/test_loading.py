@@ -97,6 +97,19 @@ def test_broken_json(tree: Path) -> None:
     assert next(iter(bag)).location.line == 1
 
 
+def test_a_repeated_key_is_refused(tree: Path) -> None:
+    """json lets one object spell a key twice, and parsers silently keep the last spelling.
+
+    The author reads the first one, the tool would use the second, and in a grown file
+    that is a debugging session; refused at the parser, it is a finding instead.
+    """
+    _, bag = run_analysis(
+        tree, {"project.ddd.json": '{"project": {"name": "P", "name": "Q", "includes": []}}'}
+    )
+    assert checks(bag) == ["json-syntax"]
+    assert "key 'name' appears twice" in next(iter(bag)).message
+
+
 def test_unknown_top_level_key(tree: Path) -> None:
     _, bag = run_analysis(tree, {"project.ddd.json": {"components": []}})
     assert checks(bag) == ["file-kind"]
@@ -127,7 +140,7 @@ def test_schema_error_points_at_the_offending_value(tree: Path) -> None:
     assert checks(bag) == ["schema"]
     location = next(iter(bag)).location
     assert location is not None
-    assert location.pointer == "component.declarations[0].definition.datatype"
+    assert location.pointer == "component.interface[0].definition.datatype"
     assert location.path.name == "a.ddd.json"
 
 

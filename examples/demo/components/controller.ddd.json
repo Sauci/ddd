@@ -3,7 +3,7 @@
   "component": {
     "name": "Controller",
     "description": "Consumes the raw values and produces the derived ones",
-    "declarations": [
+    "interface": [
       {
         "scope": "input",
         "definition": {

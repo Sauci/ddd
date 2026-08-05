@@ -3,7 +3,7 @@
   "component": {
     "name": "SensorHub",
     "description": "Produces the raw input values of the device",
-    "declarations": [
+    "interface": [
       {
         "scope": "output",
         "definition": {

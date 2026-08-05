@@ -77,8 +77,8 @@ ddd generate examples/demo/demo.ddd.json -o build/gen
 
 ```text
 $ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
 ...
 4 errors, 1 warning
 ```
@@ -241,7 +241,7 @@ Include cycles are reported instead of hanging.
   "component": {
     "name": "Controller",
     "description": "optional",
-    "declarations": [
+    "interface": [
       {
         "scope": "output",
         "condition": "defined(FEATURE_X)",

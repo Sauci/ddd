@@ -91,7 +91,7 @@ real project. ``factor`` defaults to ``1.0`` and ``offset`` to ``0.0``, so
 .. code-block:: text
 
    $ ddd check zerofactor.ddd.json
-   zerofactor.ddd.json#component.declarations[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
+   zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
    1 error
 
 A factor of zero would map every raw value in the image onto the same physical value, which
@@ -138,7 +138,7 @@ machine cannot be in state 2.5 and no calibration tool would know what to displa
 .. code-block:: text
 
    $ ddd check enumfloat.ddd.json
-   enumfloat.ddd.json#component.declarations[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
+   enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
    1 error
 
 .. list-table::
@@ -261,9 +261,9 @@ that the difference does not have to be hunted for:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   b.ddd.json#component.declarations[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
+   b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
        note: here: STATE_OFF=0, STATE_ON=2
-       note: a.ddd.json#component.declarations[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
+       note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
    1 error
 
 Two components declaring the **same** set of values are fine, and only one entry reaches the
@@ -286,8 +286,8 @@ which is an error, since the constant would otherwise be truncated silently:
 .. code-block:: text
 
    $ ddd check dupenum.ddd.json
-   dupenum.ddd.json#component.declarations[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
-   dupenum.ddd.json#component.declarations[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
+   dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
+   dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
    1 error, 1 warning
 
 And two enumerators sharing a value is a warning rather than an error, because it is legal c

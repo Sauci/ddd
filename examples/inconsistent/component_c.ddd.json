@@ -3,7 +3,7 @@
   "component": {
     "name": "ComponentC",
     "description": "Reads the shared value with the wrong datatype and scaling",
-    "declarations": [
+    "interface": [
       {
         "scope": "input",
         "definition": {

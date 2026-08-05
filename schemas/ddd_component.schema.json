@@ -212,18 +212,18 @@
           "title": "Description",
           "type": "string"
         },
-        "declarations": {
-          "default": [],
-          "description": "The data interface: everything the component produces, consumes or keeps to itself.",
+        "interface": {
+          "description": "The data interface: everything the component produces, consumes or keeps to itself.\n\nRequired with no default, so that a component with nothing to declare says so with an\nempty list rather than by a key that might merely have been forgotten - the same\nreasoning that makes ``volatile`` and ``kind`` required on a definition.",
           "items": {
             "$ref": "#/$defs/Declaration"
           },
-          "title": "Declarations",
+          "title": "Interface",
           "type": "array"
         }
       },
       "required": [
-        "name"
+        "name",
+        "interface"
       ],
       "title": "Component",
       "type": "object"
@@ -389,7 +389,7 @@
     },
     "Declaration": {
       "additionalProperties": false,
-      "description": "One entry of the ``declarations`` list of a component.",
+      "description": "One entry of the ``interface`` list of a component.",
       "properties": {
         "scope": {
           "$ref": "#/$defs/Scope",

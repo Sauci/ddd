@@ -49,8 +49,8 @@ VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
 is to whoever writes it, which is exactly the jump a reference key makes.
 """
 
-_DECLARATION: Final = "component.declarations["
-_WITHIN_DECLARATION: Final = re.compile(r"^component\.declarations\[\d+\]")
+_DECLARATION: Final = "component.interface["
+_WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPES: Final = "types["
 _INCLUDES: Final = "project.includes["
@@ -103,7 +103,7 @@ def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
     for loaded in workspace.components:
-        for position, declaration in enumerate(loaded.component.declarations):
+        for position, declaration in enumerate(loaded.component.interface):
             location = loaded.declaration_location(position, "definition")
             site = Site(location.path, location.pointer)
             name = declaration.definition.name

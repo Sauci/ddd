@@ -388,7 +388,7 @@ def _resolve_component(loaded: LoadedComponent) -> ResolvedComponent:
     """The component and its interface, in the order the author wrote it."""
     seen: set[str] = set()
     declarations = []
-    for declaration in loaded.component.declarations:
+    for declaration in loaded.component.interface:
         name = declaration.definition.name
         if name in seen:  # a duplicate declaration is reported and then ignored
             continue
@@ -754,7 +754,7 @@ class _Analysis:
                 f"component name '{component.name}' is reserved by the c language",
                 loaded.location("component.name"),
             )
-        if not component.declarations:
+        if not component.interface:
             self._bag.add(
                 "empty-component",
                 f"component '{component.name}' declares no variable",
@@ -762,7 +762,7 @@ class _Analysis:
             )
 
         seen: dict[str, DeclarationRef] = {}
-        for index, declaration in enumerate(component.declarations):
+        for index, declaration in enumerate(component.interface):
             ref = self._resolve_type(DeclarationRef(loaded, index, declaration))
             if ref is None:
                 # Its datatype names nothing this project declares, which is already reported.

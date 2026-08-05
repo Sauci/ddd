@@ -7,8 +7,14 @@
       "description": "A temperature as every component of this project agrees to see it",
       "datatype": "uint16",
       "unit": "degC",
-      "conversion": { "factor": 0.1, "offset": -40 },
-      "limits": { "min": -40, "max": 150 }
+      "conversion": {
+        "factor": 0.1,
+        "offset": -40
+      },
+      "limits": {
+        "min": -40,
+        "max": 150
+      }
     },
     {
       "type": "struct",
@@ -19,13 +25,16 @@
           "name": "value",
           "member": "value",
           "description": "The reading itself",
-          "datatype": "Temperature_t"
+          "typename": "Temperature_t"
         },
         {
           "name": "timestamp",
           "member": "value",
           "description": "Milliseconds since the last reset",
           "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          },
           "unit": "ms"
         }
       ]
@@ -40,6 +49,9 @@
           "member": "bits",
           "description": "Set once the sensor has produced a first reading",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "bits": 1
         },
         {
@@ -52,9 +64,18 @@
             "kind": "enum",
             "name": "SensorMode_t",
             "enumerators": [
-              { "name": "MODE_IDLE", "value": 0 },
-              { "name": "MODE_RUNNING", "value": 1 },
-              { "name": "MODE_FAULT", "value": 2 }
+              {
+                "name": "MODE_IDLE",
+                "value": 0
+              },
+              {
+                "name": "MODE_RUNNING",
+                "value": 1
+              },
+              {
+                "name": "MODE_FAULT",
+                "value": 2
+              }
             ]
           }
         },
@@ -63,8 +84,13 @@
           "member": "bits",
           "description": "Faults seen since the last reset, saturating",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "bits": 4,
-          "a2l": { "export": false }
+          "a2l": {
+            "export": false
+          }
         }
       ]
     },
@@ -77,20 +103,22 @@
           "name": "latest",
           "member": "value",
           "description": "The most recent reading",
-          "datatype": "Sample_t"
+          "typename": "Sample_t"
         },
         {
           "name": "status",
           "member": "value",
           "description": "The flags of this sensor",
-          "datatype": "Status_t"
+          "typename": "Status_t"
         },
         {
           "name": "history",
           "member": "value",
           "description": "The last eight readings, oldest first",
-          "datatype": "Temperature_t",
-          "dimensions": [8]
+          "typename": "Temperature_t",
+          "dimensions": [
+            8
+          ]
         }
       ]
     },
@@ -103,7 +131,7 @@
           "name": "warnLimit",
           "member": "value",
           "description": "Reading above which the sensor reports a fault",
-          "datatype": "Temperature_t"
+          "typename": "Temperature_t"
         }
       ]
     }

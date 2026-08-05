@@ -12,7 +12,10 @@
           "description": "Conditioned inlet reading",
           "datatype": "uint16",
           "unit": "degC",
-          "conversion": { "factor": 0.1, "offset": -40 },
+          "conversion": {
+            "factor": 0.1,
+            "offset": -40
+          },
           "volatile": false
         }
       },
@@ -22,7 +25,7 @@
           "name": "Inlet",
           "kind": "measurement",
           "description": "The inlet sensor as this ecu sees it",
-          "datatype": "Sensor_t",
+          "typename": "Sensor_t",
           "volatile": true
         }
       },
@@ -32,7 +35,7 @@
           "name": "InletCal",
           "kind": "parameter",
           "description": "What the calibration tool may change about the inlet sensor",
-          "datatype": "SensorCal_t",
+          "typename": "SensorCal_t",
           "volatile": true
         }
       },
@@ -43,6 +46,9 @@
           "kind": "measurement",
           "description": "Readings taken since the last reset",
           "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       }

@@ -140,7 +140,7 @@ linker output; one that does not need them stops after the first.
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
 | **producer** | the component that owns a data object; its declaration is the authoritative one |
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
-| **declared type** | a scalar or structure a types file declares ([section 3.7](#37-type-description)), named by `datatype` where a base datatype would stand |
+| **declared type** | a scalar or structure a types file declares ([section 3.7](#37-type-description)), named by `typename` where storage is stated |
 | **access path** | the C expression that reads a member of a structured object - `Inlet.cell[2].raw` - and the name the A2L and the address map know it by ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
 | **check** | one consistency rule, with a stable identifier and a default severity ([section 4](#4-consistency-checks)) |
@@ -249,10 +249,11 @@ Attributes common to every kind:
 | --- | --- | --- |
 | `name` | required | C identifier of the object |
 | `kind` | required | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
-| `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
+| `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
+| `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
 | `unit` | `""` | physical unit |
-| `conversion` | identity | raw to physical conversion, [section 3.4](#34-conversions) |
+| `conversion` | required beside `datatype` | raw to physical conversion, [section 3.4](#34-conversions); a `typename` fixes it instead |
 | `limits` | derived | physical `min`/`max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `a2l` | export | `export`, `format`, `display_identifier` |
@@ -361,7 +362,8 @@ accident of the file system.
 
 ##### 3.3.1.1 Interface
 
-`kind`, `datatype`, `unit`, `conversion`, the shape (`dimensions` or `size`), the referenced
+`kind`, the storage (`datatype` or `typename`), `unit`, `conversion`, the shape
+(`dimensions` or `size`), the referenced
 objects - `axis`, `x_axis`, `y_axis` and the `input` of an axis - and `volatile`. Every
 declaration **must** state the same thing and a
 disagreement is `definition-mismatch`. `volatile` is interface rather than storage because it
@@ -414,24 +416,22 @@ declaration's own condition with its declaring component.
 
 #### 3.3.2 Naming a declared type
 
-`datatype` accepts one of the base datatypes **or** the name of a type the project declares in a
-types file ([section 3.7](#37-type-description)). One key names a type everywhere - on a component declaration and on a
-structure member alike - rather than a second key beside it: a `type` key would have to mean "the
-name of a declared type" in those two places and "which shape this entry has" at the top of a
-types entry, and one key with one meaning is worth what it costs.
+A definition states its storage exactly once: `datatype` names one of the eleven base
+datatypes, `typename` the name of a type the project declares in a types file
+([section 3.7](#37-type-description)) - never both, never neither (`schema`). Two keys
+rather than one union, so that each stays what it says. The published schema keeps
+`datatype` at exactly eleven values: an editor completes and documents precisely them, and a
+mistyped `uint166` is refused as it is typed rather than reported as a type nobody declares
+a build later. And the use site tells base from declared at a glance, which one key
+accepting both never could.
 
-What it costs is that the published schema can no longer say `datatype` is one of eleven values.
-A mistyped base datatype is a well formed *name*, so a name that reads as a storage stem with the
-digits wrong - `uint166`, `int16`, `float3`, `sint_16` - is refused outright to put the rejection
-back where the typo is made. The refused class is precise: one of the stems `bool`, `boolean`,
-`int`, `uint`, `sint`, `float`, `double`, `char`, `short`, `long`, `byte`, `word` - compared
-without regard to case - followed by digits and underscores or by nothing at all: the bare
-stem `Word` is as refused as `word_8`. `Int16_t` and
-`intensity` pass; `UINT16` does not. The refusal is part of the published contract,
-so it is reported as `schema` rather than under a name of its own, and it applies where a type
-is named into being - the `name` of a types file entry - as much as where one is used, so a
-type that could never be referenced cannot be declared either. What that cannot catch, a
-transposition such as `unit16`, is reported as `unknown-type` with the nearest name suggested.
+A `typename` **must not** spell a base datatype, compared without regard to case (`schema`):
+a type called `uint16`, or `UINT16`, wears the name of storage it is not, and every
+declaration naming it would read like a typo. Any other name is simply a name - `Int16_t` is
+unambiguous, because the key already says it is declared - and the same rule holds where a
+type is named into being, the `name` of a types file entry. A `typename` naming no type any
+file of the project declares is `unknown-type`, with the nearest name suggested: `unit16`
+gets `uint16`.
 
 Naming a type and then restating what it fixes is an error rather than an override, so that "where
 is this object's unit written down" has one answer.
@@ -461,6 +461,18 @@ generates one C object, and reaches the A2L as one object per member ([section 5
   a conversion stating `enumerators` or `name` is an `enum`, one stating `factor` or `offset`
   is `linear`, and one stating nothing - `{}` - is the identity. Unknown keys are rejected as
   everywhere, so a conversion cannot match two kinds at once.
+
+A conversion **must** be stated wherever storage is named by `datatype` - on a definition, on
+a member, on a scalar type - although the identity would be derivable (`schema`). That it is
+derivable is exactly why it is asked for: raw equalling physical is an engineering claim
+about the data, not a formatting accident, and a forgotten scaling on a fixed point value
+displays raw counts without anything looking broken. A definition or member naming a
+`typename` states none - the type fixes it ([section 3.3.2](#332-naming-a-declared-type)).
+
+`linear` with `factor` 1 and `offset` 0 is not the identity: conversions compare as written
+(`definition-mismatch`), and the A2L carries what was written - a `RAT_FUNC` against an
+`IDENTICAL` ([section 5.2](#52-a2l)). One mapping, spelled two ways, is a disagreement about
+the spelling, and the spelling is what every consumer's tooling sees.
 
 ### 3.5 Memory placement *(planned)*
 
@@ -527,9 +539,9 @@ its `type` - `scalar` or `struct`.
       "type": "struct",
       "name": "Inlet_t",
       "members": [
-        { "name": "raw", "member": "value", "datatype": "uint16", "dimensions": [4] },
-        { "name": "latest", "member": "value", "datatype": "Temperature_t" },
-        { "name": "ready", "member": "bits", "datatype": "uint8", "bits": 2 }
+        { "name": "raw", "member": "value", "datatype": "uint16", "conversion": {}, "dimensions": [4] },
+        { "name": "latest", "member": "value", "typename": "Temperature_t" },
+        { "name": "ready", "member": "bits", "datatype": "uint8", "conversion": {}, "bits": 2 }
       ]
     }
   ]
@@ -537,18 +549,19 @@ its `type` - `scalar` or `struct`.
 ```
 
 - a **scalar** type fixes `datatype`, `unit`, `conversion` and `limits` - exactly what makes two
-  declarations interchangeable, and nothing else; `name` and `datatype` are required, the
-  rest optional. `kind`, `dimensions`, `init`, `volatile` and
+  declarations interchangeable, and nothing else; `name`, `datatype` and `conversion` are
+  required, `unit` and `limits` optional. `kind`, `dimensions`, `init`, `volatile` and
   `a2l` stay on the declaration, because two measurements of one type can differ in whether an
   interrupt writes one of them. Its `datatype` is a base datatype: a scalar type cannot be
   declared in terms of a second one, so a chain of aliases - and with it a scalar cycle -
   cannot be written at all.
 - a **struct** type declares `members` (required), in the order they are laid out. Every
-  member states `name`, `member` and `datatype` (required); `member` is the shape: a
-  `value` - a datatype, base or declared, optionally an array (`dimensions`) - or `bits`, a
-  base integer datatype - a declared type carries no bitfield - and a width (`bits`,
-  required there) of at least one bit and at most what that datatype holds. A `bits` member
-  takes no `dimensions`.
+  member states `name`, `member`, its storage and - beside a `datatype` - its `conversion`
+  (required); `member` is the shape: a
+  `value` - a base `datatype` or a declared `typename`, optionally an array (`dimensions`) -
+  or `bits`, a base integer `datatype` - a declared type carries no bitfield - and a width
+  (`bits`, required there) of at least one bit and at most what that datatype holds. A
+  `bits` member takes no `dimensions`.
 
 A member says what its bytes mean as well as where they are: it carries `unit`, `conversion`
 and `limits` of its own, or names a scalar type that fixes them, never both. Its `a2l` block
@@ -622,8 +635,8 @@ Errors:
   does not own, rather than holding an opinion to be outvoted
 - `duplicate-component` - two files declare the same component name
 - `duplicate-type` - two files declare the same type name
-- `unknown-type`, `type-kind`, `type-cycle` - a `datatype` names neither a base datatype nor a
-  type any file of the project declares, a declared type is used where its shape does not fit,
+- `unknown-type`, `type-kind`, `type-cycle` - a `typename` names no type any file of the
+  project declares, a declared type is used where its shape does not fit,
   or structures nest each other so that neither has a size
 - `enum-conflict` - one enum name is used with different enumerators: the ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do not

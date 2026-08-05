@@ -30,9 +30,17 @@ is worth doing wherever the file is read more often than it is written.
 identity
 --------
 
-``physical == raw``: the stored number *is* the quantity. It is the default, so a definition
-with no ``conversion`` at all has this one. Use it for counters, bit fields, flags, and for
-floating point values that already carry the physical quantity.
+``physical == raw``: the stored number *is* the quantity. It is stated like every other
+conversion - a ``conversion`` is required wherever storage is named by ``datatype``, and
+``{}`` is its shortest spelling - because raw equalling physical is an engineering claim
+about the data, and a forgotten scaling on a fixed point value displays raw counts without
+anything looking broken. Use it for counters, bit fields, flags, and for floating point
+values that already carry the physical quantity.
+
+``linear`` with ``factor`` 1 and ``offset`` 0 is *not* the identity: conversions compare as
+written, so two components spelling the no-op the two ways disagree
+(``definition-mismatch``), and the a2l carries what was written - a ``RAT_FUNC`` against an
+``IDENTICAL``.
 
 The identity is not the absence of a conversion, though, and the a2l shows the difference. An
 object with no unit gets ``NO_COMPU_METHOD``, because there is genuinely nothing to say about

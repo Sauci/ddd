@@ -43,11 +43,16 @@ def declare(
     # kind and volatile are required on a definition; a test that does not care is declaring a
     # non-volatile measurement, so both are filled in here and overridden by whatever the
     # caller passes in **definition. A test *about* a missing key writes its json by hand.
+    storage: dict[str, Any] = (
+        {}
+        if "typename" in definition
+        else {"datatype": datatype, "conversion": {"kind": "identity"}}
+    )
     entry: dict[str, Any] = {
         "scope": scope,
         "definition": {
             "name": name,
-            "datatype": datatype,
+            **storage,
             "kind": "measurement",
             "volatile": False,
             **definition,

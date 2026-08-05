@@ -11,6 +11,9 @@
           "kind": "measurement",
           "description": "Value shared between components",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "unit": "%",
           "volatile": false
         }
@@ -22,6 +25,9 @@
           "kind": "measurement",
           "description": "Nobody produces this one",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       },
@@ -31,6 +37,9 @@
           "name": "Scratch",
           "kind": "measurement",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       }

@@ -213,6 +213,7 @@ class TestModelEdges:
                     "kind": "measurement",
                     "name": "X",
                     "datatype": "uint8",
+                    "conversion": {},
                     "volatile": False,
                     "dimensions": [2, 2],
                     "init": [1, [2, 3]],

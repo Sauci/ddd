@@ -12,7 +12,9 @@
           "description": "Unconditioned reading of the inlet sensor",
           "datatype": "uint16",
           "unit": "degC",
-          "conversion": { "factor": 0.1 },
+          "conversion": {
+            "factor": 0.1
+          },
           "volatile": false
         }
       },
@@ -24,8 +26,13 @@
           "description": "Filtered inlet temperature",
           "datatype": "sint16",
           "unit": "degC",
-          "conversion": { "factor": 0.1 },
-          "limits": { "min": -40, "max": 150 },
+          "conversion": {
+            "factor": 0.1
+          },
+          "limits": {
+            "min": -40,
+            "max": 150
+          },
           "volatile": false
         }
       },
@@ -36,6 +43,9 @@
           "kind": "measurement",
           "description": "The inlet reading is plausible",
           "datatype": "boolean",
+          "conversion": {
+            "kind": "identity"
+          },
           "init": false,
           "volatile": false
         }
@@ -47,6 +57,9 @@
           "kind": "measurement",
           "description": "Number of implausible readings seen so far",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "init": 0,
           "volatile": false
         }
@@ -58,6 +71,9 @@
           "name": "par_InletFilterConstant",
           "description": "Time constant of the inlet filter",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "unit": "ms",
           "init": 100,
           "volatile": false
@@ -71,10 +87,17 @@
           "description": "Break points of the inlet compensation",
           "datatype": "sint16",
           "unit": "degC",
-          "conversion": { "factor": 0.1 },
+          "conversion": {
+            "factor": 0.1
+          },
           "size": 4,
           "input": "val_InletTemperature_flt",
-          "init": [-400, 0, 400, 1200],
+          "init": [
+            -400,
+            0,
+            400,
+            1200
+          ],
           "volatile": false
         }
       },
@@ -86,9 +109,16 @@
           "description": "Correction applied over the inlet temperature",
           "datatype": "sint8",
           "unit": "%",
-          "conversion": { "factor": 0.5 },
+          "conversion": {
+            "factor": 0.5
+          },
           "axis": "axs_InletTemperature",
-          "init": [-20, 0, 10, 24],
+          "init": [
+            -20,
+            0,
+            10,
+            24
+          ],
           "volatile": false
         }
       }

@@ -10,6 +10,47 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### A `datatype` states its `conversion`, and the two spellings of a no-op stay two
+
+**Breaking.**  `conversion` used to default to the identity.  It is required now wherever
+storage is named by `datatype` - on a definition, on a structure member, on a scalar type -
+for the reason `volatile` and `kind` are required: raw equalling physical is an engineering
+claim, and a forgotten scaling on a fixed point value displays raw counts without anything
+looking broken.  A definition that says nothing no longer loads:
+
+```text
+a.ddd.json#component.interface[0].definition: error[schema]: Value error, a 'datatype' comes with a 'conversion': the identity ({"kind": "identity"}) is an answer to state, not a default to fall into
+```
+
+A declaration naming a `typename` still states none - the type fixes it.  Also written down
+while we are at it: `linear` with `factor` 1 and `offset` 0 is *not* the identity;
+conversions compare as written, and the a2l carries what was written (`RAT_FUNC` against
+`IDENTICAL`).
+
+### Base and declared storage are two keys: `datatype` and `typename`
+
+**Breaking.**  `datatype` used to accept the name of a declared type as well as the eleven
+base datatypes, and the ambiguity was paid for with a lookalike rule.  It is one of the
+eleven again, and a declared type is named by the new key `typename` - exactly one of the
+two on every definition and on every structure member:
+
+```json
+{ "kind": "measurement", "name": "Inlet", "typename": "Sensor_t", "volatile": true }
+```
+
+The published schema says `datatype` is eleven values again, so an editor completes exactly
+them and a mistyped base datatype is refused as it is typed.  A `typename` spelling a base
+datatype in any case (`UINT16`) is refused; any other name is just a name - `Int16_t` is
+unambiguous now, the key already saying it is declared - so the storage-stem lookalike rule
+retires.  A file naming a type under `datatype` no longer loads:
+
+```text
+a.ddd.json#component.interface[0].definition.datatype: error[schema]: Input should be 'boolean', 'uint8', 'sint8', 'uint16', 'sint16', 'uint32', 'sint32', 'uint64', 'sint64', 'float32' or 'float64' (got: 'Sensor_t')
+```
+
+The `unknown-type` finding moves with the key, to `definition.typename`.  The data
+dictionary is untouched: it records resolved storage, and its `format` stays 2.
+
 ### The component's list of declarations is the `interface`, and it is required
 
 **Breaking.**  The key ``declarations`` read as the C declarations it is not, so it is named

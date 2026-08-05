@@ -25,12 +25,15 @@ from ddd.loading import load_workspace
 
 
 def val(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    return {"name": name, "member": "value", "datatype": datatype, **extra}
+    storage: dict[str, Any] = (
+        {} if "typename" in extra else {"datatype": datatype, "conversion": {"kind": "identity"}}
+    )
+    return {"name": name, "member": "value", **storage, **extra}
 
 
 def nest(name: str, type_name: str) -> dict[str, Any]:
     """A member that nests another structure, which is a value member naming it."""
-    return val(name, type_name)
+    return val(name, typename=type_name)
 
 
 def struct(name: str, *members: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +41,8 @@ def struct(name: str, *members: dict[str, Any]) -> dict[str, Any]:
 
 
 def scalar(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
-    return {"type": "scalar", "name": name, "datatype": datatype, **extra}
+    meaning: dict[str, Any] = {} if "conversion" in extra else {"conversion": {"kind": "identity"}}
+    return {"type": "scalar", "name": name, "datatype": datatype, **meaning, **extra}
 
 
 def types(*entries: dict[str, Any]) -> dict[str, Any]:
@@ -222,7 +226,7 @@ class TestNamingAType:
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(*entries),
                 "a.ddd.json": component(
-                    "A", declare("local", "X", **{"datatype": "Speed_t", **definition})
+                    "A", declare("local", "X", **{"typename": "Speed_t", **definition})
                 ),
             },
         )
@@ -248,8 +252,8 @@ class TestNamingAType:
                         limits={"min": 0, "max": 8000},
                     )
                 ),
-                "a.ddd.json": component("A", declare("output", "EngSpd", datatype="Speed_t")),
-                "b.ddd.json": component("B", declare("input", "EngSpd", datatype="Speed_t")),
+                "a.ddd.json": component("A", declare("output", "EngSpd", typename="Speed_t")),
+                "b.ddd.json": component("B", declare("input", "EngSpd", typename="Speed_t")),
             },
         )
         assert findings(bag) == []
@@ -276,13 +280,13 @@ class TestNamingAType:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json"),
-                "a.ddd.json": component("A", declare("local", "X", datatype="Nowhere_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Nowhere_t")),
             },
         )
         assert findings(bag) == ["unknown-type"]
         rendered = first(bag).render()
         assert "neither a base datatype nor a type" in rendered
-        assert "a.ddd.json#component.interface[0].definition.datatype" in rendered
+        assert "a.ddd.json#component.interface[0].definition.typename" in rendered
 
     def test_restating_what_the_type_fixes_is_refused_by_the_contract(self, tree: Path) -> None:
         """An error rather than an override, so there is one answer to where a unit is written.
@@ -301,7 +305,7 @@ class TestNamingAType:
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
                 "types.ddd.json": types(
-                    scalar("Speed_t", "uint16"), struct("S_t", val("v", "Speed_t"))
+                    scalar("Speed_t", "uint16"), struct("S_t", val("v", typename="Speed_t"))
                 ),
             },
         )
@@ -314,7 +318,7 @@ class TestNamingAType:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(struct("Speed_t", val("raw", "uint16", unit="rpm"))),
-                "a.ddd.json": component("A", declare("local", "X", datatype="Speed_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Speed_t")),
             },
         )
         assert findings(bag) == []
@@ -327,21 +331,20 @@ class TestNamingAType:
         assert leaf.unit == "rpm"
 
 
-class TestATypeNameCannotBeADatatypeInDisguise:
-    """The protection that pays for one key naming both.
+class TestBaseAndDeclaredNamesAreKeptApart:
+    """What the two storage keys buy.
 
-    ``datatype`` accepting a declared name means a mistyped base datatype is a well formed
-    *name*, which would otherwise reach the editor as valid and the reader as a variable with
-    storage nobody meant. Two layers answer it: the contract refuses a word that is a storage
-    stem with the digits wrong, and the check suggests the nearest name for everything else.
+    ``datatype`` is one of eleven values, so a mistyped base datatype dies in the contract as
+    it is typed; ``typename`` refuses a name spelling a base datatype in any case, so a type
+    cannot wear the name of storage it is not; and a name that merely dresses like one -
+    ``Int16_t`` - is unambiguous, because the key already says it is declared.
     """
 
     def test_a_mistyped_base_datatype_is_refused_by_the_contract(self, tree: Path) -> None:
         """Refused where it is typed rather than reported a build later.
 
-        Under a plain identifier rule ``uint166`` is a name like any other, so the editor would
-        accept it and the run would report a type nobody declares - true, and much later than
-        the moment it could have been caught.
+        ``uint166`` under ``datatype`` is not one of the eleven, so the editor refuses it as
+        it is written instead of a check reporting a type nobody declares a build later.
         """
         _, bag = run_analysis(
             tree,
@@ -354,6 +357,54 @@ class TestATypeNameCannotBeADatatypeInDisguise:
         rendered = first(bag).render()
         assert "a.ddd.json#component.interface[0].definition.datatype" in rendered
         assert "Input should be" in rendered
+
+    def test_a_typename_spelling_a_base_datatype_is_refused(self, tree: Path) -> None:
+        """In any case: a type called ``UINT16`` reads as storage it is not."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", typename="UINT16")),
+            },
+        )
+        assert findings(bag) == ["schema"]
+        assert "spells a base datatype" in first(bag).render()
+
+    def test_storage_is_named_exactly_once_on_a_definition(self, tree: Path) -> None:
+        """Both keys at once is a contradiction, refused where it is written."""
+        definition = {
+            "name": "X",
+            "kind": "measurement",
+            "volatile": False,
+            "datatype": "uint8",
+            "typename": "S_t",
+        }
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": {
+                    "component": {
+                        "name": "A",
+                        "interface": [{"scope": "local", "definition": definition}],
+                    }
+                },
+            },
+        )
+        assert findings(bag) == ["schema"]
+        assert "storage is named exactly once" in first(bag).render()
+
+    def test_a_name_dressed_like_a_datatype_is_just_a_name(self, tree: Path) -> None:
+        """``Int16_t`` under ``typename`` is unambiguous: the key says it is declared."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "types.ddd.json"),
+                "types.ddd.json": types(scalar("Int16_t", "sint16")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Int16_t")),
+            },
+        )
+        assert findings(bag) == []
 
     def test_the_eleven_ways_to_fail_at_one_key_are_one_finding(self, tree: Path) -> None:
         """A union that is not discriminated fails once per branch; a reader wants it once.
@@ -392,7 +443,7 @@ class TestATypeNameCannotBeADatatypeInDisguise:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json"),
-                "a.ddd.json": component("A", declare("local", "X", datatype="unit16")),
+                "a.ddd.json": component("A", declare("local", "X", typename="unit16")),
             },
         )
         assert findings(bag) == ["unknown-type"]
@@ -405,7 +456,7 @@ class TestATypeNameCannotBeADatatypeInDisguise:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(scalar("Speed_t", "uint16", unit="rpm")),
-                "a.ddd.json": component("A", declare("local", "X", datatype="Sped_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Sped_t")),
             },
         )
         assert findings(bag) == ["unknown-type"]
@@ -417,7 +468,7 @@ class TestATypeNameCannotBeADatatypeInDisguise:
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json"),
-                "a.ddd.json": component("A", declare("local", "X", datatype="Quantity")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Quantity")),
             },
         )
         assert findings(bag) == ["unknown-type"]
@@ -434,7 +485,7 @@ class TestDeclaringAStructure:
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(*entries),
                 "a.ddd.json": component(
-                    "A", declare("local", "X", **{"datatype": "S_t", **definition})
+                    "A", declare("local", "X", **{"typename": "S_t", **definition})
                 ),
             },
         )
@@ -455,7 +506,7 @@ class TestDeclaringAStructure:
 
     def test_a_nested_structure_lengthens_the_path(self, tree: Path) -> None:
         dictionary, bag = self.resolve(
-            tree, struct("Inner_t", val("v")), struct("S_t", val("inner", "Inner_t"))
+            tree, struct("Inner_t", val("v")), struct("S_t", val("inner", typename="Inner_t"))
         )
         assert findings(bag) == []
         assert dictionary is not None
@@ -472,7 +523,9 @@ class TestDeclaringAStructure:
             tree,
             struct("Inner_t", val("v")),
             struct(
-                "S_t", val("cell", "Inner_t", dimensions=[2]), val("flat", "uint8", dimensions=[4])
+                "S_t",
+                val("cell", typename="Inner_t", dimensions=[2]),
+                val("flat", "uint8", dimensions=[4]),
             ),
         )
         assert findings(bag) == []
@@ -491,7 +544,7 @@ class TestDeclaringAStructure:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(struct("S_t", val("v"))),
-                "a.ddd.json": component("A", declare("local", "X", datatype="S_t", dimensions=[2])),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t", dimensions=[2])),
             },
         )
         assert findings(bag) == []
@@ -502,7 +555,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree,
             scalar("Speed_t", "uint16", unit="rpm", conversion={"factor": 0.25}),
-            struct("S_t", val("engine", "Speed_t")),
+            struct("S_t", val("engine", typename="Speed_t")),
         )
         assert findings(bag) == []
         assert dictionary is not None
@@ -515,7 +568,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree,
             scalar("Speed_t", "uint16", unit="rpm", limits={"min": 0, "max": 8000}),
-            struct("S_t", val("engine", "Speed_t")),
+            struct("S_t", val("engine", typename="Speed_t")),
         )
         assert findings(bag) == []
         assert dictionary is not None
@@ -527,7 +580,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree,
             scalar("Speed_t", "uint8", unit="rpm"),
-            struct("S_t", val("engine", "Speed_t")),
+            struct("S_t", val("engine", typename="Speed_t")),
         )
         assert findings(bag) == []
         assert dictionary is not None
@@ -562,8 +615,8 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree,
             struct("Status_t", val("flag", "uint8")),
-            struct("Sensor_t", val("status", "Status_t")),
-            struct("S_t", val("sensor", "Sensor_t")),
+            struct("Sensor_t", val("status", typename="Status_t")),
+            struct("S_t", val("sensor", typename="Sensor_t")),
         )
         assert findings(bag) == []
         assert dictionary is not None
@@ -599,8 +652,8 @@ class TestDeclaringAStructure:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
                 "types.ddd.json": types(struct("A_t", val("v")), struct("B_t", val("v"))),
-                "a.ddd.json": component("A", declare("output", "X", datatype="A_t")),
-                "b.ddd.json": component("B", declare("input", "X", datatype="B_t")),
+                "a.ddd.json": component("A", declare("output", "X", typename="A_t")),
+                "b.ddd.json": component("B", declare("input", "X", typename="B_t")),
             },
         )
         assert "definition-mismatch" in findings(bag)
@@ -616,7 +669,7 @@ class TestGeneratingAStructure:
             "types.ddd.json": types(*entries),
             "a.ddd.json": component(
                 "A",
-                declare("local", "X", **{"datatype": "S_t", **definition}),
+                declare("local", "X", **{"typename": "S_t", **definition}),
                 description="a component",
             ),
         }
@@ -633,7 +686,8 @@ class TestGeneratingAStructure:
                 "S_t",
                 val("plain", "uint16"),
                 val("table", "uint8", dimensions=[4]),
-                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1},
+                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1,
+                 "conversion": {}},
             ),
         )
         header = files["ddd_types.h"]
@@ -648,7 +702,9 @@ class TestGeneratingAStructure:
     def test_a_nested_structure_is_declared_before_the_one_that_holds_it(self, tree: Path) -> None:
         """c needs it complete first, and the name order would have put it second."""
         files = self.render(
-            tree, struct("Status_t", val("f", "uint8")), struct("S_t", val("status", "Status_t"))
+            tree,
+            struct("Status_t", val("f", "uint8")),
+            struct("S_t", val("status", typename="Status_t")),
         )
         header = files["ddd_types.h"]
         assert header.index("} Status_t;") < header.index("Status_t status;")
@@ -672,7 +728,7 @@ class TestGeneratingAStructure:
         files = self.render(
             tree,
             struct("Inner_t", val("v", "uint16", unit="degC")),
-            struct("S_t", val("inner", "Inner_t"), val("table", "uint8", dimensions=[4])),
+            struct("S_t", val("inner", typename="Inner_t"), val("table", "uint8", dimensions=[4])),
         )
         content = files["Device.a2l"]
         assert "/begin MEASUREMENT X.inner.v" in content
@@ -706,7 +762,8 @@ class TestGeneratingAStructure:
             struct(
                 "S_t",
                 val("plain", "uint16"),
-                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1},
+                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1,
+                 "conversion": {}},
             ),
         )
         content = files["Device.a2l"]
@@ -733,7 +790,7 @@ class TestGeneratingAStructure:
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(struct("S_t", val("v"))),
-                "a.ddd.json": component("A", declare("output", "X", datatype="S_t")),
+                "a.ddd.json": component("A", declare("output", "X", typename="S_t")),
             },
         )
         assert findings(bag) == ["unused-output"]
@@ -802,7 +859,7 @@ class TestStructuresReachEverythingElse:
                         },
                     )
                 ),
-                "a.ddd.json": component("A", declare("local", "X", datatype="S_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
 

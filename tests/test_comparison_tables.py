@@ -48,6 +48,9 @@ DERIVED_AS: dict[str, str] = {
     "axis": "references",
     "x_axis": "references",
     "y_axis": "references",
+    # The datatype comparison reads whichever of the two storage keys is stated, so a
+    # declaration naming a structure disagrees with one spelling a base datatype.
+    "typename": "datatype",
 }
 
 # Fields that are deliberately not compared, and the reason.
@@ -230,5 +233,7 @@ class TestComparisonTables:
         assert "shape" in table_names(analysis._INTERFACE_FIELDS)
         assert "shape" in table_names(compare._INTERFACE_FIELDS)
         declared = next(f for f in analysis._INTERFACE_FIELDS if f.name == "shape")
-        curve = Curve(kind="curve", name="C", datatype="uint8", axis="Ax", volatile=False)
+        curve = Curve(
+            kind="curve", name="C", datatype="uint8", conversion={}, axis="Ax", volatile=False
+        )
         assert declared.value(curve) is None  # not known yet, it comes from the axis

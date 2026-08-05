@@ -48,6 +48,7 @@ from ddd.models import definition_keys
 PROPAGATED_KEYS: Final = frozenset(
     {
         "datatype",
+        "typename",
         "unit",
         "conversion",
         "limits",

@@ -115,7 +115,7 @@ def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> s
     """What a structured variable is: the type it names, and what that type holds.
 
     The members are the whole point of hovering one. The file under the cursor says
-    ``"datatype": "Sensor_t"`` and nothing else; what a reader wants is what is inside it,
+    ``"typename": "Sensor_t"`` and nothing else; what a reader wants is what is inside it,
     which lives in another file - and, for each member, the unit and limits the project worked
     out rather than the ones anybody wrote down.
     """

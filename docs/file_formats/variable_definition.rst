@@ -51,9 +51,14 @@ rather than ignored.
        ``curve`` or ``map``. It is stated rather than inferred, and it decides which of the
        kind specific keys the definition may carry.
    * - ``datatype``
-     - required
+     - one of the two
      - The storage the target uses: ``boolean``, ``uint8``, ``sint8``, ``uint16``, ``sint16``,
-       ``uint32``, ``sint32``, ``uint64``, ``sint64``, ``float32`` or ``float64``.
+       ``uint32``, ``sint32``, ``uint64``, ``sint64``, ``float32`` or ``float64``. Exactly one
+       of ``datatype`` and ``typename`` is stated.
+   * - ``typename``
+     - one of the two
+     - The name of a :doc:`declared type <types>`, stated instead of ``datatype``: a scalar
+       type fixes what the value means, a structure makes this a structured variable.
    * - ``volatile``
      - required
      - Whether the generated declaration carries the c qualifier of the same name, which
@@ -87,8 +92,11 @@ rather than ignored.
        have to agree on it, because two components using the same variable in different units
        is the failure that compiles and links and is wrong by a constant factor.
    * - ``conversion``
-     - identity
-     - How the stored number maps to the physical one; see :doc:`conversions`.
+     - required beside ``datatype``
+     - How the stored number maps to the physical one; see :doc:`conversions`. Required
+       although the identity would be derivable - that it is derivable is why it is asked
+       for - and stated by the :doc:`declared type <types>` instead when ``typename`` names
+       one.
    * - ``limits``
      - derived
      - An object with ``min`` and ``max``, in **physical** units. When it is left out, DDD
@@ -102,12 +110,12 @@ rather than ignored.
      - export
      - Per object settings for the a2l backend, and nothing else reads them.
 
-Four of those are required, and none of them is something DDD could invent a value for, so
-the simplest possible definition still says four things:
+Five of those are required, and none of them is something DDD should invent a value for,
+so the simplest possible definition still says five things:
 
 .. code-block:: json
 
-   { "name": "Counter", "kind": "measurement", "datatype": "uint32", "volatile": false }
+   { "name": "Counter", "kind": "measurement", "datatype": "uint32", "conversion": {}, "volatile": false }
 
 .. note::
    ``limits`` and ``init`` are on different sides of the conversion, and that is not an
@@ -562,6 +570,7 @@ mask table, a set of coefficients, a lookup with an index the software computes 
        "name": "BlockA",
        "description": "Calibratable array of constants",
        "datatype": "uint8",
+       "conversion": { "kind": "identity" },
        "dimensions": [8],
        "init": [0, 12, 28, 52, 84, 124, 180, 255],
        "volatile": false

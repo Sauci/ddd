@@ -12,7 +12,9 @@
           "description": "Value shared between components",
           "datatype": "sint16",
           "unit": "%",
-          "conversion": { "factor": 0.5 },
+          "conversion": {
+            "factor": 0.5
+          },
           "volatile": false
         }
       },
@@ -22,6 +24,9 @@
           "name": "UnusedSignal",
           "kind": "measurement",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       },
@@ -31,6 +36,9 @@
           "name": "Scratch",
           "kind": "measurement",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       }

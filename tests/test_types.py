@@ -29,11 +29,17 @@ from ddd.models import (
 
 
 def value(name: str = "Speed", **extra: Any) -> dict[str, Any]:
-    return {"name": name, "member": "value", "datatype": "uint16", **extra}
+    storage: dict[str, Any] = (
+        {} if "typename" in extra else {"datatype": "uint16", "conversion": {"kind": "identity"}}
+    )
+    return {"name": name, "member": "value", **storage, **extra}
 
 
 def bits(name: str = "Ready", **extra: Any) -> dict[str, Any]:
-    return {"name": name, "member": "bits", "datatype": "uint16", "bits": 1, **extra}
+    storage: dict[str, Any] = (
+        {} if "typename" in extra else {"datatype": "uint16", "conversion": {"kind": "identity"}}
+    )
+    return {"name": name, "member": "bits", **storage, "bits": 1, **extra}
 
 
 def structure(*members: dict[str, Any], name: str = "Engine_t", **extra: Any) -> dict[str, Any]:
@@ -41,7 +47,8 @@ def structure(*members: dict[str, Any], name: str = "Engine_t", **extra: Any) ->
 
 
 def scalar(name: str = "Speed_t", **extra: Any) -> dict[str, Any]:
-    return {"type": "scalar", "name": name, "datatype": "uint16", **extra}
+    meaning: dict[str, Any] = {} if "conversion" in extra else {"conversion": {"kind": "identity"}}
+    return {"type": "scalar", "name": name, "datatype": "uint16", **meaning, **extra}
 
 
 class TestMemberShape:
@@ -61,7 +68,7 @@ class TestMemberShape:
     def test_a_structure_is_no_longer_a_shape_of_its_own(self) -> None:
         """Nesting is a ``value`` naming the structure: one key names a type, everywhere."""
         with pytest.raises(ValidationError, match="Input should be 'value' or 'bits'"):
-            Member.model_validate({"name": "Inner", "member": "struct", "datatype": "Sample_t"})
+            Member.model_validate({"name": "Inner", "member": "struct", "typename": "Sample_t"})
 
     def test_a_member_states_no_storage_class(self) -> None:
         """``const`` qualifies a whole c object, so the declaration decides, not half a struct."""
@@ -108,7 +115,7 @@ class TestMemberShape:
         """The same rule as on a declaration, so one question has one answer in both places."""
         stated = {"unit": "rpm", "conversion": {"factor": 0.5}, "limits": {"min": 0, "max": 1}}
         with pytest.raises(ValidationError, match="already fixes what this value means"):
-            Member.model_validate(value(datatype="Speed_t", **{key: stated[key]}))
+            Member.model_validate(value(typename="Speed_t", **{key: stated[key]}))
 
     def test_the_limits_of_a_bitfield_come_from_its_width(self) -> None:
         """Not from the storage carrying it, which is the whole point of stating a width.
@@ -117,7 +124,7 @@ class TestMemberShape:
         value the field cannot hold, and the software then reads back something else.
         """
         member = Member.model_validate(
-            {"name": "mode", "member": "bits", "datatype": "uint16", "bits": 2}
+            {"name": "mode", "member": "bits", "datatype": "uint16", "bits": 2, "conversion": {}}
         )
         assert member.physical_limits().as_tuple() == (0, 3)
 
@@ -147,17 +154,28 @@ class TestValueMember:
     def test_an_array(self) -> None:
         assert Member.model_validate(value(dimensions=[2, 3])).dimensions == (2, 3)
 
-    def test_a_nested_structure_is_a_value_whose_datatype_names_it(self) -> None:
-        """There is no second key beside ``datatype``, so nesting needs no shape of its own."""
-        member = Member.model_validate(value("latest", datatype="Sample_t"))
+    def test_a_nested_structure_is_a_value_whose_typename_names_it(self) -> None:
+        """Nesting needs no shape of its own: naming a structure is what nests it."""
+        member = Member.model_validate(value("latest", typename="Sample_t"))
         assert member.member is MemberKind.VALUE
-        assert member.datatype == "Sample_t"
+        assert member.datatype is None
+        assert member.typename == "Sample_t"
 
-    def test_a_datatype_is_required(self) -> None:
+    def test_the_conversion_is_required_beside_a_datatype(self) -> None:
+        """The same rule as on a definition: the identity is an answer, not a default."""
+        payload = value()
+        del payload["conversion"]
+        with pytest.raises(ValidationError, match="comes with a 'conversion'"):
+            Member.model_validate(payload)
+
+    def test_storage_is_named_exactly_once(self) -> None:
+        """Neither key is a silence to interpret, and both at once is a contradiction."""
         payload = value()
         del payload["datatype"]
-        with pytest.raises(ValidationError, match="Field required"):
+        with pytest.raises(ValidationError, match="storage is named exactly once"):
             Member.model_validate(payload)
+        with pytest.raises(ValidationError, match="storage is named exactly once"):
+            Member.model_validate(value(typename="Sample_t", datatype="uint16"))
 
     def test_it_has_no_bits(self) -> None:
         """A width quietly ignored would generate a full width member and move every offset."""
@@ -206,7 +224,7 @@ class TestBitsMember:
         """A bitfield has no room for a structure, and a scalar type would carry limits the
         width contradicts."""
         with pytest.raises(ValidationError, match="got the declared type 'Flags_t'"):
-            Member.model_validate(bits(datatype="Flags_t", bits=2))
+            Member.model_validate(bits(typename="Flags_t", bits=2))
 
     def test_a_width_of_zero_is_refused(self) -> None:
         """A zero width field is a c alignment device, not a variable anybody addresses."""
@@ -215,18 +233,17 @@ class TestBitsMember:
 
 
 class TestDatatypeReference:
-    """``datatype`` accepts a base datatype or the name of a declared type, and nothing else."""
+    """``datatype`` is one of the eleven, ``typename`` a declared name - never mixed."""
 
     @pytest.mark.parametrize("name", ["boolean", "uint8", "sint16", "uint64", "float32"])
     def test_a_base_name_is_the_datatype(self, name: str) -> None:
-        """Left to right, so ``uint16`` is the datatype rather than a type named after it."""
         assert Member.model_validate(value(datatype=name)).datatype is Datatype(name)
 
     def test_a_declared_name_stays_a_name(self) -> None:
         """Nothing here can resolve it: the type it names may be declared in another file."""
-        datatype = Member.model_validate(value(datatype="Sample_t")).datatype
-        assert not isinstance(datatype, Datatype)
-        assert datatype == "Sample_t"
+        member = Member.model_validate(value(typename="Sample_t"))
+        assert member.datatype is None
+        assert member.typename == "Sample_t"
 
     def test_an_empty_name_is_neither(self) -> None:
         with pytest.raises(ValidationError):

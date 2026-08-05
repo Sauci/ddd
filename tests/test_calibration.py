@@ -25,7 +25,10 @@ DEFINITION = TypeAdapter(AnyDataObject)
 
 def payload(**extra: Any) -> dict[str, Any]:
     """A definition with the keys every kind requires, plus whatever the test is about."""
-    return {"name": "X", "datatype": "uint8", "volatile": False, **extra}
+    storage: dict[str, Any] = (
+        {} if "typename" in extra else {"datatype": "uint8", "conversion": {}}
+    )
+    return {"name": "X", **storage, "volatile": False, **extra}
 
 
 def axis(name: str = "Ax", size: int = 3, **extra: Any) -> dict[str, Any]:
@@ -121,7 +124,7 @@ class TestContract:
         so a definition that says nothing is a question nobody has answered rather than a
         definition that means false.
         """
-        written = {"name": "X", "datatype": "uint8", **extra}
+        written = {"name": "X", "datatype": "uint8", "conversion": {}, **extra}
         with pytest.raises(ValidationError, match="volatile"):
             DEFINITION.validate_python(written)
         assert DEFINITION.validate_python({**written, "volatile": False}).volatile is False
@@ -129,9 +132,11 @@ class TestContract:
     @pytest.mark.parametrize(
         ("kind", "required"),
         [
-            ("measurement", {"name", "datatype", "kind", "volatile"}),
-            ("value_block", {"name", "datatype", "kind", "volatile", "dimensions"}),
-            ("curve", {"name", "datatype", "kind", "volatile", "axis"}),
+            # ``datatype`` is not in the sets: since ``typename`` may stand in for it, the
+            # model cannot call either one required - the exactly-once rule is a validator.
+            ("measurement", {"name", "kind", "volatile"}),
+            ("value_block", {"name", "kind", "volatile", "dimensions"}),
+            ("curve", {"name", "kind", "volatile", "axis"}),
         ],
     )
     def test_the_keys_of_a_kind_are_derived_from_its_model(

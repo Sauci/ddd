@@ -5,16 +5,16 @@ number means.  It is a file of its own rather than a section of a component, bec
 usually shared: the point of declaring ``Engine_t`` once is that two components can agree on it
 without either owning it.
 
-**One key names a type, everywhere.**  ``datatype`` accepts one of the base datatypes or the
-name of a type declared here, on a structure member and on a component declaration alike.
-There is no second key beside it: a ``type`` key would have to mean "the name of a declared
-type" in those two places and "which shape this entry has" at the top of an entry here, and one
-key with one meaning is worth what it costs.
+**Two keys name the storage, everywhere.**  ``datatype`` is one of the base datatypes and
+nothing else; ``typename`` is the name of a type declared here.  Exactly one of the two is
+stated, on a structure member and on a component declaration alike, so that the published
+schema keeps ``datatype`` at eleven values and a reader tells base from declared at the use
+site.
 
 What a structure member may be is deliberately narrow, and the boundary is layout:
 
-* a **value** member is a datatype - base or declared - optionally an array,
-* a **bits** member is an integer datatype and a width in bits, which is a c bitfield.
+* a **value** member is a base ``datatype`` or a declared ``typename``, optionally an array,
+* a **bits** member is a base integer datatype and a width in bits, which is a c bitfield.
 
 A member states no storage class.  Whether an object is measured or calibrated qualifies the
 whole c object - ``const`` cannot apply to half a structure - so it is the *declaration* that
@@ -46,8 +46,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
-from ddd.models.common import Datatype, DatatypeRef, FileRoot, Identifier, Number, TypeName
-from ddd.models.conversion import IDENTITY, Conversion, physical_range
+from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
+from ddd.models.conversion import Conversion, physical_range
 from ddd.models.objects import A2lObjectOptions, Limits, ObjectKind, refuse_restating
 
 BITS_PER_BYTE = 8
@@ -91,7 +91,7 @@ class Member(BaseModel):
     member: MemberKind
     """Which shape this member has, and with it which other keys the member may carry.
 
-    * ``value`` needs ``datatype`` and may add ``dimensions``,
+    * ``value`` needs ``datatype`` or ``typename`` and may add ``dimensions``,
     * ``bits`` needs ``datatype`` and ``bits``.
 
     A key belonging to the other shape is refused rather than ignored: ``bits`` together with
@@ -102,11 +102,17 @@ class Member(BaseModel):
     description: str = ""
     """Free text describing the member, offered to the c templates."""
 
-    datatype: DatatypeRef
-    """Storage of this member: a base datatype, or the name of a declared type.
+    datatype: Datatype | None = None
+    """Storage of this member, one of the eleven base datatypes.
+
+    Exactly one of ``datatype`` and ``typename`` is stated, here exactly as on a declaration.
+    """
+
+    typename: TypeName | None = None
+    """Name of a declared type, stated instead of ``datatype``.
 
     A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what
-    its number means.  A ``bits`` member has to name a base integer datatype: a bitfield has no
+    its number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no
     room for a structure, and a scalar type would carry limits the width contradicts.
     """
 
@@ -132,8 +138,12 @@ class Member(BaseModel):
     names it, across every component of the project.
     """
 
-    conversion: Conversion = IDENTITY
-    """How this member's raw value maps to a physical one: identity, linear or an enumeration."""
+    conversion: Conversion | None = None
+    """How this member's raw value maps to a physical one: identity, linear or an enumeration.
+
+    Required on a member whose storage is a base ``datatype``, exactly as on a definition;
+    a member naming a scalar ``typename`` states none, the type fixing it.
+    """
 
     limits: Limits | None = None
     """Physical limits of this member; derived from its storage and conversion if omitted.
@@ -155,7 +165,8 @@ class Member(BaseModel):
         """Stated limits, or the range this member's storage and conversion imply."""
         if self.limits is not None:
             return self.limits
-        assert isinstance(self.datatype, Datatype)
+        assert self.datatype is not None
+        assert self.conversion is not None
         raw = (
             bitfield_range(self.datatype, self.bits)
             if self.bits is not None
@@ -165,8 +176,29 @@ class Member(BaseModel):
         return Limits(min=low, max=high)
 
     @model_validator(mode="after")
+    def _storage_is_named_exactly_once(self) -> Member:
+        if (self.datatype is None) == (self.typename is None):
+            msg = (
+                "storage is named exactly once: 'datatype' for a base datatype, 'typename' "
+                "for a type the project declares"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _base_storage_states_its_conversion(self) -> Member:
+        if self.datatype is not None and self.conversion is None:
+            msg = (
+                "a 'datatype' comes with a 'conversion': the identity "
+                '({"kind": "identity"}) is an answer to state, not a default to fall into'
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _a_named_type_is_not_restated(self) -> Member:
-        refuse_restating(self.datatype, self.model_fields_set)
+        if self.typename is not None:
+            refuse_restating(self.typename, self.model_fields_set)
         return self
 
     @model_validator(mode="after")
@@ -199,12 +231,13 @@ class Member(BaseModel):
         """
         if self.bits is None:
             return self
-        if not isinstance(self.datatype, Datatype):
+        if self.typename is not None:
             msg = (
                 f"a bitfield needs a base integer datatype, got the declared type "
-                f"'{self.datatype}'; only an integer can carry one in c"
+                f"'{self.typename}'; only an integer can carry one in c"
             )
             raise ValueError(msg)
+        assert self.datatype is not None
         if not self.datatype.is_integer:
             msg = (
                 f"a bitfield needs an integer datatype, got '{self.datatype.value}'; only an "
@@ -292,8 +325,12 @@ class ScalarType(BaseModel):
     unit: str = ""
     """Physical unit of the value, e.g. ``"rpm"``."""
 
-    conversion: Conversion = IDENTITY
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration."""
+    conversion: Conversion
+    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+
+    Required: fixing what a value means is the one job a scalar type has, and the identity
+    is part of the answer rather than a silence to interpret.
+    """
 
     limits: Limits | None = None
     """Physical limits, in the unit above; derived from datatype and conversion if omitted."""

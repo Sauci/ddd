@@ -8,7 +8,6 @@ Those mappings belong to the backend that needs them (:mod:`ddd.backends.c.types
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Final
@@ -183,38 +182,34 @@ _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
 }
 
 
-_STORAGE_STEM: Final = r"(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)"
+_BASE_DATATYPE_NAMES: Final = frozenset(member.value for member in Datatype)
 
-_DATATYPE_LIKE: Final = re.compile(rf"{_STORAGE_STEM}[0-9_]*", re.IGNORECASE)
-"""A word that is nothing but a storage stem followed by digits or underscores."""
-
-TYPE_NAME_PATTERN: Final = rf"^(?!{_STORAGE_STEM}[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$"
-"""The same rule as a regular expression, for the published schema and for editors.
+TYPE_NAME_PATTERN: Final = (
+    rf"^(?!(?:{'|'.join(sorted(_BASE_DATATYPE_NAMES))})$)[A-Za-z_][A-Za-z0-9_]*$"
+)
+"""The rule for a declared type's name as a regular expression, for the published schema.
 
 Spelled twice, in two dialects, because the two consumers cannot share one: json schema
 patterns are ECMA-262, where a negative lookahead is ordinary, and the validator pydantic
 compiles has none. So the rule is enforced in python and *published* as this pattern, which an
-editor applies as the file is typed - which is the whole point of having it.
+editor applies as the file is typed - which is the whole point of having it. The pattern
+carries the exact spellings; matching without regard to case is what the schema dialect
+cannot say, so the loader says it below.
 """
 
 
-def _not_a_datatype_in_disguise(value: str) -> str:
-    """Refuse a type name that reads as an attempt at a base datatype.
+def _not_a_base_datatype(value: str) -> str:
+    """Refuse a declared type named after a base datatype, in any case.
 
-    This is what one key naming both would otherwise cost. Since ``datatype`` accepts a declared
-    name as well as a base datatype, a mistyped ``uint166`` is a perfectly well formed *name*:
-    without this it would pass the contract, reach the editor as valid, and be reported only
-    when the project was next checked. Refusing the shape puts the rejection where the typo is.
-
-    ``uint166``, ``int16``, ``float3`` and ``sint_16`` are refused; ``Int16_t``, ``intensity``,
-    ``wordCount`` and ``charge`` are not. It also means a project cannot declare a type called
-    ``uint16``, which would be a name nothing could ever refer to - written anywhere, the base
-    datatype wins the union.
+    ``typename`` and ``datatype`` are separate keys, so the tool would not be confused - but a
+    reader would: a type called ``uint16``, or ``UINT16``, wears the name of storage it is
+    not, and every declaration naming it reads like a typo. Anything else is a legal name;
+    what a project *should* call its types belongs to the project.
     """
-    if _DATATYPE_LIKE.fullmatch(value):
+    if value.lower() in _BASE_DATATYPE_NAMES:
         msg = (
-            f"'{value}' reads as a base datatype rather than as the name of a type this project "
-            f"declares; a base datatype has to be spelled as one of them exactly"
+            f"'{value}' spells a base datatype; a declared type carries a name of its own, so "
+            f"that reading a declaration tells the two apart"
         )
         raise ValueError(msg)
     return value
@@ -223,7 +218,7 @@ def _not_a_datatype_in_disguise(value: str) -> str:
 TypeName = Annotated[
     str,
     StringConstraints(pattern=C_IDENTIFIER_PATTERN, min_length=1, max_length=IDENTIFIER_MAX_LENGTH),
-    AfterValidator(_not_a_datatype_in_disguise),
+    AfterValidator(_not_a_base_datatype),
     Field(json_schema_extra={"pattern": TYPE_NAME_PATTERN}),
 ]
 """The name of a type the project declares, as written where something refers to it.
@@ -231,23 +226,6 @@ TypeName = Annotated[
 The rule lives in python rather than in the constraint so that it survives being taken apart: a
 tool that rebuilds one field on its own - the api documentation generator does exactly that -
 gets a model it can still build, and the published pattern goes along for the ride.
-"""
-
-DatatypeRef = Annotated[Datatype | TypeName, Field(union_mode="left_to_right")]
-"""What may be written where storage is named: one of the base datatypes, or a declared type.
-
-One key names a type everywhere - on a structure member and on a declaration alike - rather
-than a second key beside ``datatype``. A ``type`` key would have to mean "the name of a
-declared type" in those two places and "which shape this entry has" at the top of a type
-entry, and one key with one meaning is worth what it costs.
-
-What it costs is stated plainly, because it is the largest thing given up: the published schema
-can no longer say ``datatype`` is one of eleven values. It becomes the eleven *or* a string, so
-an editor still offers them as completions and still documents each one, but a typo in a base
-datatype name stops being refused as it is typed and becomes an ``unknown-type`` finding from
-``ddd check`` instead.
-
-Left to right, so that ``"uint16"`` is the datatype rather than a type somebody named after it.
 """
 
 

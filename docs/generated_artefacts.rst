@@ -1109,6 +1109,7 @@ business displaying:
        "kind": "measurement",
        "description": "Component local measurement, kept out of the a2l",
        "datatype": "uint16",
+       "conversion": { "kind": "identity" },
        "dimensions": [8],
        "a2l": { "export": false },
        "volatile": false

@@ -12,8 +12,14 @@
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
           "unit": "Hz",
-          "conversion": { "kind": "linear", "factor": 0.25 },
-          "limits": { "min": 0, "max": 8000 },
+          "conversion": {
+            "kind": "linear",
+            "factor": 0.25
+          },
+          "limits": {
+            "min": 0,
+            "max": 8000
+          },
           "volatile": true
         }
       },
@@ -25,8 +31,14 @@
           "description": "Signed measurement with a fixed point conversion",
           "datatype": "sint16",
           "unit": "degC",
-          "conversion": { "kind": "linear", "factor": 0.1 },
-          "limits": { "min": -40, "max": 150 },
+          "conversion": {
+            "kind": "linear",
+            "factor": 0.1
+          },
+          "limits": {
+            "min": -40,
+            "max": 150
+          },
           "volatile": false
         }
       },
@@ -37,6 +49,9 @@
           "kind": "measurement",
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
+          "conversion": {
+            "kind": "identity"
+          },
           "unit": "degC",
           "limits": {
             "min": -50,
@@ -56,11 +71,27 @@
             "kind": "enum",
             "name": "StateA_t",
             "enumerators": [
-              { "name": "STATE_OFF", "value": 0, "description": "powered but not started" },
-              { "name": "STATE_INIT", "value": 1 },
-              { "name": "STATE_ACTIVE", "value": 2 },
-              { "name": "STATE_DEGRADED", "value": 3 },
-              { "name": "STATE_FAULT", "value": 15 }
+              {
+                "name": "STATE_OFF",
+                "value": 0,
+                "description": "powered but not started"
+              },
+              {
+                "name": "STATE_INIT",
+                "value": 1
+              },
+              {
+                "name": "STATE_ACTIVE",
+                "value": 2
+              },
+              {
+                "name": "STATE_DEGRADED",
+                "value": 3
+              },
+              {
+                "name": "STATE_FAULT",
+                "value": 15
+              }
             ]
           },
           "volatile": false
@@ -74,8 +105,12 @@
           "description": "Array measurement with four elements",
           "datatype": "uint16",
           "unit": "V",
-          "dimensions": [4],
-          "conversion": { "factor": 0.001 },
+          "dimensions": [
+            4
+          ],
+          "conversion": {
+            "factor": 0.001
+          },
           "volatile": true
         }
       },
@@ -88,8 +123,13 @@
           "description": "Measurement that only exists when FEATURE_X is defined",
           "datatype": "uint16",
           "unit": "V",
-          "conversion": { "factor": 0.001 },
-          "limits": { "min": 0, "max": 5 },
+          "conversion": {
+            "factor": 0.001
+          },
+          "limits": {
+            "min": 0,
+            "max": 5
+          },
           "volatile": false
         }
       },
@@ -100,6 +140,9 @@
           "kind": "measurement",
           "description": "Counter written by the event logger",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       },
@@ -110,6 +153,9 @@
           "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          },
           "init": 0,
           "volatile": false
         }
@@ -121,8 +167,13 @@
           "name": "AxisA",
           "description": "Shared axis indexed by ValueE",
           "datatype": "uint16",
-          "conversion": { "factor": 0.25 },
-          "limits": { "min": 0, "max": 8000 },
+          "conversion": {
+            "factor": 0.25
+          },
+          "limits": {
+            "min": 0,
+            "max": 8000
+          },
           "size": 6,
           "input": "ValueE",
           "unit": "Hz",
@@ -137,7 +188,9 @@
           "description": "Second calibratable curve over the same shared axis",
           "datatype": "uint8",
           "unit": "%",
-          "conversion": { "factor": 0.5 },
+          "conversion": {
+            "factor": 0.5
+          },
           "axis": "AxisA",
           "init": 200,
           "volatile": false
@@ -150,8 +203,22 @@
           "name": "BlockA",
           "description": "Calibratable array of constants",
           "datatype": "uint8",
-          "dimensions": [8],
-          "init": [0, 12, 28, 52, 84, 124, 180, 255],
+          "conversion": {
+            "kind": "identity"
+          },
+          "dimensions": [
+            8
+          ],
+          "init": [
+            0,
+            12,
+            28,
+            52,
+            84,
+            124,
+            180,
+            255
+          ],
           "volatile": false
         }
       }

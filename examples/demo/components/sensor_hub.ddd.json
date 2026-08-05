@@ -49,6 +49,9 @@
           "kind": "measurement",
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
+          "conversion": {
+            "kind": "identity"
+          },
           "unit": "degC",
           "limits": {
             "min": -50,
@@ -64,6 +67,9 @@
           "kind": "measurement",
           "description": "Boolean measurement",
           "datatype": "boolean",
+          "conversion": {
+            "kind": "identity"
+          },
           "init": false,
           "volatile": false
         }
@@ -75,6 +81,9 @@
           "kind": "measurement",
           "description": "Component local measurement, kept out of the a2l",
           "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
           "dimensions": [
             8
           ],

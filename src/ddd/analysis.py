@@ -125,6 +125,10 @@ def _conversion_value(definition: DataObject) -> object:
     mismatch that check does not see, on declarations that generate identical code.
     """
     conversion = definition.conversion
+    if conversion is None:
+        # A structured declaration: the type carries the meaning, so there is no conversion
+        # here to disagree about, and every declaration of the object says the same nothing.
+        return None
     if isinstance(conversion, EnumConversion):
         return ("enum", conversion.name, _enum_key(conversion))
     return conversion.model_dump(mode="json")
@@ -133,10 +137,18 @@ def _conversion_value(definition: DataObject) -> object:
 # What every component sharing an object has to agree on: a disagreement is an error.
 _INTERFACE_FIELDS = (
     _ComparedField("kind", lambda d: d.kind.value, lambda d: d.kind.value),
-    _ComparedField("datatype", lambda d: str(d.datatype), lambda d: str(d.datatype)),
+    _ComparedField(
+        "datatype",
+        lambda d: str(d.datatype if d.datatype is not None else d.typename),
+        lambda d: str(d.datatype if d.datatype is not None else d.typename),
+    ),
     _ComparedField("unit", lambda d: d.unit, lambda d: f"'{d.unit}'"),
     _ComparedField("shape", lambda d: d.declared_shape, _describe_shape),
-    _ComparedField("conversion", _conversion_value, lambda d: d.conversion.describe()),
+    _ComparedField(
+        "conversion",
+        _conversion_value,
+        lambda d: d.conversion.describe() if d.conversion is not None else "none",
+    ),
     _ComparedField(
         "limits",
         lambda d: d.limits.as_tuple() if d.limits is not None else None,
@@ -351,9 +363,9 @@ def _nested_types(entry: LoadedType) -> list[tuple[int, Member, str]]:
     if structure is None:
         return []
     return [
-        (index, member, member.datatype)
+        (index, member, member.typename)
         for index, member in enumerate(structure.members)
-        if not isinstance(member.datatype, Datatype)
+        if member.typename is not None
     ]
 
 
@@ -528,19 +540,19 @@ class _Analysis:
 
     def _member_storage(self, member: Member) -> Datatype | None:
         """The base datatype a member is spelled with, or nothing when it is a structure."""
-        if isinstance(member.datatype, Datatype):
+        if member.typename is None:
             return member.datatype
-        declared = self._types.get(member.datatype)
+        declared = self._types.get(member.typename)
         entry = declared.declared if declared is not None else None
         return entry.datatype if isinstance(entry, ScalarType) else None
 
     def _member_structure(self, member: Member) -> str | None:
         """The structure a member is, or nothing when it is spelled with a datatype."""
-        if isinstance(member.datatype, Datatype):
+        if member.typename is None:
             return None
-        declared = self._types.get(member.datatype)
+        declared = self._types.get(member.typename)
         entry = declared.declared if declared is not None else None
-        return member.datatype if isinstance(entry, StructType) else None
+        return member.typename if isinstance(entry, StructType) else None
 
     def _check_types(self) -> None:
         """Every nested structure is declared, and no structure contains itself.
@@ -663,10 +675,10 @@ class _Analysis:
     def _nearest_type(self, named: str) -> str:
         """`` - did you mean 'uint16'?``, or nothing when nothing is close.
 
-        The contract already refuses a name that reads as a base datatype with a digit wrong,
-        so what reaches here is the rest: a transposition like ``unit16``, or a type name
-        somebody misremembered. Both are answered by the same question, and the project asks it
-        the same way for a name that does not fit its convention.
+        A mistyped base datatype dies in the contract - under ``datatype`` it is not one of
+        the eleven, under ``typename`` a bare base name is refused - so what reaches here is
+        the rest: a transposition like ``unit16`` written as a ``typename``, or a type name
+        somebody misremembered. Both are answered by the same question.
         """
         candidates = tuple(datatype.value for datatype in Datatype) + tuple(sorted(self._types))
         matches = difflib.get_close_matches(named.lower(), candidates, n=3, cutoff=0.6)
@@ -690,7 +702,7 @@ class _Analysis:
                 "unknown-type",
                 f"'{ref.name}' is declared as '{named}', which is neither a base datatype nor a "
                 f"type any file of this project declares{self._nearest_type(named)}",
-                ref.location("definition.datatype"),
+                ref.location("definition.typename"),
             )
             return None
         entry = declared.declared
@@ -849,6 +861,7 @@ class _Analysis:
     def _check_limits(self, definition: DataObject, location: Location) -> None:
         if definition.limits is None:
             return
+        assert definition.conversion is not None
         low, high = conversion_range(definition.conversion, definition.storage)
         limits = definition.limits
         if _below(limits.min, low) or _above(limits.max, high):
@@ -1149,17 +1162,19 @@ class _Analysis:
 
     def _member_nested_structure(self, member: Member) -> StructType | None:
         """The structure a member is, or nothing when it holds a value of its own."""
-        if isinstance(member.datatype, Datatype):
+        if member.typename is None:
             return None
-        declared = self._types.get(member.datatype)
+        declared = self._types.get(member.typename)
         entry = declared.declared if declared is not None else None
         return entry if isinstance(entry, StructType) else None
 
     def _member_meaning(self, member: Member) -> tuple[Datatype, str, Conversion, Limits]:
         """What a value member holds and how to read it, from the member or from its type."""
-        if isinstance(member.datatype, Datatype):
+        if member.typename is None:
+            assert member.datatype is not None
+            assert member.conversion is not None
             return (member.datatype, member.unit, member.conversion, member.physical_limits())
-        entry = self._types[member.datatype].declared
+        entry = self._types[member.typename].declared
         assert isinstance(entry, ScalarType)
         limits = entry.limits
         if limits is None:

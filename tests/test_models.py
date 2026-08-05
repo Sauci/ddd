@@ -21,8 +21,11 @@ from ddd.models import (
 
 
 def definition(**kwargs: object) -> Measurement:
+    storage: dict[str, object] = (
+        {} if "typename" in kwargs else {"datatype": "uint8", "conversion": {"kind": "identity"}}
+    )
     return Measurement.model_validate(
-        {"name": "X", "datatype": "uint8", "kind": "measurement", "volatile": False, **kwargs}
+        {"name": "X", "kind": "measurement", "volatile": False, **storage, **kwargs}
     )
 
 
@@ -72,8 +75,18 @@ class TestIdentifiers:
 
 
 class TestConversions:
-    def test_default_is_identity(self) -> None:
-        assert isinstance(definition().conversion, IdentityConversion)
+    def test_the_conversion_is_required_beside_a_datatype(self) -> None:
+        """The identity is derivable, which is exactly why it is asked for: raw equalling
+        physical is an engineering claim, and a forgotten scaling displays raw counts."""
+        import pytest
+        from pydantic import ValidationError
+
+        payload = {"name": "X", "datatype": "uint8", "kind": "measurement", "volatile": False}
+        with pytest.raises(ValidationError, match="comes with a 'conversion'"):
+            Measurement.model_validate(payload)
+
+    def test_an_empty_object_is_the_identity(self) -> None:
+        assert isinstance(definition(conversion={}).conversion, IdentityConversion)
 
     def test_kind_is_inferred_for_linear(self) -> None:
         conversion = definition(conversion={"factor": 0.5}).conversion
@@ -198,6 +211,7 @@ class TestContractStrictness:
                                 "kind": "measurement",
                                 "name": "X",
                                 "datatype": "uint8",
+                                "conversion": {},
                                 "volatile": False,
                             },
                         }

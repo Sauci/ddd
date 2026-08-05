@@ -30,13 +30,14 @@ section of a component, because a type is usually shared: the point of declaring
              "name": "value",
              "member": "value",
              "description": "The reading itself",
-             "datatype": "Temperature_t"
+             "typename": "Temperature_t"
            },
            {
              "name": "timestamp",
              "member": "value",
              "description": "Milliseconds since the last reset",
              "datatype": "uint32",
+             "conversion": { "kind": "identity" },
              "unit": "ms"
            }
          ]
@@ -103,39 +104,45 @@ came closest to:
    types.ddd.json#types[0]: error[schema]: Unable to extract tag using discriminator 'type' (got: {'name': 'S_t', 'members': [{'name': 'a', 'member': 'valu...)
    1 error
 
-One key names a type
---------------------
+Two keys name the storage
+-------------------------
 
 ``datatype`` takes one of the eleven base datatypes a
-:doc:`variable definition <variable_definition>` lists, **or** the name of a type this project
-declares, and it does so everywhere storage is named: on a member of a structure and on the
-definition of a variable alike. There is no second key beside it. A ``type`` key would have to
-mean "the name of a declared type" in those two places and "which shape this entry has" at the
-top of an entry here, and one key with one meaning is worth what it costs.
-
-What it costs is worth stating plainly, because it is the largest thing given up. The published
-schema can no longer say ``datatype`` is one of eleven values; it becomes the eleven *or* a
-string, so an editor still offers them as completions and still documents each one, but a
-mistyped base datatype is a perfectly well formed *name* and no longer something the schema can
-reject as it is typed. Half of that is bought back in the contract, which refuses a name that
-reads as a storage stem with the digits wrong - ``uint166``, ``int16``, ``float3``, ``sint_16``:
+:doc:`variable definition <variable_definition>` lists, and nothing else; ``typename`` takes
+the name of a type this project declares. Exactly one of the two is stated wherever storage
+is named - on a member of a structure and on the definition of a variable alike - never
+both, never neither:
 
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   types.ddd.json#types[0].scalar.name: error[schema]: Value error, 'uint166' reads as a base datatype rather than as the name of a type this project declares; a base datatype has to be spelled as one of them exactly (got: 'uint166')
+   a.ddd.json#component.interface[0].definition: error[schema]: Value error, storage is named exactly once: 'datatype' for a base datatype, 'typename' for a type the project declares (got: {'name': 'Count', 'kind': 'measurement', 'volatile': Fals...)
    1 error
 
-The same rule means a project cannot declare a type called ``uint16`` either, which would be a
-name nothing could ever refer to: written anywhere, the base datatype wins. What the shape rule
-cannot catch is a transposition like ``unit16``, which reads as no storage at all and is a
-perfectly ordinary identifier. That one is answered by the ``unknown-type`` check, with the
-question a reader would have asked:
+Two keys rather than one union, so that each stays what it says. The published schema keeps
+``datatype`` at exactly eleven values: an editor completes and documents precisely them, and
+a mistyped ``uint166`` is refused as it is typed rather than reported as a type nobody
+declares a build later. And a declaration tells its reader at the use site whether storage
+is base or declared - ``"typename": "Int16_t"`` is unambiguous however much the name
+dresses like storage, because the key already says it is declared.
+
+A ``typename`` cannot spell a base datatype, in any case. A type called ``uint16`` - or
+``UINT16`` - would wear the name of storage it is not, and every declaration naming it would
+read like a typo:
 
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.interface[0].definition.datatype: error[unknown-type]: 'Count' is declared as 'unit16', which is neither a base datatype nor a type any file of this project declares - did you mean 'uint16' or 'uint64' or 'sint16'?
+   types.ddd.json#types[0].scalar.name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
+   1 error
+
+A ``typename`` that names no type any file of the project declares is answered by the
+``unknown-type`` check, with the question a reader would have asked:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   a.ddd.json#component.interface[0].definition.typename: error[unknown-type]: 'Count' is declared as 'unit16', which is neither a base datatype nor a type any file of this project declares - did you mean 'uint16' or 'uint64' or 'sint16'?
    1 error
 
 Scalar types
@@ -153,7 +160,7 @@ Scalar types
      - ``"scalar"``.
    * - ``name``
      - required
-     - The name components write in their ``datatype``. It has to be distinct from every other
+     - The name components write in their ``typename``. It has to be distinct from every other
        type of the project.
    * - ``description``
      - ``""``
@@ -189,8 +196,8 @@ same one:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'datatype': 'Tem...)
-   types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'datatype': 'Tempera...)
+   sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'typename': 'Tem...)
+   types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
    2 errors
 
 The ``datatype`` of a scalar type is a base datatype and not another declared name, so a scalar
@@ -216,12 +223,12 @@ c declares them in. Every member states which shape it has, in the ``member`` ke
    * - ``member``
      - what it is
    * - ``value``
-     - a ``datatype``, optionally an array through ``dimensions``. The ordinary case, and the
-       one that nests a structure: a member whose ``datatype`` names a structure *is* that
-       structure, laid out inside this one.
+     - a base ``datatype`` or a declared ``typename``, optionally an array through
+       ``dimensions``. The ordinary case, and the one that nests a structure: a member whose
+       ``typename`` names a structure *is* that structure, laid out inside this one.
    * - ``bits``
-     - a ``datatype`` and a width in ``bits``: a c bitfield. Consecutive bit members share a
-       storage unit.
+     - a base ``datatype`` and a width in ``bits``: a c bitfield. Consecutive bit members
+       share a storage unit.
 
 Each shape permits exactly the keys it needs and refuses the rest, and the refusal is worth
 more than it looks. ``bits`` together with ``dimensions`` has no single meaning, since an array
@@ -318,9 +325,9 @@ from a measured one and wrong on the first target whose alignment differs.
 A variable of a declared type
 -----------------------------
 
-A component declares a structured variable with the key it already had. ``datatype`` names the
-structure, and everything else about the declaration is what it always was - the scope, the
-kind, the description, ``volatile``:
+A component declares a structured variable by naming the structure: ``typename`` where a plain
+declaration states its ``datatype``, and everything else about the declaration is what it
+always was - the scope, the kind, the description, ``volatile``:
 
 .. code-block:: json
 
@@ -330,7 +337,7 @@ kind, the description, ``volatile``:
        "name": "Inlet",
        "kind": "measurement",
        "description": "The inlet sensor as this ecu sees it",
-       "datatype": "Sensor_t",
+       "typename": "Sensor_t",
        "volatile": true
      }
    }
@@ -456,7 +463,7 @@ well. All six are errors.
        generated c would get is not something an include order should decide, so the second is
        refused rather than allowed to win.
    * - ``unknown-type``
-     - a ``datatype`` names neither a base datatype nor a type any file of the project declares,
+     - a ``typename`` names no type any file of the project declares,
        whether it is written on a member or on a declaration. It is refused rather than skipped:
        a member of unknown size makes every offset after it wrong, and wrong offsets are
        addresses that point at the wrong bytes without anything looking broken.

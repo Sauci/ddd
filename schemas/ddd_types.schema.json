@@ -239,7 +239,7 @@
         },
         "member": {
           "$ref": "#/$defs/MemberKind",
-          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``datatype`` and may add ``dimensions``,\n* ``bits`` needs ``datatype`` and ``bits``.\n\nA key belonging to the other shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
+          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``datatype`` or ``typename`` and may add ``dimensions``,\n* ``bits`` needs ``datatype`` and ``bits``.\n\nA key belonging to the other shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
         },
         "description": {
           "default": "",
@@ -253,14 +253,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of this member: a base datatype, or the name of a declared type.\n\nA ``value`` member may name a structure, which nests it, or a scalar type, which fixes what\nits number means.  A ``bits`` member has to name a base integer datatype: a bitfield has no\nroom for a structure, and a scalar type would carry limits the width contradicts.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of this member, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated, here exactly as on a declaration."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a declared type, stated instead of ``datatype``.\n\nA ``value`` member may name a structure, which nests it, or a scalar type, which fixes what\nits number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no\nroom for a structure, and a scalar type would carry limits the width contradicts.",
+          "title": "Typename"
         },
         "dimensions": {
           "default": [],
@@ -293,29 +306,34 @@
           "type": "string"
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
           "title": "Conversion"
         },
         "limits": {
@@ -342,8 +360,7 @@
       },
       "required": [
         "name",
-        "member",
-        "datatype"
+        "member"
       ],
       "title": "Member",
       "type": "object"
@@ -375,7 +392,7 @@
           "description": "Name of the type; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, for the reason a structure's name is.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -396,10 +413,7 @@
           "type": "string"
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
@@ -437,7 +451,8 @@
       "required": [
         "type",
         "name",
-        "datatype"
+        "datatype",
+        "conversion"
       ],
       "title": "ScalarType",
       "type": "object"
@@ -456,7 +471,7 @@
           "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, which would be a type nothing could ever refer to:\nwhere a name is written, a base datatype wins the union.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },

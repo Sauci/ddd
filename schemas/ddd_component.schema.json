@@ -70,14 +70,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -104,29 +117,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -186,7 +204,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind",
         "size"
@@ -246,14 +263,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -280,29 +310,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -348,7 +383,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind",
         "axis"
@@ -630,14 +664,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -664,29 +711,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -740,7 +792,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind",
         "x_axis",
@@ -767,14 +818,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -801,29 +865,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -871,7 +940,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind"
       ],
@@ -896,14 +964,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -930,29 +1011,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -990,7 +1076,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind"
       ],
@@ -1030,14 +1115,27 @@
               "$ref": "#/$defs/Datatype"
             },
             {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^(?!(?:bool(?:ean)?|u?int|sint|float|double|char|short|long|byte|word)[0-9_]*$)[A-Za-z_][A-Za-z0-9_]*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "description": "Storage of one element: a base datatype, or the name of a type the project declares.\n\nOne key names a type here exactly as it does on a structure member. Naming a structure is\nwhat makes this object a structured one; naming a scalar type is what lets several\ncomponents agree about a value by naming it rather than by each copying out its unit, its\nscaling and its limits - and a declaration that names a type may not restate any of them.",
-          "title": "Datatype"
+          "default": null,
+          "description": "Storage of one element, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,\nso that the published schema says ``datatype`` is one of eleven values - an editor\ncompletes and documents exactly them, and a mistyped one is refused as it is typed - and\nso that a declaration tells its reader at a glance whether storage is base or declared."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a type the project declares, stated instead of ``datatype``.\n\nNaming a structure is what makes this object a structured one; naming a scalar type is\nwhat lets several components agree about a value by naming it rather than by each copying\nout its unit, its scaling and its limits - and a declaration that names a type may not\nrestate any of them.",
+          "title": "Typename"
         },
         "description": {
           "default": "",
@@ -1064,29 +1162,34 @@
           "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
         },
         "conversion": {
-          "default": {
-            "kind": "identity"
-          },
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\n``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means\n``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means\n``identity``, which is also what an object without a conversion gets.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
-              "$ref": "#/$defs/IdentityConversion"
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
             },
             {
-              "$ref": "#/$defs/LinearConversion"
-            },
-            {
-              "$ref": "#/$defs/EnumConversion"
+              "type": "null"
             }
           ],
+          "default": null,
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
           "title": "Conversion"
         },
         "limits": {
@@ -1134,7 +1237,6 @@
       },
       "required": [
         "name",
-        "datatype",
         "volatile",
         "kind",
         "dimensions"

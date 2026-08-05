@@ -11,13 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 from ddd.models.common import (
     A2lFormat,
     Datatype,
-    DatatypeRef,
     Identifier,
     Number,
     Real,
+    TypeName,
     format_number,
 )
-from ddd.models.conversion import IDENTITY, Conversion, EnumConversion, conversion_range
+from ddd.models.conversion import Conversion, EnumConversion, conversion_range
 
 type InitValue = bool | int | Real | tuple[InitValue, ...]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object."""
@@ -133,10 +133,10 @@ question with one answer.
 """
 
 
-def refuse_restating(datatype: DatatypeRef, stated: Container[str]) -> None:
+def refuse_restating(typename: str, stated: Container[str]) -> None:
     """Refuse stating what a named type already fixes; an error rather than an override.
 
-    The same rule wherever a datatype can be named - on a declaration and on a structure member
+    The same rule wherever a type can be named - on a declaration and on a structure member
     alike - because the confusion it prevents is the same one. An override rule would make the
     answer to "where is this unit written down" be "in one of two places, and you have to know
     which of them wins".
@@ -145,13 +145,11 @@ def refuse_restating(datatype: DatatypeRef, stated: Container[str]) -> None:
     a structure - a structure has no room for a unit at all - needs to know which kind of type
     the name refers to, and that is a check rather than a contract rule.
     """
-    if isinstance(datatype, Datatype):
-        return
     restated = [key for key in MEANING_KEYS if key in stated]
     if restated:
         listed = ", ".join(f"'{key}'" for key in restated)
         msg = (
-            f"'{datatype}' is a declared type and already fixes what this value means, so "
+            f"'{typename}' is a declared type and already fixes what this value means, so "
             f"{listed} may not be stated here as well"
         )
         raise ValueError(msg)
@@ -179,13 +177,22 @@ class DataObject(_Frozen):
     name: Identifier
     """C identifier of the object; also its name in the a2l."""
 
-    datatype: DatatypeRef
-    """Storage of one element: a base datatype, or the name of a type the project declares.
+    datatype: Datatype | None = None
+    """Storage of one element, one of the eleven base datatypes.
 
-    One key names a type here exactly as it does on a structure member. Naming a structure is
-    what makes this object a structured one; naming a scalar type is what lets several
-    components agree about a value by naming it rather than by each copying out its unit, its
-    scaling and its limits - and a declaration that names a type may not restate any of them.
+    Exactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,
+    so that the published schema says ``datatype`` is one of eleven values - an editor
+    completes and documents exactly them, and a mistyped one is refused as it is typed - and
+    so that a declaration tells its reader at a glance whether storage is base or declared.
+    """
+
+    typename: TypeName | None = None
+    """Name of a type the project declares, stated instead of ``datatype``.
+
+    Naming a structure is what makes this object a structured one; naming a scalar type is
+    what lets several components agree about a value by naming it rather than by each copying
+    out its unit, its scaling and its limits - and a declaration that names a type may not
+    restate any of them.
     """
 
     description: str = ""
@@ -206,12 +213,16 @@ class DataObject(_Frozen):
     initialises every element with that value.
     """
 
-    conversion: Conversion = IDENTITY
+    conversion: Conversion | None = None
     """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
 
-    ``kind`` may be left out when the keys make it unambiguous: ``factor`` or ``offset`` means
-    ``linear``, ``enumerators`` or ``name`` means ``enum``, and nothing at all means
-    ``identity``, which is also what an object without a conversion gets.
+    Required wherever storage is named by ``datatype``, although the identity would be
+    derivable: raw equalling physical is an engineering claim about the data, not a
+    formatting accident, and a forgotten scaling on a fixed point value displays raw counts
+    without anything looking broken. A definition naming a ``typename`` states no conversion
+    - the type fixes it. ``kind`` may be left out when the keys make it unambiguous:
+    ``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,
+    and ``{}`` means ``identity``.
     """
 
     limits: Limits | None = None
@@ -285,8 +296,8 @@ class DataObject(_Frozen):
 
     @property
     def declared_type(self) -> str | None:
-        """The type this definition names, or nothing if its datatype is a base one."""
-        return None if isinstance(self.datatype, Datatype) else self.datatype
+        """The type this definition names, or nothing if its storage is a base datatype."""
+        return self.typename
 
     @property
     def storage(self) -> Datatype:
@@ -313,8 +324,29 @@ class DataObject(_Frozen):
         return self
 
     @model_validator(mode="after")
+    def _storage_is_named_exactly_once(self) -> DataObject:
+        if (self.datatype is None) == (self.typename is None):
+            msg = (
+                "storage is named exactly once: 'datatype' for a base datatype, 'typename' "
+                "for a type the project declares"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _base_storage_states_its_conversion(self) -> DataObject:
+        if self.datatype is not None and self.conversion is None:
+            msg = (
+                "a 'datatype' comes with a 'conversion': the identity "
+                '({"kind": "identity"}) is an answer to state, not a default to fall into'
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _a_named_type_is_not_restated(self) -> DataObject:
-        refuse_restating(self.datatype, self.model_fields_set)
+        if self.typename is not None:
+            refuse_restating(self.typename, self.model_fields_set)
         return self
 
     @model_validator(mode="after")
@@ -336,6 +368,7 @@ class DataObject(_Frozen):
         """
         if self.limits is not None:
             return self.limits
+        assert self.conversion is not None
         low, high = conversion_range(self.conversion, self.storage)
         return Limits(min=low, max=high)
 

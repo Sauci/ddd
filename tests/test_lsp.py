@@ -324,11 +324,14 @@ class TestDiagnostics:
                         {
                             "type": "struct",
                             "name": "S_t",
-                            "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
+                            "members": [
+                                {"name": "v", "member": "value", "datatype": "uint8",
+                                 "conversion": {}}
+                            ],
                         }
                     ]
                 },
-                "components/a.ddd.json": component("A", declare("output", "X", datatype="S_t")),
+                "components/a.ddd.json": component("A", declare("output", "X", typename="S_t")),
             },
         )
         document = tmp_path / "components" / "a.ddd.json"
@@ -534,12 +537,15 @@ class TestNavigation:
                 {
                     "type": "struct",
                     "name": "Inner_t",
-                    "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
+                    "members": [
+                                {"name": "v", "member": "value", "datatype": "uint8",
+                                 "conversion": {}}
+                            ],
                 },
                 {
                     "type": "struct",
                     "name": "Outer_t",
-                    "members": [{"name": "inner", "member": "value", "datatype": "Inner_t"}],
+                    "members": [{"name": "inner", "member": "value", "typename": "Inner_t"}],
                 },
             ]
         }
@@ -547,11 +553,11 @@ class TestNavigation:
         path = tmp_path / "t.ddd.json"
         built = self.index_of(tmp_path / "p.ddd.json")
         document = read(path, {})
-        (site,) = definition(built, document, path, "types[1].members[0].datatype")
+        (site,) = definition(built, document, path, "types[1].members[0].typename")
         assert site.pointer == "types[0]"
         assert {found.pointer for found in references(built, document, "types[0].name")} == {
             "types[0]",
-            "types[1].members[0].datatype",
+            "types[1].members[0].typename",
         }
 
     def test_a_scalar_type_is_indexed_although_it_has_no_members(self, tmp_path: Path) -> None:
@@ -564,11 +570,12 @@ class TestNavigation:
                 "p.ddd.json": project("P", "t.ddd.json"),
                 "t.ddd.json": {
                     "types": [
-                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm"},
+                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm",
+                         "conversion": {}},
                         {
                             "type": "struct",
                             "name": "S_t",
-                            "members": [{"name": "v", "member": "value", "datatype": "Speed_t"}],
+                            "members": [{"name": "v", "member": "value", "typename": "Speed_t"}],
                         },
                     ]
                 },
@@ -576,7 +583,7 @@ class TestNavigation:
         )
         path = tmp_path / "t.ddd.json"
         built = self.index_of(tmp_path / "p.ddd.json")
-        (site,) = definition(built, read(path, {}), path, "types[1].members[0].datatype")
+        (site,) = definition(built, read(path, {}), path, "types[1].members[0].typename")
         assert site.pointer == "types[0]"
 
     def test_a_declaration_naming_a_type_jumps_to_the_type(self, tmp_path: Path) -> None:
@@ -594,16 +601,17 @@ class TestNavigation:
                 "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
                 "t.ddd.json": {
                     "types": [
-                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm"}
+                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm",
+                         "conversion": {}}
                     ]
                 },
-                "a.ddd.json": component("A", declare("output", "S", datatype="Speed_t")),
+                "a.ddd.json": component("A", declare("output", "S", typename="Speed_t")),
             },
         )
         path = tmp_path / "a.ddd.json"
         built = self.index_of(tmp_path / "p.ddd.json")
         document = read(path, {})
-        pointer = "component.interface[0].definition.datatype"
+        pointer = "component.interface[0].definition.typename"
         (site,) = definition(built, document, path, pointer)
         assert site.path == tmp_path / "t.ddd.json"
         # And the declaration counts as a use of the type, so find-references lists it.
@@ -625,9 +633,30 @@ class TestNavigation:
         root = self.workspace(tmp_path)
         path = tmp_path / "b.ddd.json"
         found = references(
-            self.index_of(root), read(path, {}), "component.interface[0].definition.datatype"
+            self.index_of(root), read(path, {}), "component.interface[0].definition.typename"
         )
         assert {site.path.name for site in found} == {"a.ddd.json", "b.ddd.json"}
+
+    def test_references_on_an_unknown_typename_fall_back_to_the_object(
+        self, tmp_path: Path
+    ) -> None:
+        """A name no types file declares still answers with the object's declarations."""
+        from ddd.lsp.navigation import references
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", typename="Nowhere_t")),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        found = references(
+            self.index_of(tmp_path / "p.ddd.json"),
+            read(path, {}),
+            "component.interface[0].definition.typename",
+        )
+        assert {site.pointer for site in found} == {"component.interface[0].definition"}
 
     def test_an_unknown_name_leads_nowhere_rather_than_anywhere(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import definition, references
@@ -642,7 +671,7 @@ class TestNavigation:
                         {
                             "type": "struct",
                             "name": "T_t",
-                            "members": [{"name": "n", "member": "value", "datatype": "Absent_t"}],
+                            "members": [{"name": "n", "member": "value", "typename": "Absent_t"}],
                         }
                     ]
                 },
@@ -658,8 +687,8 @@ class TestNavigation:
         )
         types = tmp_path / "t.ddd.json"
         document = read(types, {})
-        assert definition(built, document, types, "types[0].members[0].datatype") == []
-        assert references(built, document, "types[0].members[0].datatype") == []
+        assert definition(built, document, types, "types[0].members[0].typename") == []
+        assert references(built, document, "types[0].members[0].typename") == []
 
     @pytest.mark.parametrize("pointer", ["project.includes[0]", "project.naming"])
     def test_a_path_leads_to_the_file_it_names(self, tmp_path: Path, pointer: str) -> None:
@@ -844,17 +873,19 @@ class TestHover:
                             "name": "Sensor_t",
                             "description": "Everything one sensor measures",
                             "members": [
-                                {"name": "latest", "member": "value", "datatype": "Temp_t"},
+                                {"name": "latest", "member": "value", "typename": "Temp_t"},
                                 {
                                     "name": "history",
                                     "member": "value",
                                     "datatype": "uint16",
+                                    "conversion": {},
                                     "dimensions": [4],
                                 },
                                 {
                                     "name": "ready",
                                     "member": "bits",
                                     "datatype": "uint16",
+                                    "conversion": {},
                                     "bits": 1,
                                 },
                             ],
@@ -866,7 +897,7 @@ class TestHover:
                     declare(
                         "output",
                         "Inlet",
-                        datatype="Sensor_t",
+                        typename="Sensor_t",
                         volatile=True,
                         description="The inlet sensor as this ecu sees it",
                     ),
@@ -944,7 +975,7 @@ class TestHover:
     def test_a_structured_variable_is_described_by_its_members(self, tmp_path: Path) -> None:
         """Which is the whole reason for hovering one.
 
-        The file under the cursor says ``"datatype": "Sensor_t"`` and stops there; what is
+        The file under the cursor says ``"typename": "Sensor_t"`` and stops there; what is
         inside that name lives in another file, and what each member *means* - the unit and
         the limits the project worked out - is in neither.
 
@@ -997,12 +1028,15 @@ class TestHover:
                         {
                             "type": "struct",
                             "name": "Cell_t",
-                            "members": [{"name": "raw", "member": "value", "datatype": "uint16"}],
+                            "members": [
+                                {"name": "raw", "member": "value", "datatype": "uint16",
+                                 "conversion": {}}
+                            ],
                         }
                     ]
                 },
                 "a.ddd.json": component(
-                    "A", declare("local", "Pack", datatype="Cell_t", dimensions=[2])
+                    "A", declare("local", "Pack", typename="Cell_t", dimensions=[2])
                 ),
             },
         )
@@ -1025,13 +1059,16 @@ class TestHover:
                         {
                             "type": "struct",
                             "name": "S_t",
-                            "members": [{"name": "v", "member": "value", "datatype": "uint8"}],
+                            "members": [
+                                {"name": "v", "member": "value", "datatype": "uint8",
+                                 "conversion": {}}
+                            ],
                         }
                     ]
                 },
                 "a.ddd.json": component(
                     "A",
-                    declare("local", "X", datatype="S_t", condition="defined(FEAT)"),
+                    declare("local", "X", typename="S_t", condition="defined(FEAT)"),
                 ),
             },
         )
@@ -1525,11 +1562,9 @@ class TestPropagating:
         """
         write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json", "b.ddd.json")})
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", volatile=True))})
-        (tmp_path / "b.ddd.json").write_text(
-            '{"component": {"name": "B", "interface": [{"scope": "input", "definition":'
-            ' {"name": "S", "kind": "measurement", "datatype": "uint8"}}]}}\n',
-            encoding="utf-8",
-        )
+        incomplete = component("B", declare("input", "S"))
+        del incomplete["component"]["interface"][0]["definition"]["volatile"]
+        write_tree(tmp_path, {"b.ddd.json": incomplete})
         from ddd.lsp.edits import actions
 
         built = self.built_from(tmp_path / "p.ddd.json")
@@ -1642,7 +1677,8 @@ class TestPropagating:
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
         (tmp_path / "b.ddd.json").write_text(
             '{"component": {"name": "B", "interface": [{"scope": "input", "definition":'
-            ' {"name": "S", "kind": "measurement", "datatype": "uint8", "volatile": false}}]}}\n',
+            ' {"name": "S", "kind": "measurement", "datatype": "uint8",'
+            ' "conversion": {}, "volatile": false}}]}}\n',
             encoding="utf-8",
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))

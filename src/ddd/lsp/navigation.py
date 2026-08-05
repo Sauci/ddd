@@ -37,7 +37,6 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
-    Datatype,
     EnumConversion,
     is_reserved_identifier,
 )
@@ -118,7 +117,7 @@ def index(workspace: Workspace) -> Index:
                 built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
             named = declaration.definition.declared_type
             if named is not None:
-                where = loaded.declaration_location(position, "definition.datatype")
+                where = loaded.declaration_location(position, "definition.typename")
                 built.type_uses.setdefault(named, []).append(Site(where.path, where.pointer))
             conversion = declaration.definition.conversion
             if isinstance(conversion, EnumConversion):
@@ -132,10 +131,10 @@ def index(workspace: Workspace) -> Index:
         if structure is None:
             continue
         for position, member in enumerate(structure.members):
-            # A member naming a base datatype names no type; the union keeps the two apart.
-            if not isinstance(member.datatype, Datatype):
-                where = entry.location(f"members[{position}].datatype")
-                built.type_uses.setdefault(member.datatype, []).append(
+            # A member naming a base datatype names no type; the two keys keep them apart.
+            if member.typename is not None:
+                where = entry.location(f"members[{position}].typename")
+                built.type_uses.setdefault(member.typename, []).append(
                     Site(where.path, where.pointer)
                 )
     return built
@@ -272,7 +271,7 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
         # the type is what is under the pointer. A base datatype names no file, so it falls
         # through to the declaration jump, which is what somebody resting there expects.
         found = built.types.get(value)
-        if found is not None and (pointer.startswith(_TYPES) or _key(pointer) == "datatype"):
+        if found is not None and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
             return [found]
         if pointer.startswith(_TYPES):
             return []
@@ -290,7 +289,7 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     a use of it, and which one is "the" declaration is the question the jump above answers.
     """
     value = document.value_at(pointer)
-    if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "datatype"):
+    if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
         declared = built.types.get(value)
         if declared is not None:
             return [declared, *built.type_uses.get(value, ())]

@@ -12,8 +12,14 @@
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
           "unit": "Hz",
-          "conversion": { "kind": "linear", "factor": 0.25 },
-          "limits": { "min": 0, "max": 8000 },
+          "conversion": {
+            "kind": "linear",
+            "factor": 0.25
+          },
+          "limits": {
+            "min": 0,
+            "max": 8000
+          },
           "volatile": true
         }
       },
@@ -24,6 +30,9 @@
           "kind": "measurement",
           "description": "Boolean measurement",
           "datatype": "boolean",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       },
@@ -34,6 +43,9 @@
           "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
+          "conversion": {
+            "kind": "identity"
+          },
           "volatile": false
         }
       },
@@ -44,6 +56,9 @@
           "kind": "measurement",
           "description": "Counter written by the event logger",
           "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
           "init": 0,
           "volatile": false
         }
@@ -55,13 +70,36 @@
           "kind": "measurement",
           "description": "Two dimensional component local array",
           "datatype": "sint8",
-          "dimensions": [3, 4],
-          "init": [
-            [0, 0, 0, 0],
-            [0, 0, 0, 0],
-            [0, 0, 0, 0]
+          "conversion": {
+            "kind": "identity"
+          },
+          "dimensions": [
+            3,
+            4
           ],
-          "a2l": { "export": false },
+          "init": [
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "a2l": {
+            "export": false
+          },
           "volatile": false
         }
       }

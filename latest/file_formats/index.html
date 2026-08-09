@@ -151,7 +151,7 @@ both.ddd.json: error[file-kind]: file has &#39;project&#39; and &#39;component&#
 1 error
 
 $ ddd check neither.ddd.json
-neither.ddd.json: error[file-kind]: missing top level key, one of &#39;project&#39;, &#39;component&#39;, &#39;types&#39; (found: components, version)
+neither.ddd.json: error[file-kind]: missing top level key, one of &#39;project&#39;, &#39;component&#39;, &#39;types&#39;, &#39;units&#39; (found: components, version)
 1 error
 </pre></div>
 </div>
@@ -166,14 +166,14 @@ and lets a calibration engineer enter a value the software cannot handle - both 
 that looked perfectly correct in review. Closing the objects turns every one of those into a
 finding that names the offending key and points at it:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check typo.ddd.json
-typo.ddd.json#component.declarations[0].definition: error[schema]: Field required
-typo.ddd.json#component.declarations[0].definiton: error[schema]: Extra inputs are not permitted (got: {&#39;name&#39;: &#39;ValueA&#39;, &#39;datatype&#39;: &#39;uint8&#39;})
+typo.ddd.json#component.interface[0].definition: error[schema]: Field required
+typo.ddd.json#component.interface[0].definiton: error[schema]: Extra inputs are not permitted (got: {&#39;name&#39;: &#39;ValueA&#39;, &#39;datatype&#39;: &#39;uint8&#39;})
 2 errors
 </pre></div>
 </div>
 <p>The location after the <code class="docutils literal notranslate"><span class="pre">#</span></code> is a path into the json document rather than a line number,
 because a line number in a file that is often generated or reformatted means very little,
-whereas <code class="docutils literal notranslate"><span class="pre">component.declarations[0].definiton</span></code> is exactly where the key sits whatever the
+whereas <code class="docutils literal notranslate"><span class="pre">component.interface[0].definiton</span></code> is exactly where the key sits whatever the
 formatting. Both halves of the mistake are reported: the key that should not be there, and the
 key that is now missing because of it.</p>
 <p>Those two halves are also why a key like <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is required and has no default. A
@@ -253,7 +253,7 @@ right.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="component.html">Component description</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="component.html#declarations">declarations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="component.html#interface">interface</a></li>
 <li class="toctree-l2"><a class="reference internal" href="component.html#scope">scope</a></li>
 <li class="toctree-l2"><a class="reference internal" href="component.html#condition">condition</a></li>
 <li class="toctree-l2"><a class="reference internal" href="component.html#checking-a-component-on-its-own">Checking a component on its own</a></li>
@@ -274,13 +274,15 @@ right.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="types.html">Type description</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="types.html#two-kinds-of-entry">Two kinds of entry</a></li>
-<li class="toctree-l2"><a class="reference internal" href="types.html#one-key-names-a-type">One key names a type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#two-keys-name-the-storage">Two keys name the storage</a></li>
 <li class="toctree-l2"><a class="reference internal" href="types.html#scalar-types">Scalar types</a></li>
 <li class="toctree-l2"><a class="reference internal" href="types.html#structures">Structures</a></li>
 <li class="toctree-l2"><a class="reference internal" href="types.html#a-variable-of-a-declared-type">A variable of a declared type</a></li>
 <li class="toctree-l2"><a class="reference internal" href="types.html#checks-over-the-types">Checks over the types</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Unit vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sections.html">Memory sections</a></li>
 </ul>
 </div>
 </section>

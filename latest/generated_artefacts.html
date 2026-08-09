@@ -912,7 +912,7 @@ three dimensions cannot be expressed at all in this version. DDD writes all of i
 anyway, which is what ASAP2 1.7 expects and what a 1.7 reader will understand, and reports
 the situation rather than silently truncating:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
-cube.ddd.json#component.declarations[0].definition: warning[a2l-unrepresentable]: &#39;Cube&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: &#39;Cube&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       build/gen/ddd_globals.c (created)
 ...
@@ -1156,6 +1156,7 @@ business displaying:</p>
 <span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Component local measurement, kept out of the a2l&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
 <span class="w">    </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;export&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>

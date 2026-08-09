@@ -292,13 +292,13 @@ file, and nobody reads its outputs yet, so the two checks about the other side o
 interface have to be switched off - while everything DDD can decide from the file alone still
 applies.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
 2 errors, 5 warnings
 
 $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
@@ -782,7 +782,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h4>ddd schema<a class="headerlink" href="#ddd-schema" title="Link to this heading"></a></h4>
 <p>Prints the json schema of one file format, or writes every schema into a directory with ‘all’. Committing those files and pointing the ‘$schema’ key of each description at the matching one is what gives an editor completion, hover documentation and validation while a description file is being written.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT]</span>
-<span class="go">                  {component,dictionary,naming,project,types,all}</span>
+<span class="go">                  {component,dictionary,naming,project,sections,types,units,all}</span>
 </pre></div>
 </div>
 <dl class="std option">

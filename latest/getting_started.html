@@ -222,7 +222,7 @@ say so:</p>
 <span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SensorHub&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Reads the sensors and publishes their conditioned values&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -262,7 +262,7 @@ calibration parameter of its own with scope <code class="docutils literal notran
 <span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Controller&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Decides when to heat, from the cabin temperature&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -583,14 +583,14 @@ produced from the linker output and writes the real addresses straight away.</p>
 kind of change that happens when a signal is reworked in one component and the other one is not
 told - and check the project again:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
-components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
-    note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
-components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
+    note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
 1 error, 1 warning
 </pre></div>
 </div>
 <p>Read the first finding from the left. The location is not just a file name but a path into the
-file - <code class="docutils literal notranslate"><span class="pre">#component.declarations[0].definition</span></code> - because a description file has no line an
+file - <code class="docutils literal notranslate"><span class="pre">#component.interface[0].definition</span></code> - because a description file has no line an
 editor could jump to that means anything on its own, whereas that path is exactly where the
 offending value sits. Then comes the severity and the identifier of the check,
 <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>: the identifier is part of the public interface of the tool and does
@@ -611,9 +611,9 @@ rather than something the c compiler will ever see.</p>
 at all when one of them fails, because half-generated sources that describe a project nobody
 agreed on are worse than no sources:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen2 -t templates
-components/controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
-    note: components/sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
-components/controller.ddd.json#component.declarations[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
+    note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
 1 error, 1 warning
 </pre></div>
 </div>

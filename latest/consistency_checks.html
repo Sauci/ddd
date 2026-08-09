@@ -25,7 +25,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Naming conventions" href="naming_conventions.html" />
-    <link rel="prev" title="Type description" href="file_formats/types.html" /> 
+    <link rel="prev" title="Memory sections" href="file_formats/sections.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -159,6 +159,8 @@ include-cycle          error    projects include each other recursively (fixed)
 include-empty          error    an include pattern matches no file
 duplicate-component    error    two different files declare the same component name
 duplicate-type         error    two different files declare the same type name
+duplicate-unit         error    two different files declare the same unit
+duplicate-section      error    two different files declare the same memory section
 ...
 </pre></div>
 </div>
@@ -169,16 +171,16 @@ duplicate-type         error    two different files declare the same type name
 <p>Every finding is one line, in a shape an editor or a log parser can pick apart, followed by
 zero or more indented notes:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
 ...
 </pre></div>
 </div>
 <p>The part before the first colon is the location: the path of the description file, relative to
 the working directory when it lies below it, followed by <code class="docutils literal notranslate"><span class="pre">#</span></code> and a dotted json pointer into
 the document. The pointer is what makes a finding actionable in a project of a hundred
-components - <code class="docutils literal notranslate"><span class="pre">component.declarations[0]</span></code> is the first entry of the <code class="docutils literal notranslate"><span class="pre">declarations</span></code> array,
-and <code class="docutils literal notranslate"><span class="pre">component.declarations[0].definition</span></code> narrows it further to the definition object inside
+components - <code class="docutils literal notranslate"><span class="pre">component.interface[0]</span></code> is the first entry of the <code class="docutils literal notranslate"><span class="pre">interface</span></code> array,
+and <code class="docutils literal notranslate"><span class="pre">component.interface[0].definition</span></code> narrows it further to the definition object inside
 it. A finding about the file as a whole rather than about a place inside it carries a line and
 a column instead, because for a file that does not parse there is no pointer to give:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check broken.ddd.json
@@ -193,7 +195,7 @@ names the declaration the finding was measured against - “also written here”
 declaration”, “declared local here” - with a location of its own. The <code class="docutils literal notranslate"><span class="pre">naming</span></code> check uses the
 same mechanism to underline the part of a name that is wrong:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition.name: error[naming]: &#39;vl&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean &#39;val&#39;?
+sensing.ddd.json#component.interface[0].definition.name: error[naming]: &#39;vl&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean &#39;val&#39;?
     note: vl_InletTemperature_flt
           ^^
 </pre></div>
@@ -246,7 +248,7 @@ options composable: a project can turn its warnings into errors and still exempt
 it has consciously decided to live with.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json --strict -W unused-output=info
 ...
-examples/inconsistent/component_a.ddd.json#component.declarations[1]: info[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
 4 errors, 1 info
 </pre></div>
 </div>
@@ -260,9 +262,9 @@ written once into the build system - the CMake integration takes them as <code c
 is the normal thing to do, because the components producing its inputs and consuming its
 outputs are by definition not part of the file:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
 ...
 2 errors, 5 warnings
 
@@ -384,11 +386,49 @@ rather than allowed to win.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
 <td><p>error</p></td>
-<td><p>a <code class="docutils literal notranslate"><span class="pre">datatype</span></code> names neither one of the base datatypes nor a type any file of the
-project declares - on a component declaration or on a structure member alike. It is
-refused rather than skipped, because an object of unknown storage has no limits, no
-size and nothing later to check against. The nearest known name is suggested, which is
-what answers a transposition like <code class="docutils literal notranslate"><span class="pre">unit16</span></code> that the contract cannot catch on its own.</p></td>
+<td><p>a <code class="docutils literal notranslate"><span class="pre">typename</span></code> names no type any file of the project declares - on a component
+declaration or on a structure member alike. It is refused rather than skipped, because
+an object of unknown storage has no limits, no size and nothing later to check
+against. The nearest known name is suggested, which is what answers a transposition
+like <code class="docutils literal notranslate"><span class="pre">unit16</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two different files declare the same unit. The vocabulary is a set of spellings, so a
+second entry is either a copy that will drift or a disagreement about the description,
+and neither is worth keeping quiet.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two different files declare the same memory section: either a copy that will drift or
+a disagreement about its properties, and neither is worth keeping quiet.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a definition names a memory section no file declares (see the
+<a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a>). Unlike a unit there is no free text
+fallback: a section without declared properties is a name the placement checks can
+say nothing about. The nearest declared name is suggested.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a measurement, which the software writes, is placed in a <code class="docutils literal notranslate"><span class="pre">read-only</span></code> section. A
+calibration object may live in either direction: <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored
+calibration.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section-alignment</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object needs stricter alignment than its section guarantees. A warning rather than
+an error because for a structure the need is an estimate - the strictest of its
+members’ datatypes - and the compiler’s word on the real layout is final.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a unit is not in the vocabulary the project declares (see the
+<a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Declared nowhere, units stay free text and
+the check never fires; declared anywhere, every stated unit is checked where it is
+written, with the nearest declared spelling suggested. The empty unit is always
+allowed - a dimensionless value states no unit rather than a spelling of one.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
 <td><p>error</p></td>
@@ -659,8 +699,8 @@ hardware will do.</p>
 <p>Two things follow. The first is that the diagnostic points at the <strong>deviating consumer</strong>, with
 a note referring back to the producer, so that the finding lands on the file that has to
 change:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
 </pre></div>
 </div>
 <p>The second is that a property which merely shapes how the a2l <em>presents</em> the object does not
@@ -673,8 +713,8 @@ consumer that ask for different display formats,</p>
 </pre></div>
 </div>
 <p>the check names the value that is going to be used:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: &#39;ValueA&#39;: component &#39;Consumer&#39; specifies a different a2l than &#39;Producer&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;Producer&#39; is used
-    note: producer.ddd.json#component.declarations[0].definition: reference declaration
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;ValueA&#39;: component &#39;Consumer&#39; specifies a different a2l than &#39;Producer&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;Producer&#39; is used
+    note: producer.ddd.json#component.interface[0].definition: reference declaration
 </pre></div>
 </div>
 <p>Two other properties used to be settled this way, and left in opposite directions.</p>
@@ -728,14 +768,14 @@ collects them:</p>
 a <code class="docutils literal notranslate"><span class="pre">MissingValue</span></code> nobody writes, and reads <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>’s <code class="docutils literal notranslate"><span class="pre">Scratch</span></code>. Checking the project
 gives:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
-examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
-examples/inconsistent/component_c.ddd.json#component.declarations[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-examples/inconsistent/component_c.ddd.json#component.declarations[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[2]: declared local here
-examples/inconsistent/component_a.ddd.json#component.declarations[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+    note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -827,7 +867,7 @@ document begins:</p>
       &quot;message&quot;: &quot;&#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed&quot;,
       &quot;location&quot;: {
         &quot;path&quot;: &quot;C:/work/project/component_b.ddd.json&quot;,
-        &quot;pointer&quot;: &quot;component.declarations[0]&quot;,
+        &quot;pointer&quot;: &quot;component.interface[0]&quot;,
         &quot;line&quot;: null,
         &quot;column&quot;: null
       },
@@ -836,7 +876,7 @@ document begins:</p>
           &quot;message&quot;: &quot;also written here&quot;,
           &quot;location&quot;: {
             &quot;path&quot;: &quot;C:/work/project/component_a.ddd.json&quot;,
-            &quot;pointer&quot;: &quot;component.declarations[0]&quot;,
+            &quot;pointer&quot;: &quot;component.interface[0]&quot;,
             &quot;line&quot;: null,
             &quot;column&quot;: null
           }
@@ -885,7 +925,7 @@ load time checks whose severity cannot be changed, <code class="docutils literal
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="file_formats/types.html" class="btn btn-neutral float-left" title="Type description" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="file_formats/sections.html" class="btn btn-neutral float-left" title="Memory sections" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="naming_conventions.html" class="btn btn-neutral float-right" title="Naming conventions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

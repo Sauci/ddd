@@ -20,7 +20,7 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
      "component": {
        "name": "Controller",
        "description": "Consumes the raw values and produces the derived ones",
-       "declarations": [
+       "interface": [
          {
            "scope": "output",
            "condition": "defined(FEATURE_X)",
@@ -56,13 +56,15 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
      - ``""``
      - Free text. It is repeated in the banner of the generated header and becomes the long
        identifier of the a2l ``GROUP``.
-   * - ``declarations``
-     - ``[]``
-     - The interface: one entry per variable the component reads, writes or owns.
+   * - ``interface``
+     - required
+     - The data interface: one entry per data object the component reads, writes or owns.
+       Required with no default, so a component with nothing to declare says so with an
+       explicit ``[]`` rather than with a key that might merely have been forgotten.
 
-A component that declares nothing is legal - a component may exist before it has any data, or
-may genuinely have none - but it is reported at severity ``info``, because far more often it
-means a file that was started and never finished:
+A component whose ``interface`` is the empty list is legal - a component may exist before it
+has any data, or may genuinely have none - but it is reported at severity ``info``, because
+far more often it means a file that was started and never finished:
 
 .. code-block:: text
 
@@ -83,10 +85,10 @@ a case insensitive file system means names differing only in case:
        note: a.ddd.json#component.name: other component
    1 error
 
-declarations
-------------
+interface
+---------
 
-Each entry of ``declarations`` binds one data object to this component, and consists of three
+Each entry of ``interface`` binds one data object to this component, and consists of three
 things: **what** is being declared, **how** this component relates to it, and **when** it
 exists at all.
 
@@ -123,8 +125,8 @@ mistake - there is no second opinion to have with oneself:
 .. code-block:: text
 
    $ ddd check dupdecl.ddd.json
-   dupdecl.ddd.json#component.declarations[1]: error[duplicate-declaration]: component 'Dup' declares 'V' twice (as local and as local)
-       note: dupdecl.ddd.json#component.declarations[0]: first declared here
+   dupdecl.ddd.json#component.interface[1]: error[duplicate-declaration]: component 'Dup' declares 'V' twice (as local and as local)
+       note: dupdecl.ddd.json#component.interface[0]: first declared here
    1 error
 
 scope
@@ -164,14 +166,14 @@ appears in one run:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   component_b.ddd.json#component.declarations[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-       note: component_a.ddd.json#component.declarations[0]: also written here
-   component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
-       note: component_a.ddd.json#component.declarations[0].definition: reference declaration
-   component_c.ddd.json#component.declarations[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
-   component_c.ddd.json#component.declarations[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
-       note: component_a.ddd.json#component.declarations[2]: declared local here
-   component_a.ddd.json#component.declarations[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+   component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+       note: component_a.ddd.json#component.interface[0]: also written here
+   component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+       note: component_a.ddd.json#component.interface[0].definition: reference declaration
+   component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+   component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+       note: component_a.ddd.json#component.interface[2]: declared local here
+   component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
    4 errors, 1 warning
 
 What the scope does to the generated code
@@ -287,8 +289,8 @@ but a line break and the comment markers ``/*``, ``*/`` and ``//`` are refused, 
 .. code-block:: text
 
    $ ddd check cond.ddd.json
-   cond.ddd.json#component.declarations[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: 'defined(A)\n#undef NDEBUG')
-   cond.ddd.json#component.declarations[2].condition: error[schema]: Value error, a condition cannot contain '/*' (got: 'defined(B) /* sneaky */')
+   cond.ddd.json#component.interface[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: 'defined(A)\n#undef NDEBUG')
+   cond.ddd.json#component.interface[2].condition: error[schema]: Value error, a condition cannot contain '/*' (got: 'defined(B) /* sneaky */')
    2 errors
 
 The reason is that the text goes into somebody else's translation unit unchanged. A line break
@@ -313,8 +315,8 @@ condition is the one that is generated:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   consumer.ddd.json#component.declarations[0].condition: warning[condition-mismatch]: 'ValueX': component 'Consumer' uses condition 'defined(FEATURE_Y)' while 'Producer' uses 'defined(FEATURE_X)'
-       note: producer.ddd.json#component.declarations[0]: reference declaration
+   consumer.ddd.json#component.interface[0].condition: warning[condition-mismatch]: 'ValueX': component 'Consumer' uses condition 'defined(FEATURE_Y)' while 'Producer' uses 'defined(FEATURE_X)'
+       note: producer.ddd.json#component.interface[0]: reference declaration
    1 warning
 
 It is a warning rather than an error because the case does occur legitimately: a consumer whose
@@ -351,11 +353,11 @@ dominate the output:
 .. code-block:: text
 
    $ ddd check controller.ddd.json -W missing-producer=ignore
-   controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.declarations[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.declarations[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.declarations[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.declarations[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    5 warnings
 
 ``unused-output`` is the mirror image of the same situation and can be silenced the same way;

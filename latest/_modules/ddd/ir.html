@@ -202,6 +202,10 @@
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Raw initial value, nested to match ``shape``; ``null`` means zero initialised.&quot;&quot;&quot;</span>
 
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Linker section the producing declaration placed the object in; ``null`` for the</span>
+<span class="sd">    toolchain&#39;s defaults.&quot;&quot;&quot;</span>
+
     <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate the object ``volatile``: stated by every declaration, on every kind.</span>
 
@@ -313,6 +317,10 @@
     <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether the declaration carries ``volatile``, which qualifies the whole object.&quot;&quot;&quot;</span>
 
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Linker section the whole structure is placed in; its members have no placement</span>
+<span class="sd">    of their own.&quot;&quot;&quot;</span>
+
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Preprocessor condition of the producing declaration, if any.&quot;&quot;&quot;</span>
 
@@ -383,6 +391,10 @@
     <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;From the variable, which carries the qualifier for all of its members at once.&quot;&quot;&quot;</span>
 
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Linker section of the structure this member belongs to; a member has no placement</span>
+<span class="sd">    of its own.&quot;&quot;&quot;</span>
+
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Preprocessor condition of the producing declaration, if any.&quot;&quot;&quot;</span>
 
@@ -432,7 +444,7 @@
 <span class="sd">&quot;&quot;&quot;</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">3</span>
 <span class="sd">&quot;&quot;&quot;Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>

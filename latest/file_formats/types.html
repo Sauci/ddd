@@ -24,7 +24,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Consistency checks" href="../consistency_checks.html" />
+    <link rel="next" title="Unit vocabulary" href="units.html" />
     <link rel="prev" title="Conversions" href="conversions.html" /> 
 </head>
 
@@ -131,13 +131,14 @@ section of a component, because a type is usually shared: the point of declaring
 <span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">&quot;member&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The reading itself&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span>
+<span class="w">          </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span>
 <span class="w">        </span><span class="p">},</span>
 <span class="w">        </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;timestamp&quot;</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">&quot;member&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Milliseconds since the last reset&quot;</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint32&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ms&quot;</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">]</span>
@@ -154,7 +155,7 @@ section of a component, because a type is usually shared: the point of declaring
 three more, and a component that declares variables of them. Its one warning is the example
 being a single component wide - nothing else in it reads what <code class="docutils literal notranslate"><span class="pre">Sensing</span></code> writes:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/structures/project.ddd.json
-examples/structures/sensing.ddd.json#component.declarations[1]: warning[unused-output]: &#39;Inlet&#39; is written by component &#39;Sensing&#39; but read by nobody
+examples/structures/sensing.ddd.json#component.interface[1]: warning[unused-output]: &#39;Inlet&#39; is written by component &#39;Sensing&#39; but read by nobody
 1 warning
 </pre></div>
 </div>
@@ -204,32 +205,36 @@ types.ddd.json#types[0]: error[schema]: Unable to extract tag using discriminato
 </pre></div>
 </div>
 </section>
-<section id="one-key-names-a-type">
-<h2>One key names a type<a class="headerlink" href="#one-key-names-a-type" title="Link to this heading"></a></h2>
+<section id="two-keys-name-the-storage">
+<h2>Two keys name the storage<a class="headerlink" href="#two-keys-name-the-storage" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">datatype</span></code> takes one of the eleven base datatypes a
-<a class="reference internal" href="variable_definition.html"><span class="doc">variable definition</span></a> lists, <strong>or</strong> the name of a type this project
-declares, and it does so everywhere storage is named: on a member of a structure and on the
-definition of a variable alike. There is no second key beside it. A <code class="docutils literal notranslate"><span class="pre">type</span></code> key would have to
-mean “the name of a declared type” in those two places and “which shape this entry has” at the
-top of an entry here, and one key with one meaning is worth what it costs.</p>
-<p>What it costs is worth stating plainly, because it is the largest thing given up. The published
-schema can no longer say <code class="docutils literal notranslate"><span class="pre">datatype</span></code> is one of eleven values; it becomes the eleven <em>or</em> a
-string, so an editor still offers them as completions and still documents each one, but a
-mistyped base datatype is a perfectly well formed <em>name</em> and no longer something the schema can
-reject as it is typed. Half of that is bought back in the contract, which refuses a name that
-reads as a storage stem with the digits wrong - <code class="docutils literal notranslate"><span class="pre">uint166</span></code>, <code class="docutils literal notranslate"><span class="pre">int16</span></code>, <code class="docutils literal notranslate"><span class="pre">float3</span></code>, <code class="docutils literal notranslate"><span class="pre">sint_16</span></code>:</p>
+<a class="reference internal" href="variable_definition.html"><span class="doc">variable definition</span></a> lists, and nothing else; <code class="docutils literal notranslate"><span class="pre">typename</span></code> takes
+the name of a type this project declares. Exactly one of the two is stated wherever storage
+is named - on a member of a structure and on the definition of a variable alike - never
+both, never neither:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].scalar.name: error[schema]: Value error, &#39;uint166&#39; reads as a base datatype rather than as the name of a type this project declares; a base datatype has to be spelled as one of them exactly (got: &#39;uint166&#39;)
+a.ddd.json#component.interface[0].definition: error[schema]: Value error, storage is named exactly once: &#39;datatype&#39; for a base datatype, &#39;typename&#39; for a type the project declares (got: {&#39;name&#39;: &#39;Count&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;volatile&#39;: Fals...)
 1 error
 </pre></div>
 </div>
-<p>The same rule means a project cannot declare a type called <code class="docutils literal notranslate"><span class="pre">uint16</span></code> either, which would be a
-name nothing could ever refer to: written anywhere, the base datatype wins. What the shape rule
-cannot catch is a transposition like <code class="docutils literal notranslate"><span class="pre">unit16</span></code>, which reads as no storage at all and is a
-perfectly ordinary identifier. That one is answered by the <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code> check, with the
-question a reader would have asked:</p>
+<p>Two keys rather than one union, so that each stays what it says. The published schema keeps
+<code class="docutils literal notranslate"><span class="pre">datatype</span></code> at exactly eleven values: an editor completes and documents precisely them, and
+a mistyped <code class="docutils literal notranslate"><span class="pre">uint166</span></code> is refused as it is typed rather than reported as a type nobody
+declares a build later. And a declaration tells its reader at the use site whether storage
+is base or declared - <code class="docutils literal notranslate"><span class="pre">&quot;typename&quot;:</span> <span class="pre">&quot;Int16_t&quot;</span></code> is unambiguous however much the name
+dresses like storage, because the key already says it is declared.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">typename</span></code> cannot spell a base datatype, in any case. A type called <code class="docutils literal notranslate"><span class="pre">uint16</span></code> - or
+<code class="docutils literal notranslate"><span class="pre">UINT16</span></code> - would wear the name of storage it is not, and every declaration naming it would
+read like a typo:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition.datatype: error[unknown-type]: &#39;Count&#39; is declared as &#39;unit16&#39;, which is neither a base datatype nor a type any file of this project declares - did you mean &#39;uint16&#39; or &#39;uint64&#39; or &#39;sint16&#39;?
+types.ddd.json#types[0].scalar.name: error[schema]: Value error, &#39;UINT16&#39; spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: &#39;UINT16&#39;)
+1 error
+</pre></div>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">typename</span></code> that names no type any file of the project declares is answered by the
+<code class="docutils literal notranslate"><span class="pre">unknown-type</span></code> check, with the question a reader would have asked:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+a.ddd.json#component.interface[0].definition.typename: error[unknown-type]: &#39;Count&#39; is declared as &#39;unit16&#39;, which is neither a base datatype nor a type any file of this project declares - did you mean &#39;uint16&#39; or &#39;uint64&#39; or &#39;sint16&#39;?
 1 error
 </pre></div>
 </div>
@@ -255,7 +260,7 @@ sensing.ddd.json#component.declarations[0].definition.datatype: error[unknown-ty
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
 <td><p>required</p></td>
-<td><p>The name components write in their <code class="docutils literal notranslate"><span class="pre">datatype</span></code>. It has to be distinct from every other
+<td><p>The name components write in their <code class="docutils literal notranslate"><span class="pre">typename</span></code>. It has to be distinct from every other
 type of the project.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
@@ -294,8 +299,8 @@ question “where is this unit written down” keeps one answer. The rule is the
 of a structure as on the definition of a variable, because the confusion it prevents is the
 same one:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;limits&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;Inlet&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;datatype&#39;: &#39;Tem...)
-types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;unit&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;value&#39;, &#39;member&#39;: &#39;value&#39;, &#39;datatype&#39;: &#39;Tempera...)
+sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;limits&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;Inlet&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;typename&#39;: &#39;Tem...)
+types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;unit&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;value&#39;, &#39;member&#39;: &#39;value&#39;, &#39;typename&#39;: &#39;Tempera...)
 2 errors
 </pre></div>
 </div>
@@ -324,13 +329,13 @@ c declares them in. Every member states which shape it has, in the <code class="
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value</span></code></p></td>
-<td><p>a <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, optionally an array through <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>. The ordinary case, and the
-one that nests a structure: a member whose <code class="docutils literal notranslate"><span class="pre">datatype</span></code> names a structure <em>is</em> that
-structure, laid out inside this one.</p></td>
+<td><p>a base <code class="docutils literal notranslate"><span class="pre">datatype</span></code> or a declared <code class="docutils literal notranslate"><span class="pre">typename</span></code>, optionally an array through
+<code class="docutils literal notranslate"><span class="pre">dimensions</span></code>. The ordinary case, and the one that nests a structure: a member whose
+<code class="docutils literal notranslate"><span class="pre">typename</span></code> names a structure <em>is</em> that structure, laid out inside this one.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bits</span></code></p></td>
-<td><p>a <code class="docutils literal notranslate"><span class="pre">datatype</span></code> and a width in <code class="docutils literal notranslate"><span class="pre">bits</span></code>: a c bitfield. Consecutive bit members share a
-storage unit.</p></td>
+<td><p>a base <code class="docutils literal notranslate"><span class="pre">datatype</span></code> and a width in <code class="docutils literal notranslate"><span class="pre">bits</span></code>: a c bitfield. Consecutive bit members
+share a storage unit.</p></td>
 </tr>
 </tbody>
 </table>
@@ -418,16 +423,16 @@ from a measured one and wrong on the first target whose alignment differs.</p>
 </section>
 <section id="a-variable-of-a-declared-type">
 <h2>A variable of a declared type<a class="headerlink" href="#a-variable-of-a-declared-type" title="Link to this heading"></a></h2>
-<p>A component declares a structured variable with the key it already had. <code class="docutils literal notranslate"><span class="pre">datatype</span></code> names the
-structure, and everything else about the declaration is what it always was - the scope, the
-kind, the description, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>:</p>
+<p>A component declares a structured variable by naming the structure: <code class="docutils literal notranslate"><span class="pre">typename</span></code> where a plain
+declaration states its <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, and everything else about the declaration is what it
+always was - the scope, the kind, the description, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Inlet&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The inlet sensor as this ecu sees it&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor_t&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor_t&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
@@ -548,7 +553,7 @@ generated c would get is not something an include order should decide, so the se
 refused rather than allowed to win.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
-<td><p>a <code class="docutils literal notranslate"><span class="pre">datatype</span></code> names neither a base datatype nor a type any file of the project declares,
+<td><p>a <code class="docutils literal notranslate"><span class="pre">typename</span></code> names no type any file of the project declares,
 whether it is written on a member or on a declaration. It is refused rather than skipped:
 a member of unknown size makes every offset after it wrong, and wrong offsets are
 addresses that point at the wrong bytes without anything looking broken.</p></td>
@@ -590,9 +595,9 @@ would report it once per route.</p>
 usually perfectly good and the use made of it is not; the note points at the declaration of the
 type so that both ends are on screen:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition: error[type-kind]: &#39;History&#39; is declared as the structure &#39;Sample_t&#39;, but a &#39;value_block&#39; refers to other objects or is an array of one datatype, and a structure is neither; a structured object is &#39;measurement&#39; or &#39;parameter&#39;
+sensing.ddd.json#component.interface[0].definition: error[type-kind]: &#39;History&#39; is declared as the structure &#39;Sample_t&#39;, but a &#39;value_block&#39; refers to other objects or is an array of one datatype, and a structure is neither; a structured object is &#39;measurement&#39; or &#39;parameter&#39;
     note: types.ddd.json#types[0]: declared here
-sensing.ddd.json#component.declarations[1].definition: error[type-kind]: &#39;Preset&#39; is declared as the structure &#39;Sample_t&#39;, but the initial value of a structure is written by the code that starts it
+sensing.ddd.json#component.interface[1].definition: error[type-kind]: &#39;Preset&#39; is declared as the structure &#39;Sample_t&#39;, but the initial value of a structure is written by the code that starts it
     note: types.ddd.json#types[0]: declared here
 2 errors
 </pre></div>
@@ -606,7 +611,7 @@ types.ddd.json#types[0]: error[duplicate-type]: type &#39;Temperature_t&#39; is 
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition.name: error[name-collision]: &#39;Sample_t&#39; is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
+sensing.ddd.json#component.interface[0].definition.name: error[name-collision]: &#39;Sample_t&#39; is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
     note: types.ddd.json#types[0]: type declared here
 types.ddd.json#types[1].name: error[reserved-identifier]: type name &#39;uint8_t&#39; is reserved by the c language
 2 errors
@@ -620,7 +625,7 @@ types.ddd.json#types[1].name: error[reserved-identifier]: type name &#39;uint8_t
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="conversions.html" class="btn btn-neutral float-left" title="Conversions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="../consistency_checks.html" class="btn btn-neutral float-right" title="Consistency checks" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="units.html" class="btn btn-neutral float-right" title="Unit vocabulary" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

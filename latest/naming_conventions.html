@@ -563,7 +563,7 @@ instead:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensing&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;InletPressure_raw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
@@ -580,13 +580,13 @@ instead:</p>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.declarations[0].definition.name: error[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+sensing.ddd.json#component.interface[0].definition.name: error[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
     note: InletPressure_raw
           ^^^^^^^^^^^^^ ^^^
-sensing.ddd.json#component.declarations[0].definition.name: error[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+sensing.ddd.json#component.interface[0].definition.name: error[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
     note: InletPressure_raw
           ^^^^^^^^^^^^^ ^^^
-sensing.ddd.json#component.declarations[1].definition.name: error[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
+sensing.ddd.json#component.interface[1].definition.name: error[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
     note: cnt_InletSensorFaults_fltr
                                 ^^^^
 3 errors
@@ -599,13 +599,13 @@ three-part convention produces one finding per offending part, so both problems 
 other, so a project adopting a convention on an existing code base can relax it while the
 renaming is under way:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json -W naming=warning
-sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+sensing.ddd.json#component.interface[0].definition.name: warning[naming]: &#39;InletPressure&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
     note: InletPressure_raw
           ^^^^^^^^^^^^^ ^^^
-sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+sensing.ddd.json#component.interface[0].definition.name: warning[naming]: &#39;raw&#39; does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
     note: InletPressure_raw
           ^^^^^^^^^^^^^ ^^^
-sensing.ddd.json#component.declarations[1].definition.name: warning[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
+sensing.ddd.json#component.interface[1].definition.name: warning[naming]: &#39;fltr&#39; is not a known qualifier (raw, flt, phys, req, max, min) - did you mean &#39;flt&#39;?
     note: cnt_InletSensorFaults_fltr
                                 ^^^^
 3 warnings

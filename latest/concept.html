@@ -197,14 +197,14 @@ definition that gets generated, and the diagnostic points at the consumer that d
 it, which is also the component that has to change. Both appear in the <code class="docutils literal notranslate"><span class="pre">inconsistent</span></code>
 example, whose whole point is to fail:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.declarations[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0]: also written here
-examples/inconsistent/component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[0].definition: reference declaration
-examples/inconsistent/component_c.ddd.json#component.declarations[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-examples/inconsistent/component_c.ddd.json#component.declarations[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
-    note: examples/inconsistent/component_a.ddd.json#component.declarations[2]: declared local here
-examples/inconsistent/component_a.ddd.json#component.declarations[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+    note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>

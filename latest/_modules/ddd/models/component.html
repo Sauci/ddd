@@ -124,7 +124,7 @@
 <div class="viewcode-block" id="Declaration">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Declaration">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Declaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One entry of the ``declarations`` list of a component.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One entry of the ``interface`` list of a component.&quot;&quot;&quot;</span>
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
@@ -189,8 +189,13 @@
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the component, offered to the c templates.&quot;&quot;&quot;</span>
 
-    <span class="n">declarations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The data interface: everything the component produces, consumes or keeps to itself.&quot;&quot;&quot;</span></div>
+    <span class="n">interface</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The data interface: everything the component produces, consumes or keeps to itself.</span>
+
+<span class="sd">    Required with no default, so that a component with nothing to declare says so with an</span>
+<span class="sd">    empty list rather than by a key that might merely have been forgotten - the same</span>
+<span class="sd">    reasoning that makes ``volatile`` and ``kind`` required on a definition.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
 
 
 

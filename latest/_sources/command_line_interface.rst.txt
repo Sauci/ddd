@@ -179,13 +179,13 @@ applies.
 .. code-block:: text
 
    $ ddd check examples/demo/components/controller.ddd.json
-   examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
-   examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
-   examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.declarations[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    2 errors, 5 warnings
 
    $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore

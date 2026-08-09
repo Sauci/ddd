@@ -570,6 +570,11 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <div class="literal-block-wrapper docutils container" id="id3">
 <div class="code-block-caption"><span class="caption-text">ddd_globals.c.jinja2 - the single definition of every global variable</span><a class="headerlink" href="#id3" title="Link to this code"></a></div>
 <div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">macro</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> -<span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">variable.qualifier</span> <span class="cp">}}{{</span> <span class="nv">variable.c_type</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}{{</span> <span class="nv">variable.array_suffix</span> -<span class="cp">}}</span>
+<span class="cp">{{</span> <span class="s1">&#39; __attribute__((section(&quot;&#39;</span> <span class="o">~</span> <span class="nv">variable.section</span> <span class="o">~</span> <span class="s1">&#39;&quot;)))&#39;</span> <span class="k">if</span> <span class="nv">variable.section</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span> -<span class="cp">}}</span>
+<span class="cp">{{</span> <span class="s1">&#39; = &#39;</span> <span class="o">~</span> <span class="nv">variable.initializer</span> <span class="k">if</span> <span class="nv">variable.initializer</span> <span class="k">is</span> <span class="k">not</span> <span class="nf">none</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="x">#include &quot;ddd_globals.h&quot;</span>
 
@@ -593,7 +598,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.comment</span> <span class="cp">%}</span>
 <span class="x">/** </span><span class="cp">{{</span> <span class="nv">variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
-<span class="cp">{{</span> <span class="nv">variable.definition</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{{</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
 <span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
@@ -609,7 +614,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.comment</span> <span class="cp">%}</span>
 <span class="x">/** </span><span class="cp">{{</span> <span class="nv">variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
-<span class="cp">{{</span> <span class="nv">variable.definition</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{{</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
 <span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>

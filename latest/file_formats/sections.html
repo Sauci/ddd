@@ -1,0 +1,232 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory sections &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Consistency checks" href="../consistency_checks.html" />
+    <link rel="prev" title="Unit vocabulary" href="units.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../naming_conventions.html">Naming conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Memory sections</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/sections.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="memory-sections">
+<h1>Memory sections<a class="headerlink" href="#memory-sections" title="Link to this heading"></a></h1>
+<p>Each data object of an embedded project lives in a memory with a character of its own - RAM,
+flash, calibratable ROM behind an emulation overlay, NVM - and the linker places it there by
+section. A <code class="docutils literal notranslate"><span class="pre">sections</span></code> file declares the sections a project uses, and a definition names
+one of them; DDD checks the placement and carries it into the generated c.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;../../schemas/ddd_sections.schema.json&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sections&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.fast_ram&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;access&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;read-write&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;alignment&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.calib&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;access&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;read-only&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;alignment&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;calibration flash, tool writable through the emulation overlay&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">section</span></code> is the name as the linker script spells it - a linker name rather than a c
+identifier, so <code class="docutils literal notranslate"><span class="pre">.calib</span></code> is a normal spelling. <code class="docutils literal notranslate"><span class="pre">access</span></code> is <code class="docutils literal notranslate"><span class="pre">read-write</span></code> or
+<code class="docutils literal notranslate"><span class="pre">read-only</span></code> <em>from the running software’s point of view</em>; whether a calibration tool can
+write a read-only section - an emulation overlay, a calibratable flash - is the target’s
+business and deliberately not modelled, because the object’s <code class="docutils literal notranslate"><span class="pre">volatile</span></code> already states
+what the software has to assume. <code class="docutils literal notranslate"><span class="pre">alignment</span></code> is what the section guarantees, in bytes, a
+power of two. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other
+description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">sections</span></code> prints its published contract.</p>
+<p>A definition then states its <code class="docutils literal notranslate"><span class="pre">section</span></code> - a storage key like <code class="docutils literal notranslate"><span class="pre">init</span></code>: the producer states
+it, a consumer stating one is refused as <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, and a structured variable is
+placed whole, its members having no placement of their own. An object without a <code class="docutils literal notranslate"><span class="pre">section</span></code>
+goes wherever the toolchain’s defaults put it, which is what makes placement adoptable
+gradually.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Speed&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.fast_ram&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Unlike a unit, a section is a reference rather than a spelling: naming one that no file
+declares is refused whether or not any sections file exists, because a section without
+declared properties is a name the checks below can say nothing about:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+a.ddd.json#component.interface[2].definition.section: error[unknown-section]: &#39;Bad&#39; is placed in &#39;.calibb&#39;, which is not a section any file of this project declares - did you mean &#39;.calib&#39;?
+1 error
+</pre></div>
+</div>
+<p>Two checks tie placement to what the description already says. A measurement is written by
+the software, so placing one in a read-only section is an error; a calibration object may
+live in either - <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored calibration:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+a.ddd.json#component.interface[2].definition.section: error[section-access]: &#39;Bad&#39; is a measurement, which the software writes, but &#39;.calib&#39; is read-only
+1 error
+</pre></div>
+</div>
+<p>And an object whose datatype needs stricter alignment than its section guarantees is
+reported - as a warning, because for a structure the need is estimated as the strictest of
+its members’ datatypes and the compiler’s word on the real layout is final:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+a.ddd.json#component.interface[1].definition.section: warning[section-alignment]: &#39;Gain&#39; needs an alignment of 4, but &#39;.calib&#39; guarantees 2
+1 warning
+</pre></div>
+</div>
+<p>The generated c carries the placement in whatever spelling the toolchain wants, which is the
+templates’ business like the rest of the house style; the shipped example templates spell
+the GCC attribute, with the attribute between the declarator and the initialiser:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">&quot;.fast_ram&quot;</span><span class="p">)));</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">&quot;.calib&quot;</span><span class="p">)))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>Templates also receive the placed objects grouped per section under <code class="docutils literal notranslate"><span class="pre">model.sections</span></code>,
+ordered strictest alignment first with names breaking ties, so that a project wanting
+padding-minimal layout can emit each section’s data in that order. Describing the layout in
+the a2l with <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> / <code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> is planned: a segment’s address and size exist
+only after linking, so they will arrive with the address information rather than being
+restated in the vocabulary - the linker script already owns them, and a copy would drift.</p>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="units.html" class="btn btn-neutral float-left" title="Unit vocabulary" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../consistency_checks.html" class="btn btn-neutral float-right" title="Consistency checks" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

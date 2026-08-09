@@ -72,8 +72,8 @@ offending value, and carries on reading whatever else it can:
 .. code-block:: text
 
    $ ddd check sensor_hub.ddd.json
-   sensor_hub.ddd.json#component.declarations[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
-   sensor_hub.ddd.json#component.declarations[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
+   sensor_hub.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
+   sensor_hub.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
    2 errors
 
 Both problems are in one file and both are reported by one run, because an author who has to
@@ -92,7 +92,7 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
 .. code-block:: text
 
    $ ddd check controller.ddd.json
-   controller.ddd.json#component.declarations[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
+   controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
 The same rule applies at the top level of a file: a document with neither a ``project`` nor

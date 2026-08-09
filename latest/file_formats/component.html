@@ -119,7 +119,7 @@ before it becomes a field report. That comparison is what the <a class="referenc
 <span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Controller&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Consumes the raw values and produces the derived ones&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">&quot;condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;defined(FEATURE_X)&quot;</span><span class="p">,</span>
@@ -164,15 +164,17 @@ the component’s objects in the calibration tool.</p></td>
 <td><p>Free text. It is repeated in the banner of the generated header and becomes the long
 identifier of the a2l <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">declarations</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
-<td><p>The interface: one entry per variable the component reads, writes or owns.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">interface</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The data interface: one entry per data object the component reads, writes or owns.
+Required with no default, so a component with nothing to declare says so with an
+explicit <code class="docutils literal notranslate"><span class="pre">[]</span></code> rather than with a key that might merely have been forgotten.</p></td>
 </tr>
 </tbody>
 </table>
-<p>A component that declares nothing is legal - a component may exist before it has any data, or
-may genuinely have none - but it is reported at severity <code class="docutils literal notranslate"><span class="pre">info</span></code>, because far more often it
-means a file that was started and never finished:</p>
+<p>A component whose <code class="docutils literal notranslate"><span class="pre">interface</span></code> is the empty list is legal - a component may exist before it
+has any data, or may genuinely have none - but it is reported at severity <code class="docutils literal notranslate"><span class="pre">info</span></code>, because
+far more often it means a file that was started and never finished:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check emptycomp.ddd.json
 emptycomp.ddd.json#component: info[empty-component]: component &#39;Nothing&#39; declares no variable
 1 info
@@ -189,9 +191,9 @@ b.ddd.json#component.name: error[name-collision]: components &#39;Sensorhub&#39;
 1 error
 </pre></div>
 </div>
-<section id="declarations">
-<h2>declarations<a class="headerlink" href="#declarations" title="Link to this heading"></a></h2>
-<p>Each entry of <code class="docutils literal notranslate"><span class="pre">declarations</span></code> binds one data object to this component, and consists of three
+<section id="interface">
+<h2>interface<a class="headerlink" href="#interface" title="Link to this heading"></a></h2>
+<p>Each entry of <code class="docutils literal notranslate"><span class="pre">interface</span></code> binds one data object to this component, and consists of three
 things: <strong>what</strong> is being declared, <strong>how</strong> this component relates to it, and <strong>when</strong> it
 exists at all.</p>
 <table class="docutils align-default">
@@ -233,8 +235,8 @@ consumer that deviates.</p>
 <p>Declaring the same variable twice inside <strong>one</strong> component is a different matter, and always a
 mistake - there is no second opinion to have with oneself:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupdecl.ddd.json
-dupdecl.ddd.json#component.declarations[1]: error[duplicate-declaration]: component &#39;Dup&#39; declares &#39;V&#39; twice (as local and as local)
-    note: dupdecl.ddd.json#component.declarations[0]: first declared here
+dupdecl.ddd.json#component.interface[1]: error[duplicate-declaration]: component &#39;Dup&#39; declares &#39;V&#39; twice (as local and as local)
+    note: dupdecl.ddd.json#component.interface[0]: first declared here
 1 error
 </pre></div>
 </div>
@@ -279,14 +281,14 @@ owns it, <code class="docutils literal notranslate"><span class="pre">local</spa
 <p>The three scopes are what <code class="docutils literal notranslate"><span class="pre">examples/inconsistent/</span></code> exists to demonstrate; every rule above
 appears in one run:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-component_b.ddd.json#component.declarations[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
-    note: component_a.ddd.json#component.declarations[0]: also written here
-component_c.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
-    note: component_a.ddd.json#component.declarations[0].definition: reference declaration
-component_c.ddd.json#component.declarations[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-component_c.ddd.json#component.declarations[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
-    note: component_a.ddd.json#component.declarations[2]: declared local here
-component_a.ddd.json#component.declarations[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+    note: component_a.ddd.json#component.interface[0]: also written here
+component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+    note: component_a.ddd.json#component.interface[0].definition: reference declaration
+component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
+component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+    note: component_a.ddd.json#component.interface[2]: declared local here
+component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -389,8 +391,8 @@ stripped, and a condition that is empty or only whitespace is the same as no con
 but a line break and the comment markers <code class="docutils literal notranslate"><span class="pre">/*</span></code>, <code class="docutils literal notranslate"><span class="pre">*/</span></code> and <code class="docutils literal notranslate"><span class="pre">//</span></code> are refused, and so is
 <code class="docutils literal notranslate"><span class="pre">#</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check cond.ddd.json
-cond.ddd.json#component.declarations[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: &#39;defined(A)\n#undef NDEBUG&#39;)
-cond.ddd.json#component.declarations[2].condition: error[schema]: Value error, a condition cannot contain &#39;/*&#39; (got: &#39;defined(B) /* sneaky */&#39;)
+cond.ddd.json#component.interface[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: &#39;defined(A)\n#undef NDEBUG&#39;)
+cond.ddd.json#component.interface[2].condition: error[schema]: Value error, a condition cannot contain &#39;/*&#39; (got: &#39;defined(B) /* sneaky */&#39;)
 2 errors
 </pre></div>
 </div>
@@ -412,8 +414,8 @@ exists in the builds the producer says it exists in, and a consumer guarded by a
 symbol will either fail to link or quietly disappear - so it is reported, and the producer’s
 condition is the one that is generated:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-consumer.ddd.json#component.declarations[0].condition: warning[condition-mismatch]: &#39;ValueX&#39;: component &#39;Consumer&#39; uses condition &#39;defined(FEATURE_Y)&#39; while &#39;Producer&#39; uses &#39;defined(FEATURE_X)&#39;
-    note: producer.ddd.json#component.declarations[0]: reference declaration
+consumer.ddd.json#component.interface[0].condition: warning[condition-mismatch]: &#39;ValueX&#39;: component &#39;Consumer&#39; uses condition &#39;defined(FEATURE_Y)&#39; while &#39;Producer&#39; uses &#39;defined(FEATURE_X)&#39;
+    note: producer.ddd.json#component.interface[0]: reference declaration
 1 warning
 </pre></div>
 </div>
@@ -448,11 +450,11 @@ check its own description before integrating it into a project. The inputs of th
 have no producer in such a run, by definition, so silence the check that would otherwise
 dominate the output:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check controller.ddd.json -W missing-producer=ignore
-controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.declarations[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.declarations[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.declarations[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.declarations[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
 5 warnings
 </pre></div>
 </div>

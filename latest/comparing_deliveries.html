@@ -344,7 +344,7 @@ project file next to a directory of components:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;declarations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -472,7 +472,7 @@ says so in as many words, and the decision is left to the reader.</p>
 resolved dictionary, and reports everything in one list. Here the five-change candidate
 additionally reads a <code class="docutils literal notranslate"><span class="pre">ValvePosition</span></code> that nobody produces:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json --baseline release/PressureLoop-1.4.0.json
-work/components/actuator.ddd.json#component.declarations[2]: error[missing-producer]: &#39;ValvePosition&#39; is read by component &#39;Actuator&#39; but no component declares it as output
+work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: &#39;ValvePosition&#39; is read by component &#39;Actuator&#39; but no component declares it as output
 work/pressure.ddd.json: error[changed-interface]: &#39;PressureRaw&#39; is not the same object any more (datatype: uint32 != uint16), read by Controller
 work/pressure.ddd.json: error[removed-object]: &#39;TemperatureRaw&#39; is gone, but was read by Controller
 work/pressure.ddd.json: warning[narrowed-limits]: &#39;ValveDuty&#39;: limits tightened from [0, 100] to [0, 80]
@@ -595,7 +595,7 @@ predecessor.</p>
 <p>They are therefore collected in a bag of their own and dropped. Here is an older working tree
 whose <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> was read by nobody:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check v1.3/pressure.ddd.json
-v1.3/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValveDuty&#39; is written by component &#39;Controller&#39; but read by nobody
+v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValveDuty&#39; is written by component &#39;Controller&#39; but read by nobody
 1 warning
 </pre></div>
 </div>

@@ -129,9 +129,16 @@ and it is the form most of <code class="docutils literal notranslate"><span clas
 is worth doing wherever the file is read more often than it is written.</p>
 <section id="identity">
 <h2>identity<a class="headerlink" href="#identity" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">==</span> <span class="pre">raw</span></code>: the stored number <em>is</em> the quantity. It is the default, so a definition
-with no <code class="docutils literal notranslate"><span class="pre">conversion</span></code> at all has this one. Use it for counters, bit fields, flags, and for
-floating point values that already carry the physical quantity.</p>
+<p><code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">==</span> <span class="pre">raw</span></code>: the stored number <em>is</em> the quantity. It is stated like every other
+conversion - a <code class="docutils literal notranslate"><span class="pre">conversion</span></code> is required wherever storage is named by <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">{}</span></code> is its shortest spelling - because raw equalling physical is an engineering claim
+about the data, and a forgotten scaling on a fixed point value displays raw counts without
+anything looking broken. Use it for counters, bit fields, flags, and for floating point
+values that already carry the physical quantity.</p>
+<p><code class="docutils literal notranslate"><span class="pre">linear</span></code> with <code class="docutils literal notranslate"><span class="pre">factor</span></code> 1 and <code class="docutils literal notranslate"><span class="pre">offset</span></code> 0 is <em>not</em> the identity: conversions compare as
+written, so two components spelling the no-op the two ways disagree
+(<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>), and the a2l carries what was written - a <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code> against an
+<code class="docutils literal notranslate"><span class="pre">IDENTICAL</span></code>.</p>
 <p>The identity is not the absence of a conversion, though, and the a2l shows the difference. An
 object with no unit gets <code class="docutils literal notranslate"><span class="pre">NO_COMPU_METHOD</span></code>, because there is genuinely nothing to say about
 how to read it:</p>
@@ -190,7 +197,7 @@ negative; may not be zero.</p></td>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">factor</span></code> must not be zero, and a file that says otherwise is refused when it is read:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check zerofactor.ddd.json
-zerofactor.ddd.json#component.declarations[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {&#39;kind&#39;: &#39;linear&#39;, &#39;factor&#39;: 0})
+zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {&#39;kind&#39;: &#39;linear&#39;, &#39;factor&#39;: 0})
 1 error
 </pre></div>
 </div>
@@ -231,7 +238,7 @@ enum conversion is a verbal conversion table - the raw value <em>is</em> the phy
 the conversion adds is a name for each of them. It requires an integer datatype, since a state
 machine cannot be in state 2.5 and no calibration tool would know what to display for it:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumfloat.ddd.json
-enumfloat.ddd.json#component.declarations[0].definition: error[schema]: Value error, enum conversion &#39;E_t&#39; requires an integer datatype, got &#39;float32&#39; (got: {&#39;name&#39;: &#39;EnumOnFloat&#39;, &#39;datatype&#39;: &#39;float32&#39;, &#39;conversio...)
+enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion &#39;E_t&#39; requires an integer datatype, got &#39;float32&#39; (got: {&#39;name&#39;: &#39;EnumOnFloat&#39;, &#39;datatype&#39;: &#39;float32&#39;, &#39;conversio...)
 1 error
 </pre></div>
 </div>
@@ -351,9 +358,9 @@ switch statements.</p>
 that name for two different sets of values is an error, and the finding prints both sets so
 that the difference does not have to be hunted for:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-b.ddd.json#component.declarations[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
+b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
     note: here: STATE_OFF=0, STATE_ON=2
-    note: a.ddd.json#component.declarations[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
+    note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
 1 error
 </pre></div>
 </div>
@@ -372,8 +379,8 @@ short form loses nothing:</p>
 <p>Two further things are checked. Every enumerator has to fit into the datatype of the object,
 which is an error, since the constant would otherwise be truncated silently:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json
-dupenum.ddd.json#component.declarations[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum &#39;N_t&#39; do not fit into int8
-dupenum.ddd.json#component.declarations[0].definition.conversion: warning[enum-duplicate-value]: enum &#39;M_t&#39;: M_A, M_B all have the value 1
+dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum &#39;N_t&#39; do not fit into int8
+dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum &#39;M_t&#39;: M_A, M_B all have the value 1
 1 error, 1 warning
 </pre></div>
 </div>

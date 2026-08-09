@@ -475,7 +475,7 @@ instead:
    {
      "component": {
        "name": "Sensing",
-       "declarations": [
+       "interface": [
          {
            "scope": "local",
            "definition": { "name": "InletPressure_raw", "kind": "measurement", "datatype": "uint16",
@@ -493,13 +493,13 @@ instead:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.declarations[0].definition.name: error[naming]: 'InletPressure' is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+   sensing.ddd.json#component.interface[0].definition.name: error[naming]: 'InletPressure' is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
        note: InletPressure_raw
              ^^^^^^^^^^^^^ ^^^
-   sensing.ddd.json#component.declarations[0].definition.name: error[naming]: 'raw' does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+   sensing.ddd.json#component.interface[0].definition.name: error[naming]: 'raw' does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
        note: InletPressure_raw
              ^^^^^^^^^^^^^ ^^^
-   sensing.ddd.json#component.declarations[1].definition.name: error[naming]: 'fltr' is not a known qualifier (raw, flt, phys, req, max, min) - did you mean 'flt'?
+   sensing.ddd.json#component.interface[1].definition.name: error[naming]: 'fltr' is not a known qualifier (raw, flt, phys, req, max, min) - did you mean 'flt'?
        note: cnt_InletSensorFaults_fltr
                                    ^^^^
    3 errors
@@ -514,13 +514,13 @@ renaming is under way:
 .. code-block:: text
 
    $ ddd check project.ddd.json -W naming=warning
-   sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: 'InletPressure' is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
+   sensing.ddd.json#component.interface[0].definition.name: warning[naming]: 'InletPressure' is not a known role (val, flg, cnt, par, axs, crv, map, tbl)
        note: InletPressure_raw
              ^^^^^^^^^^^^^ ^^^
-   sensing.ddd.json#component.declarations[0].definition.name: warning[naming]: 'raw' does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
+   sensing.ddd.json#component.interface[0].definition.name: warning[naming]: 'raw' does not match the subject pattern ^[A-Z][A-Za-z0-9]*$
        note: InletPressure_raw
              ^^^^^^^^^^^^^ ^^^
-   sensing.ddd.json#component.declarations[1].definition.name: warning[naming]: 'fltr' is not a known qualifier (raw, flt, phys, req, max, min) - did you mean 'flt'?
+   sensing.ddd.json#component.interface[1].definition.name: warning[naming]: 'fltr' is not a known qualifier (raw, flt, phys, req, max, min) - did you mean 'flt'?
        note: cnt_InletSensorFaults_fltr
                                    ^^^^
    3 warnings

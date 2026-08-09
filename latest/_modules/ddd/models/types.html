@@ -99,16 +99,16 @@
 <span class="sd">usually shared: the point of declaring ``Engine_t`` once is that two components can agree on it</span>
 <span class="sd">without either owning it.</span>
 
-<span class="sd">**One key names a type, everywhere.**  ``datatype`` accepts one of the base datatypes or the</span>
-<span class="sd">name of a type declared here, on a structure member and on a component declaration alike.</span>
-<span class="sd">There is no second key beside it: a ``type`` key would have to mean &quot;the name of a declared</span>
-<span class="sd">type&quot; in those two places and &quot;which shape this entry has&quot; at the top of an entry here, and one</span>
-<span class="sd">key with one meaning is worth what it costs.</span>
+<span class="sd">**Two keys name the storage, everywhere.**  ``datatype`` is one of the base datatypes and</span>
+<span class="sd">nothing else; ``typename`` is the name of a type declared here.  Exactly one of the two is</span>
+<span class="sd">stated, on a structure member and on a component declaration alike, so that the published</span>
+<span class="sd">schema keeps ``datatype`` at eleven values and a reader tells base from declared at the use</span>
+<span class="sd">site.</span>
 
 <span class="sd">What a structure member may be is deliberately narrow, and the boundary is layout:</span>
 
-<span class="sd">* a **value** member is a datatype - base or declared - optionally an array,</span>
-<span class="sd">* a **bits** member is an integer datatype and a width in bits, which is a c bitfield.</span>
+<span class="sd">* a **value** member is a base ``datatype`` or a declared ``typename``, optionally an array,</span>
+<span class="sd">* a **bits** member is a base integer datatype and a width in bits, which is a c bitfield.</span>
 
 <span class="sd">A member states no storage class.  Whether an object is measured or calibrated qualifies the</span>
 <span class="sd">whole c object - ``const`` cannot apply to half a structure - so it is the *declaration* that</span>
@@ -140,8 +140,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">PositiveInt</span><span class="p">,</span> <span class="n">model_validator</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">DatatypeRef</span><span class="p">,</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Number</span><span class="p">,</span> <span class="n">TypeName</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">IDENTITY</span><span class="p">,</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">physical_range</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Number</span><span class="p">,</span> <span class="n">TypeName</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">physical_range</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">A2lObjectOptions</span><span class="p">,</span> <span class="n">Limits</span><span class="p">,</span> <span class="n">ObjectKind</span><span class="p">,</span> <span class="n">refuse_restating</span>
 
 <span class="n">BITS_PER_BYTE</span> <span class="o">=</span> <span class="mi">8</span>
@@ -187,7 +187,7 @@
     <span class="n">member</span><span class="p">:</span> <span class="n">MemberKind</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Which shape this member has, and with it which other keys the member may carry.</span>
 
-<span class="sd">    * ``value`` needs ``datatype`` and may add ``dimensions``,</span>
+<span class="sd">    * ``value`` needs ``datatype`` or ``typename`` and may add ``dimensions``,</span>
 <span class="sd">    * ``bits`` needs ``datatype`` and ``bits``.</span>
 
 <span class="sd">    A key belonging to the other shape is refused rather than ignored: ``bits`` together with</span>
@@ -198,11 +198,17 @@
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the member, offered to the c templates.&quot;&quot;&quot;</span>
 
-    <span class="n">datatype</span><span class="p">:</span> <span class="n">DatatypeRef</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Storage of this member: a base datatype, or the name of a declared type.</span>
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Storage of this member, one of the eleven base datatypes.</span>
+
+<span class="sd">    Exactly one of ``datatype`` and ``typename`` is stated, here exactly as on a declaration.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">typename</span><span class="p">:</span> <span class="n">TypeName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of a declared type, stated instead of ``datatype``.</span>
 
 <span class="sd">    A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what</span>
-<span class="sd">    its number means.  A ``bits`` member has to name a base integer datatype: a bitfield has no</span>
+<span class="sd">    its number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no</span>
 <span class="sd">    room for a structure, and a scalar type would carry limits the width contradicts.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
@@ -228,8 +234,12 @@
 <span class="sd">    names it, across every component of the project.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">=</span> <span class="n">IDENTITY</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;How this member&#39;s raw value maps to a physical one: identity, linear or an enumeration.&quot;&quot;&quot;</span>
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How this member&#39;s raw value maps to a physical one: identity, linear or an enumeration.</span>
+
+<span class="sd">    Required on a member whose storage is a base ``datatype``, exactly as on a definition;</span>
+<span class="sd">    a member naming a scalar ``typename`` states none, the type fixing it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical limits of this member; derived from its storage and conversion if omitted.</span>
@@ -251,7 +261,8 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Stated limits, or the range this member&#39;s storage and conversion imply.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span>
-        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
         <span class="n">raw</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">bitfield_range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span><span class="p">)</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
@@ -261,8 +272,29 @@
         <span class="k">return</span> <span class="n">Limits</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="n">low</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="n">high</span><span class="p">)</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_storage_is_named_exactly_once</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s2">&quot;storage is named exactly once: &#39;datatype&#39; for a base datatype, &#39;typename&#39; &quot;</span>
+                <span class="s2">&quot;for a type the project declares&quot;</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_base_storage_states_its_conversion</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s2">&quot;a &#39;datatype&#39; comes with a &#39;conversion&#39;: the identity &quot;</span>
+                <span class="s1">&#39;({&quot;kind&quot;: &quot;identity&quot;}) is an answer to state, not a default to fall into&#39;</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_a_named_type_is_not_restated</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
-        <span class="n">refuse_restating</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">refuse_restating</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
@@ -295,12 +327,13 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;a bitfield needs a base integer datatype, got the declared type &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="si">}</span><span class="s2">&#39;; only an integer can carry one in c&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="si">}</span><span class="s2">&#39;; only an integer can carry one in c&quot;</span>
             <span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">is_integer</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;a bitfield needs an integer datatype, got &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;; only an &quot;</span>
@@ -392,8 +425,12 @@
     <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical unit of the value, e.g. ``&quot;rpm&quot;``.&quot;&quot;&quot;</span>
 
-    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">=</span> <span class="n">IDENTITY</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;How a raw value maps to a physical one: identity, linear scaling or an enumeration.&quot;&quot;&quot;</span>
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
+
+<span class="sd">    Required: fixing what a value means is the one job a scalar type has, and the identity</span>
+<span class="sd">    is part of the answer rather than a silence to interpret.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical limits, in the unit above; derived from datatype and conversion if omitted.&quot;&quot;&quot;</span>

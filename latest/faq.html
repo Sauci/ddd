@@ -164,13 +164,13 @@ which is what <code class="docutils literal notranslate"><span class="pre">missi
 read by components that are not there either, which <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> reports as a warning.
 Ignoring both is what makes the result meaningful:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.declarations[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.declarations[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.declarations[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
 2 errors, 5 warnings
 
 $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
@@ -262,8 +262,8 @@ is precisely the class of bug DDD exists to prevent. A disagreement about how th
 since both components can be compiled against the producer’s choice without either of them
 being wrong about the data:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
-controller.ddd.json#component.declarations[0].definition: warning[storage-mismatch]: &#39;InletTemperature&#39;: component &#39;Controller&#39; specifies a different a2l than &#39;SensorHub&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;SensorHub&#39; is used
-    note: sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
+controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;InletTemperature&#39;: component &#39;Controller&#39; specifies a different a2l than &#39;SensorHub&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;SensorHub&#39; is used
+    note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 1 warning
 </pre></div>
 </div>
@@ -290,8 +290,8 @@ lines are the ones that drift.</p>
 ok: 1 variable in 2 components are consistent
 
 $ ddd check device.ddd.json    # after the consumer changed its limits to [0, 150]
-controller.ddd.json#component.declarations[0].definition: error[definition-mismatch]: &#39;InletTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (limits: [0, 150] != [-40, 150])
-    note: sensor_hub.ddd.json#component.declarations[0].definition: reference declaration
+controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;InletTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (limits: [0, 150] != [-40, 150])
+    note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 1 error
 </pre></div>
 </div>
@@ -319,11 +319,11 @@ containing a double underscore, or starting with an underscore and a capital let
 refused. Beyond that, two enums may not contribute the same enumerator, and no variable may
 be named like an enumerator; both are reported as <code class="docutils literal notranslate"><span class="pre">name-collision</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enums.ddd.json
-enums.ddd.json#component.declarations[0].definition.conversion: error[reserved-identifier]: enum name &#39;__state_t&#39; is reserved by the c language
-enums.ddd.json#component.declarations[1].definition.conversion: error[name-collision]: enumerator &#39;OFF&#39; is defined by enum &#39;Mode_t&#39; and by enum &#39;__state_t&#39;; enumerators of different enums share one c namespace
-    note: enums.ddd.json#component.declarations[0].definition.conversion: first defined here
-enums.ddd.json#component.declarations[2].definition.name: error[name-collision]: &#39;ON&#39; is declared as a variable and is also an enumerator of enum &#39;__state_t&#39;; both become the same c identifier
-    note: enums.ddd.json#component.declarations[0].definition.conversion: enumerator declared here
+enums.ddd.json#component.interface[0].definition.conversion: error[reserved-identifier]: enum name &#39;__state_t&#39; is reserved by the c language
+enums.ddd.json#component.interface[1].definition.conversion: error[name-collision]: enumerator &#39;OFF&#39; is defined by enum &#39;Mode_t&#39; and by enum &#39;__state_t&#39;; enumerators of different enums share one c namespace
+    note: enums.ddd.json#component.interface[0].definition.conversion: first defined here
+enums.ddd.json#component.interface[2].definition.name: error[name-collision]: &#39;ON&#39; is declared as a variable and is also an enumerator of enum &#39;__state_t&#39;; both become the same c identifier
+    note: enums.ddd.json#component.interface[0].definition.conversion: enumerator declared here
 3 errors
 </pre></div>
 </div>
@@ -332,9 +332,9 @@ the same enum, and they then have to declare the <em>same</em> enum, because onl
 name is generated. Differing enumerator sets are an <code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code>, and the finding spells
 out both sides so that it is obvious which of the two moved:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-b.ddd.json#component.declarations[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
+b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
     note: here: OFF=0, ON=1, FAULT=2
-    note: a.ddd.json#component.declarations[0].definition.conversion: first defined as: OFF=0, ON=1
+    note: a.ddd.json#component.interface[0].definition.conversion: first defined as: OFF=0, ON=1
 1 error
 </pre></div>
 </div>
@@ -359,6 +359,7 @@ a2l without ever being looked at. The demo project uses it for <code class="docu
 <span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Component local measurement, kept out of the a2l&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
 <span class="w">    </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;export&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
@@ -482,7 +483,7 @@ written padded - <code class="docutils literal notranslate"><span class="pre">MA
 dimensions cannot be described at all. DDD writes all of its dimensions out anyway, which
 only a 1.7 reader understands, and says so:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate buffers.ddd.json -o gen -t templates
-buffers.ddd.json#component.declarations[1].definition: warning[a2l-unrepresentable]: &#39;Tesseract&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: &#39;Tesseract&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       gen/ddd_globals.c (created)
 ...

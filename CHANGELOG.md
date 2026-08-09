@@ -10,6 +10,40 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### A data object names the memory section it lives in
+
+A `sections` file declares the linker sections of a project - the name as the linker script
+spells it, whether the running software can write it, and the alignment it guarantees - and
+a definition places its object with a `section` key:
+
+```json
+{ "sections": [ { "section": ".calib", "access": "read-only", "alignment": 4 } ] }
+```
+
+Placement is storage, like `init`: the producer states it, a consumer stating one is
+refused as `consumer-storage`, and a structured variable is placed whole.  A section is a
+reference rather than a spelling - naming one no file declares is `unknown-section`, with
+the nearest name suggested.  Two checks tie placement to the rest of the description: a
+measurement in a read-only section is `section-access`, and an object needing stricter
+alignment than its section guarantees is `section-alignment`:
+
+```text
+a.ddd.json#component.interface[2].definition.section: error[section-access]: 'Bad' is a measurement, which the software writes, but '.calib' is read-only
+a.ddd.json#component.interface[1].definition.section: warning[section-alignment]: 'Gain' needs an alignment of 4, but '.calib' guarantees 2
+```
+
+The example templates spell the placement as the GCC attribute, between the declarator and
+the initialiser, and templates receive the placed objects grouped per section under
+`model.sections`, strictest alignment first, so same-section data packs without padding.
+The dictionary records the section per object and per structured variable, so its `format`
+is now 3; a format 2 archive still reads, its objects simply unplaced.  Describing the
+layout in the a2l with `MOD_PAR`/`MEMORY_SEGMENT` stays planned until segment addresses
+arrive with the address information.
+
+Found on the way: declaring a variable of a structure caught in a `type-cycle` used to
+crash the run with a recursion error; the declaration is now dropped after the cycle is
+reported, the way a variable of an unknown type already was.
+
 ### A project can declare its unit vocabulary
 
 `unit` is free text, so one quantity could drift into two spellings - `Nm` here,

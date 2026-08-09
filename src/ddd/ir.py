@@ -100,6 +100,10 @@ class ResolvedObject(_Frozen):
     init: InitValue | None = None
     """Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""
 
+    section: str | None = None
+    """Linker section the producing declaration placed the object in; ``null`` for the
+    toolchain's defaults."""
+
     volatile: bool = False
     """Generate the object ``volatile``: stated by every declaration, on every kind.
 
@@ -210,6 +214,10 @@ class ResolvedInstance(_Frozen):
     volatile: bool = False
     """Whether the declaration carries ``volatile``, which qualifies the whole object."""
 
+    section: str | None = None
+    """Linker section the whole structure is placed in; its members have no placement
+    of their own."""
+
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""
 
@@ -280,6 +288,10 @@ class ResolvedLeaf(_Frozen):
     volatile: bool = False
     """From the variable, which carries the qualifier for all of its members at once."""
 
+    section: str | None = None
+    """Linker section of the structure this member belongs to; a member has no placement
+    of its own."""
+
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""
 
@@ -329,7 +341,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 2
+DICTIONARY_FORMAT = 3
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later

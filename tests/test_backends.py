@@ -238,3 +238,35 @@ def test_the_demo_dictionary_round_trips(tmp_path: Path) -> None:
     target = tmp_path / "dump.json"
     target.write_text(dictionary.model_dump_json(indent=2), encoding="utf-8")
     assert DataDictionary.model_validate_json(target.read_text(encoding="utf-8")) == dictionary
+
+
+class TestObjectViewComposition:
+    """``.definition`` is documented template api, kept whole for templates that want the
+    one-liner; the shipped example composes from the parts instead, to put a section
+    attribute between the declarator and the initialiser."""
+
+    def view(self, **overrides: object) -> object:
+        from ddd.backends.c.model import ObjectView
+        from ddd.models import ObjectKind
+
+        parts: dict[str, object] = {
+            "name": "Gain",
+            "kind": ObjectKind.PARAMETER,
+            "c_type": "uint16_t",
+            "array_suffix": "[4]",
+            "constant": True,
+            "volatile": False,
+            "initializer": "{ 1U, 2U, 3U, 4U }",
+            "comment": None,
+            "condition": None,
+            "owner": "A",
+            "consumers": (),
+        }
+        parts.update(overrides)
+        return ObjectView(**parts)  # type: ignore[arg-type]
+
+    def test_the_one_liner_carries_the_initializer(self) -> None:
+        assert self.view().definition == "const uint16_t Gain[4] = { 1U, 2U, 3U, 4U }"
+
+    def test_the_one_liner_without_an_initializer_stops_at_the_declarator(self) -> None:
+        assert self.view(initializer=None).definition == "const uint16_t Gain[4]"

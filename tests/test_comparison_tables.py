@@ -64,6 +64,9 @@ _NOT_COMPARED: dict[str, str] = {
     "init": "only a producer may state one, so there are never two to compare. A component "
     "that reads a variable has no say in what it starts as, and stating one is reported "
     "where it is written as consumer-storage rather than reconciled here afterwards",
+    "section": "only a producer may state one, exactly like init: a consumer stating a "
+    "section claims storage it does not own and is reported as consumer-storage where the "
+    "claim is written",
 }
 
 # ResolvedObject carries the *result* of the analysis as well as the declaration, and the

@@ -81,6 +81,9 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
 _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("init", lambda o: o.init, lambda o: "none" if o.init is None else repr(o.init)),
     ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
+    ComparedField(
+        "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"
+    ),
 )
 
 

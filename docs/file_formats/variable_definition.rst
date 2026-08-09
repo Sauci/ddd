@@ -102,6 +102,11 @@ rather than ignored.
      - An object with ``min`` and ``max``, in **physical** units. When it is left out, DDD
        derives the limits from the datatype and the conversion, so the a2l always carries a
        range.
+   * - ``section``
+     - none
+     - The linker section the object is placed in, named in the project's
+       :doc:`sections file <sections>`. A storage key like ``init``: the producer states it,
+       and an object without one goes wherever the toolchain's defaults put it.
    * - ``init``
      - ``null``
      - The initial value, in **raw** units. ``null`` means no initialiser is written at all

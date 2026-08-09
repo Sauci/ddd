@@ -34,7 +34,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 2,
+     "format": 3,
      "name": "DemoDevice",
      "description": "Demonstration project showing every DDD feature",
      "source": "demo.ddd.json",

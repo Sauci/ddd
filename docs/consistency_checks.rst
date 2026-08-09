@@ -53,6 +53,7 @@ down should be read after a DDD upgrade:
    duplicate-component    error    two different files declare the same component name
    duplicate-type         error    two different files declare the same type name
    duplicate-unit         error    two different files declare the same unit
+   duplicate-section      error    two different files declare the same memory section
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -296,6 +297,26 @@ or an a2l file that does not do what the description says - or that does not com
      - two different files declare the same unit. The vocabulary is a set of spellings, so a
        second entry is either a copy that will drift or a disagreement about the description,
        and neither is worth keeping quiet.
+   * - ``duplicate-section``
+     - error
+     - two different files declare the same memory section: either a copy that will drift or
+       a disagreement about its properties, and neither is worth keeping quiet.
+   * - ``unknown-section``
+     - error
+     - a definition names a memory section no file declares (see the
+       :doc:`sections file <file_formats/sections>`). Unlike a unit there is no free text
+       fallback: a section without declared properties is a name the placement checks can
+       say nothing about. The nearest declared name is suggested.
+   * - ``section-access``
+     - error
+     - a measurement, which the software writes, is placed in a ``read-only`` section. A
+       calibration object may live in either direction: ``const`` data in RAM is a mirrored
+       calibration.
+   * - ``section-alignment``
+     - warning
+     - an object needs stricter alignment than its section guarantees. A warning rather than
+       an error because for a structure the need is an estimate - the strictest of its
+       members' datatypes - and the compiler's word on the real layout is final.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the

@@ -205,6 +205,14 @@ class DataObject(_Frozen):
     checks that every component declaring this object spells the unit the same way.
     """
 
+    section: str | None = None
+    """Linker section the object is placed in, named in the project's sections file.
+
+    A storage key like ``init``: the producer states it, a consumer stating one claims
+    storage it does not own (``consumer-storage``), and a structured object is placed whole.
+    Left out, the object goes wherever the toolchain's defaults put it.
+    """
+
     init: InitValue | None = None
     """Raw initial value, in the stored domain rather than the physical one.
 

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "SectionAccess": {
+      "description": "What the running software may do with a section, which is all DDD can check.\n\n* ``read-write`` - The software reads and writes it: RAM, NVM.\n* ``read-only`` - The software only reads it: flash, ROM - calibratable or not, which is the target's secret.",
+      "enum": [
+        "read-write",
+        "read-only"
+      ],
+      "enumDescriptions": [
+        "The software reads and writes it: RAM, NVM.",
+        "The software only reads it: flash, ROM - calibratable or not, which is the target's secret."
+      ],
+      "title": "SectionAccess",
+      "type": "string"
+    },
+    "SectionDeclaration": {
+      "additionalProperties": false,
+      "description": "One linker section, with the properties the checks need.",
+      "properties": {
+        "section": {
+          "description": "The name as the linker script spells it: ``.calib``, ``.nvm``.\n\nA linker name rather than a C identifier, so a leading dot is a normal spelling; only\nwhitespace is refused, which no linker accepts in a section name either.",
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Section",
+          "type": "string"
+        },
+        "access": {
+          "$ref": "#/$defs/SectionAccess",
+          "description": "``read-write`` or ``read-only``, from the running software's point of view."
+        },
+        "alignment": {
+          "description": "The alignment the section guarantees, in bytes; a power of two.\n\nWhat it is checked against: an object whose datatype needs stricter alignment than the\nsection guarantees would be padded or faulting, and either is worth a finding.",
+          "minimum": 1,
+          "title": "Alignment",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text saying what the section is for, e.g. ``calibration flash behind the\nemulation overlay``.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "access",
+        "alignment"
+      ],
+      "title": "SectionDeclaration",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.ddd.json`` memory section description.\n\n``sections`` is the top level key that makes this a sections file; DDD decides what a\nfile is from that key alone.  The file is listed in the ``includes`` of a project like\nany other description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "sections": {
+      "description": "The sections this project places data in; an empty list is no file at all.",
+      "items": {
+        "$ref": "#/$defs/SectionDeclaration"
+      },
+      "minItems": 1,
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "sections"
+  ],
+  "title": "DDD memory sections",
+  "type": "object"
+}

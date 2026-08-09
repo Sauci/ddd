@@ -43,6 +43,7 @@ from ddd.models.objects import (
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
+from ddd.models.sections import SectionAccess, SectionDeclaration, SectionsFile
 from ddd.models.types import (
     BITS_PER_BYTE,
     MEMBER_OBJECT_KINDS,
@@ -94,6 +95,9 @@ __all__ = [
     "ProjectFile",
     "ScalarType",
     "Scope",
+    "SectionAccess",
+    "SectionDeclaration",
+    "SectionsFile",
     "Segment",
     "Shape",
     "StructType",

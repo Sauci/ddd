@@ -385,6 +385,19 @@
           "title": "Volatile",
           "type": "boolean"
         },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the whole structure is placed in; its members have no placement\nof their own.",
+          "title": "Section"
+        },
         "condition": {
           "anyOf": [
             {
@@ -536,6 +549,19 @@
           "description": "From the variable, which carries the qualifier for all of its members at once.",
           "title": "Volatile",
           "type": "boolean"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section of the structure this member belongs to; a member has no placement\nof its own.",
+          "title": "Section"
         },
         "condition": {
           "anyOf": [
@@ -753,6 +779,19 @@
           "default": null,
           "description": "Raw initial value, nested to match ``shape``; ``null`` means zero initialised."
         },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the producing declaration placed the object in; ``null`` for the\ntoolchain's defaults.",
+          "title": "Section"
+        },
         "volatile": {
           "default": false,
           "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``\nexists to make safe.",
@@ -882,7 +921,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 2,
+      "default": 3,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"

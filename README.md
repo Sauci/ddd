@@ -94,7 +94,7 @@ script, a linter or an editor match them with one pattern.  A description file w
 other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
-The top level key decides what a file is: `project`, `component`, `types` or `naming`.
+The top level key decides what a file is: `project`, `component`, `types`, `units` or `sections`.
 Unknown keys are rejected, so typos are found instead of silently ignored - with one
 deliberate exception: a top level `$schema` key is allowed and ignored, because it is how an
 editor binds a file to its schema.  The machine readable contract of each kind is available
@@ -403,8 +403,11 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-component` | two files use the same component name |
 | error | `duplicate-type` | two files declare the same structured datatype name |
 | error | `duplicate-unit` | two files declare the same unit |
+| error | `duplicate-section` | two files declare the same memory section |
 | error | `unknown-type` | a typename names no type any file declares |
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
+| error | `unknown-section` | a definition names a memory section no file declares |
+| error | `section-access` | a measurement is placed in a section the software cannot write |
 | error | `type-kind` | a declared type is used where its shape does not fit |
 | error | `type-cycle` | structures nest each other, so neither has a size |
 | error | `enum-conflict` | one enum name, two different sets of enumerators |
@@ -419,6 +422,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
+| warning | `section-alignment` | an object needs stricter alignment than its section guarantees |
 | warning | `condition-mismatch` | declarations of one variable use different conditions |
 | warning | `unused-output` | an output nobody reads |
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |

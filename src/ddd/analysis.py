@@ -290,6 +290,7 @@ class Variable:
             shape=self.shape,
             init=definition.init,
             volatile=definition.volatile,
+            section=definition.section,
             condition=self.condition,
             references=definition.references,
             owner=self.producer.component_name if self.producer else None,
@@ -432,6 +433,7 @@ class _Analysis:
         self._bag = bag
         self._enums = _EnumRegistry()
         self._types = {entry.name: entry for entry in workspace.types}
+        self._cyclic_types: set[str] = set()
         """Every type the project declares, by name - structures and scalars alike."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
@@ -441,6 +443,7 @@ class _Analysis:
         workspace = self._workspace
         self._check_types()
         self._check_units()
+        self._check_sections()
         self._check_component_names()
         for loaded in workspace.components:
             self._collect_component(loaded)
@@ -596,6 +599,84 @@ class _Analysis:
             for position, member in enumerate(structure.members):
                 check(member.unit, entry.location(f"members[{position}].unit"))
 
+    def _check_sections(self) -> None:
+        """Every stated section is declared, writable enough, and aligned enough.
+
+        A section is a reference rather than a spelling: naming one no file declares is
+        ``unknown-section`` whether or not any sections file exists, because a section
+        without declared properties would be a name the two checks below can say nothing
+        about. The authority rule is not here - a consumer stating a section is refused as
+        ``consumer-storage`` where the claim is written.
+        """
+        declared = {entry.section: entry.declared for entry in self._workspace.sections}
+        for loaded in self._workspace.components:
+            for index, declaration in enumerate(loaded.component.interface):
+                definition = declaration.definition
+                named = definition.section
+                if named is None:
+                    continue
+                where = loaded.declaration_location(index, "definition.section")
+                entry = declared.get(named)
+                if entry is None:
+                    matches = difflib.get_close_matches(named, sorted(declared), n=3, cutoff=0.5)
+                    nearest = f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+                    self._bag.add(
+                        "unknown-section",
+                        f"'{definition.name}' is placed in '{named}', which is not a section "
+                        f"any file of this project declares{nearest}",
+                        where,
+                    )
+                    continue
+                if definition.kind is ObjectKind.MEASUREMENT and not entry.writable:
+                    self._bag.add(
+                        "section-access",
+                        f"'{definition.name}' is a measurement, which the software writes, "
+                        f"but '{named}' is read-only",
+                        where,
+                    )
+                needed = self._alignment_of(definition)
+                if needed is not None and needed > entry.alignment:
+                    self._bag.add(
+                        "section-alignment",
+                        f"'{definition.name}' needs an alignment of {needed}, but '{named}' "
+                        f"guarantees {entry.alignment}",
+                        where,
+                    )
+
+    def _alignment_of(self, definition: DataObject) -> int | None:
+        """The alignment an object needs, as far as the description can tell.
+
+        A base datatype needs its own size. A structure needs the strictest of its members,
+        walked through nested structures; the compiler's word on the real layout is final,
+        which is why the finding this feeds is a warning rather than an error. An object
+        whose type resolves to nothing has been reported already and needs no second finding.
+        """
+        if definition.datatype is not None:
+            return definition.datatype.size
+        assert definition.typename is not None
+        return self._type_alignment(definition.typename, seen=set())
+
+    def _type_alignment(self, name: str, seen: set[str]) -> int | None:
+        if name in seen:  # a cycle is reported as type-cycle; no alignment to give
+            return None
+        seen.add(name)
+        loaded = self._types.get(name)
+        if loaded is None:
+            return None
+        entry = loaded.declared
+        if isinstance(entry, ScalarType):
+            return entry.datatype.size
+        strictest = 1
+        for member in entry.members:
+            if member.datatype is not None:
+                strictest = max(strictest, member.datatype.size)
+                continue
+            assert member.typename is not None
+            nested = self._type_alignment(member.typename, seen)
+            if nested is not None:
+                strictest = max(strictest, nested)
+        return strictest
+
     def _check_types(self) -> None:
         """Every nested structure is declared, and no structure contains itself.
 
@@ -630,6 +711,10 @@ class _Analysis:
         reported: set[frozenset[str]] = set()
         for entry in self._workspace.types:
             cycle = _nesting_cycle(entry.name, declared)
+            if cycle:
+                # Every type whose walk reaches the cycle is unusable: it has no size, so a
+                # variable of it cannot be flattened. Recorded here, refused at resolution.
+                self._cyclic_types.add(entry.name)
             if not cycle or frozenset(cycle) in reported:
                 continue
             reported.add(frozenset(cycle))
@@ -749,6 +834,11 @@ class _Analysis:
             return None
         entry = declared.declared
         if isinstance(entry, StructType):
+            if named in self._cyclic_types:
+                # The cycle is already reported at the type; a variable of a structure that
+                # has no size cannot be resolved, and a second finding here would only repeat
+                # the first with a worse location.
+                return None
             # Kept as it was written. A structured variable has no single datatype, no limits
             # and no initial value, so it takes a road of its own from here on; what it shares
             # with every other declaration - who owns it, who reads it, what it is called - is
@@ -855,6 +945,14 @@ class _Analysis:
                 f"'{definition.name}': the initial value is decided by the component that "
                 f"produces the variable, not by '{ref.component_name}', which reads it",
                 ref.location("definition.init"),
+            )
+
+        if not ref.scope.is_producer and definition.section is not None:
+            self._bag.add(
+                "consumer-storage",
+                f"'{definition.name}': the memory section is decided by the component that "
+                f"produces the variable, not by '{ref.component_name}', which reads it",
+                ref.location("definition.section"),
             )
 
         if definition.declared_type is not None and self._is_structure(definition.declared_type):
@@ -1145,6 +1243,7 @@ class _Analysis:
             description=definition.description,
             shape=definition.declared_shape or (),
             volatile=definition.volatile,
+            section=definition.section,
             condition=reference.condition,
             owner=producer.component_name if producer else None,
             consumers=tuple(sorted(ref.component_name for ref in consumers)),
@@ -1191,7 +1290,8 @@ class _Analysis:
                         shape=member.dimensions,
                         bits=member.bits,
                         volatile=instance.volatile,
-                        condition=instance.condition,
+                        section=instance.section,
+                condition=instance.condition,
                         owner=instance.owner,
                         consumers=instance.consumers,
                         local=instance.local,

@@ -1,4 +1,9 @@
 {% import "_macros.jinja2" as macros %}
+{% macro define(variable) -%}
+{{ variable.qualifier }}{{ variable.c_type }} {{ variable.name }}{{ variable.array_suffix -}}
+{{ ' __attribute__((section("' ~ variable.section ~ '")))' if variable.section else '' -}}
+{{ ' = ' ~ variable.initializer if variable.initializer is not none else '' }};
+{%- endmacro %}
 {{- macros.banner(filename, model) }}
 #include "ddd_globals.h"
 
@@ -22,7 +27,7 @@
 {% if variable.comment %}
 /** {{ variable.comment }} */
 {% endif %}
-{{ variable.definition }};
+{{ define(variable) }}
 {% if variable.condition %}
 #endif /* {{ variable.condition }} */
 {% endif %}
@@ -38,7 +43,7 @@
 {% if variable.comment %}
 /** {{ variable.comment }} */
 {% endif %}
-{{ variable.definition }};
+{{ define(variable) }}
 {% if variable.condition %}
 #endif /* {{ variable.condition }} */
 {% endif %}

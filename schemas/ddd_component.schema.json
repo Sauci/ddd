@@ -104,6 +104,19 @@
           "title": "Unit",
           "type": "string"
         },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
+        },
         "init": {
           "anyOf": [
             {
@@ -296,6 +309,19 @@
           "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
         },
         "init": {
           "anyOf": [
@@ -698,6 +724,19 @@
           "title": "Unit",
           "type": "string"
         },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
+        },
         "init": {
           "anyOf": [
             {
@@ -852,6 +891,19 @@
           "title": "Unit",
           "type": "string"
         },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
+        },
         "init": {
           "anyOf": [
             {
@@ -997,6 +1049,19 @@
           "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
         },
         "init": {
           "anyOf": [
@@ -1148,6 +1213,19 @@
           "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
           "title": "Unit",
           "type": "string"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
+          "title": "Section"
         },
         "init": {
           "anyOf": [

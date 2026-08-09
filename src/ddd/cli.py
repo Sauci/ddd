@@ -39,7 +39,15 @@ from ddd.diagnostics import (
 )
 from ddd.ir import DataDictionary
 from ddd.loading import load_convention, load_dictionary, load_workspace
-from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile, UnitsFile, format_shape
+from ddd.models import (
+    ComponentFile,
+    NamingFile,
+    ProjectFile,
+    SectionsFile,
+    TypesFile,
+    UnitsFile,
+    format_shape,
+)
 from ddd.models.schema import PublishedSchema
 from ddd.naming import Inspection, complete, inspect, or_list
 
@@ -490,6 +498,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "naming": NamingFile,
     "types": TypesFile,
     "units": UnitsFile,
+    "sections": SectionsFile,
     "dictionary": DataDictionary,
 }
 

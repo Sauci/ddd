@@ -21,7 +21,7 @@
         - [3.3.1.4 Description and condition](#3314-description-and-condition)
       - [3.3.2 Naming a declared type](#332-naming-a-declared-type)
     - [3.4 Conversions](#34-conversions)
-    - [3.5 Memory placement *(planned)*](#35-memory-placement-planned)
+    - [3.5 Memory placement](#35-memory-placement)
     - [3.6 Build record](#36-build-record)
     - [3.7 Type description](#37-type-description)
     - [3.8 Unit vocabulary](#38-unit-vocabulary)
@@ -34,7 +34,6 @@
   - [7 Tool interface](#7-tool-interface)
     - [7.1 Build system integration](#71-build-system-integration)
     - [7.2 Editor integration](#72-editor-integration)
-  - [8 Implementation status](#8-implementation-status)
 
 ## 1 Introduction
 
@@ -169,8 +168,9 @@ order mark is tolerated on reading, since Windows editors like to prepend one - 
 named `*.ddd.json` (`file-extension`), so that a description file is recognisable as such in a project that
 contains JSON for other purposes. The top level key of a file decides what the file is:
 `project` ([section 3.1](#31-project-description)), `component` ([section 3.2](#32-software-component-description))
-`types` ([section 3.7](#37-type-description))
-or `units` ([section 3.8](#38-unit-vocabulary)); only the first two can be the root of a
+`types` ([section 3.7](#37-type-description)),
+`units` ([section 3.8](#38-unit-vocabulary)) or `sections` ([section 3.5](#35-memory-placement));
+only the first two can be the root of a
 run. JSON allows one object to spell the same key twice - `"init": 0, "init": 255` - and
 parsers generally resolve that silently, the last spelling winning: the value the author
 reads first is not the value a tool would use, which in a grown description file is a
@@ -180,13 +180,14 @@ are rejected, with one exception: a top level `$schema` key **shall** be accepte
 since it is the standard way an editor binds a JSON file to its schema and thereby turns the
 published contract into completion, hover documentation and as-you-type validation. The
 formal contract is published by the tool itself as a JSON schema (`ddd schema`), one file
-per format - project, component, types, units and the data dictionary - and every authored
+per format - project, component, types, units, sections and the data dictionary - and every authored
 field of it **shall** carry its documentation. The binding is per file rather than per directory
 because the kind of a description is in its content and not in its name.
 
 ### 3.1 Project description
 
-Contains a list of components, types files, units files and/or other (sub-)projects.
+Contains a list of components, types files, units files, sections files and/or other
+(sub-)projects.
 
 ```json
 {
@@ -200,7 +201,7 @@ Contains a list of components, types files, units files and/or other (sub-)proje
 
 - `"name"` (required) - C identifier of the project, also used as A2L project and module name
 - `"description"` (optional) - free text
-- `"includes"` (optional) - paths to component, types, units or sub-project files, relative to this file. The
+- `"includes"` (optional) - paths to component, types, units, sections or sub-project files, relative to this file. The
   kind of each included file is detected from its content. A file reached through several
   paths is loaded once - identity being the resolved path: absolute, symlinks followed, case
   compared as the platform compares it - and include cycles are an error.
@@ -258,6 +259,7 @@ Attributes common to every kind:
 | `conversion` | required beside `datatype` | raw to physical conversion, [section 3.4](#34-conversions); a `typename` fixes it instead |
 | `limits` | derived | physical `min`/`max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
+| `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `a2l` | export | `export`, `format`, `display_identifier` |
 | `volatile` | required | whether the generated C carries `volatile`, i.e. whether the value can change without the reading code having written it |
 
@@ -343,8 +345,9 @@ Kind specific attributes:
   address with a load region and a startup copy that overwrites what the tool wrote unless the
   linker script says otherwise. DDD states no preference between the two and reports
   nothing about the choice: a project that calibrates online states `true` and places the
-  object itself in its linker script, DDD's own memory placement being planned rather than
-  implemented ([section 3.5](#35-memory-placement-planned)), and one that does not states `false` and keeps its data in flash.
+  object itself in its linker script - or by naming a `section`
+  ([section 3.5](#35-memory-placement)) - and one that does not states `false` and keeps its
+  data in flash.
 - `volatile` buys freshness and gives up coherence, which is worth knowing before turning it
   on for a whole dictionary: the compiler has to re-read the object at every mention, so a set
   of parameters read at several points of one control step can straddle a calibration write
@@ -379,8 +382,9 @@ can disagree.
 
 ##### 3.3.1.2 Storage
 
-`init`. What an object starts out as is decided by the component that produces it, so a
-declaration whose scope is `input` **must not** state one at all (`consumer-storage`).
+`init` and `section` ([section 3.5](#35-memory-placement)). What an object starts out
+as, and where it lives, is decided by the component that produces it, so a declaration
+whose scope is `input` **must not** state either (`consumer-storage`).
 This is not an opinion to be outvoted: it is a claim over storage the component does not own,
 and it is reported where it is written rather than where it is overruled.
 
@@ -476,12 +480,63 @@ displays raw counts without anything looking broken. A definition or member nami
 `IDENTICAL` ([section 5.2](#52-a2l)). One mapping, spelled two ways, is a disagreement about
 the spelling, and the spelling is what every consumer's tooling sees.
 
-### 3.5 Memory placement *(planned)*
+### 3.5 Memory placement
 
-A `memory` attribute **shall** select the memory the object is placed in
-(`ram`, `rom`, `internal_ram`) and optionally name an explicit linker section. The generated
-code **shall** carry the corresponding section attribute and the A2L **shall** describe the memory
-layout with `MOD_PAR` / `MEMORY_SEGMENT`.
+Each data object of an embedded project lives in a memory with a character of its own - RAM,
+flash, calibratable ROM behind an emulation overlay, NVM - and the linker places it there by
+section. DDD carries that placement: a `sections` file declares the sections a project
+uses, an includable vocabulary like the units file ([section 3.8](#38-unit-vocabulary)),
+and a definition names one of them.
+
+```json
+{
+  "sections": [
+    { "section": ".data", "access": "read-write", "alignment": 4 },
+    { "section": ".calib", "access": "read-only", "alignment": 4,
+      "description": "calibration flash, tool writable through the emulation overlay" },
+    { "section": ".nvm", "access": "read-write", "alignment": 8 }
+  ]
+}
+```
+
+- `"section"` (required) - the name as the linker script spells it: a linker name rather
+  than a C identifier, so `.calib` is a normal spelling. Declared twice, by one file or by
+  two, it is `duplicate-section`.
+- `"access"` (required) - `read-write` or `read-only`, from the running software's point of
+  view. Whether a calibration tool can write a read-only section - an emulation overlay, a
+  calibratable flash - is the target's business and deliberately not modelled: DDD cannot
+  tell a plain ROM from a calibratable one, and the object's `volatile` already states what
+  the software has to assume ([section 3.3](#33-data-object-definition)).
+- `"alignment"` (required) - the alignment the section guarantees, in bytes, a power of two.
+- `"description"` (optional) - free text.
+
+A definition **may** then state its `section`, a storage key like `init`
+([section 3.3.1.2](#3312-storage)): the producer states it, a consumer stating one claims
+storage it does not own (`consumer-storage`), and a structured object is placed whole - its
+members have no placement of their own, for the reason they carry no `volatile`. A `section`
+names a declared section the way `typename` names a declared type: naming one no file
+declares is `unknown-section`, with the nearest name suggested, and there is no free text
+fallback - a section without declared properties would be a name the checks can say nothing
+about. An object without a `section` is placed by the toolchain's defaults, which is what
+makes the vocabulary adoptable gradually.
+
+Two checks tie placement to what the description already says. A measurement is written by
+the software, so placing one in a `read-only` section is `section-access`. An object whose
+datatype needs stricter alignment than its section guarantees is `section-alignment`; for a
+structured object the need is estimated as the strictest of its members' datatypes, and the
+compiler's word is final - reading the real layout back is what the address information of
+[section 6](#6-address-information) is for.
+
+The generated C carries the placement in whatever spelling the toolchain wants - an
+`__attribute__((section(...)))`, a pragma - which is the templates' business exactly as the
+rest of the house style is ([section 5.1](#51-c-code)): DDD resolves the section name per
+object, the dictionary records it, and the templates receive both the name on every placed
+object and the objects grouped per section, ordered strictest alignment first so that
+same-section data packs without padding, names breaking ties. The example templates spell
+the GCC attribute. Describing the layout in the A2L with `MOD_PAR` / `MEMORY_SEGMENT` is
+*planned*: a segment's address and size exist only after linking, so they **shall** arrive
+with the address information rather than being restated in the vocabulary - the linker
+script already owns them, and a copy would drift.
 
 ### 3.6 Build record
 
@@ -636,9 +691,9 @@ option is repeatable; for one check the last override wins, and `--strict` then 
 is still a warning to an error. Overriding a check that cannot be relaxed is a usage error
 rather than a finding, like naming an unknown check or severity.
 
-Five checks need every component of a project to mean anything - `unknown-type`,
-`unknown-unit`, `missing-producer`, `unknown-reference` and `unused-output` - and it is
-exactly these the
+Six checks need every component of a project to mean anything - `unknown-type`,
+`unknown-unit`, `unknown-section`, `missing-producer`, `unknown-reference` and
+`unused-output` - and it is exactly these the
 language server holds back when it checks a file belonging to no project ([section 7.2](#72-editor-integration)).
 
 The `schema` check carries every violation of the published file contracts ([section 3](#3-file-formats)), including the
@@ -664,18 +719,25 @@ Errors:
   that omits limits defers to the producer rather than disagreeing with it, a relaxation
   `volatile` has no use for, being required on every definition ([section 3.3.1](#331-one-object-several-declarations))
 - `duplicate-declaration` - a component declares the same object more than once
-- `consumer-storage` - an `input` declaration states `init`. What an object starts out as is
-  decided by the component that produces it, so a reader stating one is claiming storage it
-  does not own, rather than holding an opinion to be outvoted
+- `consumer-storage` - an `input` declaration states `init` or `section`. What an object
+  starts out as, and where it lives, is decided by the component that produces it, so a
+  reader stating either is claiming storage it does not own, rather than holding an opinion
+  to be outvoted
 - `duplicate-component` - two files declare the same component name
 - `duplicate-type` - two files declare the same type name
 - `duplicate-unit` - two files declare the same unit ([section 3.8](#38-unit-vocabulary))
+- `duplicate-section` - two files declare the same memory section ([section 3.5](#35-memory-placement))
 - `unknown-type`, `type-kind`, `type-cycle` - a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit,
   or structures nest each other so that neither has a size
 - `unknown-unit` - a unit is not in the vocabulary the project declares
   ([section 3.8](#38-unit-vocabulary)); declared nowhere, units stay free text and the
   check never fires
+- `unknown-section` - a definition names a memory section no file declares
+  ([section 3.5](#35-memory-placement)); unlike a unit there is no free text fallback, since
+  a section without declared properties is a name the placement checks can say nothing about
+- `section-access` - a measurement, which the software writes, is placed in a `read-only`
+  section
 - `enum-conflict` - one enum name is used with different enumerators: the ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do not
 - `init-invalid` - an initial value or an enumerator does not fit the datatype or the shape
@@ -700,6 +762,9 @@ Warnings:
 
 - `storage-mismatch` - components disagree on how the A2L presents the object; the producer
   wins
+- `section-alignment` - an object needs stricter alignment than its section guarantees;
+  a warning rather than an error because the need is the description's estimate, and the
+  compiler's word on the real layout is final
 - `condition-mismatch` - declarations of one object use different preprocessor conditions
 - `unused-output` - an output is read by nobody
 - `limits-out-of-range` - limits exceed what the datatype can represent under the
@@ -734,9 +799,9 @@ Errors - the consumers of the object become wrong, whether or not they still com
 Warnings - behaviour or tooling changes, but no consumer becomes wrong:
 
 - `removed-unused-object` - an object is gone that no component read
-- `changed-storage` - the initial value or the volatility changed; on a calibration object the
-  volatility also decides whether a tool can still change the value in a running ECU, and
-  which memory the object ends up in
+- `changed-storage` - the initial value, the volatility or the section changed; on a
+  calibration object the volatility also decides whether a tool can still change the value
+  in a running ECU, and the section says literally which memory the object ends up in
 - `narrowed-limits` - the physical limits got tighter, so calibrated data **may** no longer fit
 - `changed-owner` - another component produces the object now
 - `changed-condition` - the preprocessor condition changed; the producer's, which is the one
@@ -895,7 +960,7 @@ of structures is expanded element by element instead, one set of members per `[i
 Members use the ordinary per-datatype `RECORD_LAYOUT` - the structure itself gets no record
 of its own - and the component's `GROUP` references the member paths. A `bits` member reaches
 no A2L at all: `SYMBOL_LINK` can carry a byte offset but not a bit position, so a bitfield
-waits for a build to report both the word and the bits ([section 8](#8-implementation-status)).
+waits for a build to report both the word and the bits *(planned)*.
 
 Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, `IF_DATA` for
 XCP/CCP with measurement rasters, and A2L *import* for migration and merging are *planned*.
@@ -950,7 +1015,7 @@ a findings exit either way.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD does not
 ship can consume it without depending on the implementation. The dictionary names its own
-format (`format`, today `2`), raised only when the document's shape changes, so an archived
+format (`format`, today `3`), raised only when the document's shape changes, so an archived
 delivery says which shape it carries - what the build record's `format` does for it
 ([section 3.6](#36-build-record)).
 
@@ -1013,7 +1078,7 @@ searching the build directories the client names - or, unconfigured, the usual s
 A file claimed by several builds is checked under each of them and the findings published
 together: a component linked into two images is in two projects, and the answer to which one
 the reader cares about is both. A file belonging to no configured build is still checked, on
-its own, with the five checks that need every component of a project ([section 4](#4-consistency-checks)) held back: a
+its own, with the six checks that need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in
 front of the reader. Each check declares whether it needs the whole project, so the two modes
@@ -1026,25 +1091,3 @@ repeatable `-b` arguments; the shipped VS Code extension exposes them as the set
 An editor extension **shall** do no more than launch the server and point it at the build
 directories: everything a reader sees is the tool's answer, so that an editor DDD ships
 nothing for is not a second class one.
-
-## 8 Implementation status
-
-| section | status |
-| --- | --- |
-| [3.1](#31-project-description) project description, includes, sub-projects | implemented |
-| [3.2](#32-software-component-description) component description, scopes, conditions | implemented |
-| [3.3](#33-data-object-definition) measurements, parameters, value blocks, curves, maps, axes | implemented |
-| [3.4](#34-conversions) conversions incl. enums | implemented |
-| [3.5](#35-memory-placement-planned) memory placement | planned |
-| [3.6](#36-build-record) build record | implemented (`ddd build-info`, written by `ddd_generate`) |
-| [3.7](#37-type-description) type description, scalar and struct types | implemented (`ddd schema types`, `examples/structures`); A2L bitfield members await a build that reports their bits |
-| [3.8](#38-unit-vocabulary) unit vocabulary | implemented (`ddd schema units`, `unknown-unit`, `duplicate-unit`) |
-| [4](#4-consistency-checks) consistency checks | implemented |
-| [4.1](#41-comparing-two-deliveries) comparing two deliveries | implemented (`ddd compare`, `ddd check --baseline`) |
-| [5.1](#51-c-code) C code generation from project templates | implemented (`--template-dir`, `ddd templates-dir`); per-file assignment planned |
-| [5.2](#52-a2l) A2L generation | implemented for 1.6.1; other versions, `FUNCTION`, `IF_DATA`, import planned |
-| [6](#6-address-information) address information | JSON map implemented, ELF/DWARF import planned |
-| [7](#7-tool-interface) command line interface | implemented |
-| [7](#7-tool-interface) data dictionary as a published contract | implemented (`ddd dump`, `ddd schema dictionary`) |
-| [7.1](#71-build-system-integration) build system integration | implemented (`cmake/Ddd.cmake`, `ddd cmake-dir`) |
-| [7.2](#72-editor-integration) editor integration | implemented (`ddd lsp`: diagnostics, navigation, hover, rename, quick fixes; VS Code launcher extension) |

@@ -46,6 +46,14 @@ class ObjectView:
     owner: str
     consumers: tuple[str, ...]
 
+    section: str | None = None
+    """Linker section the producing declaration placed the object in, or ``None``.
+
+    The name alone: how a section attribute is spelled - ``__attribute__``, a pragma - is
+    the toolchain's business and therefore the templates', exactly like the rest of the
+    house style.
+    """
+
     @property
     def qualifier(self) -> str:
         """``"const volatile "``, ``"const "``, ``"volatile "`` or the empty string.
@@ -184,6 +192,10 @@ class CodeModel:
     """
 
     groups: tuple[ComponentGroup, ...]
+    sections: tuple[SectionGroup, ...]
+    """Placed objects grouped per linker section, strictest alignment first; empty when the
+    project places nothing."""
+
     headers: tuple[ComponentHeaderView, ...]
     needs_stdint: bool
     needs_stdbool: bool
@@ -196,6 +208,63 @@ class CodeModel:
         or a digit, and keeping a leading digit out of the macro name.
         """
         return guard_name(*parts)
+
+
+@dataclass(frozen=True, slots=True)
+class SectionGroup:
+    """Every placed object of one linker section, strictest alignment first.
+
+    The order is the point: data of one section emitted strictest first packs without
+    padding, and names break ties so that the output is deterministic. Objects without a
+    section are not here - they stay in their component's group and the toolchain's default
+    placement.
+    """
+
+    name: str
+    objects: tuple[ObjectView, ...]
+
+
+def _section_groups(
+    dictionary: DataDictionary, views: dict[str, ObjectView]
+) -> tuple[SectionGroup, ...]:
+    structures = {entry.name: entry for entry in dictionary.types}
+
+    def alignment(name: str) -> int:
+        # The dictionary's types are dependency ordered and acyclic by construction, and a
+        # placed instance names a structure the analysis resolved: the lookup cannot miss.
+        entry = structures[name]
+        strictest = 1
+        for member in entry.members:
+            if member.datatype is not None:
+                strictest = max(strictest, member.datatype.size)
+            else:
+                assert member.type is not None
+                strictest = max(strictest, alignment(member.type))
+        return strictest
+
+    def needed(entry: ResolvedObject | ResolvedInstance) -> int:
+        if isinstance(entry, ResolvedInstance):
+            return alignment(entry.type)
+        return entry.datatype.size
+
+    placed: dict[str, list[tuple[int, str]]] = {}
+    entries: tuple[ResolvedObject | ResolvedInstance, ...] = (
+        *dictionary.objects,
+        *dictionary.instances,
+    )
+    for entry in entries:
+        if entry.section is not None:
+            placed.setdefault(entry.section, []).append((needed(entry), entry.name))
+    return tuple(
+        SectionGroup(
+            name=name,
+            objects=tuple(
+                views[object_name]
+                for _, object_name in sorted(placed[name], key=lambda pair: (-pair[0], pair[1]))
+            ),
+        )
+        for name in sorted(placed)
+    )
 
 
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
@@ -233,6 +302,7 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         enums=tuple(_enum_view(enum) for enum in dictionary.enums),
         structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
+        sections=_section_groups(dictionary, views),
         headers=tuple(_header(component, views, options) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
         needs_stdbool=needs_stdbool(dictionary.datatypes),
@@ -312,6 +382,7 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
         condition=entry.condition,
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,
+        section=entry.section,
     )
 
 
@@ -328,6 +399,7 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         condition=entry.condition,
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,
+        section=entry.section,
     )
 
 

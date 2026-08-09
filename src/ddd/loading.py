@@ -21,6 +21,8 @@ from ddd.models import (
     NamingFile,
     Project,
     ProjectFile,
+    SectionDeclaration,
+    SectionsFile,
     StructType,
     TypesFile,
     UnitDeclaration,
@@ -38,7 +40,7 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
-FILE_KINDS = ("project", "component", "types", "units")
+FILE_KINDS = ("project", "component", "types", "units", "sections")
 """Top level keys that identify a description file, in the order they are offered.
 
 A naming convention is not among them: it is pointed at by the ``naming`` key of a project
@@ -169,6 +171,24 @@ class LoadedUnit:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedSection:
+    """One declared section together with where it was declared."""
+
+    path: Path
+    index: int
+    """Position in the ``sections`` list of its file, which is what the location points at."""
+
+    declared: SectionDeclaration
+
+    @property
+    def section(self) -> str:
+        return self.declared.section
+
+    def location(self) -> Location:
+        return Location(self.path, f"sections[{self.index}]")
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -190,6 +210,14 @@ class Workspace:
 
     An empty vocabulary is the opt-out: no units file, no constraint. Once any file declares
     one, every stated unit is checked against the union of what every units file declares.
+    """
+
+    sections: tuple[LoadedSection, ...] = ()
+    """The memory sections the project declares, sorted by name.
+
+    Unlike a unit, a section is a reference rather than a spelling: a definition naming one
+    that no file declares is ``unknown-section``, whether or not any sections file exists -
+    a section without declared properties would be a name the checks can say nothing about.
     """
 
     naming: NamingConvention | None = None
@@ -300,6 +328,7 @@ class _Loader:
         self._components_by_name: dict[str, LoadedComponent] = {}
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
+        self._sections_by_name: dict[str, LoadedSection] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
 
@@ -334,6 +363,15 @@ class _Loader:
             )
             return None
 
+        if kind == "sections":
+            self._bag.add(
+                "file-kind",
+                "this is a memory section description; list it in the 'includes' of the "
+                "project that places data in them instead of analysing it on its own",
+                Location(root),
+            )
+            return None
+
         if kind == "component":
             component = self._load_component(root, data, parents=())
             if component is None:
@@ -359,6 +397,9 @@ class _Loader:
             projects=tuple(self._projects),
             types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
             units=tuple(sorted(self._units_by_name.values(), key=lambda entry: entry.unit)),
+            sections=tuple(
+                sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
+            ),
             naming=load_convention(naming_path, self._bag) if naming_path else None,
             naming_path=naming_path,
             read_paths=tuple(sorted(self._read_paths)),
@@ -522,6 +563,33 @@ class _Loader:
                 continue
             self._units_by_name[loaded.unit] = loaded
 
+    def _load_sections(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a section description and register what it declares.
+
+        A section is registered under its name; the second file to declare ``.calib`` is
+        refused rather than merged: two files declaring one section is either a copy that
+        will drift or a disagreement about its properties, and neither is worth keeping
+        quiet.
+        """
+        try:
+            model = SectionsFile.model_validate(data)
+        except ValidationError as error:
+            self._report_validation_error(path, error)
+            return
+
+        for index, declared in enumerate(model.sections):
+            loaded = LoadedSection(path=path, index=index, declared=declared)
+            previous = self._sections_by_name.get(loaded.section)
+            if previous is not None:
+                self._bag.add(
+                    "duplicate-section",
+                    f"section '{loaded.section}' is declared twice",
+                    loaded.location(),
+                    notes=[("first declared here", previous.location())],
+                )
+                continue
+            self._sections_by_name[loaded.section] = loaded
+
     def _load_project(
         self,
         path: Path,
@@ -610,6 +678,8 @@ class _Loader:
             self._load_types(path, data)
         elif kind == "units":
             self._load_units(path, data)
+        elif kind == "sections":
+            self._load_sections(path, data)
 
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)

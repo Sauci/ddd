@@ -62,7 +62,6 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
@@ -180,10 +179,9 @@ emptycomp.ddd.json#component: info[empty-component]: component &#39;Nothing&#39;
 1 info
 </pre></div>
 </div>
-<p>Component names live in their own namespace and are not subject to the project’s
-<a class="reference internal" href="../naming_conventions.html"><span class="doc">naming convention</span></a>: a convention written for variables asks for a
-role token and a subject, and every component name in every project would fail it. What is
-checked is that two component names cannot end up asking for the same generated file, which on
+<p>What is
+checked about a component name is that two of them cannot end up asking for the same generated
+file, which on
 a case insensitive file system means names differing only in case:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
 b.ddd.json#component.name: error[name-collision]: components &#39;Sensorhub&#39; and &#39;SensorHub&#39; differ only in upper/lower case, so they ask for the same generated header

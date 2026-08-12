@@ -54,7 +54,6 @@
 <li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
@@ -118,11 +117,9 @@ nothing has to be filtered out of a redirection: <code class="docutils literal n
 <span class="pre">baseline.json</span></code> archives the dictionary and nothing else, even on a run that had something to
 say about it.</p>
 <p>For a job that files findings rather than reads them, seven commands understand
-<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">name</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">sources</span></code> and
 <code class="docutils literal notranslate"><span class="pre">checks</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, whose output is
-machine readable already, <code class="docutils literal notranslate"><span class="pre">complete</span></code>, which prints one candidate per line because that is
-what a shell expects, and <code class="docutils literal notranslate"><span class="pre">sources</span></code>, whose output is a plain list of paths a makefile or a
-ninja file consumes as it stands. In json the diagnostics become part of the document the
+machine readable already. In json the diagnostics become part of the document the
 command prints, next to whatever else it has to report:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
 {
@@ -169,13 +166,12 @@ diagnostics go to standard error, so that both formats leave the dictionary alon
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>findings: at least one diagnostic of severity <code class="docutils literal notranslate"><span class="pre">error</span></code> survived the severity policy.
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span></code> also exits <code class="docutils literal notranslate"><span class="pre">1</span></code> when a name does not fit its convention, and
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> when the file it was pointed at cannot be read at all.</p></td>
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> also exits <code class="docutils literal notranslate"><span class="pre">1</span></code> when the file it was pointed at cannot be read at all.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
 <td><p>the invocation itself was wrong: an unknown command or option, a required option left
 out, an unknown check identifier or severity, an attempt to relax a check that cannot
-be relaxed, a naming convention that does not exist, an output directory that cannot be
+be relaxed, an output directory that cannot be
 written into. The project was never examined, so the absence of findings means nothing
 here.</p></td>
 </tr>
@@ -219,18 +215,9 @@ consumers - the quickest answer to “who writes this?”.</p></td>
 gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">KIND</span></code></p></td>
-<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">naming</span></code> or <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, for
+<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, for
 an editor that offers completion inside a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file or for a validator in a
 ci job.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span> <span class="pre">-c</span> <span class="pre">CONV</span> <span class="pre">NAME...</span></code></p></td>
-<td><p>explain what each part of a name means, or point at the part of it that does not fit
-the convention.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">complete</span> <span class="pre">-c</span> <span class="pre">CONV</span> <span class="pre">PREFIX</span></code></p></td>
-<td><p>list the names a prefix may grow into. It prints one candidate per line and always
-exits zero, because a completion that reports an error is worse than one that offers
-nothing.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
 <td><p>list every description file the project is built out of, for the dependency list of a
@@ -336,13 +323,15 @@ through <code class="docutils literal notranslate"><span class="pre">includes</s
 A build system that made the generated code depend on the project file alone would therefore
 be wrong in the ordinary case: editing a component would change nothing the build can see, and
 the image would happily link yesterday’s globals and ship yesterday’s a2l.</p>
-<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> closes that gap. It prints one absolute path per line - the project file
-itself, every description it includes however deeply, and the naming convention it points at,
-because a changed convention changes the verdict just as a changed declaration does:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/naming/project.ddd.json
-/home/you/ddd/examples/naming/convention.ddd.json
-/home/you/ddd/examples/naming/project.ddd.json
-/home/you/ddd/examples/naming/sensing.ddd.json
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> closes that gap. It prints one absolute path per line: the project file
+itself and every description it includes however deeply:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/demo/demo.ddd.json
+/home/you/ddd/examples/demo/components/controller.ddd.json
+/home/you/ddd/examples/demo/components/sensor_hub.ddd.json
+/home/you/ddd/examples/demo/components/user_interface.ddd.json
+/home/you/ddd/examples/demo/demo.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/event_logger.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/logging.ddd.json
 </pre></div>
 </div>
 <p>The paths are absolute and always written with forward slashes, on Windows as well, so the
@@ -353,6 +342,8 @@ still has a well defined set of source files, and a build system asking what to 
 an answer even while the project does not check out. Only a file that cannot be read at all is
 fatal. This is what <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written project description watch
 its own components, described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> the same list arrives as the <code class="docutils literal notranslate"><span class="pre">sources</span></code> array of a json document, next
+to the diagnostics and their summary, exactly as the other commands report them.</p>
 </section>
 <section id="reference">
 <h2>Reference<a class="headerlink" href="#reference" title="Link to this heading"></a></h2>
@@ -362,7 +353,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h3>ddd<a class="headerlink" href="#ddd" title="Link to this heading"></a></h3>
 <p>Data dictionary for the global variables of a component based embedded software project.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd [-h] [-v]</span>
-<span class="go">           {check,compare,generate,list,dump,lsp,build-info,schema,name,complete,sources,checks,cmake-dir,templates-dir}</span>
+<span class="go">           {check,compare,generate,list,dump,lsp,build-info,schema,sources,checks,cmake-dir,templates-dir}</span>
 <span class="go">           ...</span>
 </pre></div>
 </div>
@@ -538,31 +529,6 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-compare-format">
 <span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-compare-format" title="Link to this definition"></a></dt>
 <dd><p>output format</p>
-</dd></dl>
-
-</section>
-<section id="ddd-complete">
-<h4>ddd complete<a class="headerlink" href="#ddd-complete" title="Link to this heading"></a></h4>
-<p>Prints one candidate per line and always exits zero: a completion that fails loudly is worse than one that offers nothing.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd complete [-h] -c CONVENTION [prefix]</span>
-</pre></div>
-</div>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-complete-arg-prefix">
-<span class="sig-name descname"><span class="pre">prefix</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-complete-arg-prefix" title="Link to this definition"></a></dt>
-<dd><p>what has been typed</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-complete-h">
-<span id="cmdoption-ddd-complete-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-complete-h" title="Link to this definition"></a></dt>
-<dd><p>show this help message and exit</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-complete-c">
-<span id="cmdoption-ddd-complete-convention"></span><span class="sig-name descname"><span class="pre">-c</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;convention&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--convention</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;convention&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-complete-c" title="Link to this definition"></a></dt>
-<dd><p>the naming convention file</p>
 </dd></dl>
 
 </section>
@@ -747,42 +713,11 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 </section>
-<section id="ddd-name">
-<h4>ddd name<a class="headerlink" href="#ddd-name" title="Link to this heading"></a></h4>
-<p>Splits every given name into its segments, says which part is wrong if any is, and spells out what each part means.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd name [-h] -c CONVENTION [--format {text,json}] NAME [NAME ...]</span>
-</pre></div>
-</div>
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-name-arg-name">
-<span class="sig-name descname"><span class="pre">name</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-name-arg-name" title="Link to this definition"></a></dt>
-<dd><p>the names to look at</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-name-h">
-<span id="cmdoption-ddd-name-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-name-h" title="Link to this definition"></a></dt>
-<dd><p>show this help message and exit</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-name-c">
-<span id="cmdoption-ddd-name-convention"></span><span class="sig-name descname"><span class="pre">-c</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;convention&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--convention</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;convention&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-name-c" title="Link to this definition"></a></dt>
-<dd><p>the naming convention file</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-name-format">
-<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-name-format" title="Link to this definition"></a></dt>
-<dd><p>output format</p>
-</dd></dl>
-
-</section>
 <section id="ddd-schema">
 <h4>ddd schema<a class="headerlink" href="#ddd-schema" title="Link to this heading"></a></h4>
 <p>Prints the json schema of one file format, or writes every schema into a directory with ‘all’. Committing those files and pointing the ‘$schema’ key of each description at the matching one is what gives an editor completion, hover documentation and validation while a description file is being written.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT]</span>
-<span class="go">                  {component,dictionary,naming,project,sections,types,units,all}</span>
+<span class="go">                  {component,dictionary,project,sections,types,units,all}</span>
 </pre></div>
 </div>
 <dl class="std option">
@@ -805,8 +740,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-sources">
 <h4>ddd sources<a class="headerlink" href="#ddd-sources" title="Link to this heading"></a></h4>
-<p>Prints one absolute path per line: the project file, every file it includes however deeply, and the naming convention. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and none of them is named on the command line.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] project</span>
+<p>Prints one absolute path per line: the project file and every file it includes however deeply. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and none of them is named on the command line.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] [--format {text,json}] project</span>
 </pre></div>
 </div>
 <dl class="std option">
@@ -819,6 +754,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-sources-h">
 <span id="cmdoption-ddd-sources-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-sources-h" title="Link to this definition"></a></dt>
 <dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-sources-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
 </dd></dl>
 
 </section>

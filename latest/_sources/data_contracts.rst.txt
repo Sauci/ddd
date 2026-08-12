@@ -25,7 +25,6 @@ changes cannot leave its documentation or its schema behind.
    package "ddd.models" {
        rectangle "ProjectFile\n(*.ddd.json)" as project_model
        rectangle "ComponentFile\n(*.ddd.json)" as component_model
-       rectangle "NamingFile\n(*.ddd.json)" as naming_model
    }
 
    package "ddd.ir" {
@@ -40,7 +39,6 @@ changes cannot leave its documentation or its schema behind.
 
    project_model --> loader
    component_model --> loader
-   naming_model --> loader
    loader --> analysis
    analysis --> dictionary_model
    dictionary_model --> c_backend
@@ -49,7 +47,7 @@ changes cannot leave its documentation or its schema behind.
 
 The data dictionary on the right of the diagram is the same idea applied to data that does
 not have to be a file at all, and it is important enough to have :doc:`a page of its own
-<data_dictionary>`. The three contracts on the left are the files a project actually
+<data_dictionary>`. The contracts on the left are the files a project actually
 contains, and they are described in prose, with examples, under :doc:`file formats
 <file_formats/index>`. What follows here is the discipline all of them are held to, and the
 generated reference for every model.
@@ -163,7 +161,7 @@ including the field documentation and the rejection of unknown properties - and
 
    ddd schema project
    ddd schema component
-   ddd schema naming
+   ddd schema types
    ddd schema dictionary
    ddd schema component -o .vscode/ddd_component.schema.json
 
@@ -278,20 +276,3 @@ unambiguous: a block carrying ``enumerators`` or a ``name`` is an enum, one carr
 
 .. autopydantic_model:: ddd.models.Enumerator
    :field-show-constraints: False
-
-Naming convention
-~~~~~~~~~~~~~~~~~
-
-A naming convention is a third kind of ``*.ddd.json`` file, pointed at by the ``naming`` key
-of a project rather than listed among its ``includes``. It describes a name as an ordered
-sequence of segments, which is what lets DDD point at the part of a name that is wrong and
-complete a name that is half typed; see :doc:`naming conventions <naming_conventions>`.
-
-.. autopydantic_model:: ddd.models.NamingFile
-
-.. autopydantic_model:: ddd.models.NamingConvention
-
-.. autopydantic_model:: ddd.models.Segment
-   :field-show-constraints: False
-
-.. autopydantic_model:: ddd.models.Token

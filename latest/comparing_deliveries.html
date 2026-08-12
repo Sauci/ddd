@@ -25,7 +25,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Generated artefacts" href="generated_artefacts.html" />
-    <link rel="prev" title="Naming conventions" href="naming_conventions.html" /> 
+    <link rel="prev" title="Consistency checks" href="consistency_checks.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -54,7 +54,6 @@
 <li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Comparing deliveries</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#two-questions-not-one">Two questions, not one</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-the-second-question-needs-an-archived-dictionary">Why the second question needs an archived dictionary</a></li>
@@ -270,7 +269,7 @@ them together with everything else.</p>
 </tr>
 <tr class="row-odd"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
-<td><p>the initial value or volatility of an object changed</p></td>
+<td><p>the initial value, volatility or memory section of an object changed</p></td>
 </tr>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
@@ -302,10 +301,10 @@ them together with everything else.</p>
 kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
 component local - are the properties a consumer compiles against and calibrates against. Any
 one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the two properties that change how an object behaves
-rather than what it means, the initial value and <code class="docutils literal notranslate"><span class="pre">volatile</span></code>; <code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the
-export flag, the display format and the display identifier, which move labels around in a
-calibration tool without touching the software.</p>
+ones differ. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the three properties that change how an object behaves
+rather than what it means, the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and the memory <code class="docutils literal notranslate"><span class="pre">section</span></code>;
+<code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the export flag, the display format and the display identifier, which
+move labels around in a calibration tool without touching the software.</p>
 <p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> is graded differently here than it is <em>inside</em> a project, where it is interface
 and a disagreement is a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> error - see <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a>. The
 difference is who is left describing the object wrongly. Inside one project two components are
@@ -587,8 +586,8 @@ side is never mistaken for a problem with the delivery being judged.</p>
 <h2>The baseline’s own findings are not findings of this run<a class="headerlink" href="#the-baseline-s-own-findings-are-not-findings-of-this-run" title="Link to this heading"></a></h2>
 <p>When the baseline is given as a project description rather than as a dump, DDD has to analyse
 it to obtain its dictionary, and that analysis produces findings about <em>that</em> delivery: an
-output nobody read two releases ago, a component that has since been removed, a naming
-convention that has since been tightened. Those findings are not this run’s business. Reported
+output nobody read two releases ago, a component that has since been
+removed. Those findings are not this run’s business. Reported
 here they would be attributed to the candidate, they would appear twice whenever both sides
 are the same tree, and a clean delivery could be failed because of the state of its
 predecessor.</p>
@@ -648,7 +647,7 @@ same objects, with the same layout, the same scaling and the same meaning.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="naming_conventions.html" class="btn btn-neutral float-left" title="Naming conventions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="consistency_checks.html" class="btn btn-neutral float-left" title="Consistency checks" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="generated_artefacts.html" class="btn btn-neutral float-right" title="Generated artefacts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

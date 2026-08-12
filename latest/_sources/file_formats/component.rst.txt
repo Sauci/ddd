@@ -72,10 +72,9 @@ far more often it means a file that was started and never finished:
    emptycomp.ddd.json#component: info[empty-component]: component 'Nothing' declares no variable
    1 info
 
-Component names live in their own namespace and are not subject to the project's
-:doc:`naming convention </naming_conventions>`: a convention written for variables asks for a
-role token and a subject, and every component name in every project would fail it. What is
-checked is that two component names cannot end up asking for the same generated file, which on
+What is
+checked about a component name is that two of them cannot end up asking for the same generated
+file, which on
 a case insensitive file system means names differing only in case:
 
 .. code-block:: text

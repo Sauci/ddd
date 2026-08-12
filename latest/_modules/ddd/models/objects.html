@@ -51,7 +51,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
@@ -255,6 +254,59 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">refuse_enum_on_non_integer</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Refuse an enum conversion on storage that cannot hold an enumerator exactly.</span>
+
+<span class="sd">    The same rule wherever a ``datatype`` and a ``conversion`` are stated side by side - on a</span>
+<span class="sd">    definition, on a structure member and on a scalar type - shared the way</span>
+<span class="sd">    :func:`refuse_restating` is, because letting one of the three accept what the others</span>
+<span class="sd">    refuse would make the verdict depend on where the same pair happens to be written.</span>
+<span class="sd">    ``boolean`` does not count as an integer datatype: an enumerator is an exact integer,</span>
+<span class="sd">    which a float cannot promise to hold and a truth value has no room for.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="ow">not</span> <span class="n">datatype</span><span class="o">.</span><span class="n">is_integer</span>
+    <span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;enum conversion &#39;</span><span class="si">{</span><span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; requires an integer datatype, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;got &#39;</span><span class="si">{</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_storage_named_once</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">typename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Refuse a definition that names its storage twice, or not at all.</span>
+
+<span class="sd">    The same rule wherever storage is named - on a definition and on a structure member</span>
+<span class="sd">    alike - shared the way :func:`refuse_restating` is: two keys stating one storage leaves</span>
+<span class="sd">    a reader guessing which of them counts, and neither stating it leaves nothing to</span>
+<span class="sd">    allocate.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="n">typename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;storage is named exactly once: &#39;datatype&#39; for a base datatype, &#39;typename&#39; &quot;</span>
+            <span class="s2">&quot;for a type the project declares&quot;</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_conversion_stated</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Refuse base storage that states no conversion; the identity is an answer, not a default.</span>
+
+<span class="sd">    The same rule wherever a base ``datatype`` is stated - on a definition and on a structure</span>
+<span class="sd">    member alike - because the forgotten scaling it prevents is the same one: a fixed point</span>
+<span class="sd">    value silently displayed as raw counts, with nothing looking broken.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">conversion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;a &#39;datatype&#39; comes with a &#39;conversion&#39;: the identity &quot;</span>
+            <span class="s1">&#39;({&quot;kind&quot;: &quot;identity&quot;}) is an answer to state, not a default to fall into&#39;</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">resolve_export</span><span class="p">(</span><span class="n">stated</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether an object reaches the a2l, given what every component said about it.</span>
 
@@ -423,34 +475,17 @@
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
-            <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">is_integer</span>
-        <span class="p">):</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;enum conversion &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; requires an integer datatype, &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;got &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
-            <span class="p">)</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_storage_is_named_exactly_once</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
-        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="s2">&quot;storage is named exactly once: &#39;datatype&#39; for a base datatype, &#39;typename&#39; &quot;</span>
-                <span class="s2">&quot;for a type the project declares&quot;</span>
-            <span class="p">)</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">check_storage_named_once</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_base_storage_states_its_conversion</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="s2">&quot;a &#39;datatype&#39; comes with a &#39;conversion&#39;: the identity &quot;</span>
-                <span class="s1">&#39;({&quot;kind&quot;: &quot;identity&quot;}) is an answer to state, not a default to fall into&#39;</span>
-            <span class="p">)</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">check_conversion_stated</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>

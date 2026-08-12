@@ -24,7 +24,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Naming conventions" href="naming_conventions.html" />
+    <link rel="next" title="Comparing deliveries" href="comparing_deliveries.html" />
     <link rel="prev" title="Memory sections" href="file_formats/sections.html" /> 
 </head>
 
@@ -74,7 +74,6 @@
 <li class="toctree-l2"><a class="reference internal" href="#exit-codes-and-ci">Exit codes and ci</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
@@ -192,14 +191,7 @@ broken.ddd.json:4:22: error[json-syntax]: Expecting value
 story: almost every disagreement is a disagreement <em>between two places</em>, and a finding that
 pointed at only one of them would send its reader hunting for the other. The note therefore
 names the declaration the finding was measured against - “also written here”, “reference
-declaration”, “declared local here” - with a location of its own. The <code class="docutils literal notranslate"><span class="pre">naming</span></code> check uses the
-same mechanism to underline the part of a name that is wrong:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.interface[0].definition.name: error[naming]: &#39;vl&#39; is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean &#39;val&#39;?
-    note: vl_InletTemperature_flt
-          ^^
-</pre></div>
-</div>
+declaration”, “declared local here” - with a location of its own.</p>
 <p>Findings are printed errors first, then warnings, then information, and within one severity by
 file and by position in the file, so that fixing one finding does not shuffle the others around
 in the next run. The run ends with a one line summary (<code class="docutils literal notranslate"><span class="pre">4</span> <span class="pre">errors,</span> <span class="pre">1</span> <span class="pre">warning</span></code>) or, when a
@@ -348,8 +340,7 @@ utf-8. The finding carries the line and the column the parser stopped at.</p></t
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file-kind</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>the top level of the document is not a json object, or carries neither <code class="docutils literal notranslate"><span class="pre">project</span></code> nor
-<code class="docutils literal notranslate"><span class="pre">component</span></code>, or carries both. A naming convention listed in <code class="docutils literal notranslate"><span class="pre">includes</span></code> is recognized
-as such and reported with the advice to point the <code class="docutils literal notranslate"><span class="pre">naming</span></code> key at it instead.</p></td>
+<code class="docutils literal notranslate"><span class="pre">component</span></code>, or carries both.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
 <td><p>error</p></td>
@@ -522,11 +513,6 @@ not have (for a curve or a map, the shape given by its axes), or an enumerator d
 fit the datatype of the variable, or does not fit into a c <code class="docutils literal notranslate"><span class="pre">int</span></code>, which every
 enumerator has to (C11 6.7.2.2).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">naming</span></code></p></td>
-<td><p>error</p></td>
-<td><p>a declared variable name does not follow the naming convention the project points at.
-Only variable names are checked; see <a class="reference internal" href="naming_conventions.html"><span class="doc">Naming conventions</span></a>.</p></td>
-</tr>
 </tbody>
 </table>
 </section>
@@ -650,11 +636,12 @@ external tool still might.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>the initial value or the volatility of an object changed. A calibration object whose
-<code class="docutils literal notranslate"><span class="pre">volatile</span></code> went from <code class="docutils literal notranslate"><span class="pre">true</span></code> to <code class="docutils literal notranslate"><span class="pre">false</span></code> is the case worth reading twice: it keeps
-its address and a tool can still write to it, but the compiler is now entitled to fold
-the initial value into the code that reads it, so tuning it while the software runs
-stops working.</p></td>
+<td><p>the initial value, the volatility or the memory section of an object changed. A
+calibration object whose <code class="docutils literal notranslate"><span class="pre">volatile</span></code> went from <code class="docutils literal notranslate"><span class="pre">true</span></code> to <code class="docutils literal notranslate"><span class="pre">false</span></code> is the case worth
+reading twice: it keeps its address and a tool can still write to it, but the compiler
+is now entitled to fold the initial value into the code that reads it, so tuning it
+while the software runs stops working. The section says literally which memory the
+object ends up in.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
 <td><p>warning</p></td>
@@ -926,7 +913,7 @@ load time checks whose severity cannot be changed, <code class="docutils literal
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="file_formats/sections.html" class="btn btn-neutral float-left" title="Memory sections" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="naming_conventions.html" class="btn btn-neutral float-right" title="Naming conventions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="comparing_deliveries.html" class="btn btn-neutral float-right" title="Comparing deliveries" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

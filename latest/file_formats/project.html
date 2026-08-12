@@ -62,7 +62,6 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
@@ -159,13 +158,7 @@ at most 128 characters.</p></td>
 its <code class="docutils literal notranslate"><span class="pre">MODULE</span></code>, so it is worth writing one sentence that means something to whoever
 opens the file in a calibration tool.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">naming</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
-<td><p>Path to the <a class="reference internal" href="../naming_conventions.html"><span class="doc">naming convention</span></a> every declared name of the
-project has to follow, relative to this file. Optional; a project without one is
-checked for everything else and never sees a naming finding.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">includes</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">includes</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
 <td><p>Paths to the component and sub-project files that make up the project, relative to
 this file. Wildcards are expanded.</p></td>
@@ -209,11 +202,11 @@ edit the project as well, and nobody can forget to.</p>
 ok: 2 variables in 2 components are consistent
 </pre></div>
 </div>
-<p>Two files are deliberately left out of a pattern’s matches: the project file that contains the
-pattern, and the naming convention that project points at. Both sit exactly where a
-<code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> pattern next to the project would sweep them up, and neither is an include - a
-project including itself would be a cycle, and a convention is not a member of the project but
-a rule about it. Excluding them is what lets the shortest possible project file work at all.</p>
+<p>One file is deliberately left out of a pattern’s matches: the project file that contains the
+pattern. It sits exactly where a
+<code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> pattern next to the project would sweep it up, and it is not an include - a
+project including itself would be a cycle. Excluding it is what lets the shortest possible
+project file work at all.</p>
 <p>A pattern that matches nothing is reported, because the usual cause is a directory that was
 renamed or a component that never arrived:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check empty.ddd.json
@@ -248,14 +241,6 @@ become components of the including project, and are checked against all the othe
 if they had been listed directly. What the sub-project keeps is its own file layout and its
 own relative paths, which is the point - it can be checked and delivered on its own, and it
 does not need to know who includes it.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>One thing a sub-project does <strong>not</strong> bring with it is its naming convention. Only the
-<code class="docutils literal notranslate"><span class="pre">naming</span></code> key of the <strong>root</strong> project applies, because a component judged by different
-rules depending on which image it is built into could never be renamed to satisfy both.
-Checking the sub-project on its own still applies its own convention. The reasoning is
-spelled out with the <a class="reference internal" href="../naming_conventions.html"><span class="doc">naming conventions</span></a>.</p>
-</div>
 </section>
 <section id="a-file-reached-twice-is-loaded-once">
 <h3>A file reached twice is loaded once<a class="headerlink" href="#a-file-reached-twice-is-loaded-once" title="Link to this heading"></a></h3>
@@ -308,7 +293,7 @@ terminate.</p>
 <p>The set of files that were actually read is more than the project file, and a build system
 needs all of them to know when the generated artefacts are out of date. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> prints
 them, one absolute path per line, sorted and without duplicates - the root file, every
-sub-project, every component, and the naming convention if the project points at one:</p>
+sub-project and every component:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources demo.ddd.json
 /home/you/ddd/examples/demo/components/controller.ddd.json
 /home/you/ddd/examples/demo/components/sensor_hub.ddd.json

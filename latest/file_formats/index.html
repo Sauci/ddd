@@ -62,7 +62,6 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
@@ -136,9 +135,9 @@ rest of the checks appear once it is out of the way.</p>
 <h2>What kind of file this is<a class="headerlink" href="#what-kind-of-file-this-is" title="Link to this heading"></a></h2>
 <p>DDD does not ask the file name what a file contains; the <strong>top level key</strong> decides. A file
 whose top level key is <code class="docutils literal notranslate"><span class="pre">project</span></code> is a <a class="reference internal" href="project.html"><span class="doc">project description</span></a>, one whose top
-level key is <code class="docutils literal notranslate"><span class="pre">component</span></code> is a <a class="reference internal" href="component.html"><span class="doc">component description</span></a>, one whose top level
-key is <code class="docutils literal notranslate"><span class="pre">types</span></code> is a <a class="reference internal" href="types.html"><span class="doc">structured datatype description</span></a>, and one whose top level
-key is <code class="docutils literal notranslate"><span class="pre">naming</span></code> is a <a class="reference internal" href="../naming_conventions.html"><span class="doc">naming convention</span></a>. Nothing else appears at
+level key is <code class="docutils literal notranslate"><span class="pre">component</span></code> is a <a class="reference internal" href="component.html"><span class="doc">component description</span></a>, and one whose top
+level
+key is <code class="docutils literal notranslate"><span class="pre">types</span></code> is a <a class="reference internal" href="types.html"><span class="doc">structured datatype description</span></a>. Nothing else appears at
 that level, and a file has to carry exactly one of them.</p>
 <p>Detecting the kind from the content rather than from the path is what lets <code class="docutils literal notranslate"><span class="pre">includes</span></code> name
 components and sub-projects in the same list, and what lets <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> be pointed at either
@@ -208,7 +207,6 @@ validate the files without running DDD at all:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>schema<span class="w"> </span>project<span class="w">      </span><span class="c1"># the project description</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>component<span class="w">    </span><span class="c1"># the component description, and every kind of data object in it</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>types<span class="w">        </span><span class="c1"># the structured datatype description</span>
-ddd<span class="w"> </span>schema<span class="w"> </span>naming<span class="w">       </span><span class="c1"># the naming convention</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="w">   </span><span class="c1"># the resolved data dictionary, the contract the backends consume</span>
 </pre></div>
 </div>
@@ -217,7 +215,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 wrote project.schema.json
 </pre></div>
 </div>
-<p>The first four describe the files you write; the last describes what DDD makes of them and
+<p>The first three describe the files you write; the last describes what DDD makes of them and
 is documented with the <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a>. The closed objects described
 above appear in all of them as <code class="docutils literal notranslate"><span class="pre">&quot;additionalProperties&quot;:</span> <span class="pre">false</span></code>, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.</p>
@@ -239,7 +237,6 @@ which version of json schema it is reading.</p></li>
 </ul>
 <p>Some rules cannot be expressed as a constraint and are written into the description of the key
 they hang off instead: that a <code class="docutils literal notranslate"><span class="pre">bits</span></code> member needs a width and refuses <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, that a
-segment of a naming convention takes either <code class="docutils literal notranslate"><span class="pre">tokens</span></code> or a <code class="docutils literal notranslate"><span class="pre">pattern</span></code> and not both, that a
 bitfield has to fit the datatype carrying it, that <code class="docutils literal notranslate"><span class="pre">min</span></code> cannot exceed <code class="docutils literal notranslate"><span class="pre">max</span></code>. An editor
 therefore accepts a few files DDD will still reject. That is the deliberate trade: the schema
 is there to help a file get written, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> remains what decides whether it is

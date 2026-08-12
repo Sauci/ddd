@@ -90,15 +90,7 @@ Then comes ``severity[check]``, and then the message. The notes are the second h
 story: almost every disagreement is a disagreement *between two places*, and a finding that
 pointed at only one of them would send its reader hunting for the other. The note therefore
 names the declaration the finding was measured against - "also written here", "reference
-declaration", "declared local here" - with a location of its own. The ``naming`` check uses the
-same mechanism to underline the part of a name that is wrong:
-
-.. code-block:: text
-
-   $ ddd check project.ddd.json
-   sensing.ddd.json#component.interface[0].definition.name: error[naming]: 'vl' is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean 'val'?
-       note: vl_InletTemperature_flt
-             ^^
+declaration", "declared local here" - with a location of its own.
 
 Findings are printed errors first, then warnings, then information, and within one severity by
 file and by position in the file, so that fixing one finding does not shuffle the others around
@@ -256,8 +248,7 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``file-kind``
      - error (fixed)
      - the top level of the document is not a json object, or carries neither ``project`` nor
-       ``component``, or carries both. A naming convention listed in ``includes`` is recognized
-       as such and reported with the advice to point the ``naming`` key at it instead.
+       ``component``, or carries both.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -402,10 +393,6 @@ or an a2l file that does not do what the description says - or that does not com
        not have (for a curve or a map, the shape given by its axes), or an enumerator does not
        fit the datatype of the variable, or does not fit into a c ``int``, which every
        enumerator has to (C11 6.7.2.2).
-   * - ``naming``
-     - error
-     - a declared variable name does not follow the naming convention the project points at.
-       Only variable names are checked; see :doc:`naming_conventions`.
 
 Warnings
 ~~~~~~~~
@@ -499,11 +486,12 @@ registry can be read in one place.
        external tool still might.
    * - ``changed-storage``
      - warning
-     - the initial value or the volatility of an object changed. A calibration object whose
-       ``volatile`` went from ``true`` to ``false`` is the case worth reading twice: it keeps
-       its address and a tool can still write to it, but the compiler is now entitled to fold
-       the initial value into the code that reads it, so tuning it while the software runs
-       stops working.
+     - the initial value, the volatility or the memory section of an object changed. A
+       calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
+       reading twice: it keeps its address and a tool can still write to it, but the compiler
+       is now entitled to fold the initial value into the code that reads it, so tuning it
+       while the software runs stops working. The section says literally which memory the
+       object ends up in.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.

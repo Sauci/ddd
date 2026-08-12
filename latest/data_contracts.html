@@ -54,7 +54,6 @@
 <li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
@@ -76,7 +75,6 @@
 <li class="toctree-l3"><a class="reference internal" href="#structured-datatype-description">Structured datatype description</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#data-objects">Data objects</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conversions">Conversions</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#naming-convention">Naming convention</a></li>
 </ul>
 </li>
 </ul>
@@ -129,12 +127,11 @@ validates a description file against while it is being typed is not a second, ha
 maintained copy of the rules: it is derived from the rules themselves, so a field that
 changes cannot leave its documentation or its schema behind.</p>
 <p class="plantuml">
-<img src="_images/plantuml-3d834e9504ca063c56c1972d7086e0870f9edc9d.svg" alt="left to right direction
+<img src="_images/plantuml-bbd212ab234ded28a9a3370f687287d1213d1bca.svg" alt="left to right direction
 
 package &quot;ddd.models&quot; {
     rectangle &quot;ProjectFile\n(*.ddd.json)&quot; as project_model
     rectangle &quot;ComponentFile\n(*.ddd.json)&quot; as component_model
-    rectangle &quot;NamingFile\n(*.ddd.json)&quot; as naming_model
 }
 
 package &quot;ddd.ir&quot; {
@@ -149,14 +146,13 @@ component &quot;compare&quot; as comparison
 
 project_model --&gt; loader
 component_model --&gt; loader
-naming_model --&gt; loader
 loader --&gt; analysis
 analysis --&gt; dictionary_model
 dictionary_model --&gt; c_backend
 dictionary_model --&gt; a2l_backend
 dictionary_model --&gt; comparison"/></p>
 <p>The data dictionary on the right of the diagram is the same idea applied to data that does
-not have to be a file at all, and it is important enough to have <a class="reference internal" href="data_dictionary.html"><span class="doc">a page of its own</span></a>. The three contracts on the left are the files a project actually
+not have to be a file at all, and it is important enough to have <a class="reference internal" href="data_dictionary.html"><span class="doc">a page of its own</span></a>. The contracts on the left are the files a project actually
 contains, and they are described in prose, with examples, under <a class="reference internal" href="file_formats/index.html"><span class="doc">file formats</span></a>. What follows here is the discipline all of them are held to, and the
 generated reference for every model.</p>
 <section id="validation-at-the-boundary">
@@ -251,7 +247,7 @@ including the field documentation and the rejection of unknown properties - and
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code> prints it:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>schema<span class="w"> </span>project
 ddd<span class="w"> </span>schema<span class="w"> </span>component
-ddd<span class="w"> </span>schema<span class="w"> </span>naming
+ddd<span class="w"> </span>schema<span class="w"> </span>types
 ddd<span class="w"> </span>schema<span class="w"> </span>dictionary
 ddd<span class="w"> </span>schema<span class="w"> </span>component<span class="w"> </span>-o<span class="w"> </span>.vscode/ddd_component.schema.json
 </pre></div>
@@ -279,10 +275,10 @@ an alias, the alias is the key that belongs in the json file - <code class="docu
 <dt class="sig sig-object py" id="ddd.models.ProjectFile">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ProjectFile</span></span><a class="reference internal" href="_modules/ddd/models/project.html#ProjectFile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.ProjectFile" title="Link to this definition"></a></dt>
 <dd><p>Root object of a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> project description.</p>
-<p><code class="docutils literal notranslate"><span class="pre">project</span></code> is the top level key that makes this a project file rather than a component,
-a types or a naming file; DDD decides what a file is from that key alone, so exactly one
-of the four appears here.</p>
-<div class="graphviz"><img src="_images/graphviz-246f63f17f21d4f4db70dbd5ea465f71c985e0b8.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<p><code class="docutils literal notranslate"><span class="pre">project</span></code> is the top level key that makes this a project file rather than a component
+or a types file; DDD decides what a file is from that key alone, so exactly one of them
+appears here.</p>
+<div class="graphviz"><img src="_images/graphviz-a27c1911fdea6dc149869c4893c2a87f95c2b84a.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -296,19 +292,19 @@ of the four appears here.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;naming&lt;/td&gt;&lt;td port=&quot;naming&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.Project&amp;#xA;&amp;#xA;A project is a named list of components and/or sub-projects.&amp;#xA;&quot;];
    &quot;ddd.models.project.ProjectFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ProjectFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;schema_reference&lt;/td&gt;&lt;td port=&quot;schema_reference&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;project&lt;/td&gt;&lt;td port=&quot;project&quot;&gt;Project&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.ProjectFile&amp;#xA;&amp;#xA;Root object of a ``*.ddd.json`` project description.&amp;#xA;&amp;#xA;``project`` is the top level \
-key that makes this a project file rather than a component,&amp;#xA;a types or a naming file; DDD decides what a file is from that key \
-alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
+key that makes this a project file rather than a component&amp;#xA;or a types file; DDD decides what a file is from that key alone, \
+so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
    &quot;ddd.models.project.ProjectFile&quot;:project:e -&gt; &quot;ddd.models.project.Project&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
 }" class="graphviz" /></div>
 <p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DDD project description&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` project description.\n\n``project`` is the top level key that makes this a project file rather than a component,\na types or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` project description.\n\n``project`` is the top level key that makes this a project file rather than a component\nor a types file; DDD decides what a file is from that key alone, so exactly one of them\nappears here.&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -347,19 +343,6 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Free text describing the project.&quot;</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Path to the naming convention every declared name has to follow, relative to this file.\n\nA convention belongs to the project rather than to the command line: whoever checks the\nproject should get the same verdict as whoever wrote it.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Naming&quot;</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
@@ -404,7 +387,7 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <dt class="sig sig-object py" id="ddd.models.Project">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Project</span></span><a class="reference internal" href="_modules/ddd/models/project.html#Project"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.Project" title="Link to this definition"></a></dt>
 <dd><p>A project is a named list of components and/or sub-projects.</p>
-<div class="graphviz"><img src="_images/graphviz-12203f8d6a4f84d7982bdfc79fb69c87d962c66d.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-3f5afe5da16fa0e86ab5bc23390d55f7157ee231.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -418,7 +401,7 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;naming&lt;/td&gt;&lt;td port=&quot;naming&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.models.project.Project&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Project&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;includes&lt;/td&gt;&lt;td port=&quot;includes&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.project.Project&amp;#xA;&amp;#xA;A project is a named list of components and/or sub-projects.&amp;#xA;&quot;];
 }" class="graphviz" /></div>
 <p><details  class="autodoc_pydantic_collapsable_json">
@@ -440,19 +423,6 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Free text describing the project.&quot;</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Path to the naming convention every declared name has to follow, relative to this file.\n\nA convention belongs to the project rather than to the command line: whoever checks the\nproject should get the same verdict as whoever wrote it.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Naming&quot;</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
@@ -477,7 +447,6 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">includes</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></p></li>
 <li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">naming</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
 </ul>
 </dd>
 </dl>
@@ -491,17 +460,6 @@ alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <dt class="sig sig-object py" id="ddd.models.Project.description">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.models.Project.description" title="Link to this definition"></a></dt>
 <dd><p>Free text describing the project.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Project.naming">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">naming</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.Project.naming" title="Link to this definition"></a></dt>
-<dd><p>Path to the naming convention every declared name has to follow, relative to this file.</p>
-<p>A convention belongs to the project rather than to the command line: whoever checks the
-project should get the same verdict as whoever wrote it.</p>
-<p>Path to the naming convention every declared name has to follow, relative to this file.</p>
-<p>A convention belongs to the project rather than to the command line: whoever checks the
-project should get the same verdict as whoever wrote it.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -524,10 +482,10 @@ included file is detected from its top level key.</p>
 <dt class="sig sig-object py" id="ddd.models.ComponentFile">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ComponentFile</span></span><a class="reference internal" href="_modules/ddd/models/component.html#ComponentFile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.ComponentFile" title="Link to this definition"></a></dt>
 <dd><p>Root object of a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> software component description.</p>
-<p><code class="docutils literal notranslate"><span class="pre">component</span></code> is the top level key that makes this a component file rather than a project,
-a types or a naming file; DDD decides what a file is from that key alone, so exactly one
-of the four appears here.</p>
-<div class="graphviz"><img src="_images/graphviz-ac47aed83d514d2b258567975440553ff359b373.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<p><code class="docutils literal notranslate"><span class="pre">component</span></code> is the top level key that makes this a component file rather than a project
+or a types file; DDD decides what a file is from that key alone, so exactly one of them
+appears here.</p>
+<div class="graphviz"><img src="_images/graphviz-604d8e597f045950f368feb75c0b7cb478d35438.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -549,8 +507,8 @@ of the four appears here.</p>
       arrowtail=nonenone];
    &quot;ddd.models.component.ComponentFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ComponentFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;schema_reference&lt;/td&gt;&lt;td port=&quot;schema_reference&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;component&lt;/td&gt;&lt;td port=&quot;component&quot;&gt;Component&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.component.ComponentFile&amp;#xA;&amp;#xA;Root object of a ``*.ddd.json`` software component description.&amp;#xA;&amp;#xA;``component`` \
-is the top level key that makes this a component file rather than a project,&amp;#xA;a types or a naming file; DDD decides what a file \
-is from that key alone, so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
+is the top level key that makes this a component file rather than a project&amp;#xA;or a types file; DDD decides what a file is from \
+that key alone, so exactly one of them&amp;#xA;appears here.&amp;#xA;&quot;];
    &quot;ddd.models.component.ComponentFile&quot;:component:e -&gt; &quot;ddd.models.component.Component&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.objects.Axis&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Axis&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;typename&lt;/td&gt;&lt;td port=&quot;typename&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;Optional[IdentityConversion | LinearConversion | EnumConversion]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal[ObjectKind.AXIS]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;size&lt;/td&gt;&lt;td port=&quot;size&quot;&gt;int&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;input&lt;/td&gt;&lt;td port=&quot;input&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
@@ -659,7 +617,7 @@ out.&amp;#xA;&quot;];
 <p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DDD component description&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` software component description.\n\n``component`` is the top level key that makes this a component file rather than a project,\na types or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` software component description.\n\n``component`` is the top level key that makes this a component file rather than a project\nor a types file; DDD decides what a file is from that key alone, so exactly one of them\nappears here.&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -4912,10 +4870,10 @@ both to the compiler.</p>
 <dt class="sig sig-object py" id="ddd.models.TypesFile">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">TypesFile</span></span><a class="reference internal" href="_modules/ddd/models/types.html#TypesFile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.TypesFile" title="Link to this definition"></a></dt>
 <dd><p>Root object of a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> type description.</p>
-<p><code class="docutils literal notranslate"><span class="pre">types</span></code> is the top level key that makes this a types file rather than a project, a
-component or a naming file; DDD decides what a file is from that key alone, so exactly one
-of the four appears here.</p>
-<div class="graphviz"><img src="_images/graphviz-9c72b466d487681b2f2b235e71bbcf7e6e25ee57.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<p><code class="docutils literal notranslate"><span class="pre">types</span></code> is the top level key that makes this a types file rather than a project or a
+component file; DDD decides what a file is from that key alone, so exactly one of them
+appears here.</p>
+<div class="graphviz"><img src="_images/graphviz-12b32df862e667642159ceb020add11f0e7871ac.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -4983,8 +4941,8 @@ one of them.&amp;#xA;&quot;];
       arrowtail=nonenone];
    &quot;ddd.models.types.TypesFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;TypesFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;schema_reference&lt;/td&gt;&lt;td port=&quot;schema_reference&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;tuple[StructType | ScalarType, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.types.TypesFile&amp;#xA;&amp;#xA;Root object of a ``*.ddd.json`` type description.&amp;#xA;&amp;#xA;``types`` is the top level key that \
-makes this a types file rather than a project, a&amp;#xA;component or a naming file; DDD decides what a file is from that key alone, \
-so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
+makes this a types file rather than a project or a&amp;#xA;component file; DDD decides what a file is from that key alone, so exactly \
+one of them&amp;#xA;appears here.&amp;#xA;&quot;];
    &quot;ddd.models.types.TypesFile&quot;:types:e -&gt; &quot;ddd.models.types.ScalarType&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
    &quot;ddd.models.types.TypesFile&quot;:types:e -&gt; &quot;ddd.models.types.StructType&quot;:_root:w   [arrowhead=crownone,
@@ -4993,7 +4951,7 @@ so exactly one&amp;#xA;of the four appears here.&amp;#xA;&quot;];
 <p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DDD type description&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` type description.\n\n``types`` is the top level key that makes this a types file rather than a project, a\ncomponent or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` type description.\n\n``types`` is the top level key that makes this a types file rather than a project or a\ncomponent file; DDD decides what a file is from that key alone, so exactly one of them\nappears here.&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -10672,728 +10630,6 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
 <dt class="sig sig-object py" id="ddd.models.Enumerator.description">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.models.Enumerator.description" title="Link to this definition"></a></dt>
 <dd><p>What the value means; documentation, not interface.</p>
-</dd></dl>
-
-</dd></dl>
-
-</section>
-<section id="naming-convention">
-<h3>Naming convention<a class="headerlink" href="#naming-convention" title="Link to this heading"></a></h3>
-<p>A naming convention is a third kind of <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file, pointed at by the <code class="docutils literal notranslate"><span class="pre">naming</span></code> key
-of a project rather than listed among its <code class="docutils literal notranslate"><span class="pre">includes</span></code>. It describes a name as an ordered
-sequence of segments, which is what lets DDD point at the part of a name that is wrong and
-complete a name that is half typed; see <a class="reference internal" href="naming_conventions.html"><span class="doc">naming conventions</span></a>.</p>
-<dl class="py class pydantic_model">
-<dt class="sig sig-object py" id="ddd.models.NamingFile">
-<span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">NamingFile</span></span><a class="reference internal" href="_modules/ddd/models/naming.html#NamingFile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.NamingFile" title="Link to this definition"></a></dt>
-<dd><p>Root object of a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> naming convention description.</p>
-<p><code class="docutils literal notranslate"><span class="pre">naming</span></code> is the top level key that makes this a naming file rather than a project, a
-component or a types file; DDD decides what a file is from that key alone, so exactly one
-of the four appears here. A project reaches this file through its own <code class="docutils literal notranslate"><span class="pre">naming</span></code> key.</p>
-<div class="graphviz"><img src="_images/graphviz-89a51b9ba4fd5dedf65daa4dabc1f36845ad1866.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
-   graph [fontcolor=gray66,
-      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=9,
-      nodesep=0.5,
-      rankdir=LR,
-      ranksep=1.5
-   ];
-   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=14,
-      label=&quot;\N&quot;,
-      shape=plain
-   ];
-   edge [dir=both];
-   &quot;ddd.models.naming.NamingConvention&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;NamingConvention&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;separator&lt;/td&gt;&lt;td port=&quot;separator&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;segments&lt;/td&gt;&lt;td port=&quot;segments&quot;&gt;tuple[Segment, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;case_sensitive&lt;/td&gt;&lt;td port=&quot;case_sensitive&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.NamingConvention&amp;#xA;&amp;#xA;The rules a variable name has to follow.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Segment&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Segment&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;tokens&lt;/td&gt;&lt;td port=&quot;tokens&quot;&gt;tuple[Token, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;pattern&lt;/td&gt;&lt;td port=&quot;pattern&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;optional&lt;/td&gt;&lt;td port=&quot;optional&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;repeatable&lt;/td&gt;&lt;td port=&quot;repeatable&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Segment&amp;#xA;&amp;#xA;One position in a name.&amp;#xA;&amp;#xA;Either ``tokens`` or ``pattern`` has to be given: a segment \
-with neither would accept&amp;#xA;anything, which is the same as not describing it at all.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.NamingConvention&quot;:segments:e -&gt; &quot;ddd.models.naming.Segment&quot;:_root:w   [arrowhead=crownone,
-      arrowtail=nonenone];
-   &quot;ddd.models.naming.NamingFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;NamingFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;schema_reference&lt;/td&gt;&lt;td port=&quot;schema_reference&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;naming&lt;/td&gt;&lt;td port=&quot;naming&quot;&gt;NamingConvention&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.NamingFile&amp;#xA;&amp;#xA;Root object of a ``*.ddd.json`` naming convention description.&amp;#xA;&amp;#xA;``naming`` is the \
-top level key that makes this a naming file rather than a project, a&amp;#xA;component or a types file; DDD decides what a file is from \
-that key alone, so exactly one&amp;#xA;of the four appears here. A project reaches this file through its own ``naming`` key.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.NamingFile&quot;:naming:e -&gt; &quot;ddd.models.naming.NamingConvention&quot;:_root:w   [arrowhead=noneteetee,
-      arrowtail=nonenone];
-   &quot;ddd.models.naming.Token&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Token&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;value&lt;/td&gt;&lt;td port=&quot;value&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Token&amp;#xA;&amp;#xA;One allowed value of a segment, with what it stands for.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Segment&quot;:tokens:e -&gt; &quot;ddd.models.naming.Token&quot;:_root:w   [arrowhead=crownone,
-      arrowtail=nonenone];
-}" class="graphviz" /></div>
-<p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DDD naming convention&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Root object of a ``*.ddd.json`` naming convention description.\n\n``naming`` is the top level key that makes this a naming file rather than a project, a\ncomponent or a types file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here. A project reaches this file through its own ``naming`` key.&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;$Schema&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/NamingConvention&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The convention this file describes; the key that identifies the file as a convention.&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;$defs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;NamingConvention&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The rules a variable name has to follow.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name of the convention, quoted in every finding it produces.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Free text describing what the convention is for and where it came from.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;separator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;_&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What joins the segments; also what a name is split on.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Separator&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;segments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The positions of a name, in the order they appear, separated by ``separator``.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                  </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/Segment&quot;</span>
-<span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">&quot;minItems&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Segments&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;case_sensitive&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Whether a token has to be matched exactly; set to ``false`` to accept any casing.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Case Sensitive&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;name&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="s2">&quot;segments&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NamingConvention&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;Segment&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One position in a name.\n\nEither ``tokens`` or ``pattern`` has to be given: a segment with neither would accept\nanything, which is the same as not describing it at all.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position means, used in messages and in the explanation of a name.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;maxLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[A-Za-z_][A-Za-z0-9_]*$&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position of a name is for, quoted when a name is missing it.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The controlled vocabulary of this position; completions come from here.\n\nGive either this or ``pattern``, never both: a position described twice has no single\nanswer to what belongs in it.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                  </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/Token&quot;</span>
-<span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Tokens&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A regular expression for a free position, e.g. the descriptive part of a name.\n\nPython regular expression syntax, matched against one segment rather than the whole name.\nA position given a pattern cannot be completed, only checked, which is the trade for\nletting it hold something other than a fixed vocabulary.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pattern&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;optional&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A trailing position that a name may leave out.\n\nEvery optional position has to come after every required one, or a shorter name could not\nbe split unambiguously into its parts.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Optional&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;repeatable&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The position may be filled more than once, e.g. a multi word descriptive part.\n\nAt most one position of a convention may be repeatable, for the same reason: two of them\nwould leave no way to tell which one a given part belongs to.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Repeatable&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;name&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Segment&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;Token&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One allowed value of a segment, with what it stands for.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.\n\nIt cannot contain whitespace, nor the separator of the convention: a name is split on the\nseparator before its parts are judged, so such a token could never match one.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Value&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What the token stands for, shown when a name is explained and offered with completions.\n\nThis is where the vocabulary of a project is written down, so it is worth filling in: it\nis what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;value&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Token&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;naming&quot;</span>
-<span class="w">   </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</details></p><dl class="field-list simple">
-<dt class="field-odd">Fields<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">naming</span> <span class="pre">(ddd.models.naming.NamingConvention)</span></code></p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingFile.naming">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">naming</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#ddd.models.NamingConvention" title="ddd.models.NamingConvention"><span class="pre">NamingConvention</span></a></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.NamingFile.naming" title="Link to this definition"></a></dt>
-<dd><p>The convention this file describes; the key that identifies the file as a convention.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class pydantic_model">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention">
-<span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">NamingConvention</span></span><a class="reference internal" href="_modules/ddd/models/naming.html#NamingConvention"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.NamingConvention" title="Link to this definition"></a></dt>
-<dd><p>The rules a variable name has to follow.</p>
-<div class="graphviz"><img src="_images/graphviz-130257e011bca5a61d166a33144098d383151337.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
-   graph [fontcolor=gray66,
-      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=9,
-      nodesep=0.5,
-      rankdir=LR,
-      ranksep=1.5
-   ];
-   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=14,
-      label=&quot;\N&quot;,
-      shape=plain
-   ];
-   edge [dir=both];
-   &quot;ddd.models.naming.NamingConvention&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;NamingConvention&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;separator&lt;/td&gt;&lt;td port=&quot;separator&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;segments&lt;/td&gt;&lt;td port=&quot;segments&quot;&gt;tuple[Segment, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;case_sensitive&lt;/td&gt;&lt;td port=&quot;case_sensitive&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.NamingConvention&amp;#xA;&amp;#xA;The rules a variable name has to follow.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Segment&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Segment&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;tokens&lt;/td&gt;&lt;td port=&quot;tokens&quot;&gt;tuple[Token, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;pattern&lt;/td&gt;&lt;td port=&quot;pattern&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;optional&lt;/td&gt;&lt;td port=&quot;optional&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;repeatable&lt;/td&gt;&lt;td port=&quot;repeatable&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Segment&amp;#xA;&amp;#xA;One position in a name.&amp;#xA;&amp;#xA;Either ``tokens`` or ``pattern`` has to be given: a segment \
-with neither would accept&amp;#xA;anything, which is the same as not describing it at all.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.NamingConvention&quot;:segments:e -&gt; &quot;ddd.models.naming.Segment&quot;:_root:w   [arrowhead=crownone,
-      arrowtail=nonenone];
-   &quot;ddd.models.naming.Token&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Token&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;value&lt;/td&gt;&lt;td port=&quot;value&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Token&amp;#xA;&amp;#xA;One allowed value of a segment, with what it stands for.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Segment&quot;:tokens:e -&gt; &quot;ddd.models.naming.Token&quot;:_root:w   [arrowhead=crownone,
-      arrowtail=nonenone];
-}" class="graphviz" /></div>
-<p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NamingConvention&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The rules a variable name has to follow.&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name of the convention, quoted in every finding it produces.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Free text describing what the convention is for and where it came from.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;separator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;_&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What joins the segments; also what a name is split on.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Separator&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;segments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The positions of a name, in the order they appear, separated by ``separator``.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/Segment&quot;</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;minItems&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Segments&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;case_sensitive&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Whether a token has to be matched exactly; set to ``false`` to accept any casing.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Case Sensitive&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;$defs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;Segment&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One position in a name.\n\nEither ``tokens`` or ``pattern`` has to be given: a segment with neither would accept\nanything, which is the same as not describing it at all.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position means, used in messages and in the explanation of a name.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;maxLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[A-Za-z_][A-Za-z0-9_]*$&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position of a name is for, quoted when a name is missing it.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The controlled vocabulary of this position; completions come from here.\n\nGive either this or ``pattern``, never both: a position described twice has no single\nanswer to what belongs in it.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                  </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/Token&quot;</span>
-<span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Tokens&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A regular expression for a free position, e.g. the descriptive part of a name.\n\nPython regular expression syntax, matched against one segment rather than the whole name.\nA position given a pattern cannot be completed, only checked, which is the trade for\nletting it hold something other than a fixed vocabulary.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pattern&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;optional&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A trailing position that a name may leave out.\n\nEvery optional position has to come after every required one, or a shorter name could not\nbe split unambiguously into its parts.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Optional&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;repeatable&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The position may be filled more than once, e.g. a multi word descriptive part.\n\nAt most one position of a convention may be repeatable, for the same reason: two of them\nwould leave no way to tell which one a given part belongs to.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Repeatable&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;name&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Segment&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;Token&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One allowed value of a segment, with what it stands for.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.\n\nIt cannot contain whitespace, nor the separator of the convention: a name is split on the\nseparator before its parts are judged, so such a token could never match one.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Value&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What the token stands for, shown when a name is explained and offered with completions.\n\nThis is where the vocabulary of a project is written down, so it is worth filling in: it\nis what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;value&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Token&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;name&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="s2">&quot;segments&quot;</span>
-<span class="w">   </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</details></p><dl class="field-list simple">
-<dt class="field-odd">Fields<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">case_sensitive</span> <span class="pre">(bool)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">segments</span> <span class="pre">(tuple[ddd.models.naming.Segment,</span> <span class="pre">...])</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">separator</span> <span class="pre">(str)</span></code></p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention.name">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.NamingConvention.name" title="Link to this definition"></a></dt>
-<dd><p>Name of the convention, quoted in every finding it produces.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Constraints<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>min_length</strong> = 1</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention.description">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.models.NamingConvention.description" title="Link to this definition"></a></dt>
-<dd><p>Free text describing what the convention is for and where it came from.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention.separator">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">separator</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'_'</span></span><a class="headerlink" href="#ddd.models.NamingConvention.separator" title="Link to this definition"></a></dt>
-<dd><p>What joins the segments; also what a name is split on.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Constraints<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>min_length</strong> = 1</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention.segments">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">segments</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ddd.models.Segment" title="ddd.models.Segment"><span class="pre">Segment</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">min_length</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.NamingConvention.segments" title="Link to this definition"></a></dt>
-<dd><p>The positions of a name, in the order they appear, separated by <code class="docutils literal notranslate"><span class="pre">separator</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Constraints<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>min_length</strong> = 1</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.NamingConvention.case_sensitive">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">case_sensitive</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#ddd.models.NamingConvention.case_sensitive" title="Link to this definition"></a></dt>
-<dd><p>Whether a token has to be matched exactly; set to <code class="docutils literal notranslate"><span class="pre">false</span></code> to accept any casing.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class pydantic_model">
-<dt class="sig sig-object py" id="ddd.models.Segment">
-<span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Segment</span></span><a class="reference internal" href="_modules/ddd/models/naming.html#Segment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.Segment" title="Link to this definition"></a></dt>
-<dd><p>One position in a name.</p>
-<p>Either <code class="docutils literal notranslate"><span class="pre">tokens</span></code> or <code class="docutils literal notranslate"><span class="pre">pattern</span></code> has to be given: a segment with neither would accept
-anything, which is the same as not describing it at all.</p>
-<div class="graphviz"><img src="_images/graphviz-74f1db67ecf884edeba4b9c549be43a8fee485ce.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
-   graph [fontcolor=gray66,
-      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=9,
-      nodesep=0.5,
-      rankdir=LR,
-      ranksep=1.5
-   ];
-   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=14,
-      label=&quot;\N&quot;,
-      shape=plain
-   ];
-   edge [dir=both];
-   &quot;ddd.models.naming.Segment&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Segment&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;tokens&lt;/td&gt;&lt;td port=&quot;tokens&quot;&gt;tuple[Token, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;pattern&lt;/td&gt;&lt;td port=&quot;pattern&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;optional&lt;/td&gt;&lt;td port=&quot;optional&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;repeatable&lt;/td&gt;&lt;td port=&quot;repeatable&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Segment&amp;#xA;&amp;#xA;One position in a name.&amp;#xA;&amp;#xA;Either ``tokens`` or ``pattern`` has to be given: a segment \
-with neither would accept&amp;#xA;anything, which is the same as not describing it at all.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Token&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Token&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;value&lt;/td&gt;&lt;td port=&quot;value&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Token&amp;#xA;&amp;#xA;One allowed value of a segment, with what it stands for.&amp;#xA;&quot;];
-   &quot;ddd.models.naming.Segment&quot;:tokens:e -&gt; &quot;ddd.models.naming.Token&quot;:_root:w   [arrowhead=crownone,
-      arrowtail=nonenone];
-}" class="graphviz" /></div>
-<p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Segment&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One position in a name.\n\nEither ``tokens`` or ``pattern`` has to be given: a segment with neither would accept\nanything, which is the same as not describing it at all.&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position means, used in messages and in the explanation of a name.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;maxLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[A-Za-z_][A-Za-z0-9_]*$&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What this position of a name is for, quoted when a name is missing it.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The controlled vocabulary of this position; completions come from here.\n\nGive either this or ``pattern``, never both: a position described twice has no single\nanswer to what belongs in it.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/Token&quot;</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Tokens&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A regular expression for a free position, e.g. the descriptive part of a name.\n\nPython regular expression syntax, matched against one segment rather than the whole name.\nA position given a pattern cannot be completed, only checked, which is the trade for\nletting it hold something other than a fixed vocabulary.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pattern&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;optional&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A trailing position that a name may leave out.\n\nEvery optional position has to come after every required one, or a shorter name could not\nbe split unambiguously into its parts.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Optional&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;repeatable&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The position may be filled more than once, e.g. a multi word descriptive part.\n\nAt most one position of a convention may be repeatable, for the same reason: two of them\nwould leave no way to tell which one a given part belongs to.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Repeatable&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;$defs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;Token&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One allowed value of a segment, with what it stands for.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.\n\nIt cannot contain whitespace, nor the separator of the convention: a name is split on the\nseparator before its parts are judged, so such a token could never match one.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Value&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What the token stands for, shown when a name is explained and offered with completions.\n\nThis is where the vocabulary of a project is written down, so it is worth filling in: it\nis what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">            </span><span class="s2">&quot;value&quot;</span>
-<span class="w">         </span><span class="p">],</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Token&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;name&quot;</span>
-<span class="w">   </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</details></p><dl class="field-list simple">
-<dt class="field-odd">Fields<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span> <span class="pre">(bool)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">pattern</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">repeatable</span> <span class="pre">(bool)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">tokens</span> <span class="pre">(tuple[ddd.models.naming.Token,</span> <span class="pre">...])</span></code></p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.name">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Identifier</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Segment.name" title="Link to this definition"></a></dt>
-<dd><p>What this position means, used in messages and in the explanation of a name.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.description">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.models.Segment.description" title="Link to this definition"></a></dt>
-<dd><p>What this position of a name is for, quoted when a name is missing it.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.tokens">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">tokens</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ddd.models.Token" title="ddd.models.Token"><span class="pre">Token</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#ddd.models.Segment.tokens" title="Link to this definition"></a></dt>
-<dd><p>The controlled vocabulary of this position; completions come from here.</p>
-<p>Give either this or <code class="docutils literal notranslate"><span class="pre">pattern</span></code>, never both: a position described twice has no single
-answer to what belongs in it.</p>
-<p>The controlled vocabulary of this position; completions come from here.</p>
-<p>Give either this or <code class="docutils literal notranslate"><span class="pre">pattern</span></code>, never both: a position described twice has no single
-answer to what belongs in it.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.pattern">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pattern</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.Segment.pattern" title="Link to this definition"></a></dt>
-<dd><p>A regular expression for a free position, e.g. the descriptive part of a name.</p>
-<p>Python regular expression syntax, matched against one segment rather than the whole name.
-A position given a pattern cannot be completed, only checked, which is the trade for
-letting it hold something other than a fixed vocabulary.</p>
-<p>A regular expression for a free position, e.g. the descriptive part of a name.</p>
-<p>Python regular expression syntax, matched against one segment rather than the whole name.
-A position given a pattern cannot be completed, only checked, which is the trade for
-letting it hold something other than a fixed vocabulary.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.optional">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">optional</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#ddd.models.Segment.optional" title="Link to this definition"></a></dt>
-<dd><p>A trailing position that a name may leave out.</p>
-<p>Every optional position has to come after every required one, or a shorter name could not
-be split unambiguously into its parts.</p>
-<p>A trailing position that a name may leave out.</p>
-<p>Every optional position has to come after every required one, or a shorter name could not
-be split unambiguously into its parts.</p>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Segment.repeatable">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">repeatable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#ddd.models.Segment.repeatable" title="Link to this definition"></a></dt>
-<dd><p>The position may be filled more than once, e.g. a multi word descriptive part.</p>
-<p>At most one position of a convention may be repeatable, for the same reason: two of them
-would leave no way to tell which one a given part belongs to.</p>
-<p>The position may be filled more than once, e.g. a multi word descriptive part.</p>
-<p>At most one position of a convention may be repeatable, for the same reason: two of them
-would leave no way to tell which one a given part belongs to.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class pydantic_model">
-<dt class="sig sig-object py" id="ddd.models.Token">
-<span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Token</span></span><a class="reference internal" href="_modules/ddd/models/naming.html#Token"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.Token" title="Link to this definition"></a></dt>
-<dd><p>One allowed value of a segment, with what it stands for.</p>
-<div class="graphviz"><img src="_images/graphviz-1f3492a3df77a2267db74529c204907b97ee5413.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
-   graph [fontcolor=gray66,
-      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=9,
-      nodesep=0.5,
-      rankdir=LR,
-      ranksep=1.5
-   ];
-   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
-      fontsize=14,
-      label=&quot;\N&quot;,
-      shape=plain
-   ];
-   edge [dir=both];
-   &quot;ddd.models.naming.Token&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Token&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;value&lt;/td&gt;&lt;td port=&quot;value&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.naming.Token&amp;#xA;&amp;#xA;One allowed value of a segment, with what it stands for.&amp;#xA;&quot;];
-}" class="graphviz" /></div>
-<p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Token&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One allowed value of a segment, with what it stands for.&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The text that appears in a name at this position, e.g. ``Eng`` or ``Raw``.\n\nIt cannot contain whitespace, nor the separator of the convention: a name is split on the\nseparator before its parts are judged, so such a token could never match one.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;minLength&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Value&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What the token stands for, shown when a name is explained and offered with completions.\n\nThis is where the vocabulary of a project is written down, so it is worth filling in: it\nis what turns ``ddd name EngSpd_Raw`` from a pass or fail into an explanation.&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">   </span><span class="p">},</span>
-<span class="w">   </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;value&quot;</span>
-<span class="w">   </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</details></p><dl class="field-list simple">
-<dt class="field-odd">Fields<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></p></li>
-<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">value</span> <span class="pre">(str)</span></code></p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Token.value">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Token.value" title="Link to this definition"></a></dt>
-<dd><p>The text that appears in a name at this position, e.g. <code class="docutils literal notranslate"><span class="pre">Eng</span></code> or <code class="docutils literal notranslate"><span class="pre">Raw</span></code>.</p>
-<p>It cannot contain whitespace, nor the separator of the convention: a name is split on the
-separator before its parts are judged, so such a token could never match one.</p>
-<p>The text that appears in a name at this position, e.g. <code class="docutils literal notranslate"><span class="pre">Eng</span></code> or <code class="docutils literal notranslate"><span class="pre">Raw</span></code>.</p>
-<p>It cannot contain whitespace, nor the separator of the convention: a name is split on the
-separator before its parts are judged, so such a token could never match one.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Constraints<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>min_length</strong> = 1</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="ddd.models.Token.description">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#ddd.models.Token.description" title="Link to this definition"></a></dt>
-<dd><p>What the token stands for, shown when a name is explained and offered with completions.</p>
-<p>This is where the vocabulary of a project is written down, so it is worth filling in: it
-is what turns <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span> <span class="pre">EngSpd_Raw</span></code> from a pass or fail into an explanation.</p>
-<p>What the token stands for, shown when a name is explained and offered with completions.</p>
-<p>This is where the vocabulary of a project is written down, so it is worth filling in: it
-is what turns <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">name</span> <span class="pre">EngSpd_Raw</span></code> from a pass or fail into an explanation.</p>
 </dd></dl>
 
 </dd></dl>

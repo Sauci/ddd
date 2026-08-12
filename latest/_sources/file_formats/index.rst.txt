@@ -39,9 +39,9 @@ What kind of file this is
 
 DDD does not ask the file name what a file contains; the **top level key** decides. A file
 whose top level key is ``project`` is a :doc:`project description <project>`, one whose top
-level key is ``component`` is a :doc:`component description <component>`, one whose top level
-key is ``types`` is a :doc:`structured datatype description <types>`, and one whose top level
-key is ``naming`` is a :doc:`naming convention </naming_conventions>`. Nothing else appears at
+level key is ``component`` is a :doc:`component description <component>`, and one whose top
+level
+key is ``types`` is a :doc:`structured datatype description <types>`. Nothing else appears at
 that level, and a file has to carry exactly one of them.
 
 Detecting the kind from the content rather than from the path is what lets ``includes`` name
@@ -121,7 +121,6 @@ validate the files without running DDD at all:
    ddd schema project      # the project description
    ddd schema component    # the component description, and every kind of data object in it
    ddd schema types        # the structured datatype description
-   ddd schema naming       # the naming convention
    ddd schema dictionary   # the resolved data dictionary, the contract the backends consume
 
 ``-o FILE`` writes to a file instead of to stdout, which is the form a build script uses:
@@ -131,7 +130,7 @@ validate the files without running DDD at all:
    $ ddd schema project -o project.schema.json
    wrote project.schema.json
 
-The first four describe the files you write; the last describes what DDD makes of them and
+The first three describe the files you write; the last describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.
@@ -155,7 +154,6 @@ key, not the moment they go looking for this page:
 
 Some rules cannot be expressed as a constraint and are written into the description of the key
 they hang off instead: that a ``bits`` member needs a width and refuses ``dimensions``, that a
-segment of a naming convention takes either ``tokens`` or a ``pattern`` and not both, that a
 bitfield has to fit the datatype carrying it, that ``min`` cannot exceed ``max``. An editor
 therefore accepts a few files DDD will still reject. That is the deliberate trade: the schema
 is there to help a file get written, and ``ddd check`` remains what decides whether it is

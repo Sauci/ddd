@@ -16,11 +16,9 @@ baseline.json`` archives the dictionary and nothing else, even on a run that had
 say about it.
 
 For a job that files findings rather than reads them, seven commands understand
-``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``name`` and
+``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources`` and
 ``checks``. That leaves out ``schema``, ``cmake-dir`` and ``templates-dir``, whose output is
-machine readable already, ``complete``, which prints one candidate per line because that is
-what a shell expects, and ``sources``, whose output is a plain list of paths a makefile or a
-ninja file consumes as it stands. In json the diagnostics become part of the document the
+machine readable already. In json the diagnostics become part of the document the
 command prints, next to whatever else it has to report:
 
 .. code-block:: text
@@ -65,12 +63,11 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
      - the command did what it was asked and found nothing worth reporting.
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
-       ``ddd name`` also exits ``1`` when a name does not fit its convention, and
-       ``ddd sources`` when the file it was pointed at cannot be read at all.
+       ``ddd sources`` also exits ``1`` when the file it was pointed at cannot be read at all.
    * - ``2``
      - the invocation itself was wrong: an unknown command or option, a required option left
        out, an unknown check identifier or severity, an attempt to relax a check that cannot
-       be relaxed, a naming convention that does not exist, an output directory that cannot be
+       be relaxed, an output directory that cannot be
        written into. The project was never examined, so the absence of findings means nothing
        here.
 
@@ -103,16 +100,9 @@ The commands
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later.
    * - ``ddd schema KIND``
-     - print the json schema of ``project``, ``component``, ``naming`` or ``dictionary``, for
+     - print the json schema of ``project``, ``component``, ``types`` or ``dictionary``, for
        an editor that offers completion inside a ``*.ddd.json`` file or for a validator in a
        ci job.
-   * - ``ddd name -c CONV NAME...``
-     - explain what each part of a name means, or point at the part of it that does not fit
-       the convention.
-   * - ``ddd complete -c CONV PREFIX``
-     - list the names a prefix may grow into. It prints one candidate per line and always
-       exits zero, because a completion that reports an error is worse than one that offers
-       nothing.
    * - ``ddd sources FILE``
      - list every description file the project is built out of, for the dependency list of a
        build system.
@@ -228,16 +218,18 @@ A build system that made the generated code depend on the project file alone wou
 be wrong in the ordinary case: editing a component would change nothing the build can see, and
 the image would happily link yesterday's globals and ship yesterday's a2l.
 
-``ddd sources`` closes that gap. It prints one absolute path per line - the project file
-itself, every description it includes however deeply, and the naming convention it points at,
-because a changed convention changes the verdict just as a changed declaration does:
+``ddd sources`` closes that gap. It prints one absolute path per line: the project file
+itself and every description it includes however deeply:
 
 .. code-block:: text
 
-   $ ddd sources examples/naming/project.ddd.json
-   /home/you/ddd/examples/naming/convention.ddd.json
-   /home/you/ddd/examples/naming/project.ddd.json
-   /home/you/ddd/examples/naming/sensing.ddd.json
+   $ ddd sources examples/demo/demo.ddd.json
+   /home/you/ddd/examples/demo/components/controller.ddd.json
+   /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
+   /home/you/ddd/examples/demo/components/user_interface.ddd.json
+   /home/you/ddd/examples/demo/demo.ddd.json
+   /home/you/ddd/examples/demo/subsystems/logging/event_logger.ddd.json
+   /home/you/ddd/examples/demo/subsystems/logging/logging.ddd.json
 
 The paths are absolute and always written with forward slashes, on Windows as well, so the
 list can be pasted into a makefile, a ninja file or a cmake dependency list without being
@@ -248,6 +240,9 @@ still has a well defined set of source files, and a build system asking what to 
 an answer even while the project does not check out. Only a file that cannot be read at all is
 fatal. This is what ``cmake/Ddd.cmake`` uses to make a hand written project description watch
 its own components, described in :doc:`build_integration`.
+
+With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
+to the diagnostics and their summary, exactly as the other commands report them.
 
 Reference
 ---------

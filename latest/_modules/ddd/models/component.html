@@ -51,7 +51,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
@@ -204,9 +203,9 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">ComponentFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Root object of a ``*.ddd.json`` software component description.</span>
 
-<span class="sd">    ``component`` is the top level key that makes this a component file rather than a project,</span>
-<span class="sd">    a types or a naming file; DDD decides what a file is from that key alone, so exactly one</span>
-<span class="sd">    of the four appears here.</span>
+<span class="sd">    ``component`` is the top level key that makes this a component file rather than a project</span>
+<span class="sd">    or a types file; DDD decides what a file is from that key alone, so exactly one of them</span>
+<span class="sd">    appears here.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;DDD component description&quot;</span><span class="p">)</span>

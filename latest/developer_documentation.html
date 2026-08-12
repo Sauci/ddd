@@ -54,7 +54,6 @@
 <li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
@@ -171,9 +170,8 @@ names it finds there, and therefore does not know before a run which files that 
 Those naming rules are part of the interface a project depends on: <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> documents
 them, and the module docstring of <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/backend.py</span></code> states them again next to
 the code that implements them.</p>
-<p>Four smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
+<p>Three smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
-<code class="docutils literal notranslate"><span class="pre">naming.py</span></code> validates, explains and completes names against a naming convention.
 <code class="docutils literal notranslate"><span class="pre">compare.py</span></code> answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. <code class="docutils literal notranslate"><span class="pre">cli.py</span></code> is the
 only module that knows about argument parsing, exit codes and where output goes; it is also

@@ -51,7 +51,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../naming_conventions.html">Naming conventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
@@ -274,6 +273,26 @@
 <span class="sd">&quot;&quot;&quot;Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous.&quot;&quot;&quot;</span>
 
 <span class="n">IDENTITY</span> <span class="o">=</span> <span class="n">IdentityConversion</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">conversion_identity</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">object</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;What two spellings of one conversion have to agree on to be the same conversion.</span>
+
+<span class="sd">    An enumerator&#39;s ``description`` is documentation, not interface: the two spellings the</span>
+<span class="sd">    file format offers - the mapping shorthand and the list of objects - cannot even carry</span>
+<span class="sd">    the same text, and two conversions differing only in it mean the same mapping. The</span>
+<span class="sd">    ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and</span>
+<span class="sd">    everything else compares as written, because ``linear`` with factor 1 is deliberately</span>
+<span class="sd">    not the identity. One function for both questions - declarations inside a project, and</span>
+<span class="sd">    one object across two deliveries - so the two can never drift over what a conversion is.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="s2">&quot;enum&quot;</span><span class="p">,</span>
+            <span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="nb">tuple</span><span class="p">((</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">conversion</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw_min</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">raw_max</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>

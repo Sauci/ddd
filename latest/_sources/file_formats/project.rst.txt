@@ -52,11 +52,6 @@ The keys
      - Free text. It becomes the long identifier of the a2l ``PROJECT``, its ``HEADER`` and
        its ``MODULE``, so it is worth writing one sentence that means something to whoever
        opens the file in a calibration tool.
-   * - ``naming``
-     - ``null``
-     - Path to the :doc:`naming convention </naming_conventions>` every declared name of the
-       project has to follow, relative to this file. Optional; a project without one is
-       checked for everything else and never sees a naming finding.
    * - ``includes``
      - ``[]``
      - Paths to the component and sub-project files that make up the project, relative to
@@ -107,11 +102,11 @@ edit the project as well, and nobody can forget to.
    $ ddd check top.ddd.json
    ok: 2 variables in 2 components are consistent
 
-Two files are deliberately left out of a pattern's matches: the project file that contains the
-pattern, and the naming convention that project points at. Both sit exactly where a
-``*.ddd.json`` pattern next to the project would sweep them up, and neither is an include - a
-project including itself would be a cycle, and a convention is not a member of the project but
-a rule about it. Excluding them is what lets the shortest possible project file work at all.
+One file is deliberately left out of a pattern's matches: the project file that contains the
+pattern. It sits exactly where a
+``*.ddd.json`` pattern next to the project would sweep it up, and it is not an include - a
+project including itself would be a cycle. Excluding it is what lets the shortest possible
+project file work at all.
 
 A pattern that matches nothing is reported, because the usual cause is a directory that was
 renamed or a component that never arrived:
@@ -152,13 +147,6 @@ become components of the including project, and are checked against all the othe
 if they had been listed directly. What the sub-project keeps is its own file layout and its
 own relative paths, which is the point - it can be checked and delivered on its own, and it
 does not need to know who includes it.
-
-.. note::
-   One thing a sub-project does **not** bring with it is its naming convention. Only the
-   ``naming`` key of the **root** project applies, because a component judged by different
-   rules depending on which image it is built into could never be renamed to satisfy both.
-   Checking the sub-project on its own still applies its own convention. The reasoning is
-   spelled out with the :doc:`naming conventions </naming_conventions>`.
 
 A file reached twice is loaded once
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -220,7 +208,7 @@ What the project is built out of
 The set of files that were actually read is more than the project file, and a build system
 needs all of them to know when the generated artefacts are out of date. ``ddd sources`` prints
 them, one absolute path per line, sorted and without duplicates - the root file, every
-sub-project, every component, and the naming convention if the project points at one:
+sub-project and every component:
 
 .. code-block:: text
 

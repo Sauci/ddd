@@ -71,7 +71,7 @@ Acronyms and abbreviations
        ship can consume it.
    * - json
      - JavaScript Object Notation, the format of every file DDD reads: the project and
-       component descriptions, the naming convention, the address map, the archived
+       component descriptions, the address map, the archived
        dictionary used as a comparison baseline, and the machine readable diagnostics.
    * - MCD-2 MC
      - Measurement, Calibration and Diagnostics, part 2, Measurement and Calibration: the

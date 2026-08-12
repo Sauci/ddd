@@ -243,9 +243,6 @@ from the wrong variable for a year:
        note: similar.ddd.json#component.interface[0].definition: other variable
    1 warning
 
-If the project points at a :doc:`naming convention </naming_conventions>`, the name is checked
-against it as well, and the finding says which *part* of the name is wrong.
-
 Initial values
 ~~~~~~~~~~~~~~
 

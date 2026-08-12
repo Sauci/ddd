@@ -65,8 +65,8 @@ One structured datatype: a name and the members it lays out, in order.
 
 Root object of a ``*.ddd.json`` type description.
 
-``types`` is the top level key that makes this a types file rather than a project, a
-component or a naming file; DDD decides what a file is from that key alone, so exactly one
-of the four appears here.
+``types`` is the top level key that makes this a types file rather than a project or a
+component file; DDD decides what a file is from that key alone, so exactly one of them
+appears here.
 " alt="" coords="5,19,401,103"/>
 </map>

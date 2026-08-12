@@ -27,10 +27,8 @@ from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.ir import DICTIONARY_FORMAT
-from ddd.loading import load_convention, load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace
 from ddd.models import Datatype
-from ddd.models.naming import NamingConvention
-from ddd.naming import complete, inspect
 
 
 def enum_declaration(name: str, enum: str, **enumerators: int) -> dict[str, object]:
@@ -260,38 +258,6 @@ class TestNamesThatWouldNotCompile:
 
 
 class TestVerdictsThatWereWrong:
-    def test_a_multi_word_subject_is_not_blamed_on_the_qualifier(self) -> None:
-        """The layout with two subjects fits, so it is the one the name is judged against."""
-        convention = NamingConvention.model_validate(
-            {
-                "name": "c",
-                "segments": [
-                    {"name": "role", "tokens": [{"value": "val"}]},
-                    {"name": "subject", "pattern": "^[A-Z][A-Za-z0-9]*$", "repeatable": True},
-                    {"name": "qualifier", "optional": True, "tokens": [{"value": "flt"}]},
-                ],
-            }
-        )
-        assert inspect("val_Inlet_Temperature", convention).ok
-        assert inspect("val_Inlet_Temperature_flt", convention).ok
-        assert inspect("val_Inlet", convention).ok
-        assert not inspect("val_Inlet_fltr", convention).ok
-
-    def test_completion_continues_past_a_free_position(self) -> None:
-        convention = NamingConvention.model_validate(
-            {
-                "name": "c",
-                "segments": [
-                    {"name": "role", "tokens": [{"value": "val"}]},
-                    {"name": "subject", "pattern": "^[A-Z][A-Za-z0-9]*$", "repeatable": True},
-                    {"name": "qualifier", "optional": True, "tokens": [{"value": "flt"}]},
-                ],
-            }
-        )
-        assert complete("val_Inlet", convention) == ["val_Inlet_flt"]
-        assert complete("val_", convention) == []
-        assert complete("v", convention) == ["val"]
-
     def test_an_enum_documented_on_one_side_only_is_not_a_mismatch(self, tree: Path) -> None:
         """The two spellings the format offers cannot carry the same information."""
         spelled_out = declare(
@@ -414,23 +380,6 @@ class TestVerdictsThatWereWrong:
         assert dictionary is not None
         assert dictionary.by_name["X"].a2l.export is False
 
-    def test_a_glob_does_not_swallow_the_naming_file(self, tree: Path) -> None:
-        """The layout the manual shows puts the convention next to the project file."""
-        _, bag = run_analysis(
-            tree,
-            {
-                "project.ddd.json": project("P", "*.ddd.json", naming="convention.ddd.json"),
-                "convention.ddd.json": {
-                    "naming": {
-                        "name": "c",
-                        "segments": [{"name": "role", "tokens": [{"value": "val"}]}],
-                    }
-                },
-                "a.ddd.json": component("A", declare("local", "val")),
-            },
-        )
-        assert "file-kind" not in checks(bag)
-
     def test_a_comparison_of_two_different_projects_says_so(self, tree: Path) -> None:
         from ddd.compare import compare
 
@@ -524,7 +473,7 @@ class TestVerdictsThatWereWrong:
         location = Location(Path("a.ddd.json"), "component.interface[{}]")
         bag = DiagnosticBag()
         for index in (10, 2):
-            bag.add("naming", "x", Location(Path("a.ddd.json"), f"component.interface[{index}]"))
+            bag.add("schema", "x", Location(Path("a.ddd.json"), f"component.interface[{index}]"))
         assert [d.location.pointer for d in bag.sorted if d.location] == [
             "component.interface[2]",
             "component.interface[10]",
@@ -575,39 +524,6 @@ class TestInputTheToolMustSurvive:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert "nested too deeply" in messages(bag)
-
-    def test_a_pattern_that_does_not_compile_is_a_finding(self, tree: Path) -> None:
-        write_tree(
-            tree,
-            {
-                "c.ddd.json": {
-                    "naming": {
-                        "name": "c",
-                        "segments": [{"name": "role", "pattern": "^[A-Z(]$|["}],
-                    }
-                }
-            },
-        )
-        bag = DiagnosticBag()
-        assert load_convention(tree / "c.ddd.json", bag) is None
-        assert "invalid pattern" in messages(bag)
-
-    def test_a_token_containing_the_separator_is_refused(self, tree: Path) -> None:
-        write_tree(
-            tree,
-            {
-                "c.ddd.json": {
-                    "naming": {
-                        "name": "c",
-                        "separator": "_",
-                        "segments": [{"name": "role", "tokens": [{"value": "not_known"}]}],
-                    }
-                }
-            },
-        )
-        bag = DiagnosticBag()
-        assert load_convention(tree / "c.ddd.json", bag) is None
-        assert "contains the separator" in messages(bag)
 
     @pytest.mark.parametrize(
         "condition", ["defined(X)\n#include <stdio.h>", "defined(A) /* c */", "defined(A) // c"]
@@ -727,16 +643,26 @@ class TestWhatABuildSystemIsTold:
 class TestOneMistakeIsOneFinding:
     def test_a_list_emptied_by_a_rejected_entry_is_not_reported_as_well(self, tree: Path) -> None:
         """pydantic drops the bad entry and then calls the list too short; one mistake."""
-        write_tree(tree, {"c.ddd.json": {"naming": {"name": "c", "segments": [{"name": "r"}]}}})
-        bag = DiagnosticBag()
-        assert load_convention(tree / "c.ddd.json", bag) is None
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "s.ddd.json"),
+                "s.ddd.json": {
+                    "sections": [{"section": "", "access": "read-only", "alignment": 4}]
+                },
+            },
+        )
         assert len(bag) == 1
-        assert "needs either tokens or a pattern" in messages(bag)
+        assert "sections[0].section" in messages(bag)
 
     def test_a_list_that_was_written_empty_still_reports_itself(self, tree: Path) -> None:
-        write_tree(tree, {"c.ddd.json": {"naming": {"name": "c", "segments": []}}})
-        bag = DiagnosticBag()
-        assert load_convention(tree / "c.ddd.json", bag) is None
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "s.ddd.json"),
+                "s.ddd.json": {"sections": []},
+            },
+        )
         assert "at least 1 item" in messages(bag)
 
 
@@ -896,22 +822,6 @@ class TestTheRestOfTheEdges:
         _, bag = run_analysis(tree, {"project.ddd.json": project("P", "*.ddd.json")})
         assert "include-empty" in checks(bag)
         assert "cannot expand pattern" in messages(bag)
-
-    def test_completion_skips_a_layout_the_typed_parts_do_not_fit(self) -> None:
-        convention = NamingConvention.model_validate(
-            {
-                "name": "c",
-                "segments": [
-                    {"name": "role", "tokens": [{"value": "flg"}, {"value": "val"}]},
-                    {"name": "subject", "pattern": "^[A-Z][A-Za-z0-9]*$", "repeatable": True},
-                    {"name": "qualifier", "optional": True, "tokens": [{"value": "raw"}]},
-                ],
-            }
-        )
-        assert complete("flg_Valid_", convention) == ["flg_Valid_raw"]
-        # 'raw' is not a valid subject, so no layout puts anything after it: a completion
-        # that offered one would be proposing a name `ddd name` then rejects.
-        assert complete("flg_raw_", convention) == []
 
 
 class TestDiagnosticPlumbing:

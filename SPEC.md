@@ -170,18 +170,21 @@ parametrises the owning component.
 
 All description files used by DDD contain plain JSON, encoded UTF-8; a byte order mark is
 tolerated on reading, because Windows editors commonly prepend one. A description file
-**must** be named `*.ddd.json` (`file-extension`), so that it is recognisable as a DDD
-description in a project that contains JSON for other purposes. The top level key of a file
+**must** be named `*.ddd.json` (`file-extension`), compared without regard to case, so
+that it is recognisable as a DDD description in a project that contains JSON for other
+purposes. The top level key of a file
 decides what the file is: `project` ([section 3.1](#31-project-description)),
 `component` ([section 3.2](#32-software-component-description)),
 `types` ([section 3.7](#37-type-description)), `units` ([section 3.8](#38-unit-vocabulary))
 or `sections` ([section 3.5](#35-memory-placement)); only the first two can be the root of
-a run. JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
+a run. A file stating none of these keys, or several at once, is refused (`file-kind`).
+JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
 and parsers generally resolve the duplication silently in favour of the last spelling, so
 the value the author reads first is not the value a tool would use, and in a grown
 description file such a divergence is costly to locate. A key **must not** be
 repeated inside one object; the file is refused (`json-syntax`) rather than read with the
-surviving value. Unknown keys are rejected, with one exception: a top level `$schema` key
+surviving value. A file that is not valid UTF-8, or whose nesting exceeds the depth the
+parser accepts, is refused the same way (`json-syntax`). Unknown keys are rejected, with one exception: a top level `$schema` key
 **shall** be accepted and ignored, because it is the standard way an editor binds a JSON
 file to its schema and thereby turns the published contract into completion, hover
 documentation and validation while typing. The formal contract is published by the tool
@@ -209,7 +212,8 @@ Contains a list of components, types files, units files, sections files and/or o
   module name.
 - `"description"` (optional): free text.
 - `"includes"` (optional): paths to component, types, units, sections or sub-project files,
-  relative to this file. The kind of each included file is detected from its content. A
+  relative to this file; an absolute path is taken as written. The kind of each included
+  file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
   that is the absolute path with symbolic links followed, compared as the platform compares
   paths. Include cycles are an error.
@@ -218,11 +222,14 @@ An entry of `includes` containing one of `*`, `?` or `[` is a wildcard pattern, 
 with the usual shell rules: `*` and `?` match within one path component, `[...]` is a
 character class, and `**` matches directories recursively. A dot prefixed file is matched
 like any other file, and whether matching honours case follows the platform, like the file
-identity above. Only regular files are matched, and the matches are processed in sorted
+identity above. Only regular files are matched, the file stating the pattern is never
+among the matches, and the matches are processed in sorted
 order of their resolved paths, ordered again as the platform compares them, so that which
 component loads first does not depend on how a file system happens to enumerate a
-directory. A pattern that matches nothing is `include-empty`. An entry without a wildcard
-character is a literal path naming exactly one file, and if that file does not exist the
+directory. A pattern that matches nothing is `include-empty`, and a pattern the platform
+cannot expand counts as matching nothing. An entry without a wildcard
+character is a literal path naming exactly one file, and if that file does not exist, or
+names a directory, the
 finding is `file-not-found` rather than `include-empty`: a pattern **may** legitimately be
 empty, while a named file **may** not be missing.
 
@@ -245,7 +252,11 @@ Each declaration contains:
   ([section 2.1](#21-scope)).
 - `"condition"` (optional): a C preprocessor conditional expression which wraps the
   generated declarations of the object
-  ([section 3.3.1](#331-one-object-several-declarations)).
+  ([section 3.3.1](#331-one-object-several-declarations)). The expression **must** be a
+  single line and **must not** contain `#` or a comment token (`//`, `/*`, `*/`)
+  (`schema`): the text is emitted verbatim behind `#if`, where any of them could change
+  the meaning of the generated file. A condition consisting only of whitespace counts as
+  no condition.
 - `"definition"` (required): a definition object
   ([section 3.3](#33-data-object-definition)).
 
@@ -267,7 +278,7 @@ Attributes common to every kind:
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
 | `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)) |
 | `conversion` | required beside `datatype` | raw to physical conversion ([section 3.4](#34-conversions)); a `typename` fixes it instead |
-| `limits` | derived | physical `min`/`max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
+| `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `a2l` | export | `export`, `format`, `display_identifier` |
@@ -327,7 +338,8 @@ Kind specific attributes:
 | `curve` | `axis` (required) | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
 | `map` | `x_axis`, `y_axis` (both required) | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
-- `dimensions` is a list of array dimensions, for example `[3, 4]` for `x[3][4]`; a
+- `dimensions` is a non-empty list of array dimensions, each at least 1 (`schema`), for
+  example `[3, 4]` for `x[3][4]`; a
   measurement without it is a scalar. In the A2L the same object is described by a
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
@@ -479,7 +491,10 @@ member ([section 5.2](#52-a2l)).
 - `enum` requires an integer datatype. `name` is required: it is the C identifier of the
   generated `typedef enum`, the identity under which `enum-conflict` compares enumerator
   lists, and the name of the A2L `COMPU_VTAB`. `enumerators` is required and non-empty;
-  it **may** also be given as a list of `{"name", "value", "description"}` objects. An enum
+  it **may** also be given as a list of `{"name", "value", "description"}` objects. An
+  enumerator name **must not** repeat within one conversion (`schema`), and every
+  enumerator value **must** fit a 32 bit C `int`, the type C gives an enumerator, whatever
+  the object's datatype would hold (`init-invalid`). An enum
   converts nothing: physical and raw value coincide, so the limits of an enum object,
   stated or derived, are enumerator values.
 - `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys
@@ -500,6 +515,11 @@ member naming a `typename` states no conversion, because the type fixes it
 `IDENTICAL` ([section 5.2](#52-a2l)). One mapping, spelled two ways, is a disagreement
 about the spelling, and the spelling is what every consumer's tooling sees.
 
+Where several declarations state one enum with the same enumerators, the generated header
+and the dictionary carry the declaration that documents the most of them, the count of
+stated enumerator descriptions deciding and their texts breaking ties, so that the result
+does not depend on the order in which the project includes its components.
+
 ### 3.5 Memory placement
 
 Each data object of an embedded project lives in a memory with a character of its own, such
@@ -519,8 +539,11 @@ sections a project uses, as an includable vocabulary like the units file
 }
 ```
 
+A sections file declares at least one section (`schema`).
+
 - `"section"` (required): the name as the linker script spells it. It is a linker name
-  rather than a C identifier, so `.calib` is a normal spelling. A section declared twice,
+  rather than a C identifier, so `.calib` is a normal spelling, and it contains no
+  whitespace (`schema`). A section declared twice,
   by one file or by two, is `duplicate-section`.
 - `"access"` (required): `read-write` or `read-only`, from the point of view of the running
   software. Whether a calibration tool can write a read-only section, for example through
@@ -571,7 +594,9 @@ re-deriving a project from the file tree and guessing at the severities. The lan
 server of [section 7.2](#72-editor-integration) is the reader this record exists for.
 
 The file is named `ddd-build.json` and lives beside the artefacts of the target that wrote
-it. It is deliberately *not* named `*.ddd.json`: that extension means a DDD description
+it. `ddd build-info` writes wherever its `-o` argument points; `ddd-build.json` is the
+name under which the language server searches ([section 7.2](#72-editor-integration)), so
+a record that wants to be found keeps it. It is deliberately *not* named `*.ddd.json`: that extension means a DDD description
 file, `file-extension` enforces it, and `file-kind` would then reject this content for
 having none of the top level keys a description **may** have. It is a document *about* a
 project rather than a description of one.
@@ -599,7 +624,8 @@ A `types` file declares the types a project names, so that components agree by n
 rather than by each copying out the same answer. It is listed in the `includes` of a
 project ([section 3.1](#31-project-description)) like a component file, and only there:
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
-project's `includes`. It is recognised by its top level key: `types`, a list of entries,
+project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
+entries (`schema`),
 each stating its `type`, either `scalar` or `struct`.
 
 ```json
@@ -632,13 +658,17 @@ each stating its `type`, either `scalar` or `struct`.
   type can differ in whether an interrupt writes one of them. Its `datatype` is a base
   datatype: a scalar type cannot be declared in terms of a second one, so a chain of
   aliases, and with it a scalar cycle, cannot be written at all.
-- A **struct** type declares `members` (required), in the order they are laid out. Every
+- A **struct** type declares `members` (required and non-empty), in the order they are
+  laid out. Two members of one structure **must not** share a name (`schema`). Every
   member states `name`, `member` and its storage, and beside a `datatype` also its
   `conversion` (required). `member` is the shape. A `value` member holds a base `datatype`
   or a declared `typename`, optionally as an array (`dimensions`). A `bits` member holds a
   base integer `datatype` (a declared type carries no bitfield) and a width (`bits`,
   required there) of at least one bit and at most what that datatype holds; a `bits`
   member takes no `dimensions`.
+
+Two entries of one file **must not** share a name (`schema`); the same name declared by
+two files is `duplicate-type` ([section 4](#4-consistency-checks)).
 
 A member says what its bytes mean as well as where they are: it carries `unit`,
 `conversion` and `limits` of its own, or it names a scalar type that fixes them, never
@@ -688,7 +718,8 @@ invisible: each object agrees with itself, the A2L grows one `COMPU_METHOD` per 
 
 The file is listed in the `includes` of a project ([section 3.1](#31-project-description))
 like a types file, and only there: handed to the tool as the root of a run, it is refused,
-with a hint at the include that carries it. An entry is a bare spelling, or an object
+with a hint at the include that carries it. The file declares at least one unit
+(`schema`). An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
 of being implied by every object that happens to use it. Case counts: `mV` and `MV` are
 different units. The same unit declared twice, by one file or by two, is `duplicate-unit`.
@@ -798,12 +829,15 @@ Warnings:
 - `condition-mismatch`: declarations of one object use different preprocessor conditions.
 - `unused-output`: an output is read by nobody.
 - `limits-out-of-range`: limits exceed what the datatype can represent under the
-  conversion; for an enum that is the span of its enumerators.
+  conversion; for an enum that is the span of its enumerators. The comparison allows a
+  relative tolerance of 1e-9 at the range ends, so a limit spelled exactly at the edge of
+  a floating point range is not refused for rounding.
 - `enum-duplicate-value`: two enumerators share a value.
 - `name-similar`: two object names differ only in upper and lower case.
 - `a2l-unrepresentable`: an object cannot be fully described by the A2L version DDD writes;
   today that is an array of more than three dimensions, which the `MATRIX_DIM` of
-  version 1.6.1 cannot carry.
+  version 1.6.1 cannot carry. The check fires only for an object the A2L exports, and the
+  emitted file writes every dimension out regardless, which a 1.7 reader accepts.
 
 Information:
 
@@ -816,7 +850,12 @@ answer whether one delivery can replace another, which is a different and direct
 question, and one that cannot be answered from the description files alone, because the
 delivery being replaced has moved on. The data dictionary of a delivery is therefore the
 artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the comparison is a
-function of two of them.
+function of two of them. Either side **may** also be given as a project or component
+description, which is resolved to its dictionary on the spot; the archived dictionary is
+what keeps the question answerable after the descriptions have moved on. The baseline is
+analysed in its own right, and only its error findings are carried into the report, each
+prefixed with "in the baseline:", so that a broken baseline is visible without drowning
+the comparison.
 
 A change **shall** be graded by what it costs the consumers.
 
@@ -843,8 +882,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   ([section 3.3.1](#331-one-object-several-declarations)).
 - `changed-a2l`: the resolved A2L presentation changed, that is the export (compared as
   resolved, [section 3.3.1](#331-one-object-several-declarations)), `format` or
-  `display_identifier`. A changed unit is `changed-interface`, and descriptions are not
-  compared.
+  `display_identifier`. A changed unit is `changed-interface`, and descriptions, of
+  objects and of enumerators alike, are not compared.
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate.
 
@@ -888,7 +927,9 @@ directory is importable but never rendered. A project template receives two vari
 `filename`, the name of the file being rendered, and `model`, the resolved view of the
 dictionary; a `{component}` template additionally receives `header`, the view of its
 component. The rendering is strict: a name a template misspells is an error, not silently
-empty output.
+empty output. A template directory containing no template, and two artefacts claiming the
+same output path, are usage errors rather than findings
+([section 7](#7-tool-interface)).
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
@@ -958,7 +999,9 @@ ASAM MCD-2 MC output containing:
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion and unit, `COMPU_VTAB`
   per enum.
-- one `GROUP` per component, referencing the measurements and characteristics it declares.
+- one `GROUP` per component that contributes at least one exported object, referencing
+  the measurements and characteristics it declares; a component contributing none gets no
+  empty `GROUP`.
 - the address field of every object taken from the address information (`ECU_ADDRESS` is
   the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
   information does not cover keeps address `0x00000000`
@@ -967,7 +1010,9 @@ ASAM MCD-2 MC output containing:
   component order of the project.
 
 The file opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
-after the project ([section 3.1](#31-project-description)), and a `MOD_COMMON` stating the
+after the project ([section 3.1](#31-project-description)). The `PROJECT` carries a
+`HEADER` stating the project description, the project name as `PROJECT_NO` and the
+generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
 byte order and fixed alignments (1/2/4/8, floats 4/8). The byte order is the build's to
 state (`ddd generate --byte-order little|big`, default little, emitted as
 `MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
@@ -982,9 +1027,11 @@ whose `COEFFS` state raw as a function of physical, so the stated slope is the i
 `factor`. An identity with a unit is `IDENTICAL`, and one without a unit gets no method at
 all: the record says `NO_COMPU_METHOD`. What the description files do not carry is emitted
 neutrally: resolution and accuracy of a `MEASUREMENT` and the `MaxDiff` of a
-`CHARACTERISTIC` are 0, and the display format defaults to `%8.0` for integral values and
-`%8.3` otherwise, overridden per object by `format`
-([section 3.3](#33-data-object-definition)). Quoted strings escape backslash and quote and
+`CHARACTERISTIC` are 0, and the display format defaults to `%8.0` for integral values,
+that is an integer datatype under an identity or under a linear conversion whose `factor`
+and `offset` are whole numbers, and to `%8.3` otherwise, overridden per object by `format`
+([section 3.3](#33-data-object-definition)). An object stating no `description` carries
+its name as the A2L long identifier. Quoted strings escape backslash and quote and
 replace control characters by a space, and numbers are written in their shortest round trip
 form, an integral value without a decimal point.
 
@@ -992,6 +1039,9 @@ Export is closed over references: an exported curve or map pulls the axes it ref
 the A2L, and a pulled in axis pulls the measurement indexing it, whatever their own
 `export` says, because an `AXIS_PTS_REF` to an absent axis would be an invalid file rather
 than a smaller one.
+
+A record whose object is declared under a preprocessor condition is preceded by a comment
+naming that condition, because the format has no conditional construct of its own.
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
 object per value-holding member, named by its C access path, for example
@@ -1032,16 +1082,23 @@ offers at least: checking a project (`ddd check`, [section 4](#4-consistency-che
 comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 `ddd check --baseline` for both questions in one exit code;
 [section 4.1](#41-comparing-two-deliveries)); generating the artefacts (`ddd generate`,
-[section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`);
+[section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
+table or, in JSON, as an object carrying `project`, `components` and `variables` beside
+the findings);
 writing out the data dictionary itself (`ddd dump`); printing the JSON schema of the file
-formats and of the dictionary (`ddd schema`); listing the files a project description
+formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
+a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`); listing
+the files a project description
 depends on (`ddd sources`, which lets a build system re-run its configure step when one
-changes); recording how a build is configured to run DDD (`ddd build-info`,
+changes; in JSON the paths are a `sources` list beside the findings); recording how a
+build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
-(`ddd checks`); and reporting where its build system integration and its example templates
-live (`ddd cmake-dir`, `ddd templates-dir`). The root handed to a command is a project or a
+(`ddd checks`, each with its default severity, the unrelaxable ones marked); reporting
+where its build system integration and its example templates
+live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
+printing its own version (`ddd --version`). The root handed to a command is a project or a
 single component file; a component alone is checked with every check, the whole project
 ones included, because holding them back is the editor's leniency
 ([section 7.2](#72-editor-integration)), not the command line's.
@@ -1049,20 +1106,28 @@ ones included, because holding them back is the editor's leniency
 Every command that reports findings can produce machine readable JSON (`--format json`): a
 `diagnostics` list, each finding carrying `check`, `severity`, `message`, a `location` of
 `path`, `pointer`, `line` and `column`, and `notes` of the same shape, and a `summary`
-counting by severity. `generate` adds the files it wrote with their status, and `dump`
+counting by severity. In plain text, a finding is written
+`path:line:column#pointer: severity[check]: message`, the pieces of the location present
+as far as they are known and its notes indented beneath it; findings are ordered by
+severity, then path, then location, numeric parts of a pointer compared as numbers; and a
+clean `ddd check` closes with an `ok:` line counting the objects and components it found
+consistent. `generate` adds the files it wrote with their status (`created`, `updated` or
+`unchanged`), and `dump`
 keeps its stdout for the dictionary, reporting findings on stderr. The exit code
 distinguishes clean runs (0), findings (1) and usage errors (2). A findings exit is
 reserved for findings reported *as errors*: a run whose findings are all warnings is a
 clean run unless `--strict` says otherwise. `ddd generate` with error findings writes
 nothing, because a stale artefact is preferable to a wrong one written halfway into a
 build, unless `--force` asks for the outputs anyway; the exit stays a findings exit in
-either case.
+either case. `ddd generate --dry-run` reports what it would write and writes nothing.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
 its own format (`format`, today `3`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
-`format` does for it ([section 3.6](#36-build-record)).
+`format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
+`format` is newer than the one it implements refuses it (`schema`), located at the file;
+formats up to its own it validates strictly.
 
 ### 7.1 Build system integration
 
@@ -1121,13 +1186,22 @@ Which project a file belongs to comes from the build records of
 or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under the
 workspace, recursively for `ddd-build.json`. A file claimed by several builds is checked
 under each of them and the findings published together: a component linked into two images
-is in two projects, and the answer to which one the reader cares about is both. A file
-belonging to no configured build is still checked, on its own, with the six checks that
+is in two projects, and the answer to which one the reader cares about is both. A file no
+build record claims is looked for in a containing project instead: the server walks from
+the file's directory up to the workspace root, and the file is checked under the project
+descriptions of the nearest directory that include it. A file
+belonging to no build and to no such project is still checked, on its own, with the six
+checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in
 front of the reader. Each check declares whether it needs the whole project, so the two
 modes cannot drift apart.
+
+The server re-reads a file from disk when it is opened or saved. Each finding is also
+published at the locations of its notes, so that both sides of a conflict carry a mark.
+The build records a search discovers are announced as log messages, and a record that
+cannot be read is skipped.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
 repeatable `-b` arguments; the shipped VS Code extension exposes them as the setting

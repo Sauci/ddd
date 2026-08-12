@@ -262,18 +262,11 @@ class TestSchemaBinding:
             {
                 "project.ddd.json": {
                     "$schema": "./schemas/project.schema.json",
-                    "project": {"name": "P", "includes": ["a.ddd.json"], "naming": "c.ddd.json"},
+                    "project": {"name": "P", "includes": ["a.ddd.json"]},
                 },
                 "a.ddd.json": {
                     "$schema": "./schemas/component.schema.json",
                     **component("A", declare("local", "val")),
-                },
-                "c.ddd.json": {
-                    "$schema": "./schemas/naming.schema.json",
-                    "naming": {
-                        "name": "c",
-                        "segments": [{"name": "role", "tokens": [{"value": "val"}]}],
-                    },
                 },
             },
         )

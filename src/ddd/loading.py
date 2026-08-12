@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
@@ -17,8 +18,6 @@ from ddd.models import (
     Component,
     ComponentFile,
     Conversion,
-    NamingConvention,
-    NamingFile,
     Project,
     ProjectFile,
     SectionDeclaration,
@@ -41,10 +40,20 @@ scripts and editors match them with a single pattern.
 _GLOB_CHARACTERS = frozenset("*?[")
 
 FILE_KINDS = ("project", "component", "types", "units", "sections")
-"""Top level keys that identify a description file, in the order they are offered.
+"""Top level keys that identify a description file, in the order they are offered."""
 
-A naming convention is not among them: it is pointed at by the ``naming`` key of a project
-rather than included, and is reported separately when it turns up in ``includes``.
+_INCLUDE_ONLY_KINDS = {
+    "types": "this is a structured datatype description; list it in the 'includes' of the "
+    "project that uses it instead of analysing it on its own",
+    "units": "this is a unit vocabulary; list it in the 'includes' of the project whose "
+    "units it declares instead of analysing it on its own",
+    "sections": "this is a memory section description; list it in the 'includes' of the "
+    "project that places data in them instead of analysing it on its own",
+}
+"""Why a vocabulary file is refused as the root, by kind.
+
+None of these is a project, so there is nothing to resolve or generate from one on its
+own. Validating one against the published schema is what an editor is for.
 """
 
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion)
@@ -220,12 +229,6 @@ class Workspace:
     a section without declared properties would be a name the checks can say nothing about.
     """
 
-    naming: NamingConvention | None = None
-    """The convention the root project points at, if it points at one."""
-
-    naming_path: Path | None = None
-    """Where that convention was read from; part of what the project is built out of."""
-
     read_paths: tuple[Path, ...] = ()
     """Every file the loader opened, whatever came of it.
 
@@ -241,22 +244,7 @@ class Workspace:
         What a build system needs in order to know when to run DDD again: the root file
         alone is not enough, because a project pulls its components in through ``includes``.
         """
-        paths = {self.root, *self.read_paths}
-        if self.naming_path is not None:
-            paths.add(self.naming_path)
-        return tuple(sorted(paths))
-
-
-def load_convention(path: Path, bag: DiagnosticBag) -> NamingConvention | None:
-    """Read a naming convention description."""
-    text = _read_text(path, bag, None)
-    if text is None:
-        return None
-    try:
-        return NamingFile.model_validate_json(text).naming
-    except ValidationError as error:
-        _report_validation_error(path, error, bag)
-        return None
+        return tuple(sorted({self.root, *self.read_paths}))
 
 
 def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -342,34 +330,9 @@ class _Loader:
         if kind is None:
             return None
 
-        if kind == "types":
-            # Same reasoning as a naming convention handed in directly: a structure is not a
-            # project, so there is nothing to resolve or generate from it on its own. Validating
-            # it against the published schema is what an editor is for.
-            self._bag.add(
-                "file-kind",
-                "this is a structured datatype description; list it in the 'includes' of the "
-                "project that uses it instead of analysing it on its own",
-                Location(root),
-            )
-            return None
-
-        if kind == "units":
-            self._bag.add(
-                "file-kind",
-                "this is a unit vocabulary; list it in the 'includes' of the project whose "
-                "units it declares instead of analysing it on its own",
-                Location(root),
-            )
-            return None
-
-        if kind == "sections":
-            self._bag.add(
-                "file-kind",
-                "this is a memory section description; list it in the 'includes' of the "
-                "project that places data in them instead of analysing it on its own",
-                Location(root),
-            )
+        refusal = _INCLUDE_ONLY_KINDS.get(kind)
+        if refusal is not None:
+            self._bag.add("file-kind", refusal, Location(root))
             return None
 
         if kind == "component":
@@ -388,7 +351,6 @@ class _Loader:
         project = self._load_project(root, data, parents=(), stack=())
         if project is None:
             return None
-        naming_path = self._naming_path(project)
         return Workspace(
             root=root,
             name=project.name,
@@ -400,16 +362,8 @@ class _Loader:
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
-            naming=load_convention(naming_path, self._bag) if naming_path else None,
-            naming_path=naming_path,
             read_paths=tuple(sorted(self._read_paths)),
         )
-
-    def _naming_path(self, project: LoadedProject) -> Path | None:
-        """The convention of the root project; a sub-project cannot impose one on its parent."""
-        if project.project.naming is None:
-            return None
-        return _resolve(project.path.parent / project.project.naming)
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
         # Recorded before anything can go wrong with it: a file that turns out to be
@@ -471,14 +425,6 @@ class _Loader:
             return None
         if present:
             return present[0]
-        if "naming" in data:
-            self._bag.add(
-                "file-kind",
-                "this is a naming convention; point the 'naming' key of the project at it "
-                "instead of listing it in 'includes'",
-                Location(path),
-            )
-            return None
         keys = ", ".join(sorted(data)) or "none"
         offered = ", ".join(f"'{kind}'" for kind in FILE_KINDS)
         self._bag.add(
@@ -511,6 +457,45 @@ class _Loader:
         self._components.append(loaded)
         return loaded
 
+    def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT](
+        self,
+        path: Path,
+        data: dict[str, Any],
+        *,
+        file_model: type[ModelT],
+        entries: Callable[[ModelT], tuple[EntryT, ...]],
+        wrap: Callable[[Path, int, EntryT], LoadedT],
+        key: Callable[[LoadedT], str],
+        location: Callable[[LoadedT], Location],
+        registry: dict[str, LoadedT],
+        noun: str,
+    ) -> None:
+        """Read one vocabulary file and register each entry it declares under its key.
+
+        The one shape behind the three loaders below: validate the file, wrap every entry
+        together with where it was declared, and refuse the second declaration of a key as
+        ``duplicate-<noun>`` - with a note at the first - rather than letting one of them
+        quietly win.
+        """
+        try:
+            model = file_model.model_validate(data)
+        except ValidationError as error:
+            self._report_validation_error(path, error)
+            return
+
+        for index, declared in enumerate(entries(model)):
+            loaded = wrap(path, index, declared)
+            previous = registry.get(key(loaded))
+            if previous is not None:
+                self._bag.add(
+                    f"duplicate-{noun}",
+                    f"{noun} '{key(loaded)}' is declared twice",
+                    location(loaded),
+                    notes=[("first declared here", location(previous))],
+                )
+                continue
+            registry[key(loaded)] = loaded
+
     def _load_types(self, path: Path, data: dict[str, Any]) -> None:
         """Read a type description and register what it declares.
 
@@ -518,24 +503,17 @@ class _Loader:
         refused rather than quietly winning or losing: which of two layouts the generated c
         would get is not something an include order should decide.
         """
-        try:
-            model = TypesFile.model_validate(data)
-        except ValidationError as error:
-            self._report_validation_error(path, error)
-            return
-
-        for index, declared in enumerate(model.types):
-            loaded = LoadedType(path=path, index=index, declared=declared)
-            previous = self._types_by_name.get(loaded.name)
-            if previous is not None:
-                self._bag.add(
-                    "duplicate-type",
-                    f"type '{loaded.name}' is declared twice",
-                    loaded.location(),
-                    notes=[("first declared here", previous.location())],
-                )
-                continue
-            self._types_by_name[loaded.name] = loaded
+        self._load_vocabulary(
+            path,
+            data,
+            file_model=TypesFile,
+            entries=lambda model: model.types,
+            wrap=LoadedType,
+            key=lambda loaded: loaded.name,
+            location=lambda loaded: loaded.location(),
+            registry=self._types_by_name,
+            noun="type",
+        )
 
     def _load_units(self, path: Path, data: dict[str, Any]) -> None:
         """Read a unit vocabulary and register what it declares.
@@ -544,24 +522,17 @@ class _Loader:
         refused rather than merged: two files declaring one unit is either a copy that will
         drift or a disagreement about its description, and neither is worth keeping quiet.
         """
-        try:
-            model = UnitsFile.model_validate(data)
-        except ValidationError as error:
-            self._report_validation_error(path, error)
-            return
-
-        for index, declared in enumerate(model.units):
-            loaded = LoadedUnit(path=path, index=index, declared=declared)
-            previous = self._units_by_name.get(loaded.unit)
-            if previous is not None:
-                self._bag.add(
-                    "duplicate-unit",
-                    f"unit '{loaded.unit}' is declared twice",
-                    loaded.location(),
-                    notes=[("first declared here", previous.location())],
-                )
-                continue
-            self._units_by_name[loaded.unit] = loaded
+        self._load_vocabulary(
+            path,
+            data,
+            file_model=UnitsFile,
+            entries=lambda model: model.units,
+            wrap=LoadedUnit,
+            key=lambda loaded: loaded.unit,
+            location=lambda loaded: loaded.location(),
+            registry=self._units_by_name,
+            noun="unit",
+        )
 
     def _load_sections(self, path: Path, data: dict[str, Any]) -> None:
         """Read a section description and register what it declares.
@@ -571,24 +542,17 @@ class _Loader:
         will drift or a disagreement about its properties, and neither is worth keeping
         quiet.
         """
-        try:
-            model = SectionsFile.model_validate(data)
-        except ValidationError as error:
-            self._report_validation_error(path, error)
-            return
-
-        for index, declared in enumerate(model.sections):
-            loaded = LoadedSection(path=path, index=index, declared=declared)
-            previous = self._sections_by_name.get(loaded.section)
-            if previous is not None:
-                self._bag.add(
-                    "duplicate-section",
-                    f"section '{loaded.section}' is declared twice",
-                    loaded.location(),
-                    notes=[("first declared here", previous.location())],
-                )
-                continue
-            self._sections_by_name[loaded.section] = loaded
+        self._load_vocabulary(
+            path,
+            data,
+            file_model=SectionsFile,
+            entries=lambda model: model.sections,
+            wrap=LoadedSection,
+            key=lambda loaded: loaded.section,
+            location=lambda loaded: loaded.location(),
+            registry=self._sections_by_name,
+            noun="section",
+        )
 
     def _load_project(
         self,
@@ -608,14 +572,9 @@ class _Loader:
 
         child_parents = (*parents, loaded.name)
         child_stack = (*stack, path)
-        # A wildcard next to the project file also matches the convention that project points
-        # at. It is not an include, and the layout the manual shows puts it exactly there, so
-        # it is skipped rather than reported as a file of the wrong kind.
-        naming = model.project.naming
-        excluded = {path} | ({_resolve(path.parent / naming)} if naming else set())
         for index, pattern in enumerate(model.project.includes):
             origin = Location(path, f"project.includes[{index}]")
-            for included in self._expand(path, pattern, origin, excluded):
+            for included in self._expand(path, pattern, origin, {path}):
                 self._load_include(included, origin, child_parents, child_stack)
         return loaded
 

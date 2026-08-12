@@ -48,7 +48,15 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
 from ddd.models.conversion import Conversion, physical_range
-from ddd.models.objects import A2lObjectOptions, Limits, ObjectKind, refuse_restating
+from ddd.models.objects import (
+    A2lObjectOptions,
+    Limits,
+    ObjectKind,
+    check_conversion_stated,
+    check_storage_named_once,
+    refuse_enum_on_non_integer,
+    refuse_restating,
+)
 
 BITS_PER_BYTE = 8
 
@@ -177,22 +185,17 @@ class Member(BaseModel):
 
     @model_validator(mode="after")
     def _storage_is_named_exactly_once(self) -> Member:
-        if (self.datatype is None) == (self.typename is None):
-            msg = (
-                "storage is named exactly once: 'datatype' for a base datatype, 'typename' "
-                "for a type the project declares"
-            )
-            raise ValueError(msg)
+        check_storage_named_once(self.datatype, self.typename)
         return self
 
     @model_validator(mode="after")
     def _base_storage_states_its_conversion(self) -> Member:
-        if self.datatype is not None and self.conversion is None:
-            msg = (
-                "a 'datatype' comes with a 'conversion': the identity "
-                '({"kind": "identity"}) is an answer to state, not a default to fall into'
-            )
-            raise ValueError(msg)
+        check_conversion_stated(self.datatype, self.conversion)
+        return self
+
+    @model_validator(mode="after")
+    def _enum_requires_integer(self) -> Member:
+        refuse_enum_on_non_integer(self.datatype, self.conversion)
         return self
 
     @model_validator(mode="after")
@@ -335,6 +338,11 @@ class ScalarType(BaseModel):
     limits: Limits | None = None
     """Physical limits, in the unit above; derived from datatype and conversion if omitted."""
 
+    @model_validator(mode="after")
+    def _enum_requires_integer(self) -> ScalarType:
+        refuse_enum_on_non_integer(self.datatype, self.conversion)
+        return self
+
 
 AnyType = Annotated[StructType | ScalarType, Field(discriminator="type")]
 """Any entry of a types file, told apart by its required ``type``.
@@ -348,9 +356,9 @@ shape it failed to describe, not silently become another one.
 class TypesFile(FileRoot):
     """Root object of a ``*.ddd.json`` type description.
 
-    ``types`` is the top level key that makes this a types file rather than a project, a
-    component or a naming file; DDD decides what a file is from that key alone, so exactly one
-    of the four appears here.
+    ``types`` is the top level key that makes this a types file rather than a project or a
+    component file; DDD decides what a file is from that key alone, so exactly one of them
+    appears here.
     """
 
     model_config = ConfigDict(title="DDD type description")

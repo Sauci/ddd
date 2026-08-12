@@ -436,7 +436,7 @@ class TestDiagnostics:
 
     def test_a_note_with_nowhere_to_point_keeps_its_text(self) -> None:
         """Every piece of related information carries a location, so one is invented."""
-        finding = Diagnostic("naming", Severity.ERROR, "bad name", None, (("try harder", None),))
+        finding = Diagnostic("schema", Severity.ERROR, "bad name", None, (("try harder", None),))
         published = service._as_lsp(finding, {})
         (related,) = published["relatedInformation"]
         assert related["message"] == "try harder"
@@ -690,25 +690,18 @@ class TestNavigation:
         assert definition(built, document, types, "types[0].members[0].typename") == []
         assert references(built, document, "types[0].members[0].typename") == []
 
-    @pytest.mark.parametrize("pointer", ["project.includes[0]", "project.naming"])
-    def test_a_path_leads_to_the_file_it_names(self, tmp_path: Path, pointer: str) -> None:
+    def test_an_include_leads_to_the_file_it_names(self, tmp_path: Path) -> None:
         write_tree(
             tmp_path,
             {
-                "p.ddd.json": project("P", "a.ddd.json", naming="c.ddd.json"),
+                "p.ddd.json": project("P", "a.ddd.json"),
                 "a.ddd.json": component("A"),
-                "c.ddd.json": {
-                    "naming": {
-                        "name": "C",
-                        "segments": [{"name": "part", "pattern": "^[A-Za-z]+$"}],
-                    }
-                },
             },
         )
         from ddd.lsp.navigation import definition
 
         root = tmp_path / "p.ddd.json"
-        (site,) = definition(self.index_of(root), read(root, {}), root, pointer)
+        (site,) = definition(self.index_of(root), read(root, {}), root, "project.includes[0]")
         assert site.path.parent == tmp_path
         assert site.pointer == ""
 

@@ -18,13 +18,6 @@ class Project(BaseModel):
     description: str = ""
     """Free text describing the project."""
 
-    naming: str | None = None
-    """Path to the naming convention every declared name has to follow, relative to this file.
-
-    A convention belongs to the project rather than to the command line: whoever checks the
-    project should get the same verdict as whoever wrote it.
-    """
-
     includes: tuple[str, ...] = ()
     """Paths to component or sub-project files, relative to this file.
 
@@ -36,9 +29,9 @@ class Project(BaseModel):
 class ProjectFile(FileRoot):
     """Root object of a ``*.ddd.json`` project description.
 
-    ``project`` is the top level key that makes this a project file rather than a component,
-    a types or a naming file; DDD decides what a file is from that key alone, so exactly one
-    of the four appears here.
+    ``project`` is the top level key that makes this a project file rather than a component
+    or a types file; DDD decides what a file is from that key alone, so exactly one of them
+    appears here.
     """
 
     model_config = ConfigDict(title="DDD project description")

@@ -63,6 +63,53 @@ class TestBreakingChanges:
         assert "conversion: linear(factor=0.5" in messages(bag)
         assert bag.has_errors
 
+    def test_an_enumerator_description_edit_is_no_finding_at_all(self, tree: Path) -> None:
+        """Descriptions are not compared, an enumerator's free text included.
+
+        The live checks already ignore it - ``enum-conflict`` compares the ordered name and
+        value pairs - so a delivery that only documents an enumerator has to compare clean
+        as well, instead of failing as ``changed-interface`` over identical generated code.
+        """
+        old = one_component(
+            tree, "old", declare("local", "X", "uint8", conversion=self.enum(("M_OFF", 0, "")))
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "X", "uint8", conversion=self.enum(("M_OFF", 0, "switched off"))),
+        )
+        assert checks(verdict(old, new)) == []
+
+    @pytest.mark.parametrize(
+        ("was", "now"),
+        [
+            # A reordering moves every enumerator of the generated typedef.
+            ([("M_OFF", 0, ""), ("M_ON", 1, "")], [("M_ON", 1, ""), ("M_OFF", 0, "")]),
+            # A revalued enumerator falsifies every archived reading of the state.
+            ([("M_OFF", 0, "")], [("M_OFF", 1, "")]),
+        ],
+    )
+    def test_enumerator_order_and_values_still_break(
+        self,
+        tree: Path,
+        was: list[tuple[str, int, str]],
+        now: list[tuple[str, int, str]],
+    ) -> None:
+        old = one_component(tree, "old", declare("local", "X", "uint8", conversion=self.enum(*was)))
+        new = one_component(tree, "new", declare("local", "X", "uint8", conversion=self.enum(*now)))
+        assert checks(verdict(old, new)) == ["changed-interface"]
+
+    @staticmethod
+    def enum(*enumerators: tuple[str, int, str]) -> dict[str, Any]:
+        return {
+            "kind": "enum",
+            "name": "Mode_t",
+            "enumerators": [
+                {"name": name, "value": value, "description": description}
+                for name, value, description in enumerators
+            ],
+        }
+
     @pytest.mark.parametrize(
         ("field", "was", "now"),
         [

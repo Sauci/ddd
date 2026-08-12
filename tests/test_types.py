@@ -177,6 +177,19 @@ class TestValueMember:
         with pytest.raises(ValidationError, match="storage is named exactly once"):
             Member.model_validate(value(typename="Sample_t", datatype="uint16"))
 
+    @pytest.mark.parametrize("datatype", ["boolean", "float64"])
+    def test_an_enum_conversion_needs_an_integer_datatype(self, datatype: str) -> None:
+        """The same rule as on a definition; boolean does not count as an integer."""
+        with pytest.raises(
+            ValidationError, match=f"requires an integer datatype, got '{datatype}'"
+        ):
+            Member.model_validate(
+                value(
+                    datatype=datatype,
+                    conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
+                )
+            )
+
     def test_it_has_no_bits(self) -> None:
         """A width quietly ignored would generate a full width member and move every offset."""
         with pytest.raises(ValidationError, match="a 'value' member has no 'bits'"):
@@ -305,6 +318,16 @@ class TestScalarType:
         """A type defined in terms of a second one would chain, and could form a cycle."""
         with pytest.raises(ValidationError, match="Input should be 'boolean', 'uint8'"):
             ScalarType.model_validate(scalar(datatype="Other_t"))
+
+    def test_an_enum_conversion_needs_an_integer_datatype(self) -> None:
+        """The rule of a definition holds here, where the meaning is fixed for everybody."""
+        with pytest.raises(ValidationError, match="requires an integer datatype, got 'float32'"):
+            ScalarType.model_validate(
+                scalar(
+                    datatype="float32",
+                    conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
+                )
+            )
 
     @pytest.mark.parametrize(
         ("key", "stated"),

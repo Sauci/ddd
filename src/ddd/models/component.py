@@ -102,9 +102,9 @@ class Component(BaseModel):
 class ComponentFile(FileRoot):
     """Root object of a ``*.ddd.json`` software component description.
 
-    ``component`` is the top level key that makes this a component file rather than a project,
-    a types or a naming file; DDD decides what a file is from that key alone, so exactly one
-    of the four appears here.
+    ``component`` is the top level key that makes this a component file rather than a project
+    or a types file; DDD decides what a file is from that key alone, so exactly one of them
+    appears here.
     """
 
     model_config = ConfigDict(title="DDD component description")

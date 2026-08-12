@@ -204,7 +204,7 @@ class _A2lModelBuilder:
             if not self._carries(leaf):
                 continue
             if leaf.kind is ObjectKind.MEASUREMENT:
-                measurements.append(self._leaf_measurement(leaf))
+                measurements.append(self._measurement(leaf))
             else:
                 characteristics.append(self._leaf_characteristic(leaf))
 
@@ -265,22 +265,6 @@ class _A2lModelBuilder:
             return False
         return leaf.a2l.exported and self._instances_exported.get(leaf.instance, True)
 
-    def _leaf_measurement(self, leaf: ResolvedLeaf) -> MeasurementView:
-        return MeasurementView(
-            name=leaf.path,
-            description=leaf.description or leaf.path,
-            datatype=A2L_TYPE[leaf.datatype],
-            compu_method=self._methods.reference(leaf),
-            lower=format_number(leaf.limits.min),
-            upper=format_number(leaf.limits.max),
-            address=self._options.address_of(leaf.path),
-            matrix_dim=_matrix_dim(leaf),
-            format=leaf.a2l.format,
-            display_identifier=leaf.a2l.display_identifier,
-            component=leaf.owner or "",
-            condition=leaf.condition,
-        )
-
     def _leaf_characteristic(self, leaf: ResolvedLeaf) -> CharacteristicView:
         """A calibratable member, which is a ``VALUE`` or a ``VAL_BLK`` and never a curve.
 
@@ -303,7 +287,7 @@ class _A2lModelBuilder:
             condition=leaf.condition,
         )
 
-    def _measurement(self, entry: ResolvedObject) -> MeasurementView:
+    def _measurement(self, entry: ResolvedObject | ResolvedLeaf) -> MeasurementView:
         return MeasurementView(
             name=entry.name,
             description=entry.description or entry.name,

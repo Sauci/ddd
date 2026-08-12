@@ -51,9 +51,8 @@ Those naming rules are part of the interface a project depends on: :doc:`templat
 them, and the module docstring of ``src/ddd/backends/c/backend.py`` states them again next to
 the code that implements them.
 
-Four smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
+Three smaller modules sit beside them. ``diagnostics.py`` holds the severity policy and the
 registry of every check, and is what both the loader and the analysis report through.
-``naming.py`` validates, explains and completes names against a naming convention.
 ``compare.py`` answers the directional question of whether one dictionary may replace
 another, and is the second consumer of the contract next to the backends. ``cli.py`` is the
 only module that knows about argument parsing, exit codes and where output goes; it is also

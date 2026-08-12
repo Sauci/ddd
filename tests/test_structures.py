@@ -113,6 +113,40 @@ class TestReadingTypes:
         )
         assert findings(bag) == ["schema"]
 
+    def test_an_enum_on_a_non_integer_is_refused_where_it_is_written(self, tree: Path) -> None:
+        """The rule of a definition holds on a scalar type and on a structure member alike.
+
+        Both used to slip through: only a definition refused an enum conversion on a
+        non-integer datatype, so a types file could smuggle one in for every component that
+        named the type.
+        """
+        _, bag = load(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    scalar(
+                        "Bad_t",
+                        "float32",
+                        conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 0}},
+                    ),
+                    struct(
+                        "S_t",
+                        val(
+                            "flag",
+                            "boolean",
+                            conversion={"kind": "enum", "name": "F_t", "enumerators": {"B": 0}},
+                        ),
+                    ),
+                ),
+            },
+        )
+        assert findings(bag) == ["schema", "schema"]
+        pointers = [diagnostic.location.pointer for diagnostic in bag if diagnostic.location]
+        assert pointers == ["types[0].scalar", "types[1].struct.members[0]"]
+        assert "enum conversion 'E_t' requires an integer datatype, got 'float32'" in messages(bag)
+        assert "enum conversion 'F_t' requires an integer datatype, got 'boolean'" in messages(bag)
+
     def test_a_types_file_is_not_analysed_on_its_own(self, tree: Path) -> None:
         """It declares no variable, so there is nothing to resolve or generate from it."""
         workspace, bag = load(tree, {"types.ddd.json": types(struct("A_t"))}, root="types.ddd.json")
@@ -833,6 +867,41 @@ class TestTypeNamesInTheCNamespace:
         assert "name-collision" in findings(bag)
         assert "type declared here" in first(bag).render()
 
+    def test_a_member_named_after_a_c_keyword_is_refused(self, tree: Path) -> None:
+        """``uint16_t int;`` inside the generated struct compiles no better than outside it."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("int"))),
+            },
+        )
+        assert findings(bag) == ["reserved-identifier"]
+        finding = first(bag)
+        assert "member 'int' of structure 'S_t' is reserved by the c language" in finding.render()
+        assert finding.location.pointer == "types[0].members[0].name"
+
+    def test_a_member_of_a_nested_structure_is_screened_as_well(self, tree: Path) -> None:
+        """Every structure of the types file is walked, so nesting hides no member.
+
+        The finding points at the member's own name in its file, however deep the structure
+        sits in the object tree.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    struct("Outer_t", nest("inner", "Inner_t")),
+                    struct("Inner_t", val("__x")),
+                ),
+            },
+        )
+        assert findings(bag) == ["reserved-identifier"]
+        finding = first(bag)
+        assert "member '__x' of structure 'Inner_t'" in finding.render()
+        assert finding.location.pointer == "types[1].members[0].name"
+
 
 class TestStructuresReachEverythingElse:
     """A structured variable is an object to the rest of the tool, not a special case."""
@@ -873,6 +942,40 @@ class TestStructuresReachEverythingElse:
         assert findings(bag) == []
         assert dictionary is not None
         assert [enum.name for enum in dictionary.enums] == ["Mode_t"]
+
+    def test_a_structured_object_counts_for_name_similar(self, tree: Path) -> None:
+        """A measurement ``sensor`` beside a structured ``Sensor`` is exactly the confusion
+        the check names, and it fires once, on the later of the two names."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("v"))),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Sensor", typename="S_t"),
+                    declare("local", "sensor", "uint16"),
+                ),
+            },
+        )
+        assert findings(bag) == ["name-similar"]
+        assert "'sensor' and 'Sensor' differ only in upper/lower case" in messages(bag)
+
+    def test_two_structured_objects_differing_only_in_case_are_reported(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("v"))),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Inlet", typename="S_t"),
+                    declare("local", "inlet", typename="S_t"),
+                ),
+            },
+        )
+        assert findings(bag) == ["name-similar"]
+        assert "'inlet' and 'Inlet' differ only in upper/lower case" in messages(bag)
 
     def test_the_members_are_counted_and_listed_as_objects(self, tree: Path) -> None:
         """A summary that counted only the plain objects told a project of two that it had none."""

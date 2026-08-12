@@ -19,7 +19,7 @@ What can be jumped from, and to:
 * the same, asked as "find references", goes to **every** declaration of it;
 * a structure name goes to where the structure is declared, and its references to every
   member that nests it;
-* an ``includes`` entry and a project's ``naming`` go to the file they name.
+* an ``includes`` entry goes to the file it names.
 """
 
 from __future__ import annotations
@@ -53,7 +53,6 @@ _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPES: Final = "types["
 _INCLUDES: Final = "project.includes["
-_NAMING: Final = "project.naming"
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,7 +264,7 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
     """
     value = document.value_at(pointer)
     if isinstance(value, str):
-        if pointer.startswith(_INCLUDES) or pointer == _NAMING:
+        if pointer.startswith(_INCLUDES):
             return _files(path.parent, value)
         # A datatype that names a declared type goes to that type, wherever it is written -
         # the type is what is under the pointer. A base datatype names no file, so it falls

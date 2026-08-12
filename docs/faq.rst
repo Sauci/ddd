@@ -77,8 +77,8 @@ Ignoring both is what makes the result meaningful:
 
 What remains is everything a component can get wrong on its own: reserved and colliding
 identifiers, initial values that do not fit their datatype, limits outside the range the
-datatype can represent, references to axes that do not exist or are of the wrong kind, names
-that do not follow the convention. That is the check worth running in the component's own
+datatype can represent, references to axes that do not exist or are of the wrong
+kind. That is the check worth running in the component's own
 pipeline, and the cmake integration wires exactly this invocation - the same two overrides -
 into the ``<target>.ddd`` target it creates for every registered component (see
 :doc:`build integration </build_integration>`).
@@ -261,12 +261,6 @@ out both sides so that it is obvious which of the two moved:
        note: here: OFF=0, ON=1, FAULT=2
        note: a.ddd.json#component.interface[0].definition.conversion: first defined as: OFF=0, ON=1
    1 error
-
-.. note::
-   The ``naming`` check, which enforces the project's
-   :doc:`naming convention </naming_conventions>`, applies to variable names only. An enum
-   type name and its enumerators live in other namespaces, and a convention written for
-   variables would reject every one of them.
 
 How do I keep a variable out of the a2l?
 -----------------------------------------

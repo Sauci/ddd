@@ -8,12 +8,16 @@ Two questions are asked with the same machinery but are not the same question:
   directional ("can the candidate replace the baseline?") and graded, because growing a
   limit is harmless while rescaling a conversion silently falsifies every reading.
 
-Only the idea is shared - a field, how to read it, how to phrase it - not the code: each
-module keeps its own table, because the same property lands in different places. ``limits``
-is a field here but a directional branch there; ``a2l`` is a table field there but its own
-check here; ``local`` exists only here. Those differences are decisions, and
+The mechanism is shared - :class:`ComparedField`, :func:`differing` and :func:`spell_out`
+live here and :mod:`ddd.analysis` imports them - but each module keeps its own table,
+because the same property lands in different places. ``limits`` is a field there but a
+directional branch here; ``a2l`` is a table field there but its own check here; ``local``
+exists only here. Those differences are decisions, and
 ``TestComparisonTables`` in ``tests/test_comparison_tables.py`` records each one, next to the
-guard that stops either table from silently falling behind its models.
+guard that stops either table from silently falling behind its models. The one value both
+tables read identically is what a conversion *is* -
+:func:`~ddd.models.conversion.conversion_identity` - because an enumerator's description is
+documentation to both questions, and two answers to that would be a drift, not a decision.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import Comparable, DataDictionary
-from ddd.models import format_number, format_shape
+from ddd.models import conversion_identity, format_number, format_shape
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,13 +42,27 @@ class ComparedField[T]:
     name: str
     value: Callable[[T], object]
     describe: Callable[[T], str]
+    optional: bool = False
+    """When set, a side that omits the property agrees with whatever the other says.
+
+    Used for properties that have a derived default: a consumer that simply does not repeat
+    the producer's limits is not disagreeing with them. Only the in-project table sets it -
+    between two deliveries there is no producer to defer to.
+    """
 
 
 def differing[T](
     fields: Sequence[ComparedField[T]], reference: T, other: T
 ) -> list[ComparedField[T]]:
     """The fields on which the two disagree."""
-    return [field for field in fields if field.value(reference) != field.value(other)]
+    found = []
+    for field in fields:
+        mine, theirs = field.value(reference), field.value(other)
+        if field.optional and (mine is None or theirs is None):
+            continue
+        if mine != theirs:
+            found.append(field)
+    return found
 
 
 def spell_out[T](fields: Sequence[ComparedField[T]], reference: T, other: T) -> str:
@@ -67,9 +85,12 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("kind", lambda o: o.kind.value, lambda o: o.kind.value),
     ComparedField("datatype", lambda o: o.datatype.value, lambda o: o.datatype.value),
     ComparedField("unit", lambda o: o.unit, lambda o: f"'{o.unit}'"),
+    # Compared through the same description free identity the in-project comparison reads,
+    # because descriptions are not compared anywhere: a delivery that only documents an
+    # enumerator changes no interface, while reordering or revaluing one changes every reader.
     ComparedField(
         "conversion",
-        lambda o: o.conversion.model_dump(mode="json"),
+        lambda o: conversion_identity(o.conversion),
         lambda o: o.conversion.describe(),
     ),
     ComparedField("shape", lambda o: o.shape, lambda o: format_shape(o.shape) or "scalar"),

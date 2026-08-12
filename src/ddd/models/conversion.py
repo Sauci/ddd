@@ -170,6 +170,26 @@ Conversion = Annotated[
 IDENTITY = IdentityConversion()
 
 
+def conversion_identity(conversion: Conversion) -> object:
+    """What two spellings of one conversion have to agree on to be the same conversion.
+
+    An enumerator's ``description`` is documentation, not interface: the two spellings the
+    file format offers - the mapping shorthand and the list of objects - cannot even carry
+    the same text, and two conversions differing only in it mean the same mapping. The
+    ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and
+    everything else compares as written, because ``linear`` with factor 1 is deliberately
+    not the identity. One function for both questions - declarations inside a project, and
+    one object across two deliveries - so the two can never drift over what a conversion is.
+    """
+    if isinstance(conversion, EnumConversion):
+        return (
+            "enum",
+            conversion.name,
+            tuple((entry.name, entry.value) for entry in conversion.enumerators),
+        )
+    return conversion.model_dump(mode="json")
+
+
 def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tuple[float, float]:
     """The physical range a raw range covers, in the order a reader expects.
 

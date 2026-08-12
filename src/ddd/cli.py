@@ -38,10 +38,9 @@ from ddd.diagnostics import (
     UnknownCheckError,
 )
 from ddd.ir import DataDictionary
-from ddd.loading import load_convention, load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace
 from ddd.models import (
     ComponentFile,
-    NamingFile,
     ProjectFile,
     SectionsFile,
     TypesFile,
@@ -49,7 +48,6 @@ from ddd.models import (
     format_shape,
 )
 from ddd.models.schema import PublishedSchema
-from ddd.naming import Inspection, complete, inspect, or_list
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -270,48 +268,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     schema.set_defaults(handler=_command_schema)
 
-    name_parser = subparsers.add_parser(
-        "name",
-        help="check and explain names against a naming convention",
-        description=(
-            "Splits every given name into its segments, says which part is wrong if any is, "
-            "and spells out what each part means."
-        ),
-    )
-    name_parser.add_argument("names", nargs="+", metavar="NAME", help="the names to look at")
-    name_parser.add_argument(
-        "-c", "--convention", type=Path, required=True, help="the naming convention file"
-    )
-    name_parser.add_argument(
-        "--format", choices=["text", "json"], default="text", help="output format"
-    )
-    name_parser.set_defaults(handler=_command_name)
-
-    complete_parser = subparsers.add_parser(
-        "complete",
-        help="list the names a prefix may grow into, for shell completion",
-        description=(
-            "Prints one candidate per line and always exits zero: a completion that fails "
-            "loudly is worse than one that offers nothing."
-        ),
-    )
-    complete_parser.add_argument("prefix", nargs="?", default="", help="what has been typed")
-    complete_parser.add_argument(
-        "-c", "--convention", type=Path, required=True, help="the naming convention file"
-    )
-    complete_parser.set_defaults(handler=_command_complete)
-
     sources = subparsers.add_parser(
         "sources",
         help="list every description file a project is built out of",
         description=(
-            "Prints one absolute path per line: the project file, every file it includes "
-            "however deeply, and the naming convention. A build system needs exactly this "
+            "Prints one absolute path per line: the project file and every file it includes "
+            "however deeply. A build system needs exactly this "
             "to know when the generated files are out of date, because a project pulls its "
             "components in through 'includes' and none of them is named on the command line."
         ),
     )
     sources.add_argument("project", type=Path, help="project or component description file")
+    sources.add_argument("--format", choices=["text", "json"], default="text", help="output format")
     sources.set_defaults(handler=_command_sources)
 
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
@@ -464,7 +432,7 @@ def _command_list(args: argparse.Namespace) -> int:
                         component.model_dump(mode="json") for component in dictionary.components
                     ],
                     "variables": [entry.model_dump(mode="json") for entry in dictionary.listed],
-                    "diagnostics": [d.to_dict() for d in bag.sorted],
+                    **_diagnostics_payload(bag),
                 },
                 indent=2,
             )
@@ -495,7 +463,6 @@ def _command_dump(args: argparse.Namespace) -> int:
 _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "project": ProjectFile,
     "component": ComponentFile,
-    "naming": NamingFile,
     "types": TypesFile,
     "units": UnitsFile,
     "sections": SectionsFile,
@@ -507,69 +474,6 @@ SCHEMA_ALL = "all"
 
 SCHEMA_FILENAME = "ddd_{kind}.schema.json"
 """How ``all`` names each file, so that a ``$schema`` path is predictable and stable."""
-
-
-def _command_name(args: argparse.Namespace) -> int:
-    bag = DiagnosticBag()
-    convention = load_convention(args.convention, bag)
-    if convention is None:
-        _report(bag, "text")
-        return EXIT_USAGE
-
-    inspections = [inspect(name, convention) for name in args.names]
-    if args.format == "json":
-        print(json.dumps([_inspection_payload(i) for i in inspections], indent=2))
-    else:
-        for inspection in inspections:
-            _print_inspection(inspection)
-    return EXIT_OK if all(i.ok for i in inspections) else EXIT_FINDINGS
-
-
-def _command_complete(args: argparse.Namespace) -> int:
-    bag = DiagnosticBag()
-    convention = load_convention(args.convention, bag)
-    if convention is None:
-        return EXIT_OK
-    for candidate in complete(args.prefix, convention):
-        print(candidate)
-    return EXIT_OK
-
-
-def _print_inspection(inspection: Inspection) -> None:
-    if inspection.ok:
-        print(f"{inspection.name}  ({inspection.convention.name})")
-        for part in inspection.parts:
-            segment = part.segment
-            role = segment.name if segment else "?"
-            meaning = part.meaning or (segment.description if segment else "")
-            print(f"  {part.text:<24} {role:<12} {meaning}")
-        return
-    print(inspection.underline())
-    for part in inspection.problems:
-        suggestion = f" - did you mean {or_list(part.suggestions)}?" if part.suggestions else ""
-        print(f"  {part.problem}{suggestion}")
-    for segment in inspection.missing:
-        print(f"  the {segment.name} part is missing: {segment.description or 'required'}")
-
-
-def _inspection_payload(inspection: Inspection) -> dict[str, Any]:
-    return {
-        "name": inspection.name,
-        "ok": inspection.ok,
-        "convention": inspection.convention.name,
-        "parts": [
-            {
-                "text": part.text,
-                "start": part.start,
-                "segment": part.segment.name if part.segment else None,
-                "meaning": part.meaning,
-                "problem": part.problem,
-                "suggestions": list(part.suggestions),
-            }
-            for part in inspection.parts
-        ],
-        "missing": [segment.name for segment in inspection.missing],
-    }
 
 
 def schema_text(kind: str) -> str:
@@ -668,10 +572,20 @@ def _command_sources(args: argparse.Namespace) -> int:
 
     Deliberately tolerant: a project whose interfaces disagree still has a well defined set
     of source files, and a build system asking what to watch should get an answer even while
-    the project does not check out. Only a root file that cannot be read at all is fatal.
+    the project does not check out. Only a root file that cannot be read at all is fatal,
+    and the exit code says so in both output formats.
     """
     bag = DiagnosticBag()
     workspace = load_workspace(args.project, bag)
+    if args.format == "json":
+        payload = {
+            "sources": [path.as_posix() for path in workspace.sources()]
+            if workspace is not None
+            else [],
+            **_diagnostics_payload(bag),
+        }
+        print(json.dumps(payload, indent=2))
+        return EXIT_FINDINGS if workspace is None else EXIT_OK
     if workspace is None:
         _report(bag, "text")
         return EXIT_FINDINGS

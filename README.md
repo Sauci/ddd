@@ -106,7 +106,7 @@ ddd schema all -o schemas          # writes one file per format, to commit
 
 Then point each description at the schema of its own kind.  The path is relative to the file,
 and it has to be per file rather than an editor wide setting, because a project, a component
-and a convention all end in `*.ddd.json` and only the content says which is which:
+and a types file all end in `*.ddd.json` and only the content says which is which:
 
 ```json
 {
@@ -125,7 +125,7 @@ it, `"kind": "curve"` says what a curve is as against a value block.
 
 A schema is per file and static, so there is a whole class of mistake it cannot see: that an
 `axis` names an axis no component declares, that two components disagree about a unit, that
-nobody produces an input, that a name does not follow the convention.  Those need the whole
+nobody produces an input.  Those need the whole
 project resolved, which is what `ddd lsp` brings into the editor:
 
 ```bash
@@ -169,7 +169,7 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | --- | --- | --- |
 | anywhere in a declaration - the name, the datatype, a number | the declaration that **writes** that object, in whichever component that is | every declaration of it |
 | a structure name in a `type` | where the structure is declared | every member nesting it |
-| an `includes` entry or a project's `naming` | the file - wildcards land on every match | |
+| an `includes` entry | the file - wildcards land on every match | |
 
 **Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
 `conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
@@ -417,7 +417,6 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init`, which only the producing component decides |
-| error | `naming` | a name does not follow the naming convention of the project |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |
@@ -434,79 +433,6 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 When components disagree, the declaration of the **producing** component is the reference:
 its definition is the one that gets generated, and the diagnostics point at the deviating
 consumer.
-
-## Naming conventions
-
-Most projects agree that a name means something - which part says what the value *is*, which
-says what it is *about*, which says how it was *conditioned*. DDD can hold that agreement in
-a `*.ddd.json` file and enforce it, and because the convention is described as a sequence of
-**segments** rather than as one regular expression, it can do two things a regex cannot: point
-at the part of a name that is wrong, and complete a name you are half way through typing.
-
-```json
-{
-  "naming": {
-    "name": "demo-convention",
-    "separator": "_",
-    "segments": [
-      { "name": "role", "tokens": [
-          { "value": "val", "description": "a measured or computed value" },
-          { "value": "flg", "description": "a boolean flag" }] },
-      { "name": "subject", "pattern": "^[A-Z][A-Za-z0-9]*$", "repeatable": true },
-      { "name": "qualifier", "optional": true, "tokens": [
-          { "value": "raw", "description": "unconditioned" },
-          { "value": "flt", "description": "filtered" }] }
-    ]
-  }
-}
-```
-
-A segment carries either a **vocabulary** of tokens with their meanings, or a **pattern** for
-a free position. `optional` may only appear at the end and `repeatable` on one segment, so a
-name always splits unambiguously. A complete example is in [examples/naming/](examples/naming/).
-
-**Where a name is wrong**, not merely that it is:
-
-```text
-$ ddd name -c convention.ddd.json vl_InletTemperature_flt flg_Valid_fltr
-vl_InletTemperature_flt
-^^
-  'vl' is not a known role (val, flg, cnt, par, axs, crv, map, tbl) - did you mean 'val'?
-flg_Valid_fltr
-          ^^^^
-  'fltr' is not a known qualifier (raw, flt, phys, req, max, min) - did you mean 'flt'?
-```
-
-**What an unfamiliar name means**, which is the other half of the job:
-
-```text
-$ ddd name -c convention.ddd.json val_InletTemperature_flt
-val_InletTemperature_flt  (demo-convention)
-  val                      role         a measured or computed value
-  InletTemperature         subject      what the value is about, in upper camel case
-  flt                      qualifier    filtered
-```
-
-**Completion in the terminal.** `ddd complete` prints one candidate per line and always exits
-zero, because a completion that reports an error is worse than one that offers nothing:
-
-```bash
-export DDD_CONVENTION=/path/to/convention.ddd.json
-source completion/ddd.bash
-ddd name val_Inlet<TAB>          # offers the qualifiers once the subject is typed
-```
-
-**In the project.** A project points at its convention, and then every declared name is
-checked on every run - the `naming` check, an error by default and relaxable like any other:
-
-```json
-{ "project": { "name": "P", "naming": "convention.ddd.json", "includes": ["*.ddd.json"] } }
-```
-
-The convention belongs to the project rather than to the command line, so whoever checks the
-project gets the same verdict as whoever wrote it. Only variable names are checked: a
-component name lives in another namespace, and a convention written for variables would
-reject every one of them.
 
 ## Comparing two deliveries
 
@@ -530,7 +456,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value or `volatile` changed; on calibration data the second one also decides whether the object still lives in read only memory |
+| warning | `changed-storage` | the initial value, `volatile` or the memory `section` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |
@@ -655,9 +581,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema project\|component\|types\|naming\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
-| `ddd name -c CONV NAME...` | explain a name, or point at the part that is wrong |
-| `ddd complete -c CONV PREFIX` | list the names a prefix may grow into, for shell completion |
+| `ddd schema project\|component\|types\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
@@ -670,17 +594,16 @@ component on its own before integrating it - add `-W missing-producer=ignore` in
 because the components producing the inputs are by definition not part of the file.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
-command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `name` and
+command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
 `checks` - which leaves out only `schema` and `cmake-dir`, whose output is machine readable
-already, and `complete`, which prints one candidate per line for a shell. `ddd dump` is the
+already. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format.
 
 Exit codes: `0` clean, `1` findings, `2` wrong usage.  `1` means at least one finding was
 reported **as an error**: a run with only warnings exits `0`, which is what `--strict` is
-for.  Two commands differ on purpose: `ddd complete` always exits `0`, and `ddd name` exits
-`2` when the convention itself cannot be read, `1` when a name does not fit it.
+for.
 
 In the text format the findings, the summary and the verdict line all go to **stderr**, so
 that `ddd dump > baseline.json` and `ddd list | ...` carry only the payload.  With

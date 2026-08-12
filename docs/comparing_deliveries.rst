@@ -161,7 +161,7 @@ them together with everything else.
      - an object of the baseline is gone; no component read it
    * - warning
      - ``changed-storage``
-     - the initial value or volatility of an object changed
+     - the initial value, volatility or memory section of an object changed
    * - warning
      - ``narrowed-limits``
      - the physical limits of an object got tighter, so calibrated data may not fit
@@ -185,10 +185,10 @@ them together with everything else.
 kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
 component local - are the properties a consumer compiles against and calibrates against. Any
 one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. ``changed-storage`` covers the two properties that change how an object behaves
-rather than what it means, the initial value and ``volatile``; ``changed-a2l`` covers the
-export flag, the display format and the display identifier, which move labels around in a
-calibration tool without touching the software.
+ones differ. ``changed-storage`` covers the three properties that change how an object behaves
+rather than what it means, the initial value, ``volatile`` and the memory ``section``;
+``changed-a2l`` covers the export flag, the display format and the display identifier, which
+move labels around in a calibration tool without touching the software.
 
 ``volatile`` is graded differently here than it is *inside* a project, where it is interface
 and a disagreement is a ``definition-mismatch`` error - see :doc:`consistency_checks`. The
@@ -507,8 +507,8 @@ The baseline's own findings are not findings of this run
 
 When the baseline is given as a project description rather than as a dump, DDD has to analyse
 it to obtain its dictionary, and that analysis produces findings about *that* delivery: an
-output nobody read two releases ago, a component that has since been removed, a naming
-convention that has since been tightened. Those findings are not this run's business. Reported
+output nobody read two releases ago, a component that has since been
+removed. Those findings are not this run's business. Reported
 here they would be attributed to the candidate, they would appear twice whenever both sides
 are the same tree, and a clean delivery could be failed because of the state of its
 predecessor.

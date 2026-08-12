@@ -19,19 +19,6 @@
           "title": "Description",
           "type": "string"
         },
-        "naming": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Path to the naming convention every declared name has to follow, relative to this file.\n\nA convention belongs to the project rather than to the command line: whoever checks the\nproject should get the same verdict as whoever wrote it.",
-          "title": "Naming"
-        },
         "includes": {
           "default": [],
           "description": "Paths to component or sub-project files, relative to this file.\n\nShell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key.",
@@ -50,7 +37,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.ddd.json`` project description.\n\n``project`` is the top level key that makes this a project file rather than a component,\na types or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
+  "description": "Root object of a ``*.ddd.json`` project description.\n\n``project`` is the top level key that makes this a project file rather than a component\nor a types file; DDD decides what a file is from that key alone, so exactly one of them\nappears here.",
   "properties": {
     "$schema": {
       "anyOf": [

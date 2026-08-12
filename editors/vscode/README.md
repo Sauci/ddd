@@ -52,8 +52,7 @@ nobody has tried.
 Findings appear on open and on save, for **every** file of the project rather than only the one
 on screen: half of a disagreement is always in the other component. What a json schema cannot
 see is exactly what this reports - that an `axis` names an axis nobody declares, that two
-components disagree about a unit, that nobody produces an input, that a name does not follow the
-project's convention.
+components disagree about a unit, that nobody produces an input.
 
 Both sides of a conflict are marked. Two components declaring the same output are equally part
 of it, and a file with no finding on it would otherwise read as the correct one.
@@ -73,7 +72,7 @@ Go to definition works from anywhere in a declaration - the same positions the h
 from - and lands on the declaration that **writes** that object; an `axis`, `x_axis`, `y_axis`
 or `input` naming another object jumps to that one instead. Find references lists every
 declaration of it. The same works from a `type` to the structure it nests, and from an
-`includes` entry or a project's `naming` to the files they name.
+`includes` entry to the files it names.
 
 The lightbulb on a `definition-mismatch` offers to reconcile it: put the cursor on the
 `unit`, the `conversion` or any other key the declarations must agree on, and every other

@@ -49,11 +49,10 @@ ddd = "ddd.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ddd"]
 
-# Shipped inside the package so that `ddd cmake-dir` and the documented completion setup
-# find them after a plain pip install, not only in a source checkout.
+# Shipped inside the package so that `ddd cmake-dir` finds it after a plain pip install,
+# not only in a source checkout.
 [tool.hatch.build.targets.wheel.force-include]
 "cmake/Ddd.cmake" = "ddd/cmake/Ddd.cmake"
-"completion/ddd.bash" = "ddd/completion/ddd.bash"
 # Example c templates for `ddd templates-dir`. A starting point to copy, never a fallback:
 # a project that does not pass --template-dir generates nothing.
 "examples/templates" = "ddd/templates"
@@ -62,7 +61,6 @@ packages = ["src/ddd"]
 include = [
     "src/ddd",
     "cmake",
-    "completion",
     "docker",
     "docs",
     "examples",

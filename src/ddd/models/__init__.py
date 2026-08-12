@@ -17,9 +17,9 @@ from ddd.models.conversion import (
     Enumerator,
     IdentityConversion,
     LinearConversion,
+    conversion_identity,
     conversion_range,
 )
-from ddd.models.naming import NamingConvention, NamingFile, Segment, Token
 from ddd.models.objects import (
     A2lObjectOptions,
     AnyDataObject,
@@ -87,8 +87,6 @@ __all__ = [
     "Measurement",
     "Member",
     "MemberKind",
-    "NamingConvention",
-    "NamingFile",
     "ObjectKind",
     "Parameter",
     "Project",
@@ -98,10 +96,8 @@ __all__ = [
     "SectionAccess",
     "SectionDeclaration",
     "SectionsFile",
-    "Segment",
     "Shape",
     "StructType",
-    "Token",
     "TypeName",
     "TypesFile",
     "Unit",
@@ -111,6 +107,7 @@ __all__ = [
     "bitfield_range",
     "broadcast",
     "check_shape",
+    "conversion_identity",
     "conversion_range",
     "definition_keys",
     "discriminator_tags",

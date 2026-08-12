@@ -233,6 +233,22 @@ class TestValueChecks:
         )
         assert "reserved-identifier" in checks(bag)
 
+    def test_reserved_project_name(self, tree: Path) -> None:
+        """The project name becomes the a2l PROJECT and MODULE, so it is screened too."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("register", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert checks(bag) == ["reserved-identifier"]
+        assert "project name 'register' is reserved by the c language" in messages(bag)
+        finding = next(iter(bag))
+        assert finding.location is not None
+        assert finding.location.pointer == "project.name"
+        assert finding.location.path.name == "project.ddd.json"
+
     def test_names_differing_only_in_case(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree, two_components(a=[declare("local", "Speed")], b=[declare("local", "speed")])

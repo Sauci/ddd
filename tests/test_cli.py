@@ -220,6 +220,9 @@ class TestList:
         assert entry["owner"] == "Controller"
         assert entry["consumers"] == ["UserInterface", "EventLogger"]
         assert entry["conversion"] == {"kind": "linear", "factor": 0.25, "offset": 0.0}
+        # The json contract of every reporting command: diagnostics and their summary.
+        assert payload["diagnostics"] == []
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
 
 
 class TestSchemaAndChecks:
@@ -286,18 +289,32 @@ class TestSources:
         assert any(name.endswith("controller.ddd.json") for name in listed)
         assert any(name.endswith("event_logger.ddd.json") for name in listed)
 
-    def test_the_naming_convention_counts_as_a_source(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        naming = DEMO.parent.parent / "naming" / "project.ddd.json"
-        assert main(["sources", str(naming)]) == EXIT_OK
-        assert "convention.ddd.json" in capsys.readouterr().out
-
     def test_an_unreadable_root_is_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert main(["sources", str(tmp_path / "absent.ddd.json")]) == EXIT_FINDINGS
         assert "does not exist" in capsys.readouterr().err
+
+    def test_json_output_carries_the_sources_and_the_summary(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The json contract of every reporting command holds here too."""
+        assert main(["sources", str(DEMO), "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert str(DEMO.as_posix()) in payload["sources"]
+        assert any(name.endswith("controller.ddd.json") for name in payload["sources"])
+        assert payload["diagnostics"] == []
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+    def test_an_unreadable_root_is_a_json_finding(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["sources", str(tmp_path / "absent.ddd.json"), "--format", "json"]
+        assert main(arguments) == EXIT_FINDINGS
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["sources"] == []
+        assert payload["diagnostics"][0]["check"] == "file-not-found"
+        assert payload["summary"]["error"] == 1
 
 
 class TestBuildInfo:

@@ -11,9 +11,10 @@ import dataclasses
 import difflib
 import math
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from ddd.compare import ComparedField, differing, spell_out
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import (
     ComponentDeclaration,
@@ -44,39 +45,19 @@ from ddd.models import (
     Shape,
     StructType,
     check_shape,
+    conversion_identity,
     conversion_range,
     format_number,
     format_shape,
     is_reserved_identifier,
     resolve_export,
 )
-from ddd.naming import check_names, or_list
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
 
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
-
-
-@dataclass(frozen=True, slots=True)
-class _ComparedField:
-    """One property two declarations of the same object are compared on.
-
-    ``value`` is what has to match, ``describe`` is how the finding phrases it. Keeping the
-    two together is the point: a field cannot be compared without being explainable, and
-    adding one is a single entry instead of an edit in three places.
-    """
-
-    name: str
-    value: Callable[[DataObject], object]
-    describe: Callable[[DataObject], str]
-    optional: bool = False
-    """When set, a declaration that omits the property agrees with whatever the other says.
-
-    Used for properties that have a derived default: a consumer that simply does not repeat
-    the producer's limits is not disagreeing with them.
-    """
 
 
 def _describe_shape(definition: DataObject) -> str:
@@ -122,44 +103,44 @@ def _conversion_value(definition: DataObject) -> object:
     file format offers (the mapping shorthand and the list of objects) cannot even carry the
     same information. ``enum-conflict`` owns the agreement of the enumerators themselves and
     deliberately ignores descriptions, so comparing the raw dump here would report a
-    mismatch that check does not see, on declarations that generate identical code.
+    mismatch that check does not see, on declarations that generate identical code. The
+    description free projection itself is :func:`~ddd.models.conversion.conversion_identity`,
+    shared with the delivery comparison so the two answers cannot drift apart.
     """
     conversion = definition.conversion
     if conversion is None:
         # A structured declaration: the type carries the meaning, so there is no conversion
         # here to disagree about, and every declaration of the object says the same nothing.
         return None
-    if isinstance(conversion, EnumConversion):
-        return ("enum", conversion.name, _enum_key(conversion))
-    return conversion.model_dump(mode="json")
+    return conversion_identity(conversion)
 
 
 # What every component sharing an object has to agree on: a disagreement is an error.
-_INTERFACE_FIELDS = (
-    _ComparedField("kind", lambda d: d.kind.value, lambda d: d.kind.value),
-    _ComparedField(
+_INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
+    ComparedField("kind", lambda d: d.kind.value, lambda d: d.kind.value),
+    ComparedField(
         "datatype",
         lambda d: str(d.datatype if d.datatype is not None else d.typename),
         lambda d: str(d.datatype if d.datatype is not None else d.typename),
     ),
-    _ComparedField("unit", lambda d: d.unit, lambda d: f"'{d.unit}'"),
-    _ComparedField("shape", lambda d: d.declared_shape, _describe_shape),
-    _ComparedField(
+    ComparedField("unit", lambda d: d.unit, lambda d: f"'{d.unit}'"),
+    ComparedField("shape", lambda d: d.declared_shape, _describe_shape),
+    ComparedField(
         "conversion",
         _conversion_value,
         lambda d: d.conversion.describe() if d.conversion is not None else "none",
     ),
-    _ComparedField(
+    ComparedField(
         "limits",
         lambda d: d.limits.as_tuple() if d.limits is not None else None,
         _describe_limits,
         optional=True,
     ),
-    _ComparedField("references", lambda d: d.references, _describe_references),
+    ComparedField("references", lambda d: d.references, _describe_references),
     # Not optional, unlike limits, and it cannot be: the key is required on every definition,
     # so there is no silence to interpret. Every component that reads the object gets the
     # qualifier in its own header, which means every description of it has to agree.
-    _ComparedField("volatile", lambda d: d.volatile, lambda d: str(d.volatile).lower()),
+    ComparedField("volatile", lambda d: d.volatile, lambda d: str(d.volatile).lower()),
 )
 
 # What only shapes the generated a2l entry: the producer wins, the others get a warning that
@@ -172,26 +153,9 @@ _INTERFACE_FIELDS = (
 #
 # What is left of the a2l block is presentation - a format string, a display name - where two
 # values genuinely cannot both be used and there is no reason to stop a build over it.
-_STORAGE_FIELDS = (_ComparedField("a2l", _a2l_presentation, _describe_a2l),)
-
-
-def _differing(
-    fields: tuple[_ComparedField, ...], reference: DataObject, other: DataObject
-) -> list[_ComparedField]:
-    differing = []
-    for field in fields:
-        mine, theirs = field.value(reference), field.value(other)
-        if field.optional and (mine is None or theirs is None):
-            continue
-        if mine != theirs:
-            differing.append(field)
-    return differing
-
-
-def _spell_out(fields: list[_ComparedField], reference: DataObject, other: DataObject) -> str:
-    return ", ".join(
-        f"{field.name}: {field.describe(other)} != {field.describe(reference)}" for field in fields
-    )
+_STORAGE_FIELDS: tuple[ComparedField[DataObject], ...] = (
+    ComparedField("a2l", _a2l_presentation, _describe_a2l),
+)
 
 
 @dataclass(slots=True)
@@ -444,6 +408,7 @@ class _Analysis:
         self._check_types()
         self._check_units()
         self._check_sections()
+        self._check_project_names()
         self._check_component_names()
         for loaded in workspace.components:
             self._collect_component(loaded)
@@ -471,15 +436,7 @@ class _Analysis:
             self._build_instance(name, refs, owners[name], self._effective[name])
             for name, refs in structured
         ]
-        self._check_similar_names(variables)
-        if workspace.naming is not None:
-            # Only the names of data objects: a component name lives in another namespace and a
-            # convention written for variables would reject every one of them.
-            check_names(
-                {name: refs[0].location("definition.name") for name, refs in ordered},
-                workspace.naming,
-                self._bag,
-            )
+        self._check_similar_names(ordered)
 
         known = self._enums.by_name
         return DataDictionary(
@@ -542,20 +499,26 @@ class _Analysis:
             ),
         )
 
+    def _declared_of(self, member: Member) -> StructType | ScalarType | None:
+        """The declared type a member names, or nothing - it names none, or an unknown one.
+
+        The lookup only; each caller narrows the answer to the kind of type it is after.
+        """
+        if member.typename is None:
+            return None
+        declared = self._types.get(member.typename)
+        return declared.declared if declared is not None else None
+
     def _member_storage(self, member: Member) -> Datatype | None:
         """The base datatype a member is spelled with, or nothing when it is a structure."""
         if member.typename is None:
             return member.datatype
-        declared = self._types.get(member.typename)
-        entry = declared.declared if declared is not None else None
+        entry = self._declared_of(member)
         return entry.datatype if isinstance(entry, ScalarType) else None
 
     def _member_structure(self, member: Member) -> str | None:
         """The structure a member is, or nothing when it is spelled with a datatype."""
-        if member.typename is None:
-            return None
-        declared = self._types.get(member.typename)
-        entry = declared.declared if declared is not None else None
+        entry = self._declared_of(member)
         return member.typename if isinstance(entry, StructType) else None
 
     def _check_units(self) -> None:
@@ -575,8 +538,7 @@ class _Analysis:
 
         def check(unit: str, where: Location) -> None:
             if unit and unit not in vocabulary:
-                matches = difflib.get_close_matches(unit, sorted(vocabulary), n=3, cutoff=0.5)
-                nearest = f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+                nearest = _did_you_mean(unit, sorted(vocabulary), cutoff=0.5)
                 self._bag.add(
                     "unknown-unit",
                     f"'{unit}' is not a unit this project declares{nearest}",
@@ -618,8 +580,7 @@ class _Analysis:
                 where = loaded.declaration_location(index, "definition.section")
                 entry = declared.get(named)
                 if entry is None:
-                    matches = difflib.get_close_matches(named, sorted(declared), n=3, cutoff=0.5)
-                    nearest = f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+                    nearest = _did_you_mean(named, sorted(declared), cutoff=0.5)
                     self._bag.add(
                         "unknown-section",
                         f"'{definition.name}' is placed in '{named}', which is not a section "
@@ -693,6 +654,7 @@ class _Analysis:
                     f"type name '{entry.name}' is reserved by the c language",
                     entry.location("name"),
                 )
+            self._check_member_names(entry)
             self._register_member_enums(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
@@ -725,6 +687,40 @@ class _Analysis:
                 f"structured datatypes nest each other: {' -> '.join(cycle)}",
                 declared[cycle[0]].location(),
             )
+
+    def _check_member_names(self, entry: LoadedType) -> None:
+        """Every member of a structure becomes a c identifier in the generated types header.
+
+        Screened like the enumerators, and for the same reason: a member named ``int`` or
+        ``__x`` puts a declaration in the struct that a compiler refuses or the implementation
+        owns, which would otherwise surface as a message about a generated file.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for position, member in enumerate(structure.members):
+            if is_reserved_identifier(member.name):
+                self._bag.add(
+                    "reserved-identifier",
+                    f"member '{member.name}' of structure '{entry.name}' is reserved by the "
+                    f"c language",
+                    entry.location(f"members[{position}].name"),
+                )
+
+    def _check_project_names(self) -> None:
+        """The project name is an identifier the outputs carry, so it is screened like one.
+
+        It names the a2l ``PROJECT`` and ``MODULE`` and reaches the generated banners, exactly
+        as a component name names a header; a project called ``register`` deserves the same
+        located finding.
+        """
+        for loaded in self._workspace.projects:
+            if is_reserved_identifier(loaded.name):
+                self._bag.add(
+                    "reserved-identifier",
+                    f"project name '{loaded.name}' is reserved by the c language",
+                    Location(loaded.path, "project.name"),
+                )
 
     def _check_component_names(self) -> None:
         """Component names that differ only in case cannot both be generated.
@@ -808,8 +804,7 @@ class _Analysis:
         somebody misremembered. Both are answered by the same question.
         """
         candidates = tuple(datatype.value for datatype in Datatype) + tuple(sorted(self._types))
-        matches = difflib.get_close_matches(named.lower(), candidates, n=3, cutoff=0.6)
-        return f" - did you mean {or_list(tuple(matches))}?" if matches else ""
+        return _did_you_mean(named.lower(), candidates, cutoff=0.6)
 
     def _resolve_type(self, ref: DeclarationRef) -> DeclarationRef | None:
         """Fill in the type a declaration names, or report that it names nothing.
@@ -967,7 +962,10 @@ class _Analysis:
         conversion = definition.conversion
         if isinstance(conversion, EnumConversion):
             self._register_enum(conversion, ref.location("definition.conversion"))
-            self._check_enum_fits(definition, conversion, location)
+            datatype = definition.storage
+            self._check_enum_fits(
+                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
+            )
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
         datatype = definition.storage
@@ -1082,35 +1080,24 @@ class _Analysis:
         # C requires every enumerator to be representable as an 'int' (C11 6.7.2.2), which on
         # an embedded target is 32 bits wide. A larger value only compiles as a vendor
         # extension, so it is caught here rather than in the customer's build.
-        outside = [
-            enumerator
-            for enumerator in conversion.enumerators
-            if not (_INT_MIN <= enumerator.value <= _INT_MAX)
-        ]
+        self._check_enum_fits(
+            conversion, _INT_MIN, _INT_MAX, "a c 'int', which every enumerator has to", location
+        )
+
+    def _check_enum_fits(
+        self, conversion: EnumConversion, lo: float, hi: float, phrase: str, location: Location
+    ) -> None:
+        """Report the enumerators outside ``lo .. hi``, phrased for what they do not fit into.
+
+        One shape for two bounds: the c ``int`` every enumerator has to be representable in,
+        and the declared storage of the one object naming the enum.
+        """
+        outside = [e for e in conversion.enumerators if not (lo <= e.value <= hi)]
         if outside:
             spelled = ", ".join(f"{e.name}={e.value}" for e in outside)
             self._bag.add(
                 "init-invalid",
-                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into a c "
-                f"'int', which every enumerator has to",
-                location,
-            )
-
-    def _check_enum_fits(
-        self, definition: DataObject, conversion: EnumConversion, location: Location
-    ) -> None:
-        datatype = definition.storage
-        outside = [
-            enumerator
-            for enumerator in conversion.enumerators
-            if not (datatype.raw_min <= enumerator.value <= datatype.raw_max)
-        ]
-        if outside:
-            names = ", ".join(f"{e.name}={e.value}" for e in outside)
-            self._bag.add(
-                "init-invalid",
-                f"enumerator(s) {names} of enum '{conversion.name}' do not fit into "
-                f"{datatype.value}",
+                f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into {phrase}",
                 location,
             )
 
@@ -1204,6 +1191,17 @@ class _Analysis:
             return None
         return found
 
+    def _check_unused(
+        self, name: str, producer: DeclarationRef | None, consumers: list[DeclarationRef]
+    ) -> None:
+        """An output no component reads: legal, and said out loud rather than left to linger."""
+        if producer is not None and producer.scope is Scope.OUTPUT and not consumers:
+            self._bag.add(
+                "unused-output",
+                f"'{name}' is written by component '{producer.component_name}' but read by nobody",
+                producer.location(),
+            )
+
     def _build_instance(
         self,
         name: str,
@@ -1224,12 +1222,7 @@ class _Analysis:
                 self._compare(reference, ref)
 
         consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
-        if producer is not None and producer.scope is Scope.OUTPUT and not consumers:
-            self._bag.add(
-                "unused-output",
-                f"'{name}' is written by component '{producer.component_name}' but read by nobody",
-                producer.location(),
-            )
+        self._check_unused(name, producer, consumers)
 
         named = definition.declared_type
         assert named is not None
@@ -1304,10 +1297,7 @@ class _Analysis:
 
     def _member_nested_structure(self, member: Member) -> StructType | None:
         """The structure a member is, or nothing when it holds a value of its own."""
-        if member.typename is None:
-            return None
-        declared = self._types.get(member.typename)
-        entry = declared.declared if declared is not None else None
+        entry = self._declared_of(member)
         return entry if isinstance(entry, StructType) else None
 
     def _member_meaning(self, member: Member) -> tuple[Datatype, str, Conversion, Limits]:
@@ -1340,13 +1330,7 @@ class _Analysis:
             if ref is not reference:
                 self._compare(reference, ref)
 
-        consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
-        if producer is not None and producer.scope is Scope.OUTPUT and not consumers:
-            self._bag.add(
-                "unused-output",
-                f"'{name}' is written by component '{producer.component_name}' but read by nobody",
-                producer.location(),
-            )
+        self._check_unused(name, producer, [ref for ref in refs if ref.scope is Scope.INPUT])
 
         # Asked of every declaration, not of the producer's: an object the producer kept out
         # of the a2l is still in it if a consumer asked for it, and it is then still too many
@@ -1388,25 +1372,25 @@ class _Analysis:
         """Compare two declarations of the same data object."""
         note = [("reference declaration", reference.location("definition"))]
 
-        interface = _differing(_INTERFACE_FIELDS, reference.definition, other.definition)
+        interface = differing(_INTERFACE_FIELDS, reference.definition, other.definition)
         if interface:
             self._bag.add(
                 "definition-mismatch",
                 f"'{other.name}' is declared differently by component '{other.component_name}' "
                 f"than by '{reference.component_name}' "
-                f"({_spell_out(interface, reference.definition, other.definition)})",
+                f"({spell_out(interface, reference.definition, other.definition)})",
                 other.location("definition"),
                 notes=note,
             )
 
-        storage = _differing(_STORAGE_FIELDS, reference.definition, other.definition)
+        storage = differing(_STORAGE_FIELDS, reference.definition, other.definition)
         if storage:
             named = " and ".join(field.name for field in storage)
             self._bag.add(
                 "storage-mismatch",
                 f"'{other.name}': component '{other.component_name}' specifies a different "
                 f"{named} than '{reference.component_name}' "
-                f"({_spell_out(storage, reference.definition, other.definition)}); "
+                f"({spell_out(storage, reference.definition, other.definition)}); "
                 f"the value of '{reference.component_name}' is used",
                 other.location("definition"),
                 notes=note,
@@ -1422,25 +1406,44 @@ class _Analysis:
                 notes=[("reference declaration", reference.location())],
             )
 
-    def _check_similar_names(self, variables: list[Variable]) -> None:
+    def _check_similar_names(self, ordered: list[tuple[str, list[DeclarationRef]]]) -> None:
+        """Two object names differing only in case, plain and structured objects alike.
+
+        Compared over every resolved object rather than over the plain variables only: a
+        measurement ``sensor`` beside a structured object ``Sensor`` is exactly the confusion
+        the check exists for, and the reader tripping over it does not care which of the two
+        happens to name a structure.
+        """
         groups: dict[str, list[str]] = defaultdict(list)
-        for variable in variables:
-            groups[variable.name.lower()].append(variable.name)
-        by_name = {variable.name: variable for variable in variables}
+        for name, _ in ordered:
+            groups[name.lower()].append(name)
+        by_name = dict(ordered)
         for names in groups.values():
             if len(names) < 2:
                 continue
             first, *rest = names
             for name in rest:
-                variable = by_name[name]
                 self._bag.add(
                     "name-similar",
                     f"'{name}' and '{first}' differ only in upper/lower case",
-                    variable.declarations[0].location("definition.name"),
-                    notes=[
-                        ("other variable", by_name[first].declarations[0].location("definition"))
-                    ],
+                    by_name[name][0].location("definition.name"),
+                    notes=[("other variable", by_name[first][0].location("definition"))],
                 )
+
+
+def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:
+    """`` - did you mean 'Nm'?``: the suggestion suffix, empty when nothing is close enough.
+
+    The cutoff stays with the caller: a unit or section is a short spelling and matches
+    loosely at 0.5, a type name is longer and wants the stricter 0.6.
+    """
+    matches = difflib.get_close_matches(name, candidates, n=3, cutoff=cutoff)
+    return f" - did you mean {_or_list(tuple(matches))}?" if matches else ""
+
+
+def _or_list(values: tuple[str, ...]) -> str:
+    """``'Nm' or 'rpm'``: how a did-you-mean suggestion spells its candidates."""
+    return " or ".join(f"'{value}'" for value in values)
 
 
 def _condition(condition: str | None) -> str:

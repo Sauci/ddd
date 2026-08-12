@@ -16,7 +16,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 
 
 class FileRoot(BaseModel):
-    """Base of the hand-written file roots: project, component, naming and types.
+    """Base of the hand-written file roots: project, component and types.
 
     The one thing they share is the ``$schema`` key. Editors use it to bind a json file to
     its schema, and that binding is what turns the published contract into completion,

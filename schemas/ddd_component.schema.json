@@ -1324,7 +1324,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Root object of a ``*.ddd.json`` software component description.\n\n``component`` is the top level key that makes this a component file rather than a project,\na types or a naming file; DDD decides what a file is from that key alone, so exactly one\nof the four appears here.",
+  "description": "Root object of a ``*.ddd.json`` software component description.\n\n``component`` is the top level key that makes this a component file rather than a project\nor a types file; DDD decides what a file is from that key alone, so exactly one of them\nappears here.",
   "properties": {
     "$schema": {
       "anyOf": [

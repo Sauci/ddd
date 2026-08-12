@@ -155,6 +155,59 @@ def refuse_restating(typename: str, stated: Container[str]) -> None:
         raise ValueError(msg)
 
 
+def refuse_enum_on_non_integer(datatype: Datatype | None, conversion: Conversion | None) -> None:
+    """Refuse an enum conversion on storage that cannot hold an enumerator exactly.
+
+    The same rule wherever a ``datatype`` and a ``conversion`` are stated side by side - on a
+    definition, on a structure member and on a scalar type - shared the way
+    :func:`refuse_restating` is, because letting one of the three accept what the others
+    refuse would make the verdict depend on where the same pair happens to be written.
+    ``boolean`` does not count as an integer datatype: an enumerator is an exact integer,
+    which a float cannot promise to hold and a truth value has no room for.
+    """
+    if (
+        isinstance(datatype, Datatype)
+        and isinstance(conversion, EnumConversion)
+        and not datatype.is_integer
+    ):
+        msg = (
+            f"enum conversion '{conversion.name}' requires an integer datatype, "
+            f"got '{datatype.value}'"
+        )
+        raise ValueError(msg)
+
+
+def check_storage_named_once(datatype: Datatype | None, typename: str | None) -> None:
+    """Refuse a definition that names its storage twice, or not at all.
+
+    The same rule wherever storage is named - on a definition and on a structure member
+    alike - shared the way :func:`refuse_restating` is: two keys stating one storage leaves
+    a reader guessing which of them counts, and neither stating it leaves nothing to
+    allocate.
+    """
+    if (datatype is None) == (typename is None):
+        msg = (
+            "storage is named exactly once: 'datatype' for a base datatype, 'typename' "
+            "for a type the project declares"
+        )
+        raise ValueError(msg)
+
+
+def check_conversion_stated(datatype: Datatype | None, conversion: Conversion | None) -> None:
+    """Refuse base storage that states no conversion; the identity is an answer, not a default.
+
+    The same rule wherever a base ``datatype`` is stated - on a definition and on a structure
+    member alike - because the forgotten scaling it prevents is the same one: a fixed point
+    value silently displayed as raw counts, with nothing looking broken.
+    """
+    if datatype is not None and conversion is None:
+        msg = (
+            "a 'datatype' comes with a 'conversion': the identity "
+            '({"kind": "identity"}) is an answer to state, not a default to fall into'
+        )
+        raise ValueError(msg)
+
+
 def resolve_export(stated: Iterable[bool | None]) -> bool:
     """Whether an object reaches the a2l, given what every component said about it.
 
@@ -321,34 +374,17 @@ class DataObject(_Frozen):
 
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> DataObject:
-        if isinstance(self.datatype, Datatype) and (
-            isinstance(self.conversion, EnumConversion) and not self.datatype.is_integer
-        ):
-            msg = (
-                f"enum conversion '{self.conversion.name}' requires an integer datatype, "
-                f"got '{self.datatype.value}'"
-            )
-            raise ValueError(msg)
+        refuse_enum_on_non_integer(self.datatype, self.conversion)
         return self
 
     @model_validator(mode="after")
     def _storage_is_named_exactly_once(self) -> DataObject:
-        if (self.datatype is None) == (self.typename is None):
-            msg = (
-                "storage is named exactly once: 'datatype' for a base datatype, 'typename' "
-                "for a type the project declares"
-            )
-            raise ValueError(msg)
+        check_storage_named_once(self.datatype, self.typename)
         return self
 
     @model_validator(mode="after")
     def _base_storage_states_its_conversion(self) -> DataObject:
-        if self.datatype is not None and self.conversion is None:
-            msg = (
-                "a 'datatype' comes with a 'conversion': the identity "
-                '({"kind": "identity"}) is an answer to state, not a default to fall into'
-            )
-            raise ValueError(msg)
+        check_conversion_stated(self.datatype, self.conversion)
         return self
 
     @model_validator(mode="after")

@@ -52,11 +52,6 @@ class TestChecks:
 
     @pytest.mark.parametrize("check", sorted(CHECKS))
     def test_every_check_is_named_in_the_spec(self, check: str) -> None:
-        if check == "naming":
-            pytest.skip(
-                "naming conventions are leaving for a tool of their own: the SPEC says "
-                "nothing by decision, and this check ships only until the extraction lands"
-            )
         assert f"`{check}`" in SPEC
 
     def test_the_readme_invents_no_check(self) -> None:
@@ -99,8 +94,6 @@ class TestCommands:
             "checks",
             "cmake-dir",
             "templates-dir",
-            "name",
-            "complete",
             "sources",
         }
 
@@ -238,11 +231,11 @@ class TestPackaging:
         assert (ROOT / license_file).is_file(), "the declared license file is not in the tree"
 
     def test_everything_the_readme_tells_the_user_to_install_is_shipped(self) -> None:
-        """`ddd cmake-dir` and the completion setup are documented, so both have to travel
-        in the wheel rather than existing only in a git checkout."""
+        """`ddd cmake-dir` is documented, so the module has to travel in the wheel rather
+        than existing only in a git checkout."""
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         wheel = metadata["tool"]["hatch"]["build"]["targets"]["wheel"]
-        for source in ("cmake/Ddd.cmake", "completion/ddd.bash"):
+        for source in ("cmake/Ddd.cmake",):
             assert source in wheel["force-include"], f"{source} is not shipped in the wheel"
             assert (ROOT / source).is_file()
 
@@ -367,9 +360,9 @@ class TestPublishedSchemas:
     """
 
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
-        from ddd.models import ComponentFile, NamingFile, ProjectFile, TypesFile, UnitsFile
+        from ddd.models import ComponentFile, ProjectFile, TypesFile, UnitsFile
 
-        for model in (ProjectFile, ComponentFile, NamingFile, TypesFile, UnitsFile):
+        for model in (ProjectFile, ComponentFile, TypesFile, UnitsFile):
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
 
@@ -575,9 +568,7 @@ class TestCommittedSchemas:
             target = (path.parent / reference).resolve()
             assert target.is_file(), f"{path.name} points at {reference}, which does not exist"
             # and it points at the schema of the kind it actually is
-            kind = next(
-                key for key in ("project", "component", "naming", "types") if key in document
-            )
+            kind = next(key for key in ("project", "component", "types") if key in document)
             assert target.name == f"ddd_{kind}.schema.json", (
                 f"{path.name} is a {kind} file but points at {target.name}"
             )

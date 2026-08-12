@@ -10,6 +10,58 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+### `ddd sources` and `ddd list` complete the json contract
+
+Every command that reports findings produces machine readable json, and two fell short of
+that promise: `ddd list --format json` carried its diagnostics without the `summary` that
+counts them by severity, and `ddd sources` had no `--format json` at all.  The listing now
+closes with the same summary object every other command emits, and `ddd sources --format json`
+answers with the `sources` array next to the diagnostics and their summary.  The text output
+of both commands, and the exit codes, are unchanged.
+
+### An enum conversion needs an integer datatype in a types file too
+
+The rule was enforced on a definition and nowhere else, so a scalar type or a structure
+member could pair an enum conversion with `float32` or `boolean` and hand it to every
+component naming the type.  Both are now refused where they are written, with the same
+`schema` finding a definition already gets:
+
+```text
+types.ddd.json#types[0].scalar: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32'
+```
+
+### `reserved-identifier` covers structure members and project names
+
+A structure member named `int` or `__x` reached the generated types header unreported, and a
+project named `register` was never checked although its name becomes the a2l `PROJECT` and
+`MODULE`.  Both are now screened like every other name, the finding located at the member's
+name in its types file and at the project file respectively.
+
+### `name-similar` sees structured objects
+
+The check compared the plain variables only, so a measurement `sensor` beside a structured
+object `Sensor` went unreported.  Structured objects now join the comparison, with the same
+message and the same one finding per pair.
+
+### The delivery comparison ignores enumerator descriptions
+
+Editing only the free text description of an enumerator fired `changed-interface`, although
+descriptions are not compared anywhere else and the generated code is identical.  The
+comparison now reads the same description free conversion identity the in-project checks
+read, so a documentation edit is no finding at all, while a reordered or revalued enumerator
+still is one.  The description `ddd checks` prints for `changed-storage` also caught up with
+the behaviour: it names the initial value, the volatility and the memory section, the three
+properties the check compares.
+
+### Naming conventions leave for a tool of their own
+
+The naming convention support is removed: the `ddd name` and `ddd complete` commands, the
+shell completion script built on them, the `naming` check, and the `naming` key of a project
+together with the convention file format and its `ddd schema naming` contract.  Checking
+names against a convention is a job of its own rather than a property of the data dictionary,
+and it will return as a separate tool.  A project that pointed at a convention drops its
+`naming` key; everything else in the description files is untouched.
+
 ### A data object names the memory section it lives in
 
 A `sections` file declares the linker sections of a project - the name as the linker script

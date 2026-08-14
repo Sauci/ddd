@@ -1,0 +1,8 @@
+{
+  "$schema": "../../schemas/ddd_units.schema.json",
+  "units": [
+    { "unit": "rpm", "description": "rotational speed, revolutions per minute" },
+    { "unit": "Nm", "description": "torque, newton metre" },
+    { "unit": "degC", "description": "temperature" }
+  ]
+}

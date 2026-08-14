@@ -13,4 +13,4 @@ from ddd.diagnostics import Diagnostic, DiagnosticBag, Severity
 
 __all__ = ["Diagnostic", "DiagnosticBag", "Severity", "__version__"]
 
-__version__ = "0.2.0"
+__version__ = "0.0.1"

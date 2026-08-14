@@ -267,6 +267,9 @@ class TestPackaging:
         for group in hook["optional-dependencies"].values():
             named.extend(group)
         shipped = metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+        # The sdist patterns are anchored with a leading slash, so an unanchored name does
+        # not also sweep in a same-named file somewhere deeper in the tree.
+        shipped = {pattern.lstrip("/") for pattern in shipped}
         for name in named:
             assert (ROOT / name).is_file(), f"{name} is declared but missing from the tree"
             assert name in shipped, f"{name} is not in the sdist, which cannot then be built"
@@ -568,7 +571,11 @@ class TestCommittedSchemas:
             target = (path.parent / reference).resolve()
             assert target.is_file(), f"{path.name} points at {reference}, which does not exist"
             # and it points at the schema of the kind it actually is
-            kind = next(key for key in ("project", "component", "types") if key in document)
+            kind = next(
+                key
+                for key in ("project", "component", "types", "units", "sections")
+                if key in document
+            )
             assert target.name == f"ddd_{kind}.schema.json", (
                 f"{path.name} is a {kind} file but points at {target.name}"
             )

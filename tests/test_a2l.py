@@ -177,7 +177,7 @@ class TestHelpers:
     def test_address_map_rejects_anything_else(self, tree: Path, value: str) -> None:
         path = tree / "addresses.json"
         path.write_text(f'{{"A": {value}}}', encoding="utf-8")
-        with pytest.raises(ValueError, match="is not a number"):
+        with pytest.raises(ValueError, match="is not an integer"):
             load_address_map(path)
 
     def test_address_map_must_be_an_object(self, tree: Path) -> None:

@@ -393,15 +393,10 @@ class DataObject(_Frozen):
             refuse_restating(self.typename, self.model_fields_set)
         return self
 
-    @model_validator(mode="after")
-    def _init_matches_shape(self) -> DataObject:
-        shape = self.declared_shape
-        # A scalar init is always accepted: for an array it initialises every element.
-        if shape is not None and isinstance(self.init, tuple):
-            problem = check_shape(self.init, shape)
-            if problem is not None:
-                raise ValueError(problem)
-        return self
+    # The shape of a stated ``init`` is deliberately not validated here. Only part of the
+    # answer is written in the file - a curve or a map takes its shape from axes another
+    # declaration owns - so the analysis checks every kind in one place and reports every
+    # wrong shape as ``init-invalid``, one identifier instead of two severities.
 
     def physical_limits(self) -> Limits:
         """Explicit limits, or the full range implied by datatype and conversion.
@@ -539,7 +534,12 @@ def check_shape(value: InitValue, shape: Shape) -> str | None:
             return "init is a list but the object is a scalar"
         return None
     if not isinstance(value, tuple):
-        return f"init must be a list of {shape[0]} elements or a single scalar value"
+        # Only the init as a whole may be a scalar, which then fills every element; a scalar
+        # inside a nested list describes no shape, so it is refused rather than broadcast.
+        return (
+            f"init must be a list of {shape[0]} elements; only the whole init may be a "
+            f"single scalar"
+        )
     if len(value) != shape[0]:
         return f"init has {len(value)} elements, expected {shape[0]}"
     for element in value:
@@ -589,20 +589,26 @@ def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
 
 
 def discriminator_tags(*unions: Any) -> frozenset[str]:
-    """The ``kind`` values of every variant of the given tagged unions.
+    """The discriminator values of every variant of the given tagged unions.
 
     pydantic names the selected variant in the location of a validation error
-    (``definition.measurement.datatype``). Deriving the set from the unions themselves means
-    a new variant is covered without anyone remembering to add its tag somewhere else.
+    (``definition.measurement.datatype``, ``types[0].scalar.limits``). Deriving the set from
+    the unions themselves means a new variant is covered without anyone remembering to add
+    its tag somewhere else - and the discriminating field is read from each union's own
+    ``Field(discriminator=...)``, because the unions do not agree on its name: the data
+    objects and the conversions discriminate on ``kind``, the declared types on ``type``.
     """
     tags: set[str] = set()
     for union in unions:
-        annotated, *_ = get_args(union)
+        annotated, *metadata = get_args(union)
+        discriminator = next(
+            entry.discriminator for entry in metadata if getattr(entry, "discriminator", None)
+        )
         for variant in get_args(annotated):
             # The tag is the single value of the variant's ``Literal[...]`` discriminator,
             # read from the annotation rather than a default so it does not depend on the
             # field carrying one - the data object kinds are required, the conversion kinds
             # default.
-            (literal,) = get_args(variant.model_fields["kind"].annotation)
+            (literal,) = get_args(variant.model_fields[discriminator].annotation)
             tags.add(str(literal))
     return frozenset(tags)

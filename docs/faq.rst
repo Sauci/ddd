@@ -170,12 +170,14 @@ refuses to run, because two components compiled against two different views of t
 is precisely the class of bug DDD exists to prevent. A disagreement about how the a2l
 *presents* the object - a format string, a display name - is a ``storage-mismatch`` warning,
 since both components can be compiled against the producer's choice without either of them
-being wrong about the data:
+being wrong about the data. Only two stated values can disagree that way; a consumer that
+merely leaves the ``a2l`` block or one of its keys out is not asking for anything and is not
+reported:
 
 .. code-block:: text
 
    $ ddd check device.ddd.json
-   controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l than 'SensorHub' (format='%8.3' != unset); the value of 'SensorHub' is used
+   controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l format than 'SensorHub' (a2l format: '%8.3' != '%5.1'); the value of 'SensorHub' is used
        note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    1 warning
 
@@ -222,6 +224,117 @@ narrows what the calibration tool is shown:
          ECU_ADDRESS 0x00000000
          SYMBOL_LINK "InletTemperature" 0
        /end MEASUREMENT
+
+Why do I have to write ``conversion`` when it is just the identity?
+-------------------------------------------------------------------
+
+Because raw equalling physical is an engineering claim, not an absence of one, and it is the
+claim that fails silently when it is wrong: a forgotten scaling on a fixed point value
+displays raw counts in the calibration tool without anything looking broken. ``conversion``
+is therefore required wherever storage is named by ``datatype`` - on a definition, on a
+structure member, on a scalar type - exactly as ``kind`` and ``volatile`` are, and the
+identity is an answer to state rather than a default to fall into:
+
+.. code-block:: text
+
+   $ ddd check a.ddd.json
+   a.ddd.json#component.interface[0].definition: error[schema]: Value error, a 'datatype' comes with a 'conversion': the identity ({"kind": "identity"}) is an answer to state, not a default to fall into (got: {'name': 'Speed', 'kind': 'measurement', 'datatype': 'uin...)
+   1 error
+
+``{}`` and ``{ "kind": "identity" }`` both state it. A declaration naming a ``typename``
+states none, because the :doc:`declared type <file_formats/types>` fixes the conversion
+along with the datatype, the unit and the limits.
+
+How do I stop every consumer from copying the same datatype and scaling?
+------------------------------------------------------------------------
+
+Declare a scalar type in a :doc:`types file <file_formats/types>`, list that file in the
+project's ``includes``, and let every declaration name it with ``typename`` instead of
+spelling out ``datatype``, ``unit``, ``conversion`` and ``limits`` of its own:
+
+.. code-block:: json
+
+   { "types": [
+     { "type": "scalar", "name": "Temperature_t", "datatype": "sint16", "unit": "degC",
+       "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
+       "limits": { "min": -40, "max": 150 } }
+   ] }
+
+.. code-block:: json
+
+   { "scope": "input", "definition": {
+       "name": "InletTemperature", "kind": "measurement",
+       "typename": "Temperature_t", "volatile": true } }
+
+If all three consumers say ``Temperature_t``, there is nothing left for them to disagree
+about. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits``; ``kind``,
+``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable, because two
+measurements of one type may well differ in whether an interrupt writes one of them. Naming
+a type and then restating what it fixes is an error rather than an override, so "where is
+this unit written down" keeps one answer.
+
+How do I keep everybody spelling units the same way?
+----------------------------------------------------
+
+``unit`` is free text by default, so one quantity can drift into two spellings - ``Nm`` here,
+``newton_meter`` there - with each declaration agreeing with itself and the a2l growing one
+``COMPU_METHOD`` per spelling. A :doc:`units file <file_formats/units>` pins the spellings
+once, listed in the ``includes`` of the project like any other description:
+
+.. code-block:: json
+
+   { "units": ["rpm", { "unit": "Nm", "description": "torque, newton metre" }] }
+
+Declaring the vocabulary is opt-in - without a units file nothing changes - and with one,
+every stated unit is checked where it is written, on declarations, structure members and
+scalar types alike, with a near miss answered by the declared spelling:
+
+.. code-block:: text
+
+   $ ddd check p.ddd.json
+   b.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'nm' is not a unit this project declares - did you mean 'Nm'?
+   1 error
+
+The empty unit stays always allowed: a dimensionless value states no unit rather than a
+spelling of one.
+
+How do I place a variable in a particular memory section?
+---------------------------------------------------------
+
+Declare the section in a :doc:`sections file <file_formats/sections>` - its name as the
+linker script spells it, whether the running software can write it, and the alignment it
+guarantees - and let the producing declaration place its object with the ``section`` key:
+
+.. code-block:: json
+
+   { "sections": [ { "section": ".calib", "access": "read-only", "alignment": 4 } ] }
+
+.. code-block:: json
+
+   { "scope": "local", "definition": {
+       "name": "Gain", "kind": "parameter", "datatype": "uint16",
+       "conversion": {}, "init": 3, "section": ".calib", "volatile": false } }
+
+Placement is storage, like ``init``: the producer states it, a consumer stating one is
+refused as ``consumer-storage``, and a structured variable is placed whole. Naming a section
+no file declares is ``unknown-section``, a measurement placed in a ``read-only`` section is
+``section-access``, and an object needing stricter alignment than its section guarantees is
+``section-alignment``. How the placement is spelled in c - an ``__attribute__``, a pragma -
+is the :doc:`templates' <templates>` decision; the example templates write the GCC
+attribute.
+
+Where does my editor get the project and the severities from?
+-------------------------------------------------------------
+
+From the build. Which project a description file belongs to is not something the file can
+say - in the collected CMake mode the project description exists only in the build tree - so
+``ddd_generate()`` records it, together with the severity policy, in a ``ddd-build.json``
+beside its artefacts, and the language server searches the build directories for that
+record: the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), or the
+conventional directory names next to the workspace. The editor then reports exactly what the
+build reports. A file no build claims is checked under the nearest containing project, and a
+file with no project at all is checked alone, with the checks that need the whole project
+held back. The full story is in :doc:`editor_integration`.
 
 Why does DDD refuse my enum name?
 ---------------------------------
@@ -411,7 +524,7 @@ selectable:
 
 .. code-block:: text
 
-   /* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.2.0. DO NOT EDIT. */
+   /* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.0.1. DO NOT EDIT. */
    ASAP2_VERSION 1 61
 
 One consequence is worth knowing, because it is the only place where the format is narrower

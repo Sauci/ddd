@@ -21,7 +21,11 @@ from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
 from ddd.lsp.discovery import build_files, discover, load_builds
 from ddd.lsp.protocol import (
+    INVALID_REQUEST,
     METHOD_NOT_FOUND,
+    PARSE_ERROR,
+    MessageError,
+    ProtocolError,
     error,
     notification,
     read_message,
@@ -39,6 +43,11 @@ def framed(*messages: dict[str, Any]) -> io.BytesIO:
         write_message(stream, message)
     stream.seek(0)
     return stream
+
+
+def raw_frame(body: bytes) -> bytes:
+    """One correctly framed message with exactly this body, however broken the body is."""
+    return b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
 
 
 def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
@@ -98,6 +107,32 @@ class TestFraming:
     def test_a_header_block_with_no_length_cannot_be_followed(self) -> None:
         """Nothing says where the body ends, and guessing would desynchronise the stream."""
         assert read_message(io.BytesIO(b"Content-Type: text/plain\r\n\r\n{}")) is None
+
+    def test_a_body_that_is_not_json_keeps_the_frame_boundary(self) -> None:
+        """The length was honoured, so the next frame is still readable; the fault carries
+        the json-rpc code the answer has to use."""
+        stream = io.BytesIO(raw_frame(b"{ not json") + raw_frame(b'{"method":"after"}'))
+        with pytest.raises(MessageError) as caught:
+            read_message(stream)
+        assert caught.value.code == PARSE_ERROR
+        assert read_message(stream) == {"method": "after"}
+
+    def test_a_body_that_is_not_utf8_is_the_same_fault(self) -> None:
+        with pytest.raises(MessageError) as caught:
+            read_message(io.BytesIO(raw_frame(b"\xff\xfe{}")))
+        assert caught.value.code == PARSE_ERROR
+
+    def test_a_batch_body_is_refused_with_the_code_it_defines(self) -> None:
+        with pytest.raises(MessageError) as caught:
+            read_message(io.BytesIO(raw_frame(b"[]")))
+        assert caught.value.code == INVALID_REQUEST
+
+    def test_a_length_that_is_not_a_number_cannot_be_followed(self) -> None:
+        """No believable length means no body boundary, and everything after it would be
+        read out of step; this one is fatal where the body faults above are not."""
+        stream = io.BytesIO(b"Content-Length: banana\r\n\r\n{}")
+        with pytest.raises(ProtocolError, match="banana"):
+            read_message(stream)
 
     def test_the_three_message_shapes(self) -> None:
         assert response(1, None) == {"jsonrpc": "2.0", "id": 1, "result": None}
@@ -2603,6 +2638,54 @@ class TestServer:
         assert "Apply this unit" in action["title"]
         (uri,) = action["edit"]["changes"]
         assert uri_to_path(uri).name == "b.ddd.json"
+
+    def test_a_body_that_is_not_json_does_not_end_the_conversation(self, tmp_path: Path) -> None:
+        """One malformed frame used to kill the server; now it is one refusal on the wire,
+        and the hover that follows it is answered as if nothing had happened."""
+        consumer = self.shared_workspace(tmp_path)
+        position = Document(consumer.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        follow_up = framed(
+            self.navigation_request("textDocument/hover", consumer, position)
+        ).getvalue()
+        writer = io.BytesIO()
+        stream = io.BytesIO(raw_frame(b"{ not json") + follow_up)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        refusal, answer = sent(writer)
+        assert refusal["error"]["code"] == PARSE_ERROR
+        assert refusal["id"] is None
+        assert "**Shared**" in answer["result"]["contents"]["value"]
+
+    def test_a_batch_request_does_not_end_the_conversation(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        position = Document(consumer.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        follow_up = framed(
+            self.navigation_request("textDocument/hover", consumer, position)
+        ).getvalue()
+        writer = io.BytesIO()
+        stream = io.BytesIO(raw_frame(b'[{"jsonrpc": "2.0", "id": 1}]') + follow_up)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        refusal, answer = sent(writer)
+        assert refusal["error"]["code"] == INVALID_REQUEST
+        assert refusal["id"] is None
+        assert answer["result"] is not None
+
+    def test_a_corrupt_length_header_ends_the_run_cleanly(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Framing lost is unrecoverable: one line on stderr, no traceback - and nothing on
+        the wire, which carries protocol frames and nothing else."""
+        writer = io.BytesIO()
+        stream = io.BytesIO(b"Content-Length: banana\r\n\r\n{}")
+        assert Server(stream, writer, root=tmp_path).run() == 1
+        err = capsys.readouterr().err
+        assert err.startswith("ddd: ")
+        assert "Content-Length" in err
+        assert err.count("\n") == 1
+        assert writer.getvalue() == b""
 
     def test_a_request_it_cannot_serve_is_refused_rather_than_ignored(self, tmp_path: Path) -> None:
         """A client still waiting for an answer looks exactly like a server that has died."""

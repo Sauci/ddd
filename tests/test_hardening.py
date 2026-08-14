@@ -331,19 +331,59 @@ class TestVerdictsThatWereWrong:
         assert "definition-mismatch" not in checks(bag)
 
     def test_disagreeing_a2l_blocks_are_reported(self, tree: Path) -> None:
-        """How the object is displayed: two format strings cannot both be used."""
+        """How the object is displayed: two *stated* format strings cannot both be used."""
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
-                "a.ddd.json": component("A", declare("output", "X", "uint8")),
+                "a.ddd.json": component(
+                    "A", declare("output", "X", "uint8", a2l={"format": "%4.1"})
+                ),
                 "b.ddd.json": component(
                     "B", declare("input", "X", "uint8", a2l={"format": "%8.3"})
                 ),
             },
         )
         assert "storage-mismatch" in checks(bag)
-        assert "format='%8.3' != unset" in messages(bag)
+        assert "a2l format: '%8.3' != '%4.1'" in messages(bag)
+
+    def test_an_unstated_a2l_block_defers_to_whoever_states_one(self, tree: Path) -> None:
+        """Only a consumer stating something else is told so (SPEC 3.3.1.3).
+
+        A consumer that simply omits the block, or one of its keys, is not disagreeing with
+        the producer's presentation, so there is nothing to warn about.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "X",
+                        "uint8",
+                        a2l={"format": "%8.3", "display_identifier": "Xd"},
+                    ),
+                ),
+                "b.ddd.json": component("B", declare("input", "X", "uint8")),
+            },
+        )
+        assert "storage-mismatch" not in checks(bag)
+
+    def test_a_consumer_stating_only_export_is_not_disagreeing(self, tree: Path) -> None:
+        """Export is combined, not ranked, so stating it alone leaves nothing to mismatch."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "X", "uint8", a2l={"format": "%8.3"})
+                ),
+                "b.ddd.json": component("B", declare("input", "X", "uint8", a2l={"export": True})),
+            },
+        )
+        assert "storage-mismatch" not in checks(bag)
 
     def test_any_component_may_ask_for_the_a2l_and_none_may_veto_that(self, tree: Path) -> None:
         """Which signals a calibration engineer needs is not the producer's to decide alone.
@@ -575,6 +615,24 @@ class TestInputTheToolMustSurvive:
         with pytest.raises(ValueError, match="outside the range"):
             load_address_map(tree / "wide.json")
 
+    def test_an_address_map_that_is_not_json_names_the_file(self, tree: Path) -> None:
+        """The bare json message says where inside the document; the reader's first question
+        is which file, and the map is typically written by a tool nobody is watching."""
+        (tree / "map.json").write_text("{ not json", encoding="utf-8")
+        with pytest.raises(ValueError) as caught:
+            load_address_map(tree / "map.json")
+        assert "map.json" in str(caught.value)
+        assert "is not valid json" in str(caught.value)
+
+    @pytest.mark.parametrize("value", [12.5, None, [1]])
+    def test_an_address_that_is_no_integer_is_told_the_rule(
+        self, tree: Path, value: object
+    ) -> None:
+        """12.5 *is* a number, so 'not a number' left the actual rule unsaid."""
+        write_tree(tree, {"map.json": {"X": value}})
+        with pytest.raises(ValueError, match="address of 'X' is not an integer"):
+            load_address_map(tree / "map.json")
+
     def test_control_characters_never_reach_an_a2l_string(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
             tree,
@@ -602,6 +660,67 @@ class TestInputTheToolMustSurvive:
             },
         )
         assert "a2l-unrepresentable" in checks(bag)
+
+    def hyper_member(self, **member_extra: object) -> dict[str, object]:
+        """A structure whose member needs one dimension more than MATRIX_DIM has."""
+        return {
+            "types": [
+                {
+                    "type": "struct",
+                    "name": "S_t",
+                    "members": [
+                        {
+                            "name": "hyper",
+                            "member": "value",
+                            "datatype": "uint8",
+                            "conversion": {},
+                            "dimensions": [2, 2, 2, 2],
+                            **member_extra,
+                        }
+                    ],
+                }
+            ]
+        }
+
+    def test_more_dimensions_on_a_member_than_the_a2l_version_can_carry(self, tree: Path) -> None:
+        """The member is an a2l object of its own, so it gets the warning a plain object with
+        too many dimensions gets; it used to get a four entry MATRIX_DIM silently."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": self.hyper_member(),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "a2l-unrepresentable" in checks(bag)
+        assert "'X.hyper' has 4 dimensions" in messages(bag)
+
+    def test_a_member_kept_out_of_the_a2l_raises_no_dimension_warning(self, tree: Path) -> None:
+        """The warning is about the file the member reaches; a member that reaches none has
+        nothing to be unrepresentable in."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": self.hyper_member(a2l={"export": False}),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "a2l-unrepresentable" not in checks(bag)
+
+    def test_an_instance_kept_out_of_the_a2l_raises_no_dimension_warning(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": self.hyper_member(),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="S_t", a2l={"export": False})
+                ),
+            },
+        )
+        assert "a2l-unrepresentable" not in checks(bag)
 
 
 class TestWhatABuildSystemIsTold:

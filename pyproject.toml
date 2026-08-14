@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 # `ddd` is taken on PyPI. Only the distribution name differs: the import package, the CLI
 # command and the `*.ddd.json` file convention all stay `ddd`.
 name = "ddd-tool"
-version = "0.2.0"
+version = "0.0.1"
 description = "Data Dictionary for global variables in component based embedded software projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -58,21 +58,24 @@ packages = ["src/ddd"]
 "examples/templates" = "ddd/templates"
 
 [tool.hatch.build.targets.sdist]
+# The file patterns are anchored with a leading slash: an unanchored "README.md" matches at
+# any depth, the way a .gitignore line would, and pulled editors/vscode/README.md and
+# assets/logo/README.md into the sdist.
 include = [
-    "src/ddd",
-    "cmake",
-    "docker",
-    "docs",
-    "examples",
-    "schemas",
-    "tests",
-    "CHANGELOG.md",
-    "LICENSE",
-    "README.md",
-    "SPEC.md",
-    "requirements.txt",
-    "requirements-dev.txt",
-    "requirements-docs.txt",
+    "/src/ddd",
+    "/cmake",
+    "/docker",
+    "/docs",
+    "/examples",
+    "/schemas",
+    "/tests",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/README.md",
+    "/SPEC.md",
+    "/requirements.txt",
+    "/requirements-dev.txt",
+    "/requirements-docs.txt",
 ]
 
 [tool.pytest.ini_options]

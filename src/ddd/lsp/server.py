@@ -47,6 +47,8 @@ from ddd.lsp.navigation import (
 from ddd.lsp.protocol import (
     METHOD_NOT_FOUND,
     REQUEST_FAILED,
+    MessageError,
+    ProtocolError,
     error,
     notification,
     read_message,
@@ -90,9 +92,22 @@ class Server:
         """What was last said about the configured projects, so it is not said every save."""
 
     def run(self) -> int:
-        """Serve until the client says to stop, or stops talking."""
+        """Serve until the client says to stop, or stops talking.
+
+        One bad frame is not the end of the conversation: a body that is not a request gets
+        the json-rpc refusal it defines a code for, and the loop reads on. Only broken
+        framing ends the run, because after it nothing on the stream can be trusted - and
+        that is said once on stderr, where the log goes, never on stdout, which is the wire.
+        """
         while True:
-            message = read_message(self.reader)
+            try:
+                message = read_message(self.reader)
+            except MessageError as fault:
+                write_message(self.writer, error(None, fault.code, str(fault)))
+                continue
+            except ProtocolError as fault:
+                print(f"ddd: {fault}", file=sys.stderr)
+                return 1
             if message is None or not self._handle(message):
                 return 0
 

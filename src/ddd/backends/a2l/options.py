@@ -45,7 +45,13 @@ def load_address_map(path: Path) -> dict[str, int]:
     the whole a2l unreadable - from a file that a linker script or a patch tool wrote, where
     a wrong entry is exactly the kind of thing that happens unnoticed.
     """
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        # The bare json message names neither file nor purpose, and this one is typically
+        # written by a linker script or a patch tool nobody is looking at.
+        msg = f"the address map '{path}' is not valid json: {error}"
+        raise ValueError(msg) from None
     if not isinstance(data, dict):
         msg = f"{path}: expected a json object mapping symbol names to addresses"
         raise ValueError(msg)
@@ -56,8 +62,10 @@ def load_address_map(path: Path) -> dict[str, int]:
 
 
 def _address(path: Path, symbol: str, value: object) -> int:
+    # "integer" rather than "number" both times: 12.5 is a perfectly good number, and telling
+    # its author so would leave the actual rule - an address is a whole number - unsaid.
     if isinstance(value, bool) or not isinstance(value, int | str):
-        msg = f"{path}: address of '{symbol}' is not a number: {value!r}"
+        msg = f"{path}: address of '{symbol}' is not an integer: {value!r}"
         raise ValueError(msg)
     if isinstance(value, int):
         number = value
@@ -67,7 +75,7 @@ def _address(path: Path, symbol: str, value: object) -> int:
         try:
             number = int(text, base)
         except ValueError:
-            msg = f"{path}: address of '{symbol}' is not a number: {value!r}"
+            msg = f"{path}: address of '{symbol}' is not an integer: {value!r}"
             raise ValueError(msg) from None
     if not 0 <= number <= ADDRESS_MAX:
         msg = (

@@ -670,9 +670,14 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
 
 
 def _holds_a_description(path: Path) -> bool:
-    """True for a project or component file; a broken file is left to the reader to report."""
+    """True for a project or component file; a broken file is left to the reader to report.
+
+    ``utf-8-sig`` for the reason the loader reads with it: a description file carrying a byte
+    order mark is accepted by ``ddd check``, and sniffing it with plain utf-8 would misroute
+    it here as a dumped dictionary.
+    """
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return False
     return isinstance(data, dict) and ("project" in data or "component" in data)

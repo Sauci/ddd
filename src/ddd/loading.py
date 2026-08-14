@@ -56,7 +56,7 @@ None of these is a project, so there is nothing to resolve or generate from one 
 own. Validating one against the published schema is what an editor is for.
 """
 
-_UNION_TAGS = discriminator_tags(AnyDataObject, Conversion)
+_UNION_TAGS = discriminator_tags(AnyDataObject, Conversion, AnyType)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
 
 

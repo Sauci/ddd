@@ -16,7 +16,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateError,
+    TemplateSyntaxError,
+)
 
 from ddd.ir import DataDictionary
 
@@ -107,8 +113,51 @@ def make_environment(template_dir: Path) -> Environment:
 def render_template(
     environment: Environment, template_name: str, path: Path, **context: object
 ) -> GeneratedFile:
-    template = environment.get_template(template_name)
-    content = template.render(**context)
+    """Render one template, turning what jinja says into something an author can act on.
+
+    The templates are the project's own files, so a typo in one is a usage mistake and not a
+    defect of the tool: it is reported as one line naming the template rather than escaping
+    as a python traceback through a library the author never imported.
+    """
+    try:
+        template = environment.get_template(template_name)
+        content = template.render(**context)
+    except TemplateError as error:
+        raise ValueError(describe_template_error(template_name, error)) from None
     if not content.endswith("\n"):
         content += "\n"
     return GeneratedFile(path, content)
+
+
+def describe_template_error(template_name: str, error: TemplateError) -> str:
+    """One line: the template, the line in it, and what jinja had to say.
+
+    A syntax error knows its own line. A runtime error - an undefined name under
+    ``StrictUndefined``, most of the time - does not, but jinja rewrites its traceback with a
+    frame per template line it passed through, and the deepest of those is where it happened.
+    """
+    if isinstance(error, TemplateSyntaxError):
+        line: int | None = error.lineno
+        reason = error.message or str(error)
+    else:
+        line = _template_line(error)
+        reason = str(error)
+    where = f"template '{template_name}'" + (f", line {line}" if line is not None else "")
+    return f"cannot render {where}: {reason}"
+
+
+def _template_line(error: TemplateError) -> int | None:
+    """The template line a runtime error was raised from, read off the traceback.
+
+    jinja marks the frames it fabricates with ``__jinja_exception__`` in their globals; the
+    last one on the stack is the line of the template that actually failed. ``None`` when
+    there is no such frame to read, in which case the message goes out without a line rather
+    than not at all.
+    """
+    line: int | None = None
+    trace = error.__traceback__
+    while trace is not None:
+        if trace.tb_frame.f_globals.get("__jinja_exception__") is not None:
+            line = trace.tb_lineno
+        trace = trace.tb_next
+    return line

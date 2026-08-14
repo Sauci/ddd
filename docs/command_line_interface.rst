@@ -100,12 +100,20 @@ The commands
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later.
    * - ``ddd schema KIND``
-     - print the json schema of ``project``, ``component``, ``types`` or ``dictionary``, for
-       an editor that offers completion inside a ``*.ddd.json`` file or for a validator in a
-       ci job.
+     - print the json schema of ``component``, ``dictionary``, ``project``, ``sections``,
+       ``types`` or ``units``, for an editor that offers completion inside a ``*.ddd.json``
+       file or for a validator in a ci job; ``all`` writes every schema into a directory.
    * - ``ddd sources FILE``
      - list every description file the project is built out of, for the dependency list of a
        build system.
+   * - ``ddd lsp``
+     - run the language server, speaking the Language Server Protocol on stdin and stdout,
+       so an editor reports the checks while a description file is being written; see
+       :doc:`editor_integration`.
+   * - ``ddd build-info FILE -o FILE``
+     - record which project description a build runs DDD on and under which severity policy,
+       the ``ddd-build.json`` an editor reads; ``ddd_generate()`` calls it at configure
+       time, so a hand-rolled build is the only caller that needs it directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity and whether it can be
        relaxed.

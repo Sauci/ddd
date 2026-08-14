@@ -205,20 +205,20 @@ class TestModelEdges:
         assert format_number(True) == "1"
         assert format_number(False) == "0"
 
-    def test_a_scalar_inside_a_nested_init_is_rejected(self) -> None:
+    def test_a_scalar_inside_a_nested_init_is_rejected(self, tree: Path) -> None:
+        """A scalar only fills the whole init from the top; nested, it describes no shape."""
         assert check_shape((1, (2, 3)), (2, 2)) is not None
-        with pytest.raises(ValueError, match="must be a list of 2 elements"):
-            DEFINITION.validate_python(
-                {
-                    "kind": "measurement",
-                    "name": "X",
-                    "datatype": "uint8",
-                    "conversion": {},
-                    "volatile": False,
-                    "dimensions": [2, 2],
-                    "init": [1, [2, 3]],
-                }
-            )
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", dimensions=[2, 2], init=[[1, 2], 3])
+                ),
+            },
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "only the whole init may be a single scalar" in messages(bag)
 
 
 class TestMismatchMessages:

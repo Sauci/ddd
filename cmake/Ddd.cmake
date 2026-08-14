@@ -25,6 +25,15 @@
 #   target_link_libraries(firmware PRIVATE sensor_hub)
 #   ddd_generate(firmware)
 
+# The module itself needs CMake 3.20: it relies on cmake_path() and string(JSON) throughout. Checked at include
+# time, because an older CMake would otherwise fail on whichever of those commands it reaches first, with a message
+# that names the command rather than the actual floor. Collecting descriptions through the link graph needs 3.30 on
+# top of this - see _ddd_require_transitive_properties below.
+if(CMAKE_VERSION VERSION_LESS 3.20)
+    message(FATAL_ERROR "Ddd.cmake requires CMake 3.20 or newer (found ${CMAKE_VERSION}): it relies on cmake_path() "
+                        "and string(JSON).")
+endif()
+
 # The tool itself. Set -DDDD_EXECUTABLE=<path> to use a specific installation, for example the one of a virtual
 # environment, or a wrapper script running "python -m ddd".
 find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary tool")
@@ -134,6 +143,27 @@ function(_ddd_description_name variable description)
     set(${variable} "${name}" PARENT_SCOPE)
 endfunction()
 
+# Whether a description file's top level key is "component". The per-component check target may only run "ddd check"
+# on component files: a types, units or sections file has no interfaces of its own, and handing one to "check" is an
+# unrelaxable file-kind error that would break the <target>.ddd target for good. Such files still register on the
+# target and are checked in context, through the project of every image that links the component.
+#
+# A file that does not exist yet - generated into the build tree later - is taken to be a component, because that is
+# the only kind worth generating there; nothing can be read off it at configure time either way.
+function(_ddd_is_component_file variable description)
+    if(NOT EXISTS "${description}")
+        set(${variable} TRUE PARENT_SCOPE)
+        return()
+    endif()
+    file(READ "${description}" content)
+    string(JSON unused ERROR_VARIABLE error GET "${content}" "component")
+    if(error)
+        set(${variable} FALSE PARENT_SCOPE)
+    else()
+        set(${variable} TRUE PARENT_SCOPE)
+    endif()
+endfunction()
+
 # Turns a path into an absolute one and refuses a source file that does not exist. A file below the binary directory
 # is accepted unconditionally: it may well be generated later during the build.
 function(_ddd_absolute_input variable base context)
@@ -200,6 +230,13 @@ function(ddd_add_component target)
     if(check_target)
         foreach(description IN LISTS arg_JSON)
             _ddd_absolute_input(description "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_add_component")
+            # Only component files are checked on their own; a registered types, units or sections file is
+            # checked through the image project instead. A target registering only such files keeps its
+            # <target>.ddd target as a no-op rather than one that can never pass.
+            _ddd_is_component_file(is_component "${description}")
+            if(NOT is_component)
+                continue()
+            endif()
             add_custom_command(TARGET ${check_target} POST_BUILD
                                COMMAND ${DDD_EXECUTABLE} check "${description}"
                                        -W missing-producer=ignore -W unused-output=ignore
@@ -297,6 +334,16 @@ function(ddd_generate image)
     endif()
     if(arg_ADDRESS_MAP)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+        # The two-run flow: the map is typically extracted from the linked image by a build step, so on the very
+        # first build it does not exist yet - and ninja would refuse to run the generation for want of a file no
+        # rule produces. An absent map inside the build tree is therefore seeded empty at configure time; the
+        # first build runs with every address 0 and the second, once the extractor has written the real map,
+        # regenerates the a2l with the addresses filled in. A map in the source tree is not touched: there,
+        # a missing file is a mistake _ddd_absolute_input has already refused.
+        cmake_path(IS_PREFIX CMAKE_BINARY_DIR "${arg_ADDRESS_MAP}" NORMALIZE map_is_generated)
+        if(map_is_generated AND NOT EXISTS "${arg_ADDRESS_MAP}")
+            file(WRITE "${arg_ADDRESS_MAP}" "{}\n")
+        endif()
     endif()
     if(arg_BYTE_ORDER AND NOT arg_BYTE_ORDER MATCHES "^(little|big)$")
         message(FATAL_ERROR "ddd_generate: BYTE_ORDER must be little or big, got \"${arg_BYTE_ORDER}\".")

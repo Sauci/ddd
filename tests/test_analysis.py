@@ -197,6 +197,49 @@ class TestValueChecks:
         )
         assert checks(bag) == ["init-invalid"]
 
+    def test_init_shape_against_the_declared_dimensions(self, tree: Path) -> None:
+        """The wrong shape is init-invalid at the init, like the curve and map path."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", dimensions=[2], init=[1, 2, 3])],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "init has 3 elements, expected 2" in messages(bag)
+        assert "definition.init" in messages(bag)
+
+    def test_init_list_for_a_scalar(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            two_components(a=[declare("local", "X", init=[1, 2])], b=[declare("local", "Y")]),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "init is a list but the object is a scalar" in messages(bag)
+
+    def test_a_conversion_whose_derived_limits_overflow_is_refused(self, tree: Path) -> None:
+        """float64 under a factor of 1.8 runs past the largest float there is.
+
+        Resolving it used to construct limits of infinity, which aborted the whole run with
+        a validation error; now the pair is refused where it is written and the run reports
+        everything else.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="float64", conversion={"factor": 1.8})],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["schema"]
+        assert "the limits derived from 'float64' and this conversion are not finite" in (
+            messages(bag)
+        )
+        assert "definition.conversion" in messages(bag)
+        assert dictionary is not None
+        assert [entry.name for entry in dictionary.objects] == ["Y"]
+
     def test_limits_outside_the_datatype_range(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,
@@ -315,6 +358,107 @@ class TestEnums:
         )
         assert checks(bag) == ["init-invalid"]
         assert "do not fit into uint8" in messages(bag)
+
+    def test_a_value_outside_the_datatype_and_the_c_int_is_reported_once(self, tree: Path) -> None:
+        """The c int bound only covers values the datatype holds; one bad value, one finding."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("local", "X", datatype="sint32", conversion=self.enum(("BIG", 2**31)))],
+                b=[declare("local", "Y")],
+            ),
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "do not fit into sint32" in messages(bag)
+        assert "c 'int'" not in messages(bag)
+
+
+class TestLimitsDeference:
+    """Omitting limits defers to whoever states them (SPEC 3.3.1.1).
+
+    The resolved limits are the producer's stated ones, else the first stated set in load
+    order, else derived from the datatype and the conversion - and only two *stated* sets of
+    limits can disagree.
+    """
+
+    def test_limits_stated_only_by_a_consumer_reach_the_dictionary(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", "uint16")],
+                b=[declare("input", "X", "uint16", limits={"min": 0, "max": 10})],
+            ),
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["X"].limits.as_tuple() == (0.0, 10.0)
+
+    def test_two_consumers_stating_different_limits_disagree(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", "uint16")),
+                "b.ddd.json": component(
+                    "B", declare("input", "X", "uint16", limits={"min": 0, "max": 10})
+                ),
+                "c.ddd.json": component(
+                    "C", declare("input", "X", "uint16", limits={"min": 0, "max": 20})
+                ),
+            },
+        )
+        assert checks(bag) == ["definition-mismatch"]
+        assert "limits: [0, 20] != [0, 10]" in messages(bag)
+        # On the deviating declaration, with a note at the stated reference.
+        finding = next(iter(bag))
+        assert finding.location is not None
+        assert finding.location.path.name == "c.ddd.json"
+        note_text, note_location = finding.notes[0]
+        assert note_text == "reference declaration"
+        assert note_location is not None
+        assert note_location.path.name == "b.ddd.json"
+
+    def test_two_consumers_stating_the_same_limits_agree(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", "uint16")),
+                "b.ddd.json": component(
+                    "B", declare("input", "X", "uint16", limits={"min": 0, "max": 10})
+                ),
+                "c.ddd.json": component(
+                    "C", declare("input", "X", "uint16", limits={"min": 0, "max": 10})
+                ),
+            },
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["X"].limits.as_tuple() == (0.0, 10.0)
+
+    def test_the_producers_stated_limits_win(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", "uint16", limits={"min": 0, "max": 100})],
+                b=[declare("input", "X", "uint16", limits={"min": 0, "max": 10})],
+            ),
+        )
+        assert checks(bag) == ["definition-mismatch"]
+        assert "limits: [0, 10] != [0, 100]" in messages(bag)
+        assert dictionary is not None
+        assert dictionary.by_name["X"].limits.as_tuple() == (0.0, 100.0)
+
+    def test_limits_omitted_everywhere_are_derived(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", "uint16")], b=[declare("input", "X", "uint16")]
+            ),
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["X"].limits.as_tuple() == (0.0, 65535.0)
 
 
 class TestSeverityPolicy:

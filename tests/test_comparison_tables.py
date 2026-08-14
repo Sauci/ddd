@@ -51,6 +51,10 @@ DERIVED_AS: dict[str, str] = {
     # The datatype comparison reads whichever of the two storage keys is stated, so a
     # declaration naming a structure disagrees with one spelling a base datatype.
     "typename": "datatype",
+    # The block is compared one presentation key at a time, so that a declaration leaving one
+    # of them unstated defers on that key alone; export is deliberately not compared at all,
+    # see resolve_export.
+    "a2l": "a2l format",
 }
 
 # Fields that are deliberately not compared, and the reason.
@@ -67,6 +71,10 @@ _NOT_COMPARED: dict[str, str] = {
     "section": "only a producer may state one, exactly like init: a consumer stating a "
     "section claims storage it does not own and is reported as consumer-storage where the "
     "claim is written",
+    "limits": "compared by a hand-written deference branch, _compare_limits: the resolved "
+    "limits are the producer's stated ones, else the first stated set in load order, and "
+    "every other stated set is compared against that reference - a table entry could only "
+    "compare against the reference declaration, whose limits may be the omitted ones",
 }
 
 # ResolvedObject carries the *result* of the analysis as well as the declaration, and the
@@ -150,30 +158,25 @@ class TestComparisonTables:
     is a decision rather than an accident.
     """
 
-    def test_limits_are_a_field_inside_a_project_and_a_direction_between_deliveries(
-        self,
-    ) -> None:
-        """Inside a project two stated limits must match; between deliveries the direction
-        decides, so compare.py handles limits by hand instead of by table."""
-        inside = {field.name: field for field in analysis._INTERFACE_FIELDS}
-        assert "limits" in inside
-        # And a declaration that omits them agrees with one that states them.
-        assert inside["limits"].optional
+    def test_limits_are_compared_by_hand_on_both_sides(self) -> None:
+        """Neither table carries limits, and for two different reasons.
+
+        Inside a project the resolved limits may come from a declaration other than the
+        reference one - whoever states them first when the producer omits them - so
+        _compare_limits settles the reference and compares every other stated set against it.
+        Between deliveries the direction decides: narrowing warns, widening is silent.
+        """
+        assert "limits" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
         assert "limits" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
-    def test_volatile_is_an_interface_field_and_unlike_limits_is_not_optional(self) -> None:
-        """Both are stated by hand, and only one of them may be left out of a definition.
-
-        ``limits`` are derived from the datatype and the conversion when a declaration omits
-        them, so omitting them is asking for the derivation, and the table relaxes the
-        comparison to match. Nothing derives ``volatile``, which is why the key is required on
-        every definition - so there is never a silence to interpret here either, and the entry
-        is not optional.
+    def test_volatile_is_an_interface_field_and_is_not_optional(self) -> None:
+        """Nothing derives ``volatile``, which is why the key is required on every
+        definition - so there is never a silence to interpret, and the entry is not
+        optional the way the presentation keys of the a2l block are.
         """
         inside = {field.name: field for field in analysis._INTERFACE_FIELDS}
         assert "volatile" in inside
         assert not inside["volatile"].optional
-        assert inside["limits"].optional
 
     def test_volatile_is_an_interface_field_inside_a_project_and_storage_between_deliveries(
         self,
@@ -212,9 +215,13 @@ class TestComparisonTables:
     def test_a2l_is_a_storage_field_inside_a_project_and_its_own_check_between_deliveries(
         self,
     ) -> None:
-        """A consumer disagreeing about the a2l block loses to the producer with a warning;
-        a delivery changing it earns the separate changed-a2l finding."""
-        assert "a2l" in table_names(analysis._STORAGE_FIELDS)
+        """A consumer disagreeing about a stated presentation key loses to the producer with
+        a warning; a declaration leaving one unstated defers on that key, which is why the
+        block is two optional entries rather than one. A delivery changing the block earns
+        the separate changed-a2l finding."""
+        inside = {field.name: field for field in analysis._STORAGE_FIELDS}
+        assert set(inside) == {"a2l format", "a2l display_identifier"}
+        assert all(field.optional for field in inside.values())
         assert "a2l" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
     def test_locality_is_only_a_question_between_deliveries(self) -> None:
@@ -224,11 +231,14 @@ class TestComparisonTables:
         assert "local" in table_names(compare._INTERFACE_FIELDS)
         assert "local" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
 
-    def test_only_the_analysis_table_relaxes_an_omitted_property(self) -> None:
-        """`optional` exists because a consumer may leave a derived property to the producer.
+    def test_only_the_analysis_tables_relax_an_omitted_property(self) -> None:
+        """`optional` exists because a declaration may leave a property to whoever states it.
         Between two deliveries there is no producer to defer to, so nothing is optional."""
-        assert any(field.optional for field in analysis._INTERFACE_FIELDS)
-        assert not any(getattr(field, "optional", False) for field in compare._INTERFACE_FIELDS)
+        assert any(field.optional for field in analysis._STORAGE_FIELDS)
+        assert not any(
+            getattr(field, "optional", False)
+            for field in (*compare._INTERFACE_FIELDS, *compare._STORAGE_FIELDS)
+        )
 
     def test_shape_is_declared_in_one_and_resolved_in_the_other(self) -> None:
         """analysis compares what the author wrote, before the axes of a curve or map are

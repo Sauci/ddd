@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Monitoring",
+    "description": "Consumes the structured reading, so the interface has two sides",
+    "interface": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "Inlet",
+          "kind": "measurement",
+          "description": "The inlet sensor as this ecu sees it",
+          "typename": "Sensor_t",
+          "volatile": true
+        }
+      }
+    ]
+  }
+}

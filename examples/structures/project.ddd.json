@@ -5,7 +5,8 @@
     "description": "A project that declares structured datatypes alongside its components",
     "includes": [
       "types.ddd.json",
-      "sensing.ddd.json"
+      "sensing.ddd.json",
+      "monitoring.ddd.json"
     ]
   }
 }

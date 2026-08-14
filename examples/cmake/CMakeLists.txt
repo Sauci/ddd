@@ -14,7 +14,12 @@ include(Ddd)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+# The warning flags are compiler-specific: MSVC rejects the GNU spellings outright (D8021).
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+else()
+    add_compile_options(/W4)
+endif()
 
 set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
 

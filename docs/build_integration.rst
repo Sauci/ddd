@@ -34,7 +34,11 @@ the tool itself rather than guessed:
 Including the module looks for the ``ddd`` executable and remembers it in the cache variable
 ``DDD_EXECUTABLE``. Configure with ``-DDDD_EXECUTABLE=<path>`` to pin a particular
 installation - the one of a virtual environment, or a small wrapper script running
-``python -m ddd``.
+``python -m ddd``. The module needs CMake 3.20 and says so at include time; collecting the
+components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
+that sets ``CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY`` keeps ``find_program`` from seeing host
+tools, so such a project either allows host programs (``BOTH``) or passes
+``-DDDD_EXECUTABLE=<path>`` explicitly.
 
 Registering a component
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -160,8 +164,9 @@ importantly, no less. An image linking only ``sensor_hub`` gets ``SensorHub.h`` 
 holding SensorHub's variables, and ``controller`` does not appear in it at all.
 
 That mechanism is the custom transitive property ``DDD_JSON``, built on the
-``TRANSITIVE_LINK_PROPERTIES`` feature introduced in **CMake 3.30** - hence the minimum
-version. The module checks it and stops with a fatal error on an older cmake instead of
+``TRANSITIVE_LINK_PROPERTIES`` feature introduced in **CMake 3.30** - the floor of the
+collected mode, on top of the CMake 3.20 the module itself needs. The module checks it and
+stops with a fatal error on an older cmake instead of
 carrying on, because an older cmake would silently collect an incomplete set of components,
 and an incomplete data dictionary is exactly the failure DDD exists to prevent.
 
@@ -175,7 +180,8 @@ A hand written project description
 
 A project that already maintains its own project description - because it is also built with
 another build system, or because it deliberately lists more than the image links - passes it
-with ``PROJECT <file>``. That mode needs neither cmake 3.30 nor ``ddd_add_component``, and the
+with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
+is enough) nor ``ddd_add_component``, and the
 a2l is then named after the project name inside the description, so a ``NAME`` given as well
 is ignored with a status message.
 
@@ -301,8 +307,16 @@ Options
      - **required**: the jinja2 templates the c sources are rendered from. Their names decide
        which files are generated, and renaming a template is how a project renames a generated
        file.
+   * - ``SCHEMA_DIRECTORY <dir>``
+     - write the json schemas of the file formats into this directory at configure time, for
+       editor validation; they are rewritten on every configure, so they cannot describe a
+       version of DDD that is no longer installed.
    * - ``ADDRESS_MAP <file>``
-     - the symbol to address map filling the addresses into the a2l.
+     - the symbol to address map filling the addresses into the a2l. A map inside the build
+       tree that does not exist at configure time is seeded with an empty map (``{}``), so
+       the first build of the two-run flow succeeds with every address 0 and the second,
+       once the extractor has written the real map, fills the addresses in; a missing map in
+       the source tree stays an error.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``

@@ -142,8 +142,10 @@ class TestReadingTypes:
             },
         )
         assert findings(bag) == ["schema", "schema"]
+        # The union tags are not keys of the document, so the pointers carry no '.scalar' or
+        # '.struct' segment - an editor resolves them against what is actually written.
         pointers = [diagnostic.location.pointer for diagnostic in bag if diagnostic.location]
-        assert pointers == ["types[0].scalar", "types[1].struct.members[0]"]
+        assert pointers == ["types[0]", "types[1].members[0]"]
         assert "enum conversion 'E_t' requires an integer datatype, got 'float32'" in messages(bag)
         assert "enum conversion 'F_t' requires an integer datatype, got 'boolean'" in messages(bag)
 
@@ -242,6 +244,92 @@ class TestTypeGraph:
         rendered = first(bag).render()
         assert "A_t -> B_t -> A_t" in rendered
         assert "types.ddd.json#types[1]" in rendered
+
+    def test_a_variable_of_a_structure_with_an_unknown_member_type_is_dropped(
+        self, tree: Path
+    ) -> None:
+        """The finding at the member is the report; instantiating the structure adds none.
+
+        The declarations are dropped the way ones naming a recursive structure are - a
+        structure with an unresolvable leaf cannot be flattened - and the rest of the
+        project still resolves.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    struct("Broken_t", nest("ghost", "Missing_t")),
+                    struct("Wrap_t", nest("broken", "Broken_t")),
+                ),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Direct", typename="Broken_t"),
+                    declare("output", "Nested", typename="Wrap_t"),
+                    declare("local", "Fine", "uint8"),
+                ),
+            },
+        )
+        assert findings(bag) == ["unknown-type"]
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
+        assert [entry.name for entry in dictionary.objects] == ["Fine"]
+
+
+class TestInfiniteDerivedLimits:
+    """A datatype and conversion pair whose derived limits are not finite is refused.
+
+    The pair is refused as ``schema`` at its ``conversion`` key, on each of the three places
+    it can be written; the definition path is covered in ``test_analysis.py``. Resolving it
+    instead used to overflow the limits into infinity, which aborted the whole run.
+    """
+
+    def test_on_a_scalar_type(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    scalar("Huge_t", "float64", conversion={"factor": 1.8}),
+                    scalar("Fine_t", "uint8"),
+                ),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "V", typename="Huge_t"),
+                    declare("local", "W", typename="Fine_t"),
+                ),
+            },
+        )
+        assert findings(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types[0].conversion" in rendered
+        assert "the limits derived from 'float64' and this conversion are not finite" in rendered
+        # The variable naming the refused type is dropped; the run resolves the rest.
+        assert dictionary is not None
+        assert [entry.name for entry in dictionary.objects] == ["W"]
+
+    def test_on_a_structure_member(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    struct(
+                        "S_t",
+                        val("ok", "uint8"),
+                        val("big", "float64", conversion={"offset": -1.0, "factor": 1.8}),
+                    ),
+                ),
+                "a.ddd.json": component("A", declare("output", "V", typename="S_t")),
+            },
+        )
+        assert findings(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types[0].members[1].conversion" in rendered
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
 
 
 class TestNamingAType:
@@ -692,6 +780,53 @@ class TestDeclaringAStructure:
         )
         assert "definition-mismatch" in findings(bag)
         assert "datatype: B_t != A_t" in messages(bag)
+
+
+class TestAnUnownedStructure:
+    """``missing-producer`` relaxed: the project wide file defines what nobody owns.
+
+    SPEC section 5.1: the objects no component owns arise whenever the check is relaxed, and
+    the project wide file defines them like any other. A structured variable used to fall out
+    of that group - the consumer headers declared it ``extern`` over storage that nowhere
+    existed, while the a2l went on describing its member paths.
+    """
+
+    def resolved(self, tree: Path) -> Any:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("Device", "types.ddd.json", "reader.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("raw", "uint16", dimensions=[4]))),
+                "reader.ddd.json": component(
+                    "Reader",
+                    declare("input", "Inlet", typename="S_t"),
+                    declare("input", "Speed", "uint16"),
+                    description="a component",
+                ),
+            },
+            severities=["missing-producer=warning"],
+        )
+        assert dictionary is not None, [d.render() for d in bag]
+        assert not bag.has_errors, [d.render() for d in bag]
+        return dictionary
+
+    def test_the_model_puts_the_instance_in_the_unresolved_group(self, tree: Path) -> None:
+        from ddd.backends import COptions
+        from ddd.backends.c.model import UNRESOLVED_GROUP, build_code_model
+
+        model = build_code_model(self.resolved(tree), COptions(), "test")
+        unresolved = next(group for group in model.groups if group.name == UNRESOLVED_GROUP)
+        assert {variable.name for variable in unresolved.variables} == {"Inlet", "Speed"}
+
+    def test_the_project_wide_file_defines_it_like_any_other(self, tree: Path) -> None:
+        dictionary = self.resolved(tree)
+        files = {f.path.name: f.content for f in render_files(dictionary, tree / "gen")}
+        assert "S_t Inlet;" in files["ddd_globals.c"]
+        assert "uint16_t Speed;" in files["ddd_globals.c"]
+        # The consumer header still declares both, which is what made a missing definition a
+        # link error; and the a2l member paths now name storage that exists.
+        assert "extern S_t Inlet;" in files["Reader.h"]
+        assert 'SYMBOL_LINK "Inlet.raw" 0' in files["Device.a2l"]
 
 
 class TestGeneratingAStructure:

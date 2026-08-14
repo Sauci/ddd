@@ -240,6 +240,20 @@ def test_the_demo_dictionary_round_trips(tmp_path: Path) -> None:
     assert DataDictionary.model_validate_json(target.read_text(encoding="utf-8")) == dictionary
 
 
+class TestTemplateErrorReporting:
+    """What jinja says, turned into the one line a template author can act on."""
+
+    def test_an_error_without_a_traceback_still_names_the_template(self) -> None:
+        """No frame to read a line off; the message goes out without one rather than not at
+        all. The lined variants are covered end to end through the cli."""
+        from jinja2 import TemplateError
+
+        from ddd.backends.base import describe_template_error
+
+        described = describe_template_error("x.c.jinja2", TemplateError("boom"))
+        assert described == "cannot render template 'x.c.jinja2': boom"
+
+
 class TestObjectViewComposition:
     """``.definition`` is documented template api, kept whole for templates that want the
     one-liner; the shipped example composes from the parts instead, to put a section

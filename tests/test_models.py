@@ -173,13 +173,15 @@ class TestArraysAndInit:
         variable = definition(dimensions=[2], init=[1, 2])
         assert broadcast(variable.init, variable.declared_shape) == (1, 2)
 
-    def test_wrong_length_is_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="init has 3 elements, expected 2"):
-            definition(dimensions=[2], init=[1, 2, 3])
+    def test_the_shape_of_an_init_is_not_a_contract_rule(self) -> None:
+        """A wrong shape is ``init-invalid`` in the analysis, not a schema error here.
 
-    def test_list_for_a_scalar_is_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="but the object is a scalar"):
-            definition(init=[1, 2])
+        Only part of the answer is written in the file - a curve takes its shape from an
+        axis another declaration owns - so the analysis checks every kind in one place; see
+        ``test_analysis.py``.
+        """
+        assert definition(dimensions=[2], init=[1, 2, 3]).init == (1, 2, 3)
+        assert definition(init=[1, 2]).init == (1, 2)
 
     def test_zero_dimension_is_rejected(self) -> None:
         with pytest.raises(ValidationError):

@@ -90,6 +90,40 @@ class TestCheck:
         assert "1 warning" in captured
         assert "are consistent" not in captured
 
+    def test_an_instantiated_structure_with_an_unknown_member_type_still_reports(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The unknown-type finding survives the structure being instantiated.
+
+        This used to crash with a KeyError once a declaration named the broken structure,
+        which swallowed every finding of the run; now the instance is dropped from
+        resolution and every command finishes with the finding on record.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Broken_t",
+                            "members": [
+                                {"name": "ghost", "member": "value", "typename": "Missing_t"}
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("output", "V", typename="Broken_t")),
+            },
+        )
+        target = str(tmp_path / "p.ddd.json")
+        assert main(["check", target]) == EXIT_FINDINGS
+        assert "unknown-type" in capsys.readouterr().err
+        assert main(["dump", target]) == EXIT_FINDINGS
+        assert main(["list", target]) == EXIT_FINDINGS
+        capsys.readouterr()
+
 
 class TestGenerate:
     def test_writes_every_artefact(self, tmp_path: Path) -> None:
@@ -161,6 +195,35 @@ class TestGenerate:
         arguments = ["generate", str(DEMO), "-o", str(tmp_path / "gen"), "-t", str(templates)]
         assert main(arguments) == EXIT_USAGE
 
+    def broken_template(self, tmp_path: Path, content: str) -> list[str]:
+        """A template directory holding one broken template, and the arguments to render it."""
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        (templates / "ddd_globals.c.jinja2").write_text(content, encoding="utf-8")
+        output = str(tmp_path / "gen")
+        return ["generate", str(DEMO), "-o", output, "-t", str(templates), "--no-a2l"]
+
+    def test_a_template_naming_nothing_the_model_has_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The templates are the project's own files, so a typo in one is reported like any
+        other input mistake - one line naming the template - not as a jinja traceback."""
+        arguments = self.broken_template(tmp_path, "/* fine */\n/* {{ model.prjoect }} */\n")
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2" in err
+        assert "prjoect" in err
+        assert "Traceback" not in err
+
+    def test_a_template_that_does_not_parse_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = self.broken_template(tmp_path, "line one\n{% if %}\n")
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2" in err
+        assert "Traceback" not in err
+
     def test_address_map(self, tmp_path: Path) -> None:
         addresses = tmp_path / "addresses.json"
         addresses.write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
@@ -195,7 +258,7 @@ class TestGenerate:
             ]
         )
         assert code == EXIT_USAGE
-        assert "is not a number" in capsys.readouterr().err
+        assert "is not an integer" in capsys.readouterr().err
 
     def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = tmp_path / "gen"
@@ -435,6 +498,25 @@ class TestBaselineIsolation:
         ]
         assert main(arguments) == EXIT_FINDINGS
         assert "in the baseline:" in capsys.readouterr().err
+
+    def test_a_bom_marked_description_is_compared_as_a_description(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The sniff has to read the byte order mark the loader accepts.
+
+        Read with plain utf-8, a BOM'd project or component file failed the sniff, was
+        taken for a dumped dictionary, and the comparison produced schema findings about a
+        perfectly good description.
+        """
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "X"))})
+        plain = tmp_path / "a.ddd.json"
+        bom = tmp_path / "bom.ddd.json"
+        bom.write_text(chr(0xFEFF) + plain.read_text(encoding="utf-8"), encoding="utf-8")
+        # On either side of a comparison, and as the baseline of a check.
+        assert main(["compare", str(plain), str(bom)]) == EXIT_OK
+        assert main(["compare", str(bom), str(plain)]) == EXIT_OK
+        assert main(["check", str(plain), "--baseline", str(bom)]) == EXIT_OK
+        assert "schema" not in capsys.readouterr().err
 
 
 class TestOutputDirectory:

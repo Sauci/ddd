@@ -22,6 +22,27 @@ _HEADER_SEPARATOR = b":"
 _CONTENT_LENGTH = b"content-length"
 
 
+class ProtocolError(Exception):
+    """The framing itself is broken, so the stream cannot be followed any further.
+
+    Without a believable ``Content-Length`` there is no way to tell where the body ends and
+    the next header begins; everything after this point would be read out of step. The only
+    honest answer is to say so once and stop.
+    """
+
+
+class MessageError(Exception):
+    """One framed body that is not a request the server can act on.
+
+    The frame boundary itself survived - the length was read and honoured - so the client
+    deserves a json-rpc error in reply and the conversation goes on with the next frame.
+    """
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def read_message(stream: IO[bytes]) -> dict[str, Any] | None:
     """The next message, or ``None`` once the client has stopped sending them.
 
@@ -43,9 +64,27 @@ def read_message(stream: IO[bytes]) -> dict[str, Any] | None:
     raw_length = headers.get(_CONTENT_LENGTH)
     if raw_length is None:
         return None
-    body = stream.read(int(raw_length))
-    decoded: dict[str, Any] = json.loads(body.decode("utf-8"))
-    return decoded
+    try:
+        length = int(raw_length)
+    except ValueError:
+        msg = (
+            f"Content-Length is not a number: {raw_length.decode('utf-8', 'replace')!r}; "
+            f"the stream cannot be re-synchronised"
+        )
+        raise ProtocolError(msg) from None
+    body = stream.read(length)
+    try:
+        decoded = json.loads(body.decode("utf-8"))
+    except ValueError:
+        # Both a decode error and a json error land here: either way the frame held no
+        # readable document, and json-rpc has a name and a code for exactly that.
+        msg = "the message body is not json"
+        raise MessageError(PARSE_ERROR, msg) from None
+    if not isinstance(decoded, dict):
+        msg = "the message is not a json-rpc request object; batch requests are not supported"
+        raise MessageError(INVALID_REQUEST, msg)
+    result: dict[str, Any] = decoded
+    return result
 
 
 def write_message(stream: IO[bytes], payload: dict[str, Any]) -> None:
@@ -64,6 +103,12 @@ def response(request_id: Any, result: Any) -> dict[str, Any]:
     """A successful answer to a request."""
     return {"jsonrpc": "2.0", "id": request_id, "result": result}
 
+
+PARSE_ERROR = -32700
+"""The json-rpc code for a body that could not be read as json at all."""
+
+INVALID_REQUEST = -32600
+"""The json-rpc code for a body that is json but not a request object."""
 
 METHOD_NOT_FOUND = -32601
 """The json-rpc code for a request naming a method the server does not implement."""

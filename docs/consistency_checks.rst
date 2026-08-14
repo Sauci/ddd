@@ -45,7 +45,7 @@ down should be read after a DDD upgrade:
    $ ddd checks
    file-not-found         error    a referenced file does not exist (fixed)
    json-syntax            error    a file is not valid json (fixed)
-   file-kind              error    a file is neither a project nor a component description (fixed)
+   file-kind              error    the top level key of a file names no description kind, or several (fixed)
    file-extension         error    a description file is not named '*.ddd.json'
    schema                 error    a file does not match the DDD contract (fixed)
    include-cycle          error    projects include each other recursively (fixed)
@@ -247,8 +247,9 @@ or an a2l file that does not do what the description says - or that does not com
        utf-8. The finding carries the line and the column the parser stopped at.
    * - ``file-kind``
      - error (fixed)
-     - the top level of the document is not a json object, or carries neither ``project`` nor
-       ``component``, or carries both.
+     - the top level of the document is not a json object, or names none of the description
+       kinds (``project``, ``component``, ``types``, ``units``, ``sections``), or several of
+       them at once.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -303,11 +304,6 @@ or an a2l file that does not do what the description says - or that does not com
      - a measurement, which the software writes, is placed in a ``read-only`` section. A
        calibration object may live in either direction: ``const`` data in RAM is a mirrored
        calibration.
-   * - ``section-alignment``
-     - warning
-     - an object needs stricter alignment than its section guarantees. A warning rather than
-       an error because for a structure the need is an estimate - the strictest of its
-       members' datatypes - and the compiler's word on the real layout is final.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the
@@ -432,6 +428,11 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - the declared physical limits are wider than what the datatype can represent through the
        conversion, so part of the declared range is unreachable.
+   * - ``section-alignment``
+     - warning
+     - an object needs stricter alignment than its section guarantees. A warning rather than
+       an error because for a structure the need is an estimate - the strictest of its
+       members' datatypes - and the compiler's word on the real layout is final.
    * - ``name-similar``
      - warning
      - two variables differ only in upper and lower case. They are distinct in c, and confusing
@@ -540,18 +541,21 @@ consumer that ask for different display formats,
 
 .. code-block:: json
 
-   { "scope": "output", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "volatile": false } }
+   { "scope": "output", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "conversion": {}, "a2l": { "format": "%5.0" }, "volatile": false } }
 
 .. code-block:: json
 
-   { "scope": "input", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "a2l": { "format": "%8.3" }, "volatile": false } }
+   { "scope": "input", "definition": { "name": "ValueA", "kind": "measurement", "datatype": "uint16", "conversion": {}, "a2l": { "format": "%8.3" }, "volatile": false } }
 
 the check names the value that is going to be used:
 
 .. code-block:: text
 
-   consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l than 'Producer' (format='%8.3' != unset); the value of 'Producer' is used
+   consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l format than 'Producer' (a2l format: '%8.3' != '%5.0'); the value of 'Producer' is used
        note: producer.ddd.json#component.interface[0].definition: reference declaration
+
+A consumer that merely leaves the ``a2l`` block or one of its keys out is not asking for
+anything and is not reported; only two stated values can disagree.
 
 Two other properties used to be settled this way, and left in opposite directions.
 

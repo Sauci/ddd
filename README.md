@@ -49,12 +49,17 @@ Requires Python 3.12 or newer; the only runtime dependencies are pydantic and ji
 
 ```bash
 pip install ddd-tool                 # from the index
-pip install ./ddd_tool-0.2.0-py3-none-any.whl   # from a delivered wheel, no network
+pip install ./ddd_tool-0.0.1-py3-none-any.whl   # from a delivered wheel, no network
 ddd --version
 ```
 
 The distribution is called `ddd-tool` because `ddd` was taken; the command, the importable
 package and the `*.ddd.json` files are all still `ddd`.
+
+**Platform support**: Python 3.12 or newer, on Windows and Linux - both are exercised by the
+ci on every change.  The [CMake integration](#cmake-integration) needs CMake 3.20 when a
+hand-written project description is passed with `PROJECT`, and CMake 3.30 when the project is
+collected from the link graph.
 
 The examples used below are part of the source distribution rather than the wheel. To follow
 along, clone the repository or unpack the sdist, and from there the tool also runs without
@@ -70,7 +75,8 @@ PYTHONPATH=src python -m ddd --help
 ```bash
 ddd check    examples/demo/demo.ddd.json
 ddd list     examples/demo/demo.ddd.json
-ddd generate examples/demo/demo.ddd.json -o build/gen
+cp -r "$(ddd templates-dir)" templates    # the c templates belong to the project: copy, then adapt
+ddd generate examples/demo/demo.ddd.json -o build/gen -t templates
 ```
 
 `ddd check` on a project with problems prints one line per finding and exits with 1:
@@ -246,7 +252,8 @@ Include cycles are reported instead of hanging.
         "scope": "output",
         "condition": "defined(FEATURE_X)",
         "definition": {
-          "kind": "measurement", "name": "ValueG", "datatype": "uint16", "volatile": false
+          "kind": "measurement", "name": "ValueG", "datatype": "uint16",
+          "conversion": {}, "volatile": false
         }
       }
     ]
@@ -282,11 +289,13 @@ Include cycles are reported instead of hanging.
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
 | `kind` | required | see the next section |
-| `datatype` | required | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64` |
+| `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`.  Exactly one of `datatype` and `typename` is stated |
+| `typename` | one of the two | the name of a declared type, stated instead of `datatype`: a scalar type fixes what the value means, a structure makes this a structured variable |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
 | `unit` | `""` | physical unit; components sharing a variable must agree on it |
-| `conversion` | identity | raw to physical conversion, see below |
+| `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
+| `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
@@ -319,11 +328,12 @@ definition asked for, so the same parameter stating `"volatile": false` is gener
 
 ```json
 { "kind": "axis",  "name": "AxisA", "datatype": "uint16", "unit": "Hz",
+  "conversion": { "kind": "linear", "factor": 0.25, "offset": 0.0 },
   "size": 6, "input": "ValueE", "init": [0, 3200, 6400, 12800, 19200, 32000],
   "volatile": false }
 
 { "kind": "map",   "name": "MapA", "datatype": "sint8", "unit": "%",
-  "x_axis": "AxisA", "y_axis": "AxisB",
+  "conversion": {}, "x_axis": "AxisA", "y_axis": "AxisB",
   "init": [[20, 24, 28, 30, 32, 30], [18, 22, 26, 28, 30, 28]], "volatile": false }
 ```
 
@@ -384,6 +394,28 @@ omitted when the shape is unambiguous.
 * `linear` means `physical = raw * factor + offset`
 * `enum` requires an integer datatype and may also be written as a list of
   `{"name": ..., "value": ..., "description": ...}` objects to document each enumerator
+
+### Types, units and sections
+
+Beside the project and the component there are three more file kinds, each listed in a
+project's `includes` like a component and each with its own page in the documentation:
+
+* a **types** file declares scalar types and structures the project shares by name: a
+  declaration states `"typename": "Sensor_t"` instead of `datatype`, the type fixes the
+  datatype, unit, conversion and limits, and there is nothing left for two components to
+  disagree about ([documentation](https://sauci.github.io/ddd/file_formats/types.html));
+* a **units** file pins the unit spellings the project allows, so `Nm` here and
+  `newton_meter` there is an `unknown-unit` finding instead of two quiet spellings of one
+  quantity; declaring one is opt-in
+  ([documentation](https://sauci.github.io/ddd/file_formats/units.html));
+* a **sections** file declares the linker sections of the project - the name, whether the
+  running software can write it, the alignment it guarantees - and a definition places its
+  object with `section`
+  ([documentation](https://sauci.github.io/ddd/file_formats/sections.html)).
+
+[examples/structures](examples/structures) is a ready to run project declaring and consuming
+structured types, and [examples/vocabulary](examples/vocabulary) is one that pins its unit
+spellings and places its objects into declared memory sections; both check clean.
 
 ## Consistency checks
 
@@ -503,12 +535,12 @@ and a malformed one is refused by the calibration tool, so that generator stays 
 
 ```c
 /* ddd_globals.c, as the example templates render it */
-/* Measurement used as the input quantity of AxisA [Hz] */
+/** Measurement used as the input quantity of AxisA [Hz] */
 volatile uint16_t ValueE = 0U;
-/* Signed measurement with a fixed point conversion [degC] */
+/** Signed measurement with a fixed point conversion [degC] */
 int16_t ValueF = -400;
 #if defined(FEATURE_X)
-/* Measurement that only exists when FEATURE_X is defined [V] */
+/** Measurement that only exists when FEATURE_X is defined [V] */
 uint16_t ValueG = 1000U;
 #endif /* defined(FEATURE_X) */
 ```
@@ -520,7 +552,9 @@ copy.
 ```c
 /* UserInterface.h - only what UserInterface declared */
 /* inputs - produced elsewhere, UserInterface may only read them */
+/** Measurement used as the input quantity of AxisA [Hz] */
 extern volatile uint16_t ValueE;  /* produced by Controller */
+/** Signed measurement with a fixed point conversion [degC] */
 extern int16_t ValueF;  /* produced by Controller */
 ```
 
@@ -581,7 +615,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema project\|component\|types\|dictionary\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
+| `ddd schema component\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
@@ -595,8 +629,9 @@ because the components producing the inputs are by definition not part of the fi
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
-`checks` - which leaves out only `schema` and `cmake-dir`, whose output is machine readable
-already. `ddd dump` is the
+`checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
+already, `ddd lsp` speaks json-rpc on its own, and `ddd cmake-dir` and `ddd templates-dir`
+print a single path. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format.
@@ -628,7 +663,7 @@ ddd_add_component(controller JSON controller.ddd.json)
 
 add_executable(firmware.elf main.c)
 target_link_libraries(firmware.elf PRIVATE controller)
-ddd_generate(firmware.elf NAME DemoDevice)
+ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates")
 ```
 
 `sensor_hub.c` then simply writes `#include "SensorHub.h"` - the header DDD generated for
@@ -685,6 +720,8 @@ wsl -d Ubuntu
 cd /mnt/c/path/to/ddd        # the working tree, seen from inside WSL
 
 docker compose build
+docker compose run --rm check            # ddd check on the demo project
+docker compose run --rm generate         # ddd generate on the demo project, into build/gen
 docker compose run --rm compile          # generate + compile + link + verify
 docker compose run --rm compile-const    # same, with --const-inputs
 docker compose run --rm cmake            # build examples/cmake through cmake/Ddd.cmake
@@ -778,16 +815,9 @@ layering by walking the import graph, so the split cannot rot silently.
 Diagnostics never raise: the loader and the analysis collect as many findings as possible in
 one run.
 
-## Notes on the specification
+## The specification
 
-SPEC.md leaves a few things open; the choices made here are:
-
-* the variable definition object is the table above, extended with `limits`, `volatile` and
-  `a2l` so that a2l can be generated without a second source of information
-* a project references its members through `includes`, and a member's kind is detected from
-  its content rather than being declared twice
-* `local` variables are defined in `ddd_globals.c` like every other variable, but they are
-  only declared in the header of the owning component
-* the producer of a variable is the authority on its definition
-* generated files carry no time stamp, so a regeneration without a change to the input
-  produces a byte identical result
+[SPEC.md](SPEC.md) is the authoritative contract: it states the file formats, the checks,
+the command line and the generated artefacts this implementation is measured against, and
+the test suite holds the two together.  Where this README summarises and the specification
+binds, the specification wins.

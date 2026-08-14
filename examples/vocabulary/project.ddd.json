@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schemas/ddd_project.schema.json",
+  "project": {
+    "name": "PumpDevice",
+    "description": "A project that pins its unit spellings and declares its memory sections",
+    "includes": [
+      "units.ddd.json",
+      "sections.ddd.json",
+      "pump.ddd.json"
+    ]
+  }
+}

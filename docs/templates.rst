@@ -177,7 +177,7 @@ The model
    * - ``model.source``
      - The name of the description file the dictionary was read from, for the banner.
    * - ``model.generator``
-     - The tool and version that produced the file, such as ``ddd 0.2.0``.
+     - The tool and version that produced the file, such as ``ddd 0.0.1``.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
@@ -187,6 +187,12 @@ The model
        being the two lists one after the other. A component owning nothing has no group, and
        objects no component declares as an output end up in a final group called
        ``<unresolved>``.
+   * - ``model.sections``
+     - The placed objects grouped per :doc:`linker section <file_formats/sections>`, one
+       entry per section with ``.name`` and ``.objects``, strictest alignment first so that
+       data of one section packs without padding. Objects without a ``section`` are not
+       here - they stay in their component's group and the toolchain's default placement -
+       and the sequence is empty when the project places nothing.
    * - ``model.headers``
      - One entry per component, in project order, whether or not the component declares
        anything. These are the interfaces, described below.
@@ -242,6 +248,12 @@ themselves:
      - The preprocessor condition the object is guarded by, or nothing. It is validated on
        the way in so that it is safe to emit verbatim into both ``#if`` and the ``#endif``
        trailer.
+   * - ``.section``
+     - The name of the :doc:`linker section <file_formats/sections>` the producing
+       declaration placed the object in - the name alone, as the linker script spells it -
+       or nothing when the object is unplaced. How a placement is spelled in c, an
+       ``__attribute__`` or a pragma, is the template's decision; the example templates
+       write the GCC attribute between the declarator and the initialiser.
    * - ``.owner``, ``.consumers``
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.

@@ -44,12 +44,14 @@ from ddd.models import (
     Scope,
     Shape,
     StructType,
+    bitfield_range,
     check_shape,
     conversion_identity,
     conversion_range,
     format_number,
     format_shape,
     is_reserved_identifier,
+    physical_range,
     resolve_export,
 )
 
@@ -77,23 +79,6 @@ def _describe_references(definition: DataObject) -> str:
     if not references:
         return "none"
     return ", ".join(f"{key}={value}" for key, value in sorted(references.items()))
-
-
-def _a2l_presentation(definition: DataObject) -> dict[str, str | None]:
-    """The a2l options only the producer decides.
-
-    ``export`` is not among them: any component may ask for an object to reach the a2l, so
-    two declarations differing about it are not disagreeing - see
-    :func:`~ddd.models.objects.resolve_export`. How the object is *displayed* has no such
-    answer, since two format strings cannot both be used.
-    """
-    a2l = definition.a2l
-    return {"format": a2l.format, "display_identifier": a2l.display_identifier}
-
-
-def _describe_a2l(definition: DataObject) -> str:
-    stated = [f"{key}='{value}'" for key, value in _a2l_presentation(definition).items() if value]
-    return ", ".join(stated) or "unset"
 
 
 def _conversion_value(definition: DataObject) -> object:
@@ -130,12 +115,9 @@ _INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
         _conversion_value,
         lambda d: d.conversion.describe() if d.conversion is not None else "none",
     ),
-    ComparedField(
-        "limits",
-        lambda d: d.limits.as_tuple() if d.limits is not None else None,
-        _describe_limits,
-        optional=True,
-    ),
+    # ``limits`` are not in the table: a declaration may omit them, so the resolved answer is
+    # not always the reference declaration's - see :meth:`_Analysis._limits_reference`, which
+    # settles whose stated limits count and compares every other stated set against those.
     ComparedField("references", lambda d: d.references, _describe_references),
     # Not optional, unlike limits, and it cannot be: the key is required on every definition,
     # so there is no silence to interpret. Every component that reads the object gets the
@@ -144,7 +126,7 @@ _INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
 )
 
 # What only shapes the generated a2l entry: the producer wins, the others get a warning that
-# says so. One field is left, and the two that used to sit here left for opposite reasons.
+# says so. Two fields are left, and the two that used to sit here left for opposite reasons.
 #
 # ``init`` is a claim over somebody else's storage rather than a losing opinion, so stating one
 # in a consumer is refused outright as ``consumer-storage``. ``volatile`` went the other way:
@@ -153,8 +135,24 @@ _INTERFACE_FIELDS: tuple[ComparedField[DataObject], ...] = (
 #
 # What is left of the a2l block is presentation - a format string, a display name - where two
 # values genuinely cannot both be used and there is no reason to stop a build over it.
+# ``export`` is not among them: any component may ask for an object to reach the a2l, so two
+# declarations differing about it are not disagreeing - see
+# :func:`~ddd.models.objects.resolve_export`. Both fields are optional the way ``limits``
+# defer: a declaration that leaves one unstated is leaving it to whoever states it, and only
+# two *stated* answers can disagree.
 _STORAGE_FIELDS: tuple[ComparedField[DataObject], ...] = (
-    ComparedField("a2l", _a2l_presentation, _describe_a2l),
+    ComparedField(
+        "a2l format",
+        lambda d: d.a2l.format,
+        lambda d: f"'{d.a2l.format}'",
+        optional=True,
+    ),
+    ComparedField(
+        "a2l display_identifier",
+        lambda d: d.a2l.display_identifier,
+        lambda d: f"'{d.a2l.display_identifier}'",
+        optional=True,
+    ),
 )
 
 
@@ -223,6 +221,10 @@ class Variable:
     shape: Shape
     """The resolved array shape; for a curve or map it comes from the axes."""
 
+    limits: Limits
+    """The resolved physical limits: the producer's stated ones, else the first stated set
+    in load order, else the range the datatype and the conversion imply."""
+
     producer: DeclarationRef | None
     declarations: tuple[DeclarationRef, ...]
     condition: str | None
@@ -250,7 +252,7 @@ class Variable:
             description=definition.description,
             unit=definition.unit,
             conversion=definition.conversion,
-            limits=definition.physical_limits(),
+            limits=self.limits,
             shape=self.shape,
             init=definition.init,
             volatile=definition.volatile,
@@ -397,8 +399,14 @@ class _Analysis:
         self._bag = bag
         self._enums = _EnumRegistry()
         self._types = {entry.name: entry for entry in workspace.types}
-        self._cyclic_types: set[str] = set()
         """Every type the project declares, by name - structures and scalars alike."""
+        self._cyclic_types: set[str] = set()
+        self._poisoned_types: set[str] = set()
+        """Types no variable can resolve as: a member of theirs, however deeply nested, names
+        a type nobody declares or carries a conversion that was refused. The finding sits at
+        the member or at the type; a declaration naming such a type is dropped the way one
+        naming a recursive structure is, so nothing downstream reasons about a leaf it cannot
+        have."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -688,6 +696,68 @@ class _Analysis:
                 declared[cycle[0]].location(),
             )
 
+        for entry in self._workspace.types:
+            self._refuse_infinite_type_limits(entry)
+        # Propagated the way the cycles are: a sound structure nesting a broken one has the
+        # same unresolvable leaves, and a variable of either is dropped at resolution.
+        unresolvable = {
+            entry.name
+            for entry in self._workspace.types
+            if not self._members_resolve(entry.name, set())
+        }
+        self._poisoned_types |= unresolvable
+
+    def _refuse_infinite_type_limits(self, entry: LoadedType) -> None:
+        """A type whose derived limits are not finite is refused at its ``conversion``.
+
+        The refusal a definition gets - see :meth:`_limits_stay_finite` - at the two places a
+        types file writes a datatype and conversion pair: on a scalar type, and on a structure
+        member. A refused type poisons itself, so no variable resolves as it.
+        """
+        declared = entry.declared
+        if isinstance(declared, ScalarType):
+            datatype = declared.datatype
+            if not _derived_range_is_finite(
+                declared.conversion, datatype.raw_min, datatype.raw_max
+            ):
+                self._bag.add(
+                    "schema", _infinite_limits_message(datatype), entry.location("conversion")
+                )
+                self._poisoned_types.add(entry.name)
+            return
+        for index, member in enumerate(declared.members):
+            if member.datatype is None:
+                continue
+            assert member.conversion is not None
+            raw_min, raw_max = (
+                bitfield_range(member.datatype, member.bits)
+                if member.bits is not None
+                else (member.datatype.raw_min, member.datatype.raw_max)
+            )
+            if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
+                self._bag.add(
+                    "schema",
+                    _infinite_limits_message(member.datatype),
+                    entry.location(f"members[{index}].conversion"),
+                )
+                self._poisoned_types.add(entry.name)
+
+    def _members_resolve(self, name: str, seen: set[str]) -> bool:
+        """Whether every leaf a variable of that type would have can be resolved.
+
+        False when a member, however deeply nested, names a type nobody declares or one whose
+        conversion was refused; the finding already sits at that member or type. A cycle is
+        not this walk's business - it is reported and dropped as ``type-cycle`` - so a name
+        already seen is simply not followed again.
+        """
+        if name in seen:
+            return True
+        seen.add(name)
+        entry = self._types.get(name)
+        if entry is None or name in self._poisoned_types:
+            return False
+        return all(self._members_resolve(nested, seen) for _, _, nested in _nested_types(entry))
+
     def _check_member_names(self, entry: LoadedType) -> None:
         """Every member of a structure becomes a c identifier in the generated types header.
 
@@ -817,7 +887,7 @@ class _Analysis:
         definition = ref.declaration.definition
         named = definition.declared_type
         if named is None:
-            return ref
+            return ref if self._limits_stay_finite(ref) else None
         declared = self._types.get(named)
         if declared is None:
             self._bag.add(
@@ -829,16 +899,21 @@ class _Analysis:
             return None
         entry = declared.declared
         if isinstance(entry, StructType):
-            if named in self._cyclic_types:
-                # The cycle is already reported at the type; a variable of a structure that
-                # has no size cannot be resolved, and a second finding here would only repeat
-                # the first with a worse location.
+            if named in self._cyclic_types or named in self._poisoned_types:
+                # The cycle, the unknown member type or the refused conversion is already
+                # reported at the type; a variable of a structure whose leaves cannot be
+                # resolved cannot be either, and a second finding here would only repeat the
+                # first with a worse location.
                 return None
             # Kept as it was written. A structured variable has no single datatype, no limits
             # and no initial value, so it takes a road of its own from here on; what it shares
             # with every other declaration - who owns it, who reads it, what it is called - is
             # settled on the way by exactly the same checks.
             return ref if self._structure_fits(ref, named, declared) else None
+        if named in self._poisoned_types:
+            # The refused conversion is already reported at the scalar type; a variable of it
+            # has no limits to resolve, and a second finding here would repeat the first.
+            return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
         # four it fixes are filled in. The definition already refused to restate any of them.
         return replace(
@@ -882,6 +957,25 @@ class _Analysis:
             f"'{ref.name}' is declared as the structure '{named}', but {problem}",
             ref.location("definition"),
             notes=[("declared here", declared.location())],
+        )
+        return False
+
+    def _limits_stay_finite(self, ref: DeclarationRef) -> bool:
+        """Refuse a datatype and conversion pair whose derived limits are not finite.
+
+        ``float64`` under a factor of 1.8 runs past the largest float there is. Limits of
+        infinity are not a range the dictionary, the a2l or a calibration tool can carry, so
+        the pair is refused where it is written rather than resolved into an object every
+        output would choke on; the declaration is dropped and the run reports the rest.
+        """
+        definition = ref.declaration.definition
+        datatype = definition.datatype
+        assert datatype is not None
+        assert definition.conversion is not None
+        if _derived_range_is_finite(definition.conversion, datatype.raw_min, datatype.raw_max):
+            return True
+        self._bag.add(
+            "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
         )
         return False
 
@@ -961,8 +1055,8 @@ class _Analysis:
 
         conversion = definition.conversion
         if isinstance(conversion, EnumConversion):
-            self._register_enum(conversion, ref.location("definition.conversion"))
             datatype = definition.storage
+            self._register_enum(conversion, ref.location("definition.conversion"), datatype)
             self._check_enum_fits(
                 conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
             )
@@ -1011,12 +1105,14 @@ class _Analysis:
                 location,
             )
 
-    def _register_enum(self, conversion: EnumConversion, location: Location) -> None:
+    def _register_enum(
+        self, conversion: EnumConversion, location: Location, storage: Datatype | None = None
+    ) -> None:
         known = self._enums.by_name.get(conversion.name)
         if known is None:
             self._enums.by_name[conversion.name] = (conversion, location)
             self._check_enum_names(conversion, location)
-            self._check_enum_values(conversion, location)
+            self._check_enum_values(conversion, location, storage)
             return
         previous, previous_location = known
         if _enum_key(previous) != _enum_key(conversion):
@@ -1065,7 +1161,9 @@ class _Analysis:
                 continue
             self._enums.enumerators[enumerator.name] = (conversion.name, location)
 
-    def _check_enum_values(self, conversion: EnumConversion, location: Location) -> None:
+    def _check_enum_values(
+        self, conversion: EnumConversion, location: Location, storage: Datatype | None
+    ) -> None:
         by_value: dict[int, list[str]] = defaultdict(list)
         for enumerator in conversion.enumerators:
             by_value[enumerator.value].append(enumerator.name)
@@ -1079,20 +1177,38 @@ class _Analysis:
 
         # C requires every enumerator to be representable as an 'int' (C11 6.7.2.2), which on
         # an embedded target is 32 bits wide. A larger value only compiles as a vendor
-        # extension, so it is caught here rather than in the customer's build.
+        # extension, so it is caught here rather than in the customer's build. A value that
+        # does not even fit the declared storage already earns its finding against that
+        # storage, so it is skipped here: one bad value, one finding.
         self._check_enum_fits(
-            conversion, _INT_MIN, _INT_MAX, "a c 'int', which every enumerator has to", location
+            conversion,
+            _INT_MIN,
+            _INT_MAX,
+            "a c 'int', which every enumerator has to",
+            location,
+            except_outside=(storage.raw_min, storage.raw_max) if storage is not None else None,
         )
 
     def _check_enum_fits(
-        self, conversion: EnumConversion, lo: float, hi: float, phrase: str, location: Location
+        self,
+        conversion: EnumConversion,
+        lo: float,
+        hi: float,
+        phrase: str,
+        location: Location,
+        *,
+        except_outside: tuple[float, float] | None = None,
     ) -> None:
         """Report the enumerators outside ``lo .. hi``, phrased for what they do not fit into.
 
         One shape for two bounds: the c ``int`` every enumerator has to be representable in,
-        and the declared storage of the one object naming the enum.
+        and the declared storage of the one object naming the enum. A value outside
+        ``except_outside`` is reported against that bound instead and skipped here.
         """
         outside = [e for e in conversion.enumerators if not (lo <= e.value <= hi)]
+        if except_outside is not None:
+            first, last = except_outside
+            outside = [e for e in outside if first <= e.value <= last]
         if outside:
             spelled = ", ".join(f"{e.name}={e.value}" for e in outside)
             self._bag.add(
@@ -1248,6 +1364,19 @@ class _Analysis:
         leaves: list[ResolvedLeaf] = []
         for suffix in _element_paths(instance.shape):
             self._flatten(instance, structure, f"{name}{suffix}", leaves, reference)
+        # The same question _build_variable asks of a plain object, asked of every leaf that
+        # reaches the a2l: a member is an a2l object of its own, so a member with too many
+        # dimensions gets exactly the MATRIX_DIM a plain object with too many would.
+        for leaf in leaves:
+            carried = instance.a2l.exported and leaf.a2l.exported
+            if carried and len(leaf.shape) > _A2L_MAX_DIMENSIONS:
+                self._bag.add(
+                    "a2l-unrepresentable",
+                    f"'{leaf.path}' has {len(leaf.shape)} dimensions, but the MATRIX_DIM of "
+                    f"ASAP2 1.6.1 carries {_A2L_MAX_DIMENSIONS}; the extra dimensions are "
+                    f"written out and only a 1.7 reader understands them",
+                    reference.location("definition"),
+                )
         return instance, leaves
 
     def _flatten(
@@ -1323,12 +1452,14 @@ class _Analysis:
         shape: Shape,
     ) -> Variable:
         reference = producer or refs[0]
+        limits_reference = self._limits_reference(refs, producer)
 
         for ref in refs:
-            if ref.definition.declared_shape is None:
-                self._check_init_shape(ref, shape)
+            self._check_init_shape(ref, shape)
             if ref is not reference:
                 self._compare(reference, ref)
+            if limits_reference is not None and ref is not limits_reference:
+                self._compare_limits(limits_reference, ref)
 
         self._check_unused(name, producer, [ref for ref in refs if ref.scope is Scope.INPUT])
 
@@ -1350,23 +1481,76 @@ class _Analysis:
             name=name,
             definition=definition,
             shape=shape,
+            limits=(
+                limits_reference.definition.physical_limits()
+                if limits_reference is not None
+                else definition.physical_limits()
+            ),
             producer=producer,
             declarations=tuple(refs),
             condition=reference.condition,
         )
 
-    def _check_init_shape(self, ref: DeclarationRef, shape: Shape) -> None:
-        """Init shape of a curve or map, which is only known once the axes are resolved."""
-        init = ref.definition.init
-        if not isinstance(init, tuple) or not shape:
+    def _limits_reference(
+        self, refs: list[DeclarationRef], producer: DeclarationRef | None
+    ) -> DeclarationRef | None:
+        """The declaration whose stated limits the object resolves to; none states any.
+
+        Omitting limits defers to whoever states them, so the resolved answer is the
+        producer's when it states limits, else the first stated set in load order - and every
+        other declaration that states limits is compared against that reference by
+        :meth:`_compare_limits`. Only when nobody states any are the limits derived from the
+        datatype and the conversion.
+        """
+        if producer is not None and producer.definition.limits is not None:
+            return producer
+        return next((ref for ref in refs if ref.definition.limits is not None), None)
+
+    def _compare_limits(self, reference: DeclarationRef, other: DeclarationRef) -> None:
+        """One declaration's stated limits against the stated set the object resolves to."""
+        resolved = reference.definition.limits
+        assert resolved is not None  # stating limits is what made it the reference
+        stated = other.definition.limits
+        if stated is None or stated.as_tuple() == resolved.as_tuple():
             return
+        self._bag.add(
+            "definition-mismatch",
+            f"'{other.name}' is declared differently by component '{other.component_name}' "
+            f"than by '{reference.component_name}' "
+            f"(limits: {_describe_limits(other.definition)} != "
+            f"{_describe_limits(reference.definition)})",
+            other.location("definition"),
+            notes=[("reference declaration", reference.location("definition"))],
+        )
+
+    def _check_init_shape(self, ref: DeclarationRef, resolved: Shape) -> None:
+        """The shape of a stated init against the shape of the object.
+
+        Checked here rather than in the contract, because only one of the two shapes is
+        written in the file: a measurement or a value block declares its dimensions, while a
+        curve or a map takes its shape from axes that are only known once the whole project
+        is resolved. One check for both keeps the finding one identifier, ``init-invalid``.
+        """
+        init = ref.definition.init
+        if not isinstance(init, tuple):
+            # A scalar init fills every element of whatever the shape is; nothing to check.
+            return
+        declared = ref.definition.declared_shape
+        if declared is None and not resolved:
+            # A curve or map whose axes did not resolve; that is already reported.
+            return
+        shape = declared if declared is not None else resolved
         problem = check_shape(init, shape)
-        if problem is not None:
-            self._bag.add(
-                "init-invalid",
-                f"'{ref.name}' has the shape {format_shape(shape)} given by its axes: {problem}",
-                ref.location("definition.init"),
-            )
+        if problem is None:
+            return
+        described = (
+            f" has the shape {format_shape(shape)} given by its axes" if declared is None else ""
+        )
+        self._bag.add(
+            "init-invalid",
+            f"'{ref.name}'{described}: {problem}",
+            ref.location("definition.init"),
+        )
 
     def _compare(self, reference: DeclarationRef, other: DeclarationRef) -> None:
         """Compare two declarations of the same data object."""
@@ -1462,6 +1646,17 @@ def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...
 
 def _enum_summary(conversion: EnumConversion) -> str:
     return ", ".join(f"{e.name}={e.value}" for e in conversion.enumerators)
+
+
+def _derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: float) -> bool:
+    """Whether the physical range of that raw range under that conversion stays finite."""
+    low, high = physical_range(conversion, raw_min, raw_max)
+    return math.isfinite(low) and math.isfinite(high)
+
+
+def _infinite_limits_message(datatype: Datatype) -> str:
+    """One spelling for the three places a datatype and conversion pair can be written."""
+    return f"the limits derived from '{datatype.value}' and this conversion are not finite"
 
 
 def _below(value: float, limit: float) -> bool:

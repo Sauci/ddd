@@ -1,0 +1,36 @@
+{
+  "$schema": "../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Pump",
+    "description": "Controls the pump, with its speed in fast RAM and its limit in calibration flash",
+    "interface": [
+      {
+        "scope": "local",
+        "definition": {
+          "name": "PumpSpeed",
+          "kind": "measurement",
+          "description": "Measured pump speed, written by the speed capture interrupt",
+          "datatype": "uint16",
+          "unit": "rpm",
+          "conversion": { "kind": "identity" },
+          "section": ".fast_ram",
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "TorqueLimit",
+          "kind": "parameter",
+          "description": "Torque above which the pump is derated",
+          "datatype": "uint16",
+          "unit": "Nm",
+          "conversion": { "kind": "linear", "factor": 0.01, "offset": 0.0 },
+          "init": 250,
+          "section": ".calib",
+          "volatile": false
+        }
+      }
+    ]
+  }
+}

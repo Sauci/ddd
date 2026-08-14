@@ -2,7 +2,7 @@
   "name": "ddd",
   "displayName": "DDD",
   "description": "Reports the DDD consistency checks while a description file is being written, and navigates between the components that share a variable.",
-  "version": "0.2.0",
+  "version": "0.0.1",
   "publisher": "sauci",
   "license": "MIT",
   "icon": "icon.png",
@@ -19,7 +19,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "workspaceContains:**/*.ddd.json"
+    "workspaceContains:**/*.ddd.json",
+    "onLanguage:json"
   ],
   "main": "./out/extension.js",
   "contributes": {

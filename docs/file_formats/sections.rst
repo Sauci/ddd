@@ -25,6 +25,9 @@ business and deliberately not modelled, because the object's ``volatile`` alread
 what the software has to assume. ``alignment`` is what the section guarantees, in bytes, a
 power of two. The file is listed in the ``includes`` of a project like any other
 description, and ``ddd schema sections`` prints its published contract.
+``examples/vocabulary`` is a ready to run project placing a measurement and a parameter
+into exactly these two sections, next to the :doc:`unit vocabulary <units>` of the same
+project; it checks clean.
 
 A definition then states its ``section`` - a storage key like ``init``: the producer states
 it, a consumer stating one is refused as ``consumer-storage``, and a structured variable is

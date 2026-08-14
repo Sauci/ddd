@@ -19,6 +19,7 @@ from ddd.models.conversion import (
     LinearConversion,
     conversion_identity,
     conversion_range,
+    physical_range,
 )
 from ddd.models.objects import (
     A2lObjectOptions,
@@ -114,5 +115,6 @@ __all__ = [
     "format_number",
     "format_shape",
     "is_reserved_identifier",
+    "physical_range",
     "resolve_export",
 ]

@@ -22,7 +22,9 @@ An entry is a bare spelling, or an object adding a ``description`` - which is wh
 meaning of a unit is written down once, instead of being implied by every object that
 happens to use it. Case counts: ``mV`` and ``MV`` are different units. The file is listed in
 the ``includes`` of a project like any other description, and ``ddd schema units`` prints
-its published contract.
+its published contract. ``examples/vocabulary`` is a ready to run project that declares a
+vocabulary like this next to its :doc:`memory sections <sections>`; it checks clean, so it
+is the file set to start a project of your own from.
 
 With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:

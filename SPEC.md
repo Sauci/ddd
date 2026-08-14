@@ -318,7 +318,10 @@ point of derived limits:
 
 Derived limits are the raw range pushed through the conversion: under the identity they are
 the raw ends themselves, and under a linear conversion each end is converted, the pair
-being swapped into order when `factor` is negative. `boolean` does not count as an integer
+being swapped into order when `factor` is negative. A pairing of datatype and conversion
+whose derived limits are not finite, the converted raw range overflowing the largest
+finite floating point value, is refused where it is written (`schema`), because no finite
+stated limits could repair a conversion that overflows by itself. `boolean` does not count as an integer
 datatype: an enum conversion refuses it, and so does a `bits` member
 ([section 3.7](#37-type-description)).
 
@@ -344,9 +347,11 @@ Kind specific attributes:
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
   ones to the three entries version 1.6.1 expects.
-- `init` is a scalar or a nested list matching the shape of the object. A scalar given for
-  an array shaped object initialises every element. An initial value **must** fit the raw
-  range of its datatype (`init-invalid`). It is compared neither against the limits, which
+- `init` is a scalar or a nested list matching the shape of the object. A scalar given
+  for an array shaped object initialises every element; the scalar fill applies to the
+  whole object only, not to a nested position. An initial value **must** fit the raw
+  range of its datatype and **must** match the shape of the object (`init-invalid`). It is
+  compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
 - `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (A2L `COM_AXIS`).
@@ -405,7 +410,11 @@ compile different assumptions about the same address. Being required on every de
 it is stated by every declaration, so there is always an answer to compare rather than a
 silence to interpret. `limits` are the one interface key a declaration **may** leave out,
 because DDD derives them from the datatype and the conversion: omitting them defers to
-whoever states them, and only two *stated* sets of limits can disagree.
+whoever states them, and only two *stated* sets of limits can disagree
+(`definition-mismatch`). The resolved limits come from the producer when it states them,
+otherwise from the first declaration in load order that states them, and otherwise they
+are derived; every other declaration that states limits is compared against that stated
+reference.
 
 ##### 3.3.1.2 Storage
 
@@ -419,7 +428,10 @@ own, and it is reported where it is written rather than where it is overruled.
 
 The presentation keys are those of the `a2l` block, on which no generated C depends.
 `format` and `display_identifier` are taken from the producer, and a consumer stating
-something else is told so by `storage-mismatch`. The check names of
+a different answer is told so by `storage-mismatch`. A declaration stating neither key
+defers: only two stated answers can disagree, and a consumer's statement never replaces a
+producer's silence in the output, which keeps the emitted presentation the producer's
+alone. The check names of
 [section 4](#4-consistency-checks) use *storage* more broadly than this section's groups:
 `storage-mismatch` polices presentation, and `changed-storage` of
 [section 4.1](#41-comparing-two-deliveries) covers the volatility as well. Identifiers are
@@ -834,7 +846,8 @@ Warnings:
   a floating point range is not refused for rounding.
 - `enum-duplicate-value`: two enumerators share a value.
 - `name-similar`: two object names differ only in upper and lower case.
-- `a2l-unrepresentable`: an object cannot be fully described by the A2L version DDD writes;
+- `a2l-unrepresentable`: an object, or a member of a structured object, cannot be fully
+  described by the A2L version DDD writes;
   today that is an array of more than three dimensions, which the `MATRIX_DIM` of
   version 1.6.1 cannot carry. The check fires only for an object the A2L exports, and the
   emitted file writes every dimension out regardless, which a 1.7 reader accepts.
@@ -926,8 +939,9 @@ file is the case of the component's name. A template in a subdirectory of the te
 directory is importable but never rendered. A project template receives two variables:
 `filename`, the name of the file being rendered, and `model`, the resolved view of the
 dictionary; a `{component}` template additionally receives `header`, the view of its
-component. The rendering is strict: a name a template misspells is an error, not silently
-empty output. A template directory containing no template, and two artefacts claiming the
+component. The rendering is strict: a name a template misspells, or a template that does
+not parse, is a usage error naming the template and the line
+([section 7](#7-tool-interface)), not silently empty output. A template directory containing no template, and two artefacts claiming the
 same output path, are usage errors rather than findings
 ([section 7](#7-tool-interface)).
 
@@ -1142,7 +1156,8 @@ an object no compiled code references is not dropped ([section 5.1](#51-c-code))
 descriptions travel the link graph as a transitive target property, and the project
 description is assembled in the build directory from the closure the image actually links
 ([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across
-links. The assembled project is named by `NAME`, defaulting to the image's name sanitised
+links, and the module itself refuses a CMake older than its stated floor with a message
+naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
 into an identifier, and that name becomes the A2L project, module and file name
 ([section 5.2](#52-a2l)); its includes keep the link graph's traversal order, first
 occurrence kept, which orders the components and with them the `GROUP`s, while the objects
@@ -1153,7 +1168,10 @@ the name written inside the file. An `ADDRESS_MAP <file>` names the address map 
 [section 6](#6-address-information): the map is a dependency of the generation, so
 rewriting it after linking is what makes the next build run DDD a second time with real
 addresses ([section 1.6](#16-position-in-the-build-process)), and the C sources that second
-run re-renders are byte identical and trigger no rebuild ([section 5.1](#51-c-code)).
+run re-renders are byte identical and trigger no rebuild ([section 5.1](#51-c-code)). A
+map named inside the build tree that does not exist yet is seeded empty at configure time,
+so that the first build runs with address zero instead of failing over a file only the
+link can produce.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (defaulting into the build tree), `BYTE_ORDER`,
@@ -1202,6 +1220,11 @@ The server re-reads a file from disk when it is opened or saved. Each finding is
 published at the locations of its notes, so that both sides of a conflict carry a mark.
 The build records a search discovers are announced as log messages, and a record that
 cannot be read is skipped.
+
+A message body the server cannot parse is answered with the protocol's parse or
+invalid-request error and does not stop the server; a corrupted frame header, after which
+no message boundary can be trusted, ends the session with a message rather than a failure
+trace.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
 repeatable `-b` arguments; the shipped VS Code extension exposes them as the setting

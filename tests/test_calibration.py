@@ -269,6 +269,20 @@ class TestResolution:
         assert checks(bag) == ["init-invalid"]
         assert "has the shape [3] given by its axes: init has 2 elements" in messages(bag)
 
+    def test_a_curve_without_its_axis_skips_the_init_shape(self, tree: Path) -> None:
+        """No shape to check against; the unresolved axis is the finding."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "C", "uint8", kind="curve", axis="Nope", init=[1, 2]),
+                ),
+            },
+        )
+        assert checks(bag) == ["unknown-reference"]
+
     def test_components_must_agree_on_the_kind(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

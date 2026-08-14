@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/ddd_sections.schema.json",
+  "sections": [
+    { "section": ".fast_ram", "access": "read-write", "alignment": 4,
+      "description": "tightly coupled memory, single cycle access" },
+    { "section": ".calib", "access": "read-only", "alignment": 4,
+      "description": "calibration flash, tool writable through the emulation overlay" }
+  ]
+}

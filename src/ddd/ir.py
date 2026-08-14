@@ -457,6 +457,13 @@ class DataDictionary(_Frozen):
     def owned_by(self, component: str) -> tuple[ResolvedObject, ...]:
         return tuple(entry for entry in self.objects if entry.owner == component)
 
-    def unowned(self) -> tuple[ResolvedObject, ...]:
-        """Objects no component declares as output; only possible with a forced generation."""
-        return tuple(entry for entry in self.objects if entry.owner is None)
+    def unowned(self) -> tuple[ResolvedObject | ResolvedInstance, ...]:
+        """Every variable no component declares as output; only possible when
+        ``missing-producer`` is relaxed or the generation forced.
+
+        The structured variables belong here as much as the plain ones: the project wide file
+        defines an object no component owns like any other, and leaving an instance out
+        generated headers that declared it ``extern`` over storage that nowhere existed.
+        """
+        entries: tuple[ResolvedObject | ResolvedInstance, ...] = (*self.objects, *self.instances)
+        return tuple(entry for entry in entries if entry.owner is None)

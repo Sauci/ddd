@@ -1279,8 +1279,94 @@ class TestHover:
             declare("output", "Flat", kind="value_block", datatype="uint8", dimensions=[4], init=7),
         )
         described = describe(dictionary, "Flat")
-        assert "init `7`" in described
         assert "```text" not in described
+        # Identity: physical equals raw, so there is no reading to add.
+        assert described.endswith("init `7`")
+
+    def test_a_flat_list_init_is_stated_in_physical_units(self, tmp_path: Path) -> None:
+        """A list stating one value four times is stated once, as always; only a *scalar*
+        init carries the raw value with its reading, because only there is the raw value
+        the whole of what the file says."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "FlatList",
+                kind="value_block",
+                datatype="uint8",
+                dimensions=[4],
+                unit="%",
+                conversion={"factor": 0.5},
+                init=[80, 80, 80, 80],
+            ),
+        )
+        assert describe(dictionary, "FlatList").endswith("init `40` %")
+
+    def test_a_scalar_init_states_its_physical_reading(self, tmp_path: Path) -> None:
+        """Raw first, because raw is what ``init`` is and what the generated c carries; the
+        reading beside it is the forward conversion, which every raw value has."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Temperature",
+                datatype="uint16",
+                unit="degC",
+                conversion={"factor": 0.05},
+                init=800,
+            ),
+        )
+        assert "init `800` = 40 degC" in describe(dictionary, "Temperature")
+
+    def test_a_scalar_init_without_a_unit_reads_bare(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare("output", "Ratio", datatype="uint16", conversion={"factor": 0.05}, init=800),
+        )
+        assert describe(dictionary, "Ratio").endswith("init `800` = 40")
+
+    def test_an_enum_init_reads_as_its_enumerator(self, tmp_path: Path) -> None:
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "State",
+                conversion={
+                    "kind": "enum",
+                    "name": "StateH",
+                    "enumerators": {"STATE_OK": 0, "STATE_FAULT": 15},
+                },
+                init=15,
+            ),
+        )
+        assert "init `15` = STATE_FAULT" in describe(dictionary, "State")
+
+    def test_an_enum_init_outside_the_table_stays_raw(self, tmp_path: Path) -> None:
+        """A value the enum does not name has no reading; inventing one would be a claim."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "State",
+                conversion={
+                    "kind": "enum",
+                    "name": "StateH",
+                    "enumerators": {"STATE_OK": 0, "STATE_FAULT": 15},
+                },
+                init=14,
+            ),
+        )
+        assert describe(dictionary, "State").endswith("init `14`")
 
     def test_an_object_with_no_init_is_not_drawn(self, tmp_path: Path) -> None:
         from ddd.lsp.hover import describe

@@ -144,7 +144,11 @@ What a template receives
 ------------------------
 
 A template is rendered with a small, fixed context, and everything else is reached by
-traversing it:
+traversing it. All of it is a c-shaped view of the resolved :doc:`data dictionary
+<data_dictionary>` - the same data ``ddd dump`` publishes, with the resolving already
+done: producers matched, limits derived, conditions validated, objects ordered. A template
+reads answers, it never computes them; a tool that wants the data without the c slant
+reads the dictionary itself.
 
 ``model``
    The whole project, prepared for c. Always present.

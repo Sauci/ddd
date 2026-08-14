@@ -46,8 +46,9 @@ neither is the innocent one, so both carry a mark.
 **Hover.** A summary of the data object under the cursor, resolved against the whole
 project rather than read off the file: the shape a curve took from its axis, the limits
 derived from a datatype and a conversion nobody wrote down, its producer and its consumers,
-what an enum's numbers are called, and the initial values as a sparkline. Those are the
-*initial* values - DDD describes an interface, and what an engineer calibrates lives in the
+what an enum's numbers are called, the physical reading of a scalar ``init`` beside the raw
+value the file states, and the initial values as a sparkline. Those are the *initial*
+values - DDD describes an interface, and what an engineer calibrates lives in the
 calibration tool.
 
 **Go to definition and find references.** From anywhere in a declaration - or from an

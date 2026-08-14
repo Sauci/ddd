@@ -37,7 +37,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
-from ddd.ir import DataDictionary
+from ddd.ir import Comparable, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import (
     ComponentFile,
@@ -45,7 +45,9 @@ from ddd.models import (
     SectionsFile,
     TypesFile,
     UnitsFile,
+    format_number,
     format_shape,
+    raw_reading,
 )
 from ddd.models.schema import PublishedSchema
 
@@ -705,8 +707,27 @@ def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
         print(bag.summary(), file=sys.stderr)
 
 
+def _init_cell(entry: Comparable) -> str:
+    """The raw init of one row and, where the conversion gives it one, its physical reading.
+
+    Raw first, because raw is what the file states and the generated c carries verbatim; the
+    reading in parentheses is the forward conversion, which every raw scalar has. A nested
+    init is abbreviated to ``[...]``, because the table is one line per variable and a map's
+    worth of numbers belongs to the hover and the calibration tool. Text output only: the
+    json payload of ``ddd list`` is a published shape and carries the raw value as data.
+    """
+    init = entry.init
+    if init is None:
+        return "-"
+    if isinstance(init, tuple):
+        return "[...]"
+    reading = raw_reading(entry.conversion, init, entry.unit)
+    stated = format_number(init)
+    return f"{stated} (= {reading})" if reading is not None else stated
+
+
 def _print_table(dictionary: DataDictionary) -> None:
-    rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "PRODUCER", "CONSUMERS")]
+    rows = [("VARIABLE", "KIND", "DATATYPE", "UNIT", "SHAPE", "INIT", "PRODUCER", "CONSUMERS")]
     for entry in dictionary.listed:
         owner = entry.owner or "<unresolved>"
         rows.append(
@@ -716,6 +737,7 @@ def _print_table(dictionary: DataDictionary) -> None:
                 entry.datatype.value,
                 entry.unit or "-",
                 format_shape(entry.shape) or "-",
+                _init_cell(entry),
                 f"{owner}{' (local)' if entry.local else ''}",
                 ", ".join(entry.consumers) or "-",
             )

@@ -29,7 +29,7 @@ from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
 from ddd.lsp.navigation import workspaces
 from ddd.models.common import format_number
-from ddd.models.conversion import EnumConversion, conversion_range
+from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
 
 BARS: Final = "▁▂▃▄▅▆▇█"
@@ -228,14 +228,16 @@ def _enumerators(entry: ResolvedObject) -> list[str]:
 
 def _drawing(entry: ResolvedObject) -> list[str]:
     """The init values, drawn if there is anything to see in them."""
+    if entry.init is not None and not isinstance(entry.init, tuple):
+        return [_stated_init(entry, entry.init)]
     drawn = rows(entry)
     if not drawn:
         return []
     flat = [value for row in drawn for value in row]
     low, high = min(flat), max(flat)
     if low == high:
-        # Every element the same, which is what a scalar init on an array object means. A row
-        # of equal bars would look like a reading of the data rather than the absence of one.
+        # Every element the same. A row of equal bars would look like a reading of the data
+        # rather than the absence of one.
         return [f"init `{format_number(low)}` {entry.unit}".rstrip()]
     return [
         "```text",
@@ -243,3 +245,18 @@ def _drawing(entry: ResolvedObject) -> list[str]:
         f"{format_number(low)} .. {format_number(high)} {entry.unit}".rstrip(),
         "```",
     ]
+
+
+def _stated_init(entry: ResolvedObject, raw: float) -> str:
+    """One scalar init: the raw value the file states, and what it reads as.
+
+    The raw value first, because raw is what ``init`` *is* - the generated c carries it
+    verbatim. The reading beside it is the forward conversion, which every raw value has;
+    under the identity the two are one number, and an enum whose table does not name the
+    value has no reading to add - both state the raw value alone, as before.
+    """
+    stated = f"init `{format_number(raw)}`"
+    reading = raw_reading(entry.conversion, raw, entry.unit)
+    if reading is None:
+        return f"{stated} {entry.unit}".rstrip()
+    return f"{stated} = {reading}"

@@ -208,3 +208,20 @@ def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tu
 def conversion_range(conversion: Conversion, datatype: Datatype) -> tuple[float, float]:
     """The physical range covered by the full raw range of ``datatype``."""
     return physical_range(conversion, datatype.raw_min, datatype.raw_max)
+
+
+def raw_reading(conversion: Conversion, raw: float, unit: str = "") -> str | None:
+    """What one raw value reads as, or ``None`` where the raw value already says it.
+
+    The forward direction only, which is always defined: every raw value has exactly one
+    physical image under a linear conversion, while most physical values are the image of no
+    raw count at all. Under the identity the physical value *is* the raw one, and an enum
+    names only the values of its table - both answer ``None`` rather than repeat the number
+    they were given. The unit rides along on a linear reading because the physical value is
+    the one it belongs to; an enumerator name carries no unit.
+    """
+    if isinstance(conversion, LinearConversion):
+        return f"{format_number(conversion.to_physical(raw))} {unit}".rstrip()
+    if isinstance(conversion, EnumConversion):
+        return next((item.name for item in conversion.enumerators if item.value == raw), None)
+    return None

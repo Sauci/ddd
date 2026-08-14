@@ -353,6 +353,11 @@ Kind specific attributes:
   range of its datatype and **must** match the shape of the object (`init-invalid`). It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
+  The value is raw rather than physical because the generated C carries it verbatim, and
+  because under a linear conversion most physical values are the exact image of no raw
+  count, so a physical spelling would either round silently or refuse ordinary values.
+  The hover of [section 7.2](#72-editor-integration) and the table of `ddd list` state
+  the physical reading beside the raw value.
 - `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (A2L `COM_AXIS`).
   Referring is not using: the reference resolves against every declaration of the project
@@ -1097,7 +1102,8 @@ comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 `ddd check --baseline` for both questions in one exit code;
 [section 4.1](#41-comparing-two-deliveries)); generating the artefacts (`ddd generate`,
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
-table or, in JSON, as an object carrying `project`, `components` and `variables` beside
+table stating the physical reading of a stated initial value beside the raw one, or, in
+JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
 writing out the data dictionary itself (`ddd dump`); printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
@@ -1192,7 +1198,8 @@ The server offers, from a description file: the findings of
 [section 4](#4-consistency-checks), drawn over the key they are about rather than over the
 file; go to definition and find references across files, which is the question a schema
 cannot answer at all, because the producer of an `input` is in a file the author might not
-know the name of; a summary of a data object on hover; renaming an object everywhere the
+know the name of; a summary of a data object on hover, the physical reading of its
+initial value included; renaming an object everywhere the
 project writes it, refused up front for a name the C language does not allow or one the
 project already uses, whether for another object, an enum, an enumerator or a type,
 because a rename that silently merges two objects compiles, links, and shares storage

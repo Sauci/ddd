@@ -247,9 +247,9 @@ what it actually contains, which is the view a newcomer to an existing project w
 .. code-block:: text
 
    $ ddd list thermostat.ddd.json
-   VARIABLE           KIND         DATATYPE  UNIT  SHAPE  PRODUCER            CONSUMERS
-   CabinTemperature   measurement  sint16    degC  -      SensorHub           Controller
-   HeaterOnThreshold  parameter    sint16    degC  -      Controller (local)  -
+   VARIABLE           KIND         DATATYPE  UNIT  SHAPE  INIT             PRODUCER            CONSUMERS
+   CabinTemperature   measurement  sint16    degC  -      0 (= 0 degC)     SensorHub           Controller
+   HeaterOnThreshold  parameter    sint16    degC  -      180 (= 18 degC)  Controller (local)  -
 
 Getting the templates
 ~~~~~~~~~~~~~~~~~~~~~

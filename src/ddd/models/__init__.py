@@ -20,6 +20,7 @@ from ddd.models.conversion import (
     conversion_identity,
     conversion_range,
     physical_range,
+    raw_reading,
 )
 from ddd.models.objects import (
     A2lObjectOptions,
@@ -116,5 +117,6 @@ __all__ = [
     "format_shape",
     "is_reserved_identifier",
     "physical_range",
+    "raw_reading",
     "resolve_export",
 ]

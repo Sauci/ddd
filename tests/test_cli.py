@@ -267,6 +267,114 @@ class TestGenerate:
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
 
 
+PINNED_LIST_PAYLOAD = """\
+{
+  "project": "Pin",
+  "components": [
+    {
+      "name": "A",
+      "description": "",
+      "source": "a.ddd.json",
+      "declarations": [
+        {
+          "name": "Temperature",
+          "scope": "local",
+          "condition": null
+        },
+        {
+          "name": "State",
+          "scope": "local",
+          "condition": null
+        }
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "State",
+      "kind": "measurement",
+      "datatype": "uint8",
+      "description": "",
+      "unit": "",
+      "conversion": {
+        "kind": "enum",
+        "name": "PinState",
+        "enumerators": [
+          {
+            "name": "STATE_OK",
+            "value": 0,
+            "description": ""
+          },
+          {
+            "name": "STATE_FAULT",
+            "value": 15,
+            "description": ""
+          }
+        ]
+      },
+      "limits": {
+        "min": 0.0,
+        "max": 15.0
+      },
+      "shape": [],
+      "init": 15,
+      "section": null,
+      "volatile": false,
+      "condition": null,
+      "references": {},
+      "owner": "A",
+      "consumers": [],
+      "local": true,
+      "a2l": {
+        "export": true,
+        "format": null,
+        "display_identifier": null
+      }
+    },
+    {
+      "name": "Temperature",
+      "kind": "measurement",
+      "datatype": "uint16",
+      "description": "",
+      "unit": "degC",
+      "conversion": {
+        "kind": "linear",
+        "factor": 0.05,
+        "offset": 0.0
+      },
+      "limits": {
+        "min": 0.0,
+        "max": 3276.75
+      },
+      "shape": [],
+      "init": 800,
+      "section": null,
+      "volatile": false,
+      "condition": null,
+      "references": {},
+      "owner": "A",
+      "consumers": [],
+      "local": true,
+      "a2l": {
+        "export": true,
+        "format": null,
+        "display_identifier": null
+      }
+    }
+  ],
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  }
+}
+"""
+"""The whole payload of ``ddd list --format json``, captured before the text table learned to
+state physical readings. The json is a published shape, so it must stay byte-identical: the
+reading is a spelling for people, and it lives in the text table alone."""
+
+
 class TestList:
     def test_table(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["list", str(DEMO)]) == EXIT_OK
@@ -274,6 +382,51 @@ class TestList:
         assert "VARIABLE" in out
         assert "ValueE" in out
         assert "UserInterface, EventLogger" in out
+
+    def test_table_states_the_physical_reading_of_a_scalar_init(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["list", str(DEMO)]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "INIT" in out
+        assert "3200 (= 800 Hz)" in out  # linear, with the unit of the object
+        assert "0 (= STATE_OFF)" in out  # an enum init reads as its enumerator
+        assert "[...]" in out  # a nested init is abbreviated, not spelled out
+        assert "1000 (= 1 V)" in out  # the reading round-trips through format_number
+
+    def test_json_payload_is_byte_identical_to_the_published_shape(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The text table may say what a raw init reads as; the json payload may not move."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("Pin", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "Temperature",
+                        datatype="uint16",
+                        unit="degC",
+                        conversion={"kind": "linear", "factor": 0.05, "offset": 0.0},
+                        init=800,
+                    ),
+                    declare(
+                        "local",
+                        "State",
+                        conversion={
+                            "kind": "enum",
+                            "name": "PinState",
+                            "enumerators": {"STATE_OK": 0, "STATE_FAULT": 15},
+                        },
+                        init=15,
+                    ),
+                ),
+            },
+        )
+        assert main(["list", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        assert capsys.readouterr().out == PINNED_LIST_PAYLOAD
 
     def test_json(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["list", str(DEMO), "--format", "json"]) == EXIT_OK

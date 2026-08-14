@@ -94,8 +94,9 @@ The commands
        what they look like is not something DDD can guess. ``--dry-run`` reports what would be
        written without writing anything, ``--force`` generates in spite of errors.
    * - ``ddd list FILE``
-     - print the table of variables with their kind, datatype, unit, shape, producer and
-       consumers - the quickest answer to "who writes this?".
+     - print the table of variables with their kind, datatype, unit, shape, initial value
+       with its physical reading, producer and consumers - the quickest answer to "who
+       writes this?".
    * - ``ddd dump FILE``
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later.

@@ -329,27 +329,27 @@ controller and nothing else:
 .. code-block:: text
 
    $ ddd list examples/demo/demo.ddd.json
-   VARIABLE    KIND         DATATYPE  UNIT  SHAPE   PRODUCER               CONSUMERS
-   AxisA       axis         uint16    Hz    [6]     Controller             UserInterface
-   AxisB       axis         uint8     %     [4]     Controller (local)     -
-   BlockA      value_block  uint8     -     [8]     UserInterface (local)  -
-   CurveA      curve        uint16    ms    [6]     Controller (local)     -
-   CurveB      curve        uint8     %     [6]     UserInterface (local)  -
-   FlagA       measurement  boolean   -     -       SensorHub              EventLogger
-   MapA        map          sint8     %     [4][6]  Controller (local)     -
-   ParameterA  parameter    uint16    Hz    -       Controller (local)     -
-   StateA      measurement  uint8     -     -       Controller             UserInterface
-   ValueA      measurement  uint8     %     -       SensorHub              Controller
-   ValueB      measurement  uint16    V     [4]     SensorHub              Controller, UserInterface
-   ValueC      measurement  float32   degC  -       SensorHub              UserInterface
-   ValueD      measurement  uint16    -     [8]     SensorHub (local)      -
-   ValueE      measurement  uint16    Hz    -       Controller             UserInterface, EventLogger
-   ValueF      measurement  sint16    degC  -       Controller             UserInterface
-   ValueG      measurement  uint16    V     -       Controller             UserInterface
-   ValueH      measurement  sint16    %     -       Controller (local)     -
-   ValueI      measurement  uint32    -     -       UserInterface          EventLogger
-   ValueJ      measurement  uint8     -     -       EventLogger            UserInterface
-   ValueK      measurement  sint8     -     [3][4]  EventLogger (local)    -
+   VARIABLE    KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+   AxisA       axis         uint16    Hz    [6]     [...]              Controller             UserInterface
+   AxisB       axis         uint8     %     [4]     [...]              Controller (local)     -
+   BlockA      value_block  uint8     -     [8]     [...]              UserInterface (local)  -
+   CurveA      curve        uint16    ms    [6]     [...]              Controller (local)     -
+   CurveB      curve        uint8     %     [6]     200 (= 100 %)      UserInterface (local)  -
+   FlagA       measurement  boolean   -     -       0                  SensorHub              EventLogger
+   MapA        map          sint8     %     [4][6]  [...]              Controller (local)     -
+   ParameterA  parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   StateA      measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+   ValueA      measurement  uint8     %     -       0 (= 0 %)          SensorHub              Controller
+   ValueB      measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
+   ValueC      measurement  float32   degC  -       -                  SensorHub              UserInterface
+   ValueD      measurement  uint16    -     [8]     -                  SensorHub (local)      -
+   ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             UserInterface, EventLogger
+   ValueF      measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
+   ValueG      measurement  uint16    V     -       1000 (= 1 V)       Controller             UserInterface
+   ValueH      measurement  sint16    %     -       0 (= 0 %)          Controller (local)     -
+   ValueI      measurement  uint32    -     -       0                  UserInterface          EventLogger
+   ValueJ      measurement  uint8     -     -       0                  EventLogger            UserInterface
+   ValueK      measurement  sint8     -     [3][4]  [...]              EventLogger (local)    -
 
 ``local`` is the normal choice for calibration data that only tunes its owning component, and
 it is worth preferring over ``output`` whenever it applies: it keeps the object out of every

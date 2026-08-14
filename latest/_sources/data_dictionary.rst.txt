@@ -158,7 +158,7 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``1`` - and changes only when that shape changes, not with every release of the
+- currently ``3`` - and changes only when that shape changes, not with every release of the
 tool.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
@@ -168,7 +168,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 2, and this DDD understands up to 1; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 4, and this DDD understands up to 3; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -200,7 +200,8 @@ contract - a third party generating from a dumped dictionary has to get what DDD
 got.
 
 ``ddd schema dictionary`` prints the whole thing, definitions included; its top level, which
-is where a consumer starts, is this:
+is where a consumer starts, is this (the per field documentation the schema also carries is
+elided here for space):
 
 .. code-block:: json
 
@@ -209,7 +210,7 @@ is where a consumer starts, is this:
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 1,
+         "default": 3,
          "title": "Format",
          "type": "integer"
        },
@@ -253,12 +254,36 @@ is where a consumer starts, is this:
          },
          "title": "Enums",
          "type": "array"
+       },
+       "types": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/ResolvedStruct"
+         },
+         "title": "Types",
+         "type": "array"
+       },
+       "instances": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/ResolvedInstance"
+         },
+         "title": "Instances",
+         "type": "array"
+       },
+       "leaves": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/ResolvedLeaf"
+         },
+         "title": "Leaves",
+         "type": "array"
        }
      },
      "required": [
        "name"
      ],
-     "title": "DataDictionary",
+     "title": "DDD data dictionary",
      "type": "object"
    }
 
@@ -268,7 +293,9 @@ validating against the schema finds a key it was not expecting instead of skippi
 emit a type per enumeration - which is what the c backend offers its templates as
 ``model.enums`` - does not have to walk every object and de-duplicate them itself. The
 conversions themselves are the same models the description files use, and they are documented
-with the other :doc:`data contracts <data_contracts>`.
+with the other :doc:`data contracts <data_contracts>`. ``types``, ``instances`` and
+``leaves`` describe the structured variables: the declared structures, the variables
+instantiating one, and the member objects each instance flattens into.
 
 Reference
 ---------

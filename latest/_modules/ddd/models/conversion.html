@@ -16,7 +16,7 @@
     <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../../_static/js/versions.js?v=a915def3"></script>
@@ -56,6 +56,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -313,6 +314,23 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">conversion_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;The physical range covered by the full raw range of ``datatype``.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_min</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_max</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">raw_reading</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;What one raw value reads as, or ``None`` where the raw value already says it.</span>
+
+<span class="sd">    The forward direction only, which is always defined: every raw value has exactly one</span>
+<span class="sd">    physical image under a linear conversion, while most physical values are the image of no</span>
+<span class="sd">    raw count at all. Under the identity the physical value *is* the raw one, and an enum</span>
+<span class="sd">    names only the values of its table - both answer ``None`` rather than repeat the number</span>
+<span class="sd">    they were given. The unit rides along on a linear reading because the physical value is</span>
+<span class="sd">    the one it belongs to; an enumerator name carries no unit.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">LinearConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">((</span><span class="n">item</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span> <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">raw</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span>
 </pre></div>
 
            </div>

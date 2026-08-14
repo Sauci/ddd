@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -281,7 +282,7 @@ appears in one run:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
 component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
     note: component_a.ddd.json#component.interface[0]: also written here
-component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != int16, conversion: identity != linear(factor=0.5, offset=0))
+component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
     note: component_a.ddd.json#component.interface[0].definition: reference declaration
 component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
 component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;

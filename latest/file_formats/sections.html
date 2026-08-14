@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -125,7 +126,10 @@ write a read-only section - an emulation overlay, a calibratable flash - is the 
 business and deliberately not modelled, because the object’s <code class="docutils literal notranslate"><span class="pre">volatile</span></code> already states
 what the software has to assume. <code class="docutils literal notranslate"><span class="pre">alignment</span></code> is what the section guarantees, in bytes, a
 power of two. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other
-description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">sections</span></code> prints its published contract.</p>
+description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">sections</span></code> prints its published contract.
+<code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project placing a measurement and a parameter
+into exactly these two sections, next to the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> of the same
+project; it checks clean.</p>
 <p>A definition then states its <code class="docutils literal notranslate"><span class="pre">section</span></code> - a storage key like <code class="docutils literal notranslate"><span class="pre">init</span></code>: the producer states
 it, a consumer stating one is refused as <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, and a structured variable is
 placed whole, its members having no placement of their own. An object without a <code class="docutils literal notranslate"><span class="pre">section</span></code>

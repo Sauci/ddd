@@ -19,6 +19,7 @@ ASAP2 (a2l) description that measurement and calibration tools read.
    templates
    command_line_interface
    build_integration
+   editor_integration
 
 .. toctree::
    :maxdepth: 2

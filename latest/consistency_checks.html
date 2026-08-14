@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -79,6 +79,7 @@
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -151,7 +152,7 @@ down should be read after a DDD upgrade:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd checks
 file-not-found         error    a referenced file does not exist (fixed)
 json-syntax            error    a file is not valid json (fixed)
-file-kind              error    a file is neither a project nor a component description (fixed)
+file-kind              error    the top level key of a file names no description kind, or several (fixed)
 file-extension         error    a description file is not named &#39;*.ddd.json&#39;
 schema                 error    a file does not match the DDD contract (fixed)
 include-cycle          error    projects include each other recursively (fixed)
@@ -339,8 +340,9 @@ utf-8. The finding carries the line and the column the parser stopped at.</p></t
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file-kind</span></code></p></td>
 <td><p>error (fixed)</p></td>
-<td><p>the top level of the document is not a json object, or carries neither <code class="docutils literal notranslate"><span class="pre">project</span></code> nor
-<code class="docutils literal notranslate"><span class="pre">component</span></code>, or carries both.</p></td>
+<td><p>the top level of the document is not a json object, or names none of the description
+kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>), or several of
+them at once.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
 <td><p>error</p></td>
@@ -407,13 +409,7 @@ say nothing about. The nearest declared name is suggested.</p></td>
 calibration object may live in either direction: <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored
 calibration.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section-alignment</span></code></p></td>
-<td><p>warning</p></td>
-<td><p>an object needs stricter alignment than its section guarantees. A warning rather than
-an error because for a structure the need is an estimate - the strictest of its
-members’ datatypes - and the compiler’s word on the real layout is final.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a unit is not in the vocabulary the project declares (see the
 <a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Declared nowhere, units stay free text and
@@ -421,20 +417,20 @@ the check never fires; declared anywhere, every stated unit is checked where it 
 written, with the nearest declared spelling suggested. The empty unit is always
 allowed - a dimensionless value states no unit rather than a spelling of one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a declared type is used where its shape does not fit: a declaration naming a structure
 while being a curve, a map, an axis or a value block, all of which refer to other
 objects or are arrays of one datatype, or one stating an <code class="docutils literal notranslate"><span class="pre">init</span></code>, which for a
 structure is written by the code that starts it rather than by the description.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
 <td><p>error</p></td>
 <td><p>structures nest each other, directly or through others. The finding names the chain,
 <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">-&gt;</span> <span class="pre">B</span> <span class="pre">-&gt;</span> <span class="pre">C</span> <span class="pre">-&gt;</span> <span class="pre">A</span></code>, because that says which member to remove; a structure that
 contains itself has no size at all.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a component, variable, type, enum or enumerator name is a c keyword, or is declared by one of
 the headers the generated code includes (everything <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code>
@@ -442,7 +438,7 @@ bring in, so <code class="docutils literal notranslate"><span class="pre">uint16
 any name containing a double underscore, or starting with an underscore followed by a
 capital letter.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two names that are distinct in the description files would become the same c identifier
 or the same generated file: an enumerator and a variable, a variable and the name of an
@@ -451,12 +447,12 @@ same file scope namespace as the variables), an enumerator claimed by two enums 
 enumerators share one c namespace), or two component names differing only in case, which
 ask for the same header on a case insensitive filesystem.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
 <td><p>error</p></td>
 <td><p>one component declares the same variable twice, for instance once as <code class="docutils literal notranslate"><span class="pre">input</span></code> and once
 as <code class="docutils literal notranslate"><span class="pre">output</span></code>. The second declaration is ignored for the rest of the run.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code>. What a variable starts out as is decided by
 the component that produces it, so a component that only reads it is claiming storage it
@@ -464,23 +460,23 @@ does not own - which is a different thing from the disagreements above, and is r
 where the claim is written rather than where it is overruled. Relaxable, so a project
 migrating existing descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> keys are removed.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by more than one component. Exactly one component owns
 the storage of a variable; two definitions would not even link.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is read as <code class="docutils literal notranslate"><span class="pre">input</span></code> but no component declares it as an output. The generated
 consumer header would declare a symbol nobody defines.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable declared <code class="docutils literal notranslate"><span class="pre">local</span></code> by one component is also declared by another. <code class="docutils literal notranslate"><span class="pre">local</span></code> is
 a promise that the variable is nobody else’s business, and DDD keeps it out of the
 shared headers accordingly.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two components describe the same variable differently in a property that changes what
 the value <em>means</em>: kind, datatype, unit, declared shape, conversion, volatility,
@@ -491,21 +487,21 @@ out that way: every definition of every kind has to state it, so a difference th
 always two components saying two different things rather than one of them saying
 nothing at all.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the same enum type name is defined with different enumerators. One c enum is generated
 per name, so only one set of enumerators could survive.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a curve, a map or an axis refers by name to an object no component declares.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a reference points at an object of the wrong kind, for example the <code class="docutils literal notranslate"><span class="pre">axis</span></code> of a curve
 naming a measurement instead of an axis.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an initial value does not fit its datatype - out of range, written as a fraction for an
 integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
@@ -563,12 +559,18 @@ unambiguously.</p></td>
 <td><p>the declared physical limits are wider than what the datatype can represent through the
 conversion, so part of the declared range is unreachable.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name-similar</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section-alignment</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object needs stricter alignment than its section guarantees. A warning rather than
+an error because for a structure the need is an estimate - the strictest of its
+members’ datatypes - and the compiler’s word on the real layout is final.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-similar</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>two variables differ only in upper and lower case. They are distinct in c, and confusing
 everywhere else.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>an exported object cannot be fully described by the a2l version DDD writes: today that is
 an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1 cannot
@@ -693,17 +695,19 @@ change:</p>
 <p>The second is that a property which merely shapes how the a2l <em>presents</em> the object does not
 have to stop the build, precisely because the outcome is defined. Given a producer and a
 consumer that ask for different display formats,</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%5.0&quot;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%8.3&quot;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%8.3&quot;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>the check names the value that is going to be used:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;ValueA&#39;: component &#39;Consumer&#39; specifies a different a2l than &#39;Producer&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;Producer&#39; is used
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;ValueA&#39;: component &#39;Consumer&#39; specifies a different a2l format than &#39;Producer&#39; (a2l format: &#39;%8.3&#39; != &#39;%5.0&#39;); the value of &#39;Producer&#39; is used
     note: producer.ddd.json#component.interface[0].definition: reference declaration
 </pre></div>
 </div>
+<p>A consumer that merely leaves the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block or one of its keys out is not asking for
+anything and is not reported; only two stated values can disagree.</p>
 <p>Two other properties used to be settled this way, and left in opposite directions.</p>
 <p><code class="docutils literal notranslate"><span class="pre">init</span></code> is not a losing opinion but a claim over storage the component does not own: reading
 a variable gives it no say in what the variable starts as. A consumer stating one is refused

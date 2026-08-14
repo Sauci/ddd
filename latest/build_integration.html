@@ -17,14 +17,14 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Data contracts" href="data_contracts.html" />
+    <link rel="next" title="Editor integration" href="editor_integration.html" />
     <link rel="prev" title="Command line interface" href="command_line_interface.html" /> 
 </head>
 
@@ -76,6 +76,7 @@
 </li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -139,7 +140,11 @@ the tool itself rather than guessed:</p>
 <p>Including the module looks for the <code class="docutils literal notranslate"><span class="pre">ddd</span></code> executable and remembers it in the cache variable
 <code class="docutils literal notranslate"><span class="pre">DDD_EXECUTABLE</span></code>. Configure with <code class="docutils literal notranslate"><span class="pre">-DDDD_EXECUTABLE=&lt;path&gt;</span></code> to pin a particular
 installation - the one of a virtual environment, or a small wrapper script running
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code>. The module needs CMake 3.20 and says so at include time; collecting the
+components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
+that sets <code class="docutils literal notranslate"><span class="pre">CMAKE_FIND_ROOT_PATH_MODE_PROGRAM</span> <span class="pre">ONLY</span></code> keeps <code class="docutils literal notranslate"><span class="pre">find_program</span></code> from seeing host
+tools, so such a project either allows host programs (<code class="docutils literal notranslate"><span class="pre">BOTH</span></code>) or passes
+<code class="docutils literal notranslate"><span class="pre">-DDDD_EXECUTABLE=&lt;path&gt;</span></code> explicitly.</p>
 <section id="registering-a-component">
 <h3>Registering a component<a class="headerlink" href="#registering-a-component" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ddd_add_component(&lt;target&gt;</span> <span class="pre">JSON</span> <span class="pre">&lt;file&gt;...)</span></code> attaches one or more description files to the
@@ -249,8 +254,9 @@ does. An image therefore collects exactly the components it links - no more, and
 importantly, no less. An image linking only <code class="docutils literal notranslate"><span class="pre">sensor_hub</span></code> gets <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code> and an a2l
 holding SensorHub’s variables, and <code class="docutils literal notranslate"><span class="pre">controller</span></code> does not appear in it at all.</p>
 <p>That mechanism is the custom transitive property <code class="docutils literal notranslate"><span class="pre">DDD_JSON</span></code>, built on the
-<code class="docutils literal notranslate"><span class="pre">TRANSITIVE_LINK_PROPERTIES</span></code> feature introduced in <strong>CMake 3.30</strong> - hence the minimum
-version. The module checks it and stops with a fatal error on an older cmake instead of
+<code class="docutils literal notranslate"><span class="pre">TRANSITIVE_LINK_PROPERTIES</span></code> feature introduced in <strong>CMake 3.30</strong> - the floor of the
+collected mode, on top of the CMake 3.20 the module itself needs. The module checks it and
+stops with a fatal error on an older cmake instead of
 carrying on, because an older cmake would silently collect an incomplete set of components,
 and an incomplete data dictionary is exactly the failure DDD exists to prevent.</p>
 <p>The property is resolved at generate time, when the link graph is known but nothing has been
@@ -262,7 +268,8 @@ descriptions: unlike a tool that reads compiled objects, DDD only ever reads the
 <h3>A hand written project description<a class="headerlink" href="#a-hand-written-project-description" title="Link to this heading"></a></h3>
 <p>A project that already maintains its own project description - because it is also built with
 another build system, or because it deliberately lists more than the image links - passes it
-with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
+with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
+is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
 a2l is then named after the project name inside the description, so a <code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well
 is ignored with a status message.</p>
 <p>A hand written project pulls its components in through <code class="docutils literal notranslate"><span class="pre">includes</span></code>, possibly with wildcards,
@@ -396,33 +403,42 @@ name ends up as the a2l project and module name. Ignored together with <code cla
 which files are generated, and renaming a template is how a project renames a generated
 file.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
-<td><p>the symbol to address map filling the addresses into the a2l.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SCHEMA_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<td><p>write the json schemas of the file formats into this directory at configure time, for
+editor validation; they are rewritten on every configure, so they cannot describe a
+version of DDD that is no longer installed.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<td><p>the symbol to address map filling the addresses into the a2l. A map inside the build
+tree that does not exist at configure time is seeded with an empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), so
+the first build of the two-run flow succeeds with every address 0 and the second,
+once the extractor has written the real map, fills the addresses in; a missing map in
+the source tree stays an error.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
 <td><p>severity overrides, exactly like <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the command line. They apply to both the
 generation and the check target.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
 <td><p>usage requirements for compiling the generated definition file, for a project whose
 compiler flags come from an interface library.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
 <td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
 <td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
 <td><p>treat DDD warnings as errors.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
 <td><p>do not hand the generated headers to the registered components.</p></td>
 </tr>
 </tbody>
@@ -533,7 +549,7 @@ a digest before a result from it is used to release something, as the comment at
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="command_line_interface.html" class="btn btn-neutral float-left" title="Command line interface" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="data_contracts.html" class="btn btn-neutral float-right" title="Data contracts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="editor_integration.html" class="btn btn-neutral float-right" title="Editor integration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

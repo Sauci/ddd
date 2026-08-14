@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -25,7 +25,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Data dictionary" href="data_dictionary.html" />
-    <link rel="prev" title="Build integration" href="build_integration.html" /> 
+    <link rel="prev" title="Editor integration" href="editor_integration.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -59,6 +59,7 @@
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -189,8 +190,9 @@ controller.ddd.json#component.interface[0].definition.dimension: error[schema]: 
 1 error
 </pre></div>
 </div>
-<p>The same rule applies at the top level of a file: a document with neither a <code class="docutils literal notranslate"><span class="pre">project</span></code> nor
-a <code class="docutils literal notranslate"><span class="pre">component</span></code> key, or with both, is refused rather than guessed at.</p>
+<p>The same rule applies at the top level of a file: a document naming none of the five
+description kinds - <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code> - or
+several of them at once, is refused rather than guessed at.</p>
 </section>
 <section id="identifiers-are-constrained">
 <h2>Identifiers are constrained<a class="headerlink" href="#identifiers-are-constrained" title="Link to this heading"></a></h2>
@@ -248,7 +250,10 @@ including the field documentation and the rejection of unknown properties - and
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>schema<span class="w"> </span>project
 ddd<span class="w"> </span>schema<span class="w"> </span>component
 ddd<span class="w"> </span>schema<span class="w"> </span>types
+ddd<span class="w"> </span>schema<span class="w"> </span>units
+ddd<span class="w"> </span>schema<span class="w"> </span>sections
 ddd<span class="w"> </span>schema<span class="w"> </span>dictionary
+ddd<span class="w"> </span>schema<span class="w"> </span>all<span class="w"> </span>-o<span class="w"> </span>schemas
 ddd<span class="w"> </span>schema<span class="w"> </span>component<span class="w"> </span>-o<span class="w"> </span>.vscode/ddd_component.schema.json
 </pre></div>
 </div>
@@ -6577,8 +6582,10 @@ in the published schema, which an editor validating the file reports as an ambig
 it keeps the schema and the loader in agreement. <a class="reference internal" href="#ddd.models.DataObject" title="ddd.models.DataObject"><code class="xref py py-class docutils literal notranslate"><span class="pre">ddd.models.DataObject</span></code></a> holds what all six
 kinds have in common, and the six models after it document only what their own kind adds;
 the json schema shown with each of them is nevertheless the complete document a declaration
-of that kind is validated against. <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is one of the common fields, and one of the four
-an author always has to write - the others are <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">datatype</span></code> and <code class="docutils literal notranslate"><span class="pre">kind</span></code>. It carries no
+of that kind is validated against. <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is one of the common fields, and one of the five
+an author always has to write - the others are <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">kind</span></code>, the storage (exactly one of
+<code class="docutils literal notranslate"><span class="pre">datatype</span></code> and <code class="docutils literal notranslate"><span class="pre">typename</span></code>) and, whenever <code class="docutils literal notranslate"><span class="pre">datatype</span></code> is the one stated, <code class="docutils literal notranslate"><span class="pre">conversion</span></code>. It
+carries no
 default because there is no answer DDD could derive from the rest of the description, so a
 definition that leaves it out is a <code class="docutils literal notranslate"><span class="pre">schema</span></code> finding like any other missing field.</p>
 <dl class="py class pydantic_model">
@@ -10642,7 +10649,7 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="build_integration.html" class="btn btn-neutral float-left" title="Build integration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="editor_integration.html" class="btn btn-neutral float-left" title="Editor integration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="data_dictionary.html" class="btn btn-neutral float-right" title="Data dictionary" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

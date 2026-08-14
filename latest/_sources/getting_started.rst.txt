@@ -26,7 +26,7 @@ no compiler, since DDD writes c code but never builds it.
 .. code-block:: bash
 
    pip install ddd-tool                              # from an index
-   pip install ./ddd_tool-0.2.0-py3-none-any.whl     # from a delivered wheel, no network
+   pip install ./ddd_tool-0.0.1-py3-none-any.whl     # from a delivered wheel, no network
 
 The second form is the one to use behind a firewall or in an air-gapped build environment: the
 wheel carries everything DDD needs apart from pydantic and jinja2, which have to be reachable
@@ -36,7 +36,7 @@ was built from, and that release is what the header of every generated file ment
 .. code-block:: text
 
    $ ddd --version
-   ddd 0.2.0
+   ddd 0.0.1
 
 .. note::
    The distribution is called ``ddd-tool`` because the name ``ddd`` was already taken on the
@@ -54,7 +54,7 @@ checkout or an unpacked sdist, the package runs directly out of ``src``:
 .. code-block:: text
 
    $ PYTHONPATH=src python -m ddd --version
-   ddd 0.2.0
+   ddd 0.0.1
 
 ``PYTHONPATH=src python -m ddd`` and ``ddd`` are the same program invoked in two ways, and
 every command shown below works with either. The transcripts use the installed form for
@@ -247,9 +247,9 @@ what it actually contains, which is the view a newcomer to an existing project w
 .. code-block:: text
 
    $ ddd list thermostat.ddd.json
-   VARIABLE           KIND         DATATYPE  UNIT  SHAPE  PRODUCER            CONSUMERS
-   CabinTemperature   measurement  sint16    degC  -      SensorHub           Controller
-   HeaterOnThreshold  parameter    sint16    degC  -      Controller (local)  -
+   VARIABLE           KIND         DATATYPE  UNIT  SHAPE  INIT             PRODUCER            CONSUMERS
+   CabinTemperature   measurement  sint16    degC  -      0 (= 0 degC)     SensorHub           Controller
+   HeaterOnThreshold  parameter    sint16    degC  -      180 (= 18 degC)  Controller (local)  -
 
 Getting the templates
 ~~~~~~~~~~~~~~~~~~~~~
@@ -371,7 +371,7 @@ than written by hand so that no variable can be defined twice or defined by the 
     * ddd_globals.c
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.2.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.0.1.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */
@@ -385,13 +385,13 @@ than written by hand so that no variable can be defined twice or defined by the 
    /* ---------------------------------------------------------------------------
     * Controller - Decides when to heat, from the cabin temperature
     * ------------------------------------------------------------------------ */
-   /* Temperature below which the heater is switched on [degC] (calibration parameter) */
+   /** Temperature below which the heater is switched on [degC] (calibration parameter) */
    const volatile int16_t HeaterOnThreshold = 180;
 
    /* ---------------------------------------------------------------------------
     * SensorHub - Reads the sensors and publishes their conditioned values
     * ------------------------------------------------------------------------ */
-   /* Temperature measured in the cabin [degC] */
+   /** Temperature measured in the cabin [degC] */
    volatile int16_t CabinTemperature = 0;
 
 The two component headers are where the access rules become physical. ``SensorHub.h`` contains
@@ -405,7 +405,7 @@ path:
     * SensorHub.h
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.2.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.0.1.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */
@@ -423,7 +423,7 @@ path:
    #include "ddd_types.h"
 
    /* outputs - written by SensorHub, read by other components */
-   /* Temperature measured in the cabin [degC] */
+   /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;
 
    #endif /* DDD_COMPONENT_SENSORHUB_H */
@@ -438,7 +438,7 @@ description files. The local parameter appears in its own section, and only here
     * Controller.h
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.2.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.0.1.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */
@@ -456,11 +456,11 @@ description files. The local parameter appears in its own section, and only here
    #include "ddd_types.h"
 
    /* inputs - produced elsewhere, Controller may only read them */
-   /* Temperature measured in the cabin [degC] */
+   /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;  /* produced by SensorHub */
 
    /* locals - owned exclusively by Controller */
-   /* Temperature below which the heater is switched on [degC] (calibration parameter) */
+   /** Temperature below which the heater is switched on [degC] (calibration parameter) */
    extern const volatile int16_t HeaterOnThreshold;
 
    #endif /* DDD_COMPONENT_CONTROLLER_H */

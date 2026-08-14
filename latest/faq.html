@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -59,6 +59,7 @@
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -72,6 +73,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#can-i-relax-a-check-for-one-project">Can I relax a check for one project?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#two-components-disagree-whose-definition-is-generated">Two components disagree - whose definition is generated?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-does-my-consumer-not-get-a-definition-mismatch-when-it-leaves-the-limits-out">Why does my consumer not get a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> when it leaves the limits out?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-do-i-have-to-write-conversion-when-it-is-just-the-identity">Why do I have to write <code class="docutils literal notranslate"><span class="pre">conversion</span></code> when it is just the identity?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-do-i-stop-every-consumer-from-copying-the-same-datatype-and-scaling">How do I stop every consumer from copying the same datatype and scaling?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-do-i-keep-everybody-spelling-units-the-same-way">How do I keep everybody spelling units the same way?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-do-i-place-a-variable-in-a-particular-memory-section">How do I place a variable in a particular memory section?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-does-my-editor-get-the-project-and-the-severities-from">Where does my editor get the project and the severities from?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-does-ddd-refuse-my-enum-name">Why does DDD refuse my enum name?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-do-i-keep-a-variable-out-of-the-a2l">How do I keep a variable out of the a2l?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-is-my-axis-in-the-a2l-although-i-set-export-to-false">Why is my axis in the a2l although I set <code class="docutils literal notranslate"><span class="pre">export</span></code> to false?</a></li>
@@ -259,9 +265,11 @@ refuses to run, because two components compiled against two different views of t
 is precisely the class of bug DDD exists to prevent. A disagreement about how the a2l
 <em>presents</em> the object - a format string, a display name - is a <code class="docutils literal notranslate"><span class="pre">storage-mismatch</span></code> warning,
 since both components can be compiled against the producer’s choice without either of them
-being wrong about the data:</p>
+being wrong about the data. Only two stated values can disagree that way; a consumer that
+merely leaves the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block or one of its keys out is not asking for anything and is not
+reported:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
-controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;InletTemperature&#39;: component &#39;Controller&#39; specifies a different a2l than &#39;SensorHub&#39; (format=&#39;%8.3&#39; != unset); the value of &#39;SensorHub&#39; is used
+controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;InletTemperature&#39;: component &#39;Controller&#39; specifies a different a2l format than &#39;SensorHub&#39; (a2l format: &#39;%8.3&#39; != &#39;%5.1&#39;); the value of &#39;SensorHub&#39; is used
     note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 1 warning
 </pre></div>
@@ -303,6 +311,100 @@ narrows what the calibration tool is shown:</p>
 /end MEASUREMENT
 </pre></div>
 </div>
+</section>
+<section id="why-do-i-have-to-write-conversion-when-it-is-just-the-identity">
+<h2>Why do I have to write <code class="docutils literal notranslate"><span class="pre">conversion</span></code> when it is just the identity?<a class="headerlink" href="#why-do-i-have-to-write-conversion-when-it-is-just-the-identity" title="Link to this heading"></a></h2>
+<p>Because raw equalling physical is an engineering claim, not an absence of one, and it is the
+claim that fails silently when it is wrong: a forgotten scaling on a fixed point value
+displays raw counts in the calibration tool without anything looking broken. <code class="docutils literal notranslate"><span class="pre">conversion</span></code>
+is therefore required wherever storage is named by <code class="docutils literal notranslate"><span class="pre">datatype</span></code> - on a definition, on a
+structure member, on a scalar type - exactly as <code class="docutils literal notranslate"><span class="pre">kind</span></code> and <code class="docutils literal notranslate"><span class="pre">volatile</span></code> are, and the
+identity is an answer to state rather than a default to fall into:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check a.ddd.json
+a.ddd.json#component.interface[0].definition: error[schema]: Value error, a &#39;datatype&#39; comes with a &#39;conversion&#39;: the identity ({&quot;kind&quot;: &quot;identity&quot;}) is an answer to state, not a default to fall into (got: {&#39;name&#39;: &#39;Speed&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;datatype&#39;: &#39;uin...)
+1 error
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">{}</span></code> and <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;identity&quot;</span> <span class="pre">}</span></code> both state it. A declaration naming a <code class="docutils literal notranslate"><span class="pre">typename</span></code>
+states none, because the <a class="reference internal" href="file_formats/types.html"><span class="doc">declared type</span></a> fixes the conversion
+along with the datatype, the unit and the limits.</p>
+</section>
+<section id="how-do-i-stop-every-consumer-from-copying-the-same-datatype-and-scaling">
+<h2>How do I stop every consumer from copying the same datatype and scaling?<a class="headerlink" href="#how-do-i-stop-every-consumer-from-copying-the-same-datatype-and-scaling" title="Link to this heading"></a></h2>
+<p>Declare a scalar type in a <a class="reference internal" href="file_formats/types.html"><span class="doc">types file</span></a>, list that file in the
+project’s <code class="docutils literal notranslate"><span class="pre">includes</span></code>, and let every declaration name it with <code class="docutils literal notranslate"><span class="pre">typename</span></code> instead of
+spelling out <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">limits</span></code> of its own:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;types&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;scalar&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">]</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;InletTemperature&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>If all three consumers say <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code>, there is nothing left for them to disagree
+about. A type fixes exactly <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">limits</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code>,
+<code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and <code class="docutils literal notranslate"><span class="pre">a2l</span></code> stay on the variable, because two
+measurements of one type may well differ in whether an interrupt writes one of them. Naming
+a type and then restating what it fixes is an error rather than an override, so “where is
+this unit written down” keeps one answer.</p>
+</section>
+<section id="how-do-i-keep-everybody-spelling-units-the-same-way">
+<h2>How do I keep everybody spelling units the same way?<a class="headerlink" href="#how-do-i-keep-everybody-spelling-units-the-same-way" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">unit</span></code> is free text by default, so one quantity can drift into two spellings - <code class="docutils literal notranslate"><span class="pre">Nm</span></code> here,
+<code class="docutils literal notranslate"><span class="pre">newton_meter</span></code> there - with each declaration agreeing with itself and the a2l growing one
+<code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> per spelling. A <a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a> pins the spellings
+once, listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of the project like any other description:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;units&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;rpm&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Nm&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;torque, newton metre&quot;</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Declaring the vocabulary is opt-in - without a units file nothing changes - and with one,
+every stated unit is checked where it is written, on declarations, structure members and
+scalar types alike, with a near miss answered by the declared spelling:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+b.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: &#39;nm&#39; is not a unit this project declares - did you mean &#39;Nm&#39;?
+1 error
+</pre></div>
+</div>
+<p>The empty unit stays always allowed: a dimensionless value states no unit rather than a
+spelling of one.</p>
+</section>
+<section id="how-do-i-place-a-variable-in-a-particular-memory-section">
+<h2>How do I place a variable in a particular memory section?<a class="headerlink" href="#how-do-i-place-a-variable-in-a-particular-memory-section" title="Link to this heading"></a></h2>
+<p>Declare the section in a <a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a> - its name as the
+linker script spells it, whether the running software can write it, and the alignment it
+guarantees - and let the producing declaration place its object with the <code class="docutils literal notranslate"><span class="pre">section</span></code> key:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;sections&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.calib&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;access&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;read-only&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;alignment&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Gain&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parameter&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.calib&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Placement is storage, like <code class="docutils literal notranslate"><span class="pre">init</span></code>: the producer states it, a consumer stating one is
+refused as <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, and a structured variable is placed whole. Naming a section
+no file declares is <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>, a measurement placed in a <code class="docutils literal notranslate"><span class="pre">read-only</span></code> section is
+<code class="docutils literal notranslate"><span class="pre">section-access</span></code>, and an object needing stricter alignment than its section guarantees is
+<code class="docutils literal notranslate"><span class="pre">section-alignment</span></code>. How the placement is spelled in c - an <code class="docutils literal notranslate"><span class="pre">__attribute__</span></code>, a pragma -
+is the <a class="reference internal" href="templates.html"><span class="doc">templates’</span></a> decision; the example templates write the GCC
+attribute.</p>
+</section>
+<section id="where-does-my-editor-get-the-project-and-the-severities-from">
+<h2>Where does my editor get the project and the severities from?<a class="headerlink" href="#where-does-my-editor-get-the-project-and-the-severities-from" title="Link to this heading"></a></h2>
+<p>From the build. Which project a description file belongs to is not something the file can
+say - in the collected CMake mode the project description exists only in the build tree - so
+<code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> records it, together with the severity policy, in a <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>
+beside its artefacts, and the language server searches the build directories for that
+record: the ones named with <code class="docutils literal notranslate"><span class="pre">-b</span></code> (the <code class="docutils literal notranslate"><span class="pre">ddd.buildDirectories</span></code> setting in VS Code), or the
+conventional directory names next to the workspace. The editor then reports exactly what the
+build reports. A file no build claims is checked under the nearest containing project, and a
+file with no project at all is checked alone, with the checks that need the whole project
+held back. The full story is in <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p>
 </section>
 <section id="why-does-ddd-refuse-my-enum-name">
 <h2>Why does DDD refuse my enum name?<a class="headerlink" href="#why-does-ddd-refuse-my-enum-name" title="Link to this heading"></a></h2>
@@ -465,7 +567,7 @@ map.</p>
 <h2>Which a2l version does DDD write?<a class="headerlink" href="#which-a2l-version-does-ddd-write" title="Link to this heading"></a></h2>
 <p>ASAP2 1.6.1, declared in the second line of every generated file, and the version is not
 selectable:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from &#39;DemoDevice&#39; by ddd 0.2.0. DO NOT EDIT. */
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from &#39;DemoDevice&#39; by ddd 0.0.1. DO NOT EDIT. */
 ASAP2_VERSION 1 61
 </pre></div>
 </div>

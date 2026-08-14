@@ -93,8 +93,9 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
    controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
-The same rule applies at the top level of a file: a document with neither a ``project`` nor
-a ``component`` key, or with both, is refused rather than guessed at.
+The same rule applies at the top level of a file: a document naming none of the five
+description kinds - ``project``, ``component``, ``types``, ``units``, ``sections`` - or
+several of them at once, is refused rather than guessed at.
 
 Identifiers are constrained
 ---------------------------
@@ -162,7 +163,10 @@ including the field documentation and the rejection of unknown properties - and
    ddd schema project
    ddd schema component
    ddd schema types
+   ddd schema units
+   ddd schema sections
    ddd schema dictionary
+   ddd schema all -o schemas
    ddd schema component -o .vscode/ddd_component.schema.json
 
 Pointing an editor at those files gives the whole team the validation and the hover
@@ -233,8 +237,10 @@ in the published schema, which an editor validating the file reports as an ambig
 it keeps the schema and the loader in agreement. :class:`ddd.models.DataObject` holds what all six
 kinds have in common, and the six models after it document only what their own kind adds;
 the json schema shown with each of them is nevertheless the complete document a declaration
-of that kind is validated against. ``volatile`` is one of the common fields, and one of the four
-an author always has to write - the others are ``name``, ``datatype`` and ``kind``. It carries no
+of that kind is validated against. ``volatile`` is one of the common fields, and one of the five
+an author always has to write - the others are ``name``, ``kind``, the storage (exactly one of
+``datatype`` and ``typename``) and, whenever ``datatype`` is the one stated, ``conversion``. It
+carries no
 default because there is no answer DDD could derive from the rest of the description, so a
 definition that leaves it out is a ``schema`` finding like any other missing field.
 

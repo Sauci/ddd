@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -123,7 +124,9 @@ The vocabulary is the opt-in that pins the spellings once, for the whole project
 meaning of a unit is written down once, instead of being implied by every object that
 happens to use it. Case counts: <code class="docutils literal notranslate"><span class="pre">mV</span></code> and <code class="docutils literal notranslate"><span class="pre">MV</span></code> are different units. The file is listed in
 the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">units</span></code> prints
-its published contract.</p>
+its published contract. <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project that declares a
+vocabulary like this next to its <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>; it checks clean, so it
+is the file set to start a project of your own from.</p>
 <p>With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json

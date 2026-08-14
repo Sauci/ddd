@@ -49,17 +49,16 @@ The file is listed in the ``includes`` of a project, next to its components:
 
 .. code-block:: json
 
-   { "project": { "name": "StructuredDevice", "includes": ["types.ddd.json", "sensing.ddd.json"] } }
+   { "project": { "name": "StructuredDevice", "includes": ["types.ddd.json", "sensing.ddd.json", "monitoring.ddd.json"] } }
 
 ``examples/structures`` is exactly that, ready to run: a types file with those two entries and
-three more, and a component that declares variables of them. Its one warning is the example
-being a single component wide - nothing else in it reads what ``Sensing`` writes:
+three more, a component that declares variables of them, and a second component that reads the
+structured output, so the interface has its two sides:
 
 .. code-block:: text
 
    $ ddd check examples/structures/project.ddd.json
-   examples/structures/sensing.ddd.json#component.interface[1]: warning[unused-output]: 'Inlet' is written by component 'Sensing' but read by nobody
-   1 warning
+   ok: 9 variables in 2 components are consistent
 
 A types file on its own is not a project, so pointing ``ddd check`` straight at one is refused
 rather than half-processed. There is nothing to resolve or generate from a layout that no

@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -147,15 +148,14 @@ section of a component, because a type is usually shared: the point of declaring
 </pre></div>
 </div>
 <p>The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project, next to its components:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;StructuredDevice&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;types.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;sensing.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;StructuredDevice&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;types.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;sensing.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;monitoring.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">examples/structures</span></code> is exactly that, ready to run: a types file with those two entries and
-three more, and a component that declares variables of them. Its one warning is the example
-being a single component wide - nothing else in it reads what <code class="docutils literal notranslate"><span class="pre">Sensing</span></code> writes:</p>
+three more, a component that declares variables of them, and a second component that reads the
+structured output, so the interface has its two sides:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/structures/project.ddd.json
-examples/structures/sensing.ddd.json#component.interface[1]: warning[unused-output]: &#39;Inlet&#39; is written by component &#39;Sensing&#39; but read by nobody
-1 warning
+ok: 9 variables in 2 components are consistent
 </pre></div>
 </div>
 <p>A types file on its own is not a project, so pointing <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> straight at one is refused

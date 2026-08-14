@@ -37,12 +37,14 @@ rest of the checks appear once it is out of the way.
 What kind of file this is
 -------------------------
 
-DDD does not ask the file name what a file contains; the **top level key** decides. A file
-whose top level key is ``project`` is a :doc:`project description <project>`, one whose top
-level key is ``component`` is a :doc:`component description <component>`, and one whose top
-level
-key is ``types`` is a :doc:`structured datatype description <types>`. Nothing else appears at
-that level, and a file has to carry exactly one of them.
+DDD does not ask the file name what a file contains; the **top level key** decides. There are
+five kinds: a file whose top level key is ``project`` is a
+:doc:`project description <project>`, one whose top level key is ``component`` is a
+:doc:`component description <component>`, ``types`` is a
+:doc:`structured datatype description <types>`, ``units`` is the project's
+:doc:`unit vocabulary <units>`, and ``sections`` declares its
+:doc:`memory sections <sections>`. Nothing else appears at that level, and a file has to
+carry exactly one of them.
 
 Detecting the kind from the content rather than from the path is what lets ``includes`` name
 components and sub-projects in the same list, and what lets ``ddd check`` be pointed at either
@@ -58,7 +60,7 @@ the message, because the usual cause is a file that was never meant for DDD at a
    1 error
 
    $ ddd check neither.ddd.json
-   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units' (found: components, version)
+   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections' (found: components, version)
    1 error
 
 Unknown keys are rejected
@@ -121,7 +123,10 @@ validate the files without running DDD at all:
    ddd schema project      # the project description
    ddd schema component    # the component description, and every kind of data object in it
    ddd schema types        # the structured datatype description
+   ddd schema units        # the unit vocabulary
+   ddd schema sections     # the memory section description
    ddd schema dictionary   # the resolved data dictionary, the contract the backends consume
+   ddd schema all -o DIR   # every schema at once, one file each, into a directory
 
 ``-o FILE`` writes to a file instead of to stdout, which is the form a build script uses:
 
@@ -130,7 +135,7 @@ validate the files without running DDD at all:
    $ ddd schema project -o project.schema.json
    wrote project.schema.json
 
-The first three describe the files you write; the last describes what DDD makes of them and
+The first five describe the files you write; ``dictionary`` describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.

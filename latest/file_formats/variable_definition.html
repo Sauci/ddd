@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -384,6 +385,12 @@ for a large array is the difference between a few bytes of image and a few kilob
 <span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueD</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
 </pre></div>
 </div>
+<p>The value is raw rather than physical because the generated c carries it verbatim, and under
+a linear conversion most physical values are the exact image of no raw count, so a physical
+spelling would either round silently or refuse ordinary values. The reading in the other
+direction is always defined, and the tool states it wherever a person rather than a compiler
+is the audience: the editor hover and the table of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> show the physical value - or
+the enumerator name - beside the raw one.</p>
 <p>A <strong>scalar given for an array shaped object initialises every element</strong>, which is what makes a
 table of a hundred identical starting values one character long instead of a hundred. The demo
 uses it for <code class="docutils literal notranslate"><span class="pre">CurveB</span></code>, whose <code class="docutils literal notranslate"><span class="pre">&quot;init&quot;:</span> <span class="pre">200</span></code> covers all six points of the axis it lies over:</p>

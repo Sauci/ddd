@@ -9,7 +9,7 @@ link src_old to dump--><path d="M218.25,40.5 C237.62,40.5 257,40.5 273.75,40.5 "
 link dump to baseline--><path d="M370.07,40.5 C421.01,40.5 506.29,40.5 575.42,40.5 " fill="none" id="dump-&gt;baseline" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="580.78,40.5,571.78,36.5,575.78,40.5,571.78,44.5,580.78,40.5" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="149" x="401" y="21.5669">the resolved dictionary,</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="90" x="430.5" y="36.6997">self-contained</text><!--MD5=[37dc2d624dfa703d6433042e0dfc745a]
 link baseline to compare--><path d="M793.31,63.41 C833.52,72.16 877.96,81.83 912.59,89.36 " fill="none" id="baseline-&gt;compare" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="917.63,90.45,909.6957,84.615,912.7461,89.379,907.9821,92.4293,917.63,90.45" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="53" x="829" y="67.5669">baseline</text><!--MD5=[ecba2dce987fd0aa667ecf0abd4bcedd]
 link src_new to compare--><path d="M766.55,127.39 C803.49,125.42 848.1,122.3 888,117.5 C896.01,116.54 904.41,115.31 912.68,113.99 " fill="none" id="src_new-&gt;compare" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="917.81,113.15,908.2854,110.6437,912.8746,113.9511,909.5672,118.5403,917.81,113.15" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="63" x="824" y="113.5669">candidate</text><!--MD5=[7117fbbe85e87641f4e85d297dae8e12]
-link compare to verdict--><path d="M1030.03,102.5 C1090.2,102.5 1186.21,102.5 1247.66,102.5 " fill="none" id="compare-&gt;verdict" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="1252.76,102.5,1243.76,98.5,1247.76,102.5,1243.76,106.5,1252.76,102.5" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="115" x="1084" y="83.5669">can the candidate</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="161" x="1061" y="98.6997">stand in for the baseline?</text><!--MD5=[05fc733d07b6024656dedbdfb34fc4c7]
+link compare to verdict--><path d="M1030.03,102.5 C1090.2,102.5 1186.21,102.5 1247.66,102.5 " fill="none" id="compare-&gt;verdict" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="1252.76,102.5,1243.76,98.5,1247.76,102.5,1243.76,106.5,1252.76,102.5" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="115" x="1084" y="83.5669">can the candidate</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="161" x="1061" y="98.6997">stand in for the baseline?</text><!--MD5=[06c33f3fc1b85b61656b19355e8cc9e2]
 @startuml
 left to right direction
 
@@ -32,7 +32,7 @@ PlantUML version 1.2020.02(Sun Mar 01 10:22:07 UTC 2020)
 (GPL source distribution)
 Java Runtime: OpenJDK Runtime Environment
 JVM: OpenJDK 64-Bit Server VM
-Java Version: 17.0.19+10
+Java Version: 17.0.20+8
 Operating System: Linux
 Default Encoding: UTF-8
 Language: en

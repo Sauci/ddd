@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -76,6 +76,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -252,7 +253,10 @@ refused with a message saying so, rather than quietly producing no c code at all
 <section id="what-a-template-receives">
 <h2>What a template receives<a class="headerlink" href="#what-a-template-receives" title="Link to this heading"></a></h2>
 <p>A template is rendered with a small, fixed context, and everything else is reached by
-traversing it:</p>
+traversing it. All of it is a c-shaped view of the resolved <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> - the same data <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> publishes, with the resolving already
+done: producers matched, limits derived, conditions validated, objects ordered. A template
+reads answers, it never computes them; a tool that wants the data without the c slant
+reads the dictionary itself.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">model</span></code></dt><dd><p>The whole project, prepared for c. Always present.</p>
 </dd>
@@ -288,7 +292,7 @@ writing every component into every file.</p>
 <td><p>The name of the description file the dictionary was read from, for the banner.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.generator</span></code></p></td>
-<td><p>The tool and version that produced the file, such as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">0.2.0</span></code>.</p></td>
+<td><p>The tool and version that produced the file, such as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">0.0.1</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
 <td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
@@ -301,21 +305,28 @@ being the two lists one after the other. A component owning nothing has no group
 objects no component declares as an output end up in a final group called
 <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
+<td><p>The placed objects grouped per <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a>, one
+entry per section with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.objects</span></code>, strictest alignment first so that
+data of one section packs without padding. Objects without a <code class="docutils literal notranslate"><span class="pre">section</span></code> are not
+here - they stay in their component’s group and the toolchain’s default placement -
+and the sequence is empty when the project places nothing.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
 <td><p>One entry per component, in project order, whether or not the component declares
 anything. These are the interfaces, described below.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
 <td><p>Whether any datatype of the project needs that standard header, so that the generated
 type header includes it only when something uses it.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
 <td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
 <code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
 a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
 Offered rather than imposed - a template that has its own convention writes it out.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
 <td><p>What the command line let the caller decide, which for the c backend is
 <code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
 property of the template you write.</p></td>
@@ -369,7 +380,14 @@ comment the template opens around it.</p></td>
 the way in so that it is safe to emit verbatim into both <code class="docutils literal notranslate"><span class="pre">#if</span></code> and the <code class="docutils literal notranslate"><span class="pre">#endif</span></code>
 trailer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.owner</span></code>, <code class="docutils literal notranslate"><span class="pre">.consumers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.section</span></code></p></td>
+<td><p>The name of the <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a> the producing
+declaration placed the object in - the name alone, as the linker script spells it -
+or nothing when the object is unplaced. How a placement is spelled in c, an
+<code class="docutils literal notranslate"><span class="pre">__attribute__</span></code> or a pragma, is the template’s decision; the example templates
+write the GCC attribute between the declarator and the initialiser.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.owner</span></code>, <code class="docutils literal notranslate"><span class="pre">.consumers</span></code></p></td>
 <td><p>The component that produces the object and the components that read it, for a comment
 that says where a value comes from.</p></td>
 </tr>

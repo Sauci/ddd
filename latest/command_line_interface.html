@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=d45e8c67"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -68,6 +68,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -207,21 +208,32 @@ what they look like is not something DDD can guess. <code class="docutils litera
 written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code> generates in spite of errors.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">FILE</span></code></p></td>
-<td><p>print the table of variables with their kind, datatype, unit, shape, producer and
-consumers - the quickest answer to “who writes this?”.</p></td>
+<td><p>print the table of variables with their kind, datatype, unit, shape, initial value
+with its physical reading, producer and consumers - the quickest answer to “who
+writes this?”.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">FILE</span></code></p></td>
 <td><p>print the resolved data dictionary, the contract every backend consumes. This is what
 gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">KIND</span></code></p></td>
-<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, for
-an editor that offers completion inside a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file or for a validator in a
-ci job.</p></td>
+<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
+<code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">units</span></code>, for an editor that offers completion inside a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>
+file or for a validator in a ci job; <code class="docutils literal notranslate"><span class="pre">all</span></code> writes every schema into a directory.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
 <td><p>list every description file the project is built out of, for the dependency list of a
 build system.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code></p></td>
+<td><p>run the language server, speaking the Language Server Protocol on stdin and stdout,
+so an editor reports the checks while a description file is being written; see
+<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
+<td><p>record which project description a build runs DDD on and under which severity policy,
+the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> an editor reads; <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> calls it at configure
+time, so a hand-rolled build is the only caller that needs it directly.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
 <td><p>list every check with its identifier, its default severity and whether it can be

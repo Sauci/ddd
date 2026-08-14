@@ -258,6 +258,13 @@ for a large array is the difference between a few bytes of image and a few kilob
    /** Component local measurement, kept out of the a2l */
    uint16_t ValueD[8];
 
+The value is raw rather than physical because the generated c carries it verbatim, and under
+a linear conversion most physical values are the exact image of no raw count, so a physical
+spelling would either round silently or refuse ordinary values. The reading in the other
+direction is always defined, and the tool states it wherever a person rather than a compiler
+is the audience: the editor hover and the table of ``ddd list`` show the physical value - or
+the enumerator name - beside the raw one.
+
 A **scalar given for an array shaped object initialises every element**, which is what makes a
 table of a hundred identical starting values one character long instead of a hundred. The demo
 uses it for ``CurveB``, whose ``"init": 200`` covers all six points of the axis it lies over:

@@ -3,6 +3,20 @@
   "component": {
     "name": "Pump",
     "description": "Controls the pump, with its speed in fast RAM and its limit in calibration flash",
+    "types": [
+      {
+        "type": "scalar",
+        "name": "Torque_t",
+        "description": "A torque as the pump publishes it: hundredths of a newton metre",
+        "datatype": "uint16",
+        "unit": "Nm",
+        "conversion": { "kind": "linear", "factor": 0.01, "offset": 0.0 }
+      }
+    ],
+    "constants": [
+      { "name": "PRESSURE_CELLS", "value": 8,
+        "description": "cells of the pressure manifold" }
+    ],
     "interface": [
       {
         "scope": "local",
@@ -34,12 +48,23 @@
       {
         "scope": "local",
         "definition": {
+          "name": "PressureTrend",
+          "kind": "measurement",
+          "description": "Recent manifold pressure, averaged into one entry per sample slot",
+          "datatype": "uint16",
+          "unit": "kPa",
+          "conversion": { "kind": "linear", "factor": 0.1, "offset": 0.0 },
+          "dimensions": ["TREND_SAMPLES"],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
           "name": "TorqueLimit",
           "kind": "parameter",
           "description": "Torque above which the pump is derated",
-          "datatype": "uint16",
-          "unit": "Nm",
-          "conversion": { "kind": "linear", "factor": 0.01, "offset": 0.0 },
+          "typename": "Torque_t",
           "init": 250,
           "section": ".calib",
           "volatile": false

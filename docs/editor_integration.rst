@@ -51,16 +51,16 @@ value the file states, and the initial values as a sparkline. Those are the *ini
 values - DDD describes an interface, and what an engineer calibrates lives in the
 calibration tool. A dimension spelled as the name of a
 :doc:`declared constant <file_formats/constants>` hovers as the constant itself - its value
-and its description - because the number is in another file, next to the one statement of
-what is being counted.
+and its description - because the number is declared somewhere else, next to the one
+statement of what is being counted.
 
 **Go to definition and find references.** From anywhere in a declaration - or from an
 ``axis``, ``x_axis``, ``y_axis`` or ``input`` reference - go to definition lands on the
 declaration that *writes* the object, in whichever component that is, and find references
 lists every declaration of it. The same works from a type name to the structure it names and
-back, from a dimension spelled as a constant name to the constants file that declares it
-and back to every shape that spells it, and from an ``includes`` entry to the files it
-matches, wildcards included.
+back, from a dimension spelled as a constant name to the entry that declares it - in a
+constants file, or inside the component that publishes it - and back to every shape that
+spells it, and from an ``includes`` entry to the files it matches, wildcards included.
 
 **Rename.** ``F2`` on a variable renames it in every declaration and in every reference that
 names it, across as many files as that takes. A name c reserves, one that is not a usable

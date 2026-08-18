@@ -259,6 +259,54 @@
           },
           "title": "Interface",
           "type": "array"
+        },
+        "types": {
+          "anyOf": [
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "scalar": "#/$defs/ScalarType",
+                    "struct": "#/$defs/StructType"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/StructType"
+                  },
+                  {
+                    "$ref": "#/$defs/ScalarType"
+                  }
+                ]
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared types this component publishes, each entry exactly as a types file writes it.\n\nDeclaring them here co-locates a library's contract in one file; it does not scope it.\nThe names join the same project wide namespace as the types of the standalone files,\nevery consistency check applies to them unchanged, and any component of the project may\nname them. Types shared between several components, with no single owner to live inside,\nstay in a standalone types file.",
+          "title": "Types"
+        },
+        "constants": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ConstantDeclaration"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared constants this component publishes, each entry exactly as a constants file\nwrites it.\n\nCo-located for the reason ``types`` may be, and no more scoped than they are: the names\njoin the same project wide namespace as the constants of the standalone files, and any\nshape of any component names one where it would state a number. ``units`` and\n``sections`` remain project wide vocabularies and have no place inside a component.",
+          "title": "Constants"
         }
       },
       "required": [
@@ -266,6 +314,38 @@
         "interface"
       ],
       "title": "Component",
+      "type": "object"
+    },
+    "ConstantDeclaration": {
+      "additionalProperties": false,
+      "description": "One named integer constant, declared once and named wherever a shape needs it.",
+      "properties": {
+        "name": {
+          "description": "The name a shape writes where it would state a number: ``PRESSURE_CELLS``.\n\nAn identifier, because the name reaches the generated code as an identifier of its own;\nthe templates receive every declared constant to emit.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.",
+          "minimum": 1,
+          "title": "Value",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "What the constant counts, e.g. ``cells of the pressure manifold``.\n\nThis is where the meaning of a size is written down once, instead of being implied by\nevery object that happens to be dimensioned by it.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "ConstantDeclaration",
       "type": "object"
     },
     "Curve": {
@@ -991,7 +1071,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions; empty for a scalar.\n\nEach an integer of at least 1, or the name of a constant declared in the project's\nconstants file - ``[3, 4]`` and ``[\"PRESSURE_CELLS\", 4]`` are both shapes.",
+          "description": "Array dimensions; empty for a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, in a\nconstants file or in a component - ``[3, 4]`` and ``[\"PRESSURE_CELLS\", 4]`` are both\nshapes.",
           "items": {
             "anyOf": [
               {
@@ -1017,6 +1097,169 @@
       ],
       "title": "Measurement",
       "type": "object"
+    },
+    "Member": {
+      "additionalProperties": false,
+      "description": "One member of a structure, in the order the structure declares it.\n\nOrder is significant: it is the order the c struct is generated in, and therefore the order\nthe compiler lays out.  Reordering members of a released structure moves every address after\nthe change, which is why a comparison against a baseline reports it.",
+      "properties": {
+        "name": {
+          "description": "Name of the member, unique within its structure.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "member": {
+          "$ref": "#/$defs/MemberKind",
+          "description": "Which shape this member has, and with it which other keys the member may carry.\n\n* ``value`` needs ``datatype`` or ``typename`` and may add ``dimensions``,\n* ``bits`` needs ``datatype`` and ``bits``.\n\nA key belonging to the other shape is refused rather than ignored: ``bits`` together with\n``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping\none of the two would put a structure in the generated c that this file does not describe."
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing the member, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "datatype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Datatype"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storage of this member, one of the eleven base datatypes.\n\nExactly one of ``datatype`` and ``typename`` is stated, here exactly as on a declaration."
+        },
+        "typename": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a declared type, stated instead of ``datatype``.\n\nA ``value`` member may name a structure, which nests it, or a scalar type, which fixes what\nits number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no\nroom for a structure, and a scalar type would carry limits the width contradicts.",
+          "title": "Typename"
+        },
+        "dimensions": {
+          "default": [],
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration.",
+          "items": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "bits": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Width of a ``bits`` member, in bits; required on one, refused on the other.\n\nIt has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype\nhas to be an integer, since c allows a bitfield in nothing else.",
+          "title": "Bits"
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit of this member, e.g. ``\"degC\"``.\n\nWritten here, or fixed by a scalar type this member names, and never both.  Which of the\ntwo to reach for is a question of whether the answer is shared: a unit written here says it\nfor this member of this structure, and a ``Temperature_t`` says it for everything that\nnames it, across every component of the project.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/IdentityConversion"
+                },
+                {
+                  "$ref": "#/$defs/LinearConversion"
+                },
+                {
+                  "$ref": "#/$defs/EnumConversion"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits of this member; derived from its storage and conversion if omitted.\n\nFor a ``bits`` member the derivation uses the *width*, not the datatype carrying it: a two\nbit field offered to a calibration tool as ``0 .. 65535`` invites somebody to enter a value\nthe field cannot hold and the software then reads back something else."
+        },
+        "a2l": {
+          "$ref": "#/$defs/A2lObjectOptions",
+          "default": {
+            "export": null,
+            "format": null,
+            "display_identifier": null
+          },
+          "description": "What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."
+        }
+      },
+      "required": [
+        "name",
+        "member"
+      ],
+      "title": "Member",
+      "type": "object"
+    },
+    "MemberKind": {
+      "description": "What shape a structure member has.\n\nStated rather than inferred from which keys are present: a file that omits a key by mistake\nshould be told which member shape it failed to describe, not silently become another one.\nA forgotten ``bits`` would otherwise turn a one bit flag into a full width member and move\nevery offset after it.\n\n* ``value`` - A datatype, scalar or array; the datatype may be a declared type.\n* ``bits`` - An integer datatype and a width in bits: a c bitfield.",
+      "enum": [
+        "value",
+        "bits"
+      ],
+      "enumDescriptions": [
+        "A datatype, scalar or array; the datatype may be a declared type.",
+        "An integer datatype and a width in bits: a c bitfield."
+      ],
+      "title": "MemberKind",
+      "type": "string"
     },
     "Parameter": {
       "additionalProperties": false,
@@ -1167,6 +1410,85 @@
       "title": "Parameter",
       "type": "object"
     },
+    "ScalarType": {
+      "additionalProperties": false,
+      "description": "A name for what a number means, so components agree by naming rather than by copying.\n\nThree components consuming an engine speed each used to write out the datatype, the unit,\nthe scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three\nsay ``Speed_t`` instead, there is nothing left to disagree about - which is checking turned\ninto construction.\n\nIt fixes exactly the four things that make two declarations interchangeable, and nothing\nelse.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:\nthey are properties of one object rather than of the type, and two measurements of the same\ntype may well differ in whether an interrupt writes one of them.",
+      "properties": {
+        "type": {
+          "const": "scalar",
+          "description": "Says this entry names a scalar rather than describing a structure.",
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the type; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, for the reason a structure's name is.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing what the type is, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "datatype": {
+          "$ref": "#/$defs/Datatype",
+          "description": "Storage of the value: one of the base datatypes.\n\nA base datatype rather than another declared type, so that a scalar type cannot be defined\nin terms of a second one.  A chain of names would have to be resolved, could form a cycle,\nand buys nothing a reader of the one entry could not already see."
+        },
+        "unit": {
+          "default": "",
+          "description": "Physical unit of the value, e.g. ``\"rpm\"``.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "conversion": {
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/IdentityConversion"
+            },
+            {
+              "$ref": "#/$defs/LinearConversion"
+            },
+            {
+              "$ref": "#/$defs/EnumConversion"
+            }
+          ],
+          "title": "Conversion"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Physical limits, in the unit above; derived from datatype and conversion if omitted."
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "datatype",
+        "conversion"
+      ],
+      "title": "ScalarType",
+      "type": "object"
+    },
     "Scope": {
       "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
@@ -1181,6 +1503,48 @@
       ],
       "title": "Scope",
       "type": "string"
+    },
+    "StructType": {
+      "additionalProperties": false,
+      "description": "One structured datatype: a name and the members it lays out, in order.",
+      "properties": {
+        "type": {
+          "const": "struct",
+          "description": "Says this entry describes a structure; stated on every entry of a types file.",
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, which would be a type nothing could ever refer to:\nwhere a name is written, a base datatype wins the union.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing the structure, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "members": {
+          "description": "The members, in the order they are laid out.",
+          "items": {
+            "$ref": "#/$defs/Member"
+          },
+          "minItems": 1,
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "members"
+      ],
+      "title": "StructType",
+      "type": "object"
     },
     "ValueBlock": {
       "additionalProperties": false,
@@ -1323,7 +1687,7 @@
           "type": "string"
         },
         "dimensions": {
-          "description": "Array dimensions in c declaration order; a value block is never a scalar.\n\nEach an integer of at least 1, or the name of a constant declared in the project's\nconstants file, mixed freely.",
+          "description": "Array dimensions in c declaration order; a value block is never a scalar.\n\nEach an integer of at least 1, or the name of a constant the project declares, mixed\nfreely.",
           "items": {
             "anyOf": [
               {

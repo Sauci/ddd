@@ -28,8 +28,8 @@ type Shape = tuple[int, ...]
 Dimension = Annotated[int, Field(strict=True, ge=1)] | Identifier
 """One array dimension as a definition writes it: a number, or the name of a constant.
 
-An integer of at least 1, or the name of a constant the project declares in a constants
-file.  Strict on the integer side so that the two spellings stay two: without it, a quoted
+An integer of at least 1, or the name of a constant the project declares.  Strict on the
+integer side so that the two spellings stay two: without it, a quoted
 ``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,
 and the file would say something its author did not write.
 """
@@ -440,8 +440,9 @@ class Measurement(DataObject):
     dimensions: tuple[Dimension, ...] = ()
     """Array dimensions; empty for a scalar.
 
-    Each an integer of at least 1, or the name of a constant declared in the project's
-    constants file - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes.
+    Each an integer of at least 1, or the name of a constant the project declares, in a
+    constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both
+    shapes.
     """
 
     @property
@@ -462,8 +463,8 @@ class ValueBlock(DataObject):
     dimensions: Annotated[tuple[Dimension, ...], Field(min_length=1)]
     """Array dimensions in c declaration order; a value block is never a scalar.
 
-    Each an integer of at least 1, or the name of a constant declared in the project's
-    constants file, mixed freely.
+    Each an integer of at least 1, or the name of a constant the project declares, mixed
+    freely.
     """
 
     @property

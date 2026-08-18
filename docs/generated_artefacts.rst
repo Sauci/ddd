@@ -604,6 +604,7 @@ where a downstream tool finds the name and the value it stands for:
 
        /begin MOD_PAR "named constants of PumpDevice"
          SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+         SYSTEM_CONSTANT "TREND_SAMPLES" "16"
        /end MOD_PAR
 
 What is emitted for what

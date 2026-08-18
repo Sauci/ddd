@@ -140,10 +140,15 @@ class LoadedType:
 
     path: Path
     index: int
-    """Position in the ``types`` list of its file, which is what the location points at."""
+    """Position in the list of its file, which is what the location points at."""
 
     declared: AnyType
     """The entry itself: a structure or a scalar type."""
+
+    container: str = "types"
+    """Pointer of the list holding the entry: ``types`` in a types file, ``component.types``
+    for a type a component declares inline. Only the location differs; a declared type is
+    the same thing in either home."""
 
     @property
     def name(self) -> str:
@@ -155,7 +160,7 @@ class LoadedType:
         return self.declared if isinstance(self.declared, StructType) else None
 
     def location(self, suffix: str = "") -> Location:
-        pointer = f"types[{self.index}]"
+        pointer = f"{self.container}[{self.index}]"
         if suffix:
             pointer = f"{pointer}.{suffix}"
         return Location(self.path, pointer)
@@ -211,10 +216,13 @@ class LoadedConstant:
 
     path: Path
     index: int
-    """Position in the ``constants`` list of its file, which is what the location points
-    at."""
+    """Position in the list of its file, which is what the location points at."""
 
     declared: ConstantDeclaration
+
+    container: str = "constants"
+    """Pointer of the list holding the entry: ``constants`` in a constants file,
+    ``component.constants`` for a constant a component declares inline."""
 
     @property
     def name(self) -> str:
@@ -225,7 +233,7 @@ class LoadedConstant:
         return self.declared.value
 
     def location(self, suffix: str = "") -> Location:
-        pointer = f"constants[{self.index}]"
+        pointer = f"{self.container}[{self.index}]"
         if suffix:
             pointer = f"{pointer}.{suffix}"
         return Location(self.path, pointer)
@@ -241,11 +249,14 @@ class Workspace:
     components: tuple[LoadedComponent, ...]
     projects: tuple[LoadedProject, ...]
     types: tuple[LoadedType, ...] = ()
-    """The structured datatypes the project declares, sorted by name.
+    """The declared types of the project, from its types files and its components alike,
+    sorted by name.
 
-    Sorted rather than in include order so that a project produces the same output whichever
-    way its ``includes`` happen to expand; the order of *members* inside a structure is the
-    author's and is preserved, because that one decides the layout.
+    One registry whichever home declared an entry: a type a component declares inline is the
+    same project wide name a types file would have given it. Sorted rather than in include
+    order so that a project produces the same output whichever way its ``includes`` happen
+    to expand; the order of *members* inside a structure is the author's and is preserved,
+    because that one decides the layout.
     """
 
     units: tuple[LoadedUnit, ...] = ()
@@ -264,9 +275,10 @@ class Workspace:
     """
 
     constants: tuple[LoadedConstant, ...] = ()
-    """The named constants the project declares, sorted by name.
+    """The named constants the project declares, from its constants files and its
+    components alike, sorted by name.
 
-    A constant is a reference the way a section is: a shape naming one that no file declares
+    A constant is a reference the way a section is: a shape naming one that nothing declares
     is ``unknown-constant``, whether or not any constants file exists, because a name
     without a value is a dimension nothing can resolve.
     """
@@ -382,12 +394,20 @@ class _Loader:
             component = self._load_component(root, data, parents=())
             if component is None:
                 return None
+            # The types and constants the component declares inline resolve in a run on the
+            # component alone, which is what makes a self-contained library file listable
+            # and checkable by itself. Standalone vocabularies cannot reach such a run - only
+            # a project lists them - so those registries are left at their empty defaults.
             return Workspace(
                 root=root,
                 name=component.name,
                 description=component.component.description,
                 components=tuple(self._components),
                 projects=(),
+                types=tuple(sorted(self._types_by_name.values(), key=lambda entry: entry.name)),
+                constants=tuple(
+                    sorted(self._constants_by_name.values(), key=lambda entry: entry.name)
+                ),
                 read_paths=tuple(sorted(self._read_paths)),
             )
 
@@ -499,7 +519,37 @@ class _Loader:
             return None
         self._components_by_name[loaded.name] = loaded
         self._components.append(loaded)
+        self._register_embedded(loaded)
         return loaded
+
+    def _register_embedded(self, loaded: LoadedComponent) -> None:
+        """Register the types and constants a component declares inline.
+
+        Into the same registries the standalone files feed, at the moment the component
+        loads, so that declaring a name twice is refused with a note at whichever home
+        declared it first - embedded against embedded, embedded against standalone, and the
+        other way around, all through the one duplicate rule. Only the location differs:
+        ``component.types[0]`` instead of ``types[0]``.
+        """
+        component = loaded.component
+        for index, declared_type in enumerate(component.types or ()):
+            self._register(
+                LoadedType(loaded.path, index, declared_type, container="component.types"),
+                key=lambda entry: entry.name,
+                location=lambda entry: entry.location(),
+                registry=self._types_by_name,
+                noun="type",
+            )
+        for index, declared_constant in enumerate(component.constants or ()):
+            self._register(
+                LoadedConstant(
+                    loaded.path, index, declared_constant, container="component.constants"
+                ),
+                key=lambda entry: entry.name,
+                location=lambda entry: entry.location(),
+                registry=self._constants_by_name,
+                noun="constant",
+            )
 
     def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT](
         self,
@@ -528,17 +578,39 @@ class _Loader:
             return
 
         for index, declared in enumerate(entries(model)):
-            loaded = wrap(path, index, declared)
-            previous = registry.get(key(loaded))
-            if previous is not None:
-                self._bag.add(
-                    f"duplicate-{noun}",
-                    f"{noun} '{key(loaded)}' is already declared",
-                    location(loaded),
-                    notes=[("first declared here", location(previous))],
-                )
-                continue
-            registry[key(loaded)] = loaded
+            self._register(
+                wrap(path, index, declared),
+                key=key,
+                location=location,
+                registry=registry,
+                noun=noun,
+            )
+
+    def _register[LoadedT](
+        self,
+        loaded: LoadedT,
+        *,
+        key: Callable[[LoadedT], str],
+        location: Callable[[LoadedT], Location],
+        registry: dict[str, LoadedT],
+        noun: str,
+    ) -> None:
+        """Register one declared entry under its key, or refuse the second declaration.
+
+        The registries are shared by the standalone files and the entries a component
+        declares inline, so the ``duplicate-<noun>`` rule - refused with a note at the
+        first - holds across the homes without either knowing about the other.
+        """
+        previous = registry.get(key(loaded))
+        if previous is not None:
+            self._bag.add(
+                f"duplicate-{noun}",
+                f"{noun} '{key(loaded)}' is already declared",
+                location(loaded),
+                notes=[("first declared here", location(previous))],
+            )
+            return
+        registry[key(loaded)] = loaded
 
     def _load_types(self, path: Path, data: dict[str, Any]) -> None:
         """Read a type description and register what it declares.

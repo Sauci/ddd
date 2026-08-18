@@ -52,8 +52,10 @@ is to whoever writes it, which is exactly the jump a reference key makes.
 _DECLARATION: Final = "component.interface["
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
-_TYPES: Final = "types["
-_CONSTANTS: Final = "constants["
+_TYPE_ENTRIES: Final = re.compile(r"^(?:component\.)?types\[")
+"""Inside a type entry, in either of its homes: a types file, or a component's own list."""
+_CONSTANT_ENTRIES: Final = re.compile(r"^(?:component\.)?constants\[")
+"""Inside a constant entry, in a constants file or in a component's own list."""
 _INCLUDES: Final = "project.includes["
 
 _DIMENSION_KEY: Final = re.compile(r"^(?:dimensions\[\d+\]|size)$")
@@ -177,7 +179,8 @@ def workspaces(
     lying above the document that turns out to include it knows nearly as much - and finding it
     is what lets an editor answer at all in a tree nobody has configured a build for. Only when
     neither exists is the file read on its own, which is a real answer but a thin one: a
-    component alone has no types, no producers for its inputs and no readers for its outputs.
+    component alone has no producers for its inputs, no readers for its outputs, and no types
+    or constants beyond the ones it declares inline.
     """
     found = []
     for info in builds:
@@ -206,8 +209,8 @@ def containing_projects(document: Path, root: Path | None) -> list[Path]:
     A search rather than a guess: every candidate is loaded and asked whether this file is one
     of its sources, so one that does not include the document is discarded however close it
     sits. What it buys is the case an editor meets constantly - a description opened in a tree
-    where no build has been configured - in which the alternative is a component with no types,
-    whose structured declarations resolve to nothing at all.
+    where no build has been configured - in which the alternative is a component cut off from
+    the shared vocabularies, whose declarations of shared types resolve to nothing at all.
 
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
@@ -264,7 +267,7 @@ def constant_at(document: Document, pointer: str) -> str | None:
     value = document.value_at(pointer)
     if not isinstance(value, str):
         return None
-    if _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS):
+    if _DIMENSION_KEY.match(_key(pointer)) or _CONSTANT_ENTRIES.match(pointer):
         return value
     return None
 
@@ -317,9 +320,9 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
         # the type is what is under the pointer. A base datatype names no file, so it falls
         # through to the declaration jump, which is what somebody resting there expects.
         found = built.types.get(value)
-        if found is not None and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
+        if found is not None and (_TYPE_ENTRIES.match(pointer) or _key(pointer) == "typename"):
             return [found]
-        if pointer.startswith(_TYPES):
+        if _TYPE_ENTRIES.match(pointer):
             return []
     name = subject_at(document, pointer)
     if name is not None:
@@ -339,11 +342,11 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
         found = built.constants.get(named)
         return [found, *built.constant_uses.get(named, ())] if found is not None else []
     value = document.value_at(pointer)
-    if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
+    if isinstance(value, str) and (_TYPE_ENTRIES.match(pointer) or _key(pointer) == "typename"):
         declared = built.types.get(value)
         if declared is not None:
             return [declared, *built.type_uses.get(value, ())]
-        if pointer.startswith(_TYPES):
+        if _TYPE_ENTRIES.match(pointer):
             return []
     name = subject_at(document, pointer)
     if name is not None:

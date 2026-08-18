@@ -277,7 +277,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares in a constants file, exactly as on a declaration.",
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration.",
           "items": {
             "anyOf": [
               {

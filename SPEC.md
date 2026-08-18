@@ -136,7 +136,7 @@ run.
 | term | meaning |
 | --- | --- |
 | **project** | a named set of components and/or sub-projects |
-| **component** | a software unit with an explicitly declared data interface |
+| **component** | a software unit with an explicitly declared data interface; it **may** also declare the types and constants it publishes ([section 3.2](#32-software-component-description)) |
 | **image** | one linked binary; the components it actually links decide which objects it carries, and one component can be linked into several images ([section 3.6](#36-build-record)) |
 | **declaration** | one entry of a component interface: a scope, an optional condition and a definition |
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
@@ -250,6 +250,18 @@ The top level key `"component"` is required, and it contains the following eleme
   data object. The key is required with no default, so that a component with nothing to
   declare states an empty list rather than omitting a key that might merely have been
   forgotten. The same reasoning makes `volatile` and `kind` required on a definition.
+- `"types"` (optional): declared types the component publishes, a non-empty list whose
+  entries are exactly those of a types file ([section 3.7](#37-type-description)).
+- `"constants"` (optional): declared constants the component publishes, a non-empty list
+  whose entries are exactly those of a constants file
+  ([section 3.9](#39-constant-vocabulary)).
+
+Declaring types and constants inside the component co-locates a library's contract in one
+file; it does not scope it. The declared names live in the same project wide namespace as
+those of the standalone files, every check of [section 4](#4-consistency-checks) applies
+unchanged, and any component **may** name them. Types and constants shared between several
+components, with no single owner to live inside, stay in standalone files. `units` and
+`sections` are project wide vocabularies and have no place inside a component.
 
 Each declaration contains:
 
@@ -649,7 +661,10 @@ record it does not understand is one it declines rather than misreads.
 ### 3.7 Type description
 
 A `types` file declares the types a project names, so that components agree by naming
-rather than by each copying out the same answer. It is listed in the `includes` of a
+rather than by each copying out the same answer. A component **may** instead declare the
+types it publishes inside its own description, with entries of exactly this form
+([section 3.2](#32-software-component-description)); the standalone file is the home of
+types shared between components. It is listed in the `includes` of a
 project ([section 3.1](#31-project-description)) like a component file, and only there:
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
 project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
@@ -763,7 +778,10 @@ rather than a spelling of one.
 ### 3.9 Constant vocabulary
 
 A `constants` file declares named integer constants, so that a size lives in one place and
-is shared by name. An array dimension is commonly a named constant of the C project,
+is shared by name. A component **may** instead declare the constants it publishes inside
+its own description, with entries of exactly this form
+([section 3.2](#32-software-component-description)); the standalone file is the home of
+constants shared between components. An array dimension is commonly a named constant of the C project,
 stated once and used by every loop that walks the array; a bare number in a description
 restates that constant and drifts from it silently. The file is an includable vocabulary
 like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`

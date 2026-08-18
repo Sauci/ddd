@@ -1,9 +1,11 @@
 """Contract for the type description file.
 
 A ``types`` file declares the types a project names: structures, and scalars that fix what a
-number means.  It is a file of its own rather than a section of a component, because a type is
-usually shared: the point of declaring ``Engine_t`` once is that two components can agree on it
-without either owning it.
+number means.  It is the home of the shared ones, because a type with no single owner has no
+component to live inside: the point of declaring ``Engine_t`` once is that two components can
+agree on it without either owning it.  A component may instead declare the types it publishes
+in its own description, with entries of exactly this form; either home puts the name in the
+same project wide namespace.
 
 **Two keys name the storage, everywhere.**  ``datatype`` is one of the base datatypes and
 nothing else; ``typename`` is the name of a type declared here.  Exactly one of the two is
@@ -130,7 +132,7 @@ class Member(BaseModel):
 
     ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.
     Each dimension is an integer of at least 1, or the name of a constant the project
-    declares in a constants file, exactly as on a declaration.
+    declares, exactly as on a declaration.
     """
 
     bits: PositiveInt | None = None
@@ -356,6 +358,22 @@ shape it failed to describe, not silently become another one.
 """
 
 
+def check_distinct_type_names(entries: tuple[StructType | ScalarType, ...]) -> None:
+    """Two entries of one list must not share a name.
+
+    One rule for the two places a list of type entries can be written - a types file, and the
+    ``types`` a component declares inline - so the second spelling of a name is refused where
+    it is written, in either home. The same name declared by two *lists* is not this rule's
+    business: that is ``duplicate-type``, reported with a note at the first declaration.
+    """
+    seen: set[str] = set()
+    for entry in entries:
+        if entry.name in seen:
+            msg = f"type '{entry.name}' is already declared in this file"
+            raise ValueError(msg)
+        seen.add(entry.name)
+
+
 class TypesFile(FileRoot):
     """Root object of a ``*.ddd.json`` type description.
 
@@ -371,12 +389,7 @@ class TypesFile(FileRoot):
 
     @model_validator(mode="after")
     def _type_names_are_distinct(self) -> TypesFile:
-        seen: set[str] = set()
-        for entry in self.types:
-            if entry.name in seen:
-                msg = f"type '{entry.name}' is already declared in this file"
-                raise ValueError(msg)
-            seen.add(entry.name)
+        check_distinct_type_names(self.types)
         return self
 
 

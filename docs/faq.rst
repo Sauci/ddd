@@ -271,7 +271,10 @@ about. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits`
 ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable, because two
 measurements of one type may well differ in whether an interrupt writes one of them. Naming
 a type and then restating what it fixes is an error rather than an override, so "where is
-this unit written down" keeps one answer.
+this unit written down" keeps one answer. A type that belongs to one component's published
+contract can also be declared inside that
+:doc:`component's own description <file_formats/component>`, with the same entry and the
+same project wide name; the standalone file is the home of the shared ones.
 
 How do I keep everybody spelling units the same way?
 ----------------------------------------------------

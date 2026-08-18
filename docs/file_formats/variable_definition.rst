@@ -461,7 +461,7 @@ measurement
 A measurement is a value the software computes and writes, declared with
 ``"kind": "measurement"`` like every other kind. One key is its own: ``dimensions``, a list of
 array dimensions that is empty for a scalar - each an integer of at least 1, or the name of a
-constant the project declares in its :doc:`constant vocabulary <constants>`, mixed freely, so
+:doc:`declared constant <constants>` of the project, mixed freely, so
 ``[4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes. The ``size`` of an axis follows the
 same rule. It is also the one kind that is not generated
 ``const``, so the ``volatile`` every definition states is the whole of its qualifier -

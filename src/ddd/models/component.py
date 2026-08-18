@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ddd.models.common import FileRoot, Identifier
+from ddd.models.constants import ConstantDeclaration
 from ddd.models.objects import AnyDataObject
+from ddd.models.types import AnyType, check_distinct_type_names
 
 
 class Scope(StrEnum):
@@ -97,6 +100,32 @@ class Component(BaseModel):
     empty list rather than by a key that might merely have been forgotten - the same
     reasoning that makes ``volatile`` and ``kind`` required on a definition.
     """
+
+    types: Annotated[tuple[AnyType, ...], Field(min_length=1)] | None = None
+    """Declared types this component publishes, each entry exactly as a types file writes it.
+
+    Declaring them here co-locates a library's contract in one file; it does not scope it.
+    The names join the same project wide namespace as the types of the standalone files,
+    every consistency check applies to them unchanged, and any component of the project may
+    name them. Types shared between several components, with no single owner to live inside,
+    stay in a standalone types file.
+    """
+
+    constants: Annotated[tuple[ConstantDeclaration, ...], Field(min_length=1)] | None = None
+    """Declared constants this component publishes, each entry exactly as a constants file
+    writes it.
+
+    Co-located for the reason ``types`` may be, and no more scoped than they are: the names
+    join the same project wide namespace as the constants of the standalone files, and any
+    shape of any component names one where it would state a number. ``units`` and
+    ``sections`` remain project wide vocabularies and have no place inside a component.
+    """
+
+    @model_validator(mode="after")
+    def _type_names_are_distinct(self) -> Component:
+        if self.types is not None:
+            check_distinct_type_names(self.types)
+        return self
 
 
 class ComponentFile(FileRoot):

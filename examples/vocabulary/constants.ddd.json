@@ -1,7 +1,7 @@
 {
   "$schema": "../../schemas/ddd_constants.schema.json",
   "constants": [
-    { "name": "PRESSURE_CELLS", "value": 8,
-      "description": "cells of the pressure manifold" }
+    { "name": "TREND_SAMPLES", "value": 16,
+      "description": "sample slots of a pressure trend buffer, a device wide size no single component owns" }
   ]
 }

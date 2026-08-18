@@ -3,8 +3,12 @@ Type description
 
 A ``types`` file declares the types a project names. There are two of them: a **structure**,
 which lays several values out in one c object, and a **scalar type**, which fixes what one
-number means and says nothing about where it is stored. It is a file of its own rather than a
-section of a component, because a type is usually shared: the point of declaring
+number means and says nothing about where it is stored. A declared type has two possible
+homes, and the entries are the same in both: the standalone file this page describes, and
+the ``types`` list a :doc:`component <component>` may carry for the types it publishes.
+The choice between them is ownership, not visibility - either home puts the name in the
+same project wide namespace. The standalone file is the home of shared types, because a
+type with no single owner has no component to live inside: the point of declaring
 ``Temperature_t`` once is that two components can agree on it without either of them owning it.
 
 .. code-block:: json

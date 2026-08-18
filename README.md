@@ -268,6 +268,13 @@ Include cycles are reported instead of hanging.
 | `condition` | c preprocessor expression wrapping the generated declaration; optional |
 | `definition` | the variable definition object below |
 
+A component may also declare the types and constants it publishes inside its own
+description, in two optional keys - `types` and `constants` - whose entries are exactly
+those of the standalone files below.  That co-locates a library's contract in one file
+without scoping it: the names join the same project wide namespace, every check applies
+unchanged, and any component may name them
+([documentation](https://sauci.github.io/ddd/file_formats/component.html)).
+
 ### Variable definition object
 
 ```json
@@ -419,10 +426,16 @@ project's `includes` like a component and each with its own page in the document
   `SYSTEM_CONSTANT`
   ([documentation](https://sauci.github.io/ddd/file_formats/constants.html)).
 
+Types and constants have a second home: the component that publishes them may declare them
+inside its own description, with entries exactly as the standalone files write them, and the
+standalone files remain the home of entries shared between components.  Units and sections
+are project wide vocabularies and stay in files of their own.
+
 [examples/structures](examples/structures) is a ready to run project declaring and consuming
 structured types, and [examples/vocabulary](examples/vocabulary) is one that pins its unit
-spellings, places its objects into declared memory sections and dimensions an array by a
-declared constant; both check clean.
+spellings, places its objects into declared memory sections and dimensions its arrays by
+declared constants - one embedded in the pump component, one shared in a standalone file;
+both projects check clean.
 
 ## Consistency checks
 

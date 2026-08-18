@@ -193,10 +193,20 @@
           "type": "string"
         },
         "size": {
-          "description": "Number of axis points.",
-          "exclusiveMinimum": 0,
-          "title": "Size",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ],
+          "description": "Number of axis points: an integer of at least 1, or the name of a declared\nconstant.",
+          "title": "Size"
         },
         "input": {
           "anyOf": [
@@ -981,10 +991,20 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions; empty for a scalar.",
+          "description": "Array dimensions; empty for a scalar.\n\nEach an integer of at least 1, or the name of a constant declared in the project's\nconstants file - ``[3, 4]`` and ``[\"PRESSURE_CELLS\", 4]`` are both shapes.",
           "items": {
-            "exclusiveMinimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
           },
           "title": "Dimensions",
           "type": "array"
@@ -1303,10 +1323,20 @@
           "type": "string"
         },
         "dimensions": {
-          "description": "Array dimensions in c declaration order; a value block is never a scalar.",
+          "description": "Array dimensions in c declaration order; a value block is never a scalar.\n\nEach an integer of at least 1, or the name of a constant declared in the project's\nconstants file, mixed freely.",
           "items": {
-            "exclusiveMinimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
           },
           "minItems": 1,
           "title": "Dimensions",

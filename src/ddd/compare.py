@@ -93,7 +93,15 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
         lambda o: conversion_identity(o.conversion),
         lambda o: o.conversion.describe(),
     ),
-    ComparedField("shape", lambda o: o.shape, lambda o: format_shape(o.shape) or "scalar"),
+    # A dimension compares as its (spelling, value) pair: a name and its value are different
+    # spellings of one size, and the spelling is what the generated code carries, so a
+    # dimension that changes either half is a changed interface. A baseline dumped before
+    # format 4 recorded no spellings; its dimensions read as spelled by their numbers.
+    ComparedField(
+        "shape",
+        lambda o: o.written_shape,
+        lambda o: format_shape(o.spelled_shape) or "scalar",
+    ),
     ComparedField("references", lambda o: o.references, _describe_references),
     ComparedField("local", lambda o: o.local, lambda o: str(o.local).lower()),
 )

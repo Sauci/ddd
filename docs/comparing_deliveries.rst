@@ -65,6 +65,7 @@ and the conversion), the owning component and the list of components that read i
        "max": 100
      },
      "shape": [],
+     "dimensions": [],
      "init": null,
      "volatile": false,
      "condition": null,
@@ -185,7 +186,11 @@ them together with everything else.
 kind, datatype, unit, conversion, shape, the axes an object refers to, and whether it is
 component local - are the properties a consumer compiles against and calibrates against. Any
 one of them changing makes the consumer wrong in the same way, and the message names which
-ones differ. ``changed-storage`` covers the three properties that change how an object behaves
+ones differ. A dimension compares as its spelling and its value: a name from the
+:doc:`constant vocabulary <file_formats/constants>` and the number it stands for are
+different spellings of one size, and the spelling is what the generated code carries, so
+respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
+stands. ``changed-storage`` covers the three properties that change how an object behaves
 rather than what it means, the initial value, ``volatile`` and the memory ``section``;
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.

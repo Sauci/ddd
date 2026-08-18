@@ -93,6 +93,22 @@ def resolve(
     return None
 
 
+def describe_constant(dictionary: DataDictionary, name: str) -> str | None:
+    """The markdown for one declared constant, or nothing when nothing declares it.
+
+    The value is the whole point of hovering the name: the file under the cursor spells
+    ``"PRESSURE_CELLS"`` and the number lives in another file, next to the one description
+    of what is being counted.
+    """
+    entry = next((constant for constant in dictionary.constants if constant.name == name), None)
+    if entry is None:
+        return None
+    lines = [f"**{entry.name}** = {entry.value} — declared constant"]
+    if entry.description:
+        lines += ["", entry.description]
+    return "\n".join(lines)
+
+
 def describe(dictionary: DataDictionary, name: str) -> str | None:
     """The markdown an editor shows for one data object, or nothing if it has none."""
     instance = next((entry for entry in dictionary.instances if entry.name == name), None)
@@ -125,7 +141,7 @@ def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> s
     lines += [_ownership(entry), ""]
     facts = [("type", f"`{entry.type}`")]
     if entry.shape:
-        facts.append(("shape", f"`{format_shape(tuple(entry.shape))}`"))
+        facts.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
     if entry.condition:
         facts.append(("condition", f"`{entry.condition}`"))
     facts.append(("volatile", "yes" if entry.volatile else "no"))
@@ -152,7 +168,7 @@ def _member_storage(leaf: ResolvedLeaf) -> str:
     if leaf.bits is not None:
         return f"{leaf.datatype.value}:{leaf.bits}"
     return (
-        f"{leaf.datatype.value}{format_shape(tuple(leaf.shape))}"
+        f"{leaf.datatype.value}{format_shape(leaf.spelled_shape)}"
         if leaf.shape
         else (leaf.datatype.value)
     )
@@ -181,7 +197,8 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
     rendered.append(("limits", limits))
     rendered.append(("conversion", f"`{entry.conversion.describe()}`"))
     if entry.shape:
-        rendered.append(("shape", f"`{format_shape(tuple(entry.shape))}`"))
+        # Spelled as the project writes it: a constant-dimensioned array names its constant.
+        rendered.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
     for key in _AXIS_KEYS:
         target = entry.references.get(key)
         if target is not None:

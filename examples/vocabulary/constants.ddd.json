@@ -1,0 +1,7 @@
+{
+  "$schema": "../../schemas/ddd_constants.schema.json",
+  "constants": [
+    { "name": "PRESSURE_CELLS", "value": 8,
+      "description": "cells of the pressure manifold" }
+  ]
+}

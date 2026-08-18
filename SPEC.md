@@ -25,6 +25,7 @@
     - [3.6 Build record](#36-build-record)
     - [3.7 Type description](#37-type-description)
     - [3.8 Unit vocabulary](#38-unit-vocabulary)
+    - [3.9 Constant vocabulary](#39-constant-vocabulary)
   - [4 Consistency checks](#4-consistency-checks)
     - [4.1 Comparing two deliveries](#41-comparing-two-deliveries)
   - [5 Generated artefacts](#5-generated-artefacts)
@@ -146,6 +147,7 @@ run.
 | **producer** | the component that owns a data object; its declaration is the authoritative one |
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
 | **declared type** | a scalar or structure declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where storage is stated |
+| **constant** | a named integer declared by a constants file ([section 3.9](#39-constant-vocabulary)); a shape names it where it would state a number |
 | **access path** | the C expression that reads a member of a structured object, for example `Inlet.cell[2].raw`; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
 | **check** | one consistency rule, with a stable identifier and a default severity ([section 4](#4-consistency-checks)) |
@@ -175,8 +177,9 @@ that it is recognisable as a DDD description in a project that contains JSON for
 purposes. The top level key of a file
 decides what the file is: `project` ([section 3.1](#31-project-description)),
 `component` ([section 3.2](#32-software-component-description)),
-`types` ([section 3.7](#37-type-description)), `units` ([section 3.8](#38-unit-vocabulary))
-or `sections` ([section 3.5](#35-memory-placement)); only the first two can be the root of
+`types` ([section 3.7](#37-type-description)), `units` ([section 3.8](#38-unit-vocabulary)),
+`sections` ([section 3.5](#35-memory-placement)) or
+`constants` ([section 3.9](#39-constant-vocabulary)); only the first two can be the root of
 a run. A file stating none of these keys, or several at once, is refused (`file-kind`).
 JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
 and parsers generally resolve the duplication silently in favour of the last spelling, so
@@ -189,14 +192,15 @@ parser accepts, is refused the same way (`json-syntax`). Unknown keys are reject
 file to its schema and thereby turns the published contract into completion, hover
 documentation and validation while typing. The formal contract is published by the tool
 itself as a JSON schema (`ddd schema`), in one file per format, covering project,
-component, types, units, sections and the data dictionary, and every authored field of it
+component, types, units, sections, constants and the data dictionary, and every authored
+field of it
 **shall** carry its documentation. The binding is per file rather than per directory
 because the kind of a description is stated in its content, not in its name.
 
 ### 3.1 Project description
 
-Contains a list of components, types files, units files, sections files and/or other
-(sub-)projects.
+Contains a list of components, types files, units files, sections files, constants files
+and/or other (sub-)projects.
 
 ```json
 {
@@ -211,7 +215,8 @@ Contains a list of components, types files, units files, sections files and/or o
 - `"name"` (required): the C identifier of the project, also used as the A2L project and
   module name.
 - `"description"` (optional): free text.
-- `"includes"` (optional): paths to component, types, units, sections or sub-project files,
+- `"includes"` (optional): paths to component, types, units, sections, constants or
+  sub-project files,
   relative to this file; an absolute path is taken as written. The kind of each included
   file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
@@ -341,9 +346,12 @@ Kind specific attributes:
 | `curve` | `axis` (required) | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
 | `map` | `x_axis`, `y_axis` (both required) | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
-- `dimensions` is a non-empty list of array dimensions, each at least 1 (`schema`), for
-  example `[3, 4]` for `x[3][4]`; a
-  measurement without it is a scalar. In the A2L the same object is described by a
+- `dimensions` is a non-empty list of array dimensions, each an integer of at least 1
+  (`schema`) or the name of a declared constant
+  ([section 3.9](#39-constant-vocabulary)), for
+  example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
+  rule, and a
+  measurement without `dimensions` is a scalar. In the A2L the same object is described by a
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
   ones to the three entries version 1.6.1 expects.
@@ -594,10 +602,12 @@ as the rest of the house style is ([section 5.1](#51-c-code)): DDD resolves the 
 per object, the dictionary records it, and the templates receive both the name on every
 placed object and the objects grouped per section, ordered strictest alignment first with
 names breaking ties, so that data of one section packs without padding. The example
-templates spell the GCC attribute. Describing the layout in the A2L with `MOD_PAR` /
-`MEMORY_SEGMENT` is *planned*: a segment's address and size exist only after linking, so
+templates spell the GCC attribute. Describing the layout in the A2L with `MEMORY_SEGMENT`
+is *planned*: a segment's address and size exist only after linking, so
 they **shall** arrive with the address information rather than being restated in the
-vocabulary, because the linker script already owns them and a copy would drift.
+vocabulary, because the linker script already owns them and a copy would drift. The
+`MOD_PAR` block that will carry them already exists for the constant vocabulary
+([section 5.2](#52-a2l)).
 
 ### 3.6 Build record
 
@@ -747,6 +757,52 @@ a scalar type, is checked where it is written (`unknown-unit`), with the nearest
 spelling suggested. The empty unit is always allowed: a dimensionless value states no unit
 rather than a spelling of one.
 
+### 3.9 Constant vocabulary
+
+A `constants` file declares named integer constants, so that a size lives in one place and
+is shared by name. An array dimension is commonly a named constant of the C project,
+stated once and used by every loop that walks the array; a bare number in a description
+restates that constant and drifts from it silently. The file is an includable vocabulary
+like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`
+of a project ([section 3.1](#31-project-description)) and only there, and handed to the
+tool as the root of a run it is refused, with a hint at the include that carries it. The
+file declares at least one constant (`schema`).
+
+```json
+{
+  "constants": [
+    { "name": "PRESSURE_CELLS", "value": 8, "description": "cells of the pressure manifold" },
+    { "name": "AXIS_POINTS", "value": 16 }
+  ]
+}
+```
+
+- `"name"` (required): a C identifier. The name reaches the generated C, so the length cap
+  of [section 3.3](#33-data-object-definition), `reserved-identifier` and `name-collision`
+  apply to it. The same name declared twice, by one file or by two, is
+  `duplicate-constant`.
+- `"value"` (required): an integer of at least 1, written as a number. The value is a
+  literal only: an expression would put a parser and an evaluation order into a
+  description format, and a constant cannot name another constant, for the reason a scalar
+  type cannot be declared in terms of a second one
+  ([section 3.7](#37-type-description)): what cannot be written cannot cycle.
+- `"description"` (optional): free text.
+
+A shape then names a constant where it would state a number: an entry of `dimensions`, or
+the `size` of an axis, is either an integer or the name of a declared constant
+([section 3.3](#33-data-object-definition)), and a list mixes the two freely. Naming a
+constant that no file of the project declares is `unknown-constant`, with the nearest name
+suggested. A name and its value are different spellings of one size: declarations of one
+object **must** agree on the spelling (`definition-mismatch`), exactly as conversions
+compare as written ([section 3.4](#34-conversions)), because the spelling is what reaches
+every consumer's header. In a delivery comparison a dimension likewise compares as its
+spelling and its value ([section 4.1](#41-comparing-two-deliveries)).
+
+The generated C renders a constant-dimensioned object by the constant's name, and the
+templates receive the declared constants to emit ([section 5.1](#51-c-code)); the A2L
+states one `SYSTEM_CONSTANT` per declared constant and resolved numbers in every record
+([section 5.2](#52-a2l)).
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -762,8 +818,9 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Six checks need every component of a project to mean anything: `unknown-type`,
-`unknown-unit`, `unknown-section`, `missing-producer`, `unknown-reference` and
+Seven checks need every component of a project to mean anything: `unknown-type`,
+`unknown-unit`, `unknown-section`, `unknown-constant`, `missing-producer`,
+`unknown-reference` and
 `unused-output`. Exactly these are the checks the language server holds back when it checks
 a file belonging to no project ([section 7.2](#72-editor-integration)).
 
@@ -801,6 +858,8 @@ Errors:
 - `duplicate-unit`: two files declare the same unit ([section 3.8](#38-unit-vocabulary)).
 - `duplicate-section`: two files declare the same memory section
   ([section 3.5](#35-memory-placement)).
+- `duplicate-constant`: two files declare the same constant name
+  ([section 3.9](#39-constant-vocabulary)).
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit, or structures
   nest each other so that neither has a size.
@@ -813,6 +872,8 @@ Errors:
   nothing about.
 - `section-access`: a measurement, which the software writes, is placed in a `read-only`
   section.
+- `unknown-constant`: a shape names a constant that no file of the project declares
+  ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
 - `enum-conflict`: one enum name is used with different enumerators. The ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do
   not.
@@ -827,7 +888,8 @@ Errors:
 - `name-collision`: two names that are distinct in the description files become the same
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
-  or of a declared type, and two component names differing only in case.
+  or of a declared type, a declared constant and a data object, an enum, an enumerator or
+  a declared type, and two component names differing only in case.
 - `file-extension`: a description file is not named `*.ddd.json`.
 - `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`: the file tree
   cannot be read. These five are the checks whose severity cannot be changed.
@@ -959,7 +1021,10 @@ condition, so that it can be wrapped in `#if` / `#endif`; and input objects are 
 reaches the hand written code that reads the object, so a project that turns `volatile` on
 for an array finds that passing it to a helper typed for a plain `const` one no longer
 compiles, and re-types the helper; the cast that would silence it is itself refused by a
-warning set containing `-Wcast-qual`.
+warning set containing `-Wcast-qual`. The declared constants
+([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
+object dimensioned by a constant carries the constant's name in its definition and in
+every declaration; the example templates emit each constant as a `#define`.
 
 The example templates generate the definitions into one file per project and the
 declarations into one header per component, and the build integration of
@@ -1032,7 +1097,11 @@ The file opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`,
 after the project ([section 3.1](#31-project-description)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
-byte order and fixed alignments (1/2/4/8, floats 4/8). The byte order is the build's to
+byte order and fixed alignments (1/2/4/8, floats 4/8) and, when the project declares
+constants ([section 3.9](#39-constant-vocabulary)), a `MOD_PAR` stating one
+`SYSTEM_CONSTANT` per declared constant in name order. Every record spells its sizes as
+resolved numbers, because the format accepts no symbol where a `MATRIX_DIM` expects a
+count. The byte order is the build's to
 state (`ddd generate --byte-order little|big`, default little, emitted as
 `MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
 and a tool reading multi byte values under the wrong one misreads every value.
@@ -1143,7 +1212,7 @@ either case. `ddd generate --dry-run` reports what it would write and writes not
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
-its own format (`format`, today `3`), raised only when the document's shape changes, so
+its own format (`format`, today `4`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
 `format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
 `format` is newer than the one it implements refuses it (`schema`), located at the file;
@@ -1201,7 +1270,8 @@ cannot answer at all, because the producer of an `input` is in a file the author
 know the name of; a summary of a data object on hover, the physical reading of its
 initial value included; renaming an object everywhere the
 project writes it, refused up front for a name the C language does not allow or one the
-project already uses, whether for another object, an enum, an enumerator or a type,
+project already uses, whether for another object, an enum, an enumerator, a type or a
+constant,
 because a rename that silently merges two objects compiles, links, and shares storage
 nobody intended to share; and quick fixes that reconcile one key across the declarations of one object, in either
 direction, including removing a key the others do not have.
@@ -1215,7 +1285,7 @@ is in two projects, and the answer to which one the reader cares about is both. 
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
 descriptions of the nearest directory that include it. A file
-belonging to no build and to no such project is still checked, on its own, with the six
+belonging to no build and to no such project is still checked, on its own, with the seven
 checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction

@@ -460,7 +460,10 @@ measurement
 
 A measurement is a value the software computes and writes, declared with
 ``"kind": "measurement"`` like every other kind. One key is its own: ``dimensions``, a list of
-array dimensions that is empty for a scalar. It is also the one kind that is not generated
+array dimensions that is empty for a scalar - each an integer of at least 1, or the name of a
+constant the project declares in its :doc:`constant vocabulary <constants>`, mixed freely, so
+``[4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes. The ``size`` of an axis follows the
+same rule. It is also the one kind that is not generated
 ``const``, so the ``volatile`` every definition states is the whole of its qualifier -
 ``ValueB`` says ``true``, which is the answer for a value written by an interrupt or by
 another task, and keeps the compiler from caching it in a register.
@@ -568,7 +571,8 @@ value_block
 
 A value block is an array of calibratable constants that is not indexed by an axis - a bit
 mask table, a set of coefficients, a lookup with an index the software computes itself.
-``dimensions`` is required, since an array with no shape is a contradiction.
+``dimensions`` is required, since an array with no shape is a contradiction; a dimension may
+name a :doc:`declared constant <constants>` here exactly as on a measurement.
 
 .. code-block:: json
 

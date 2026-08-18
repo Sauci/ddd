@@ -6,7 +6,7 @@ import re
 
 from ddd.backends.c.types import C_TYPE, LITERAL_SUFFIX
 from ddd.ir import ResolvedObject
-from ddd.models import Datatype, InitValue, Shape, broadcast
+from ddd.models import Datatype, InitValue, WrittenShape, broadcast
 
 _MAX_VALUES_PER_LINE = 8
 _INDENT = "    "
@@ -55,8 +55,13 @@ def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
     return "{\n" + ",\n".join(lines) + "\n" + closing_pad + "}"
 
 
-def declarator_suffix(shape: Shape) -> str:
-    """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar."""
+def declarator_suffix(shape: WrittenShape) -> str:
+    """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar.
+
+    A dimension the dictionary spells as the name of a declared constant renders as that
+    name - ``"[PRESSURE_CELLS]"`` - so the generated array is dimensioned by the same
+    identifier the hand written code counts with.
+    """
     return "".join(f"[{dimension}]" for dimension in shape)
 
 

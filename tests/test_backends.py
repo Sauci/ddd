@@ -153,6 +153,7 @@ class TestContract:
             "components",
             "objects",
             "enums",
+            "constants",
             "types",
             "instances",
             "leaves",

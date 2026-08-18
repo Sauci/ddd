@@ -31,9 +31,10 @@ from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
-from ddd.lsp.hover import describe, resolve
+from ddd.lsp.hover import describe, describe_constant, resolve
 from ddd.lsp.navigation import (
     Site,
+    constant_at,
     definition,
     index,
     locations,
@@ -232,11 +233,20 @@ class Server:
         path = uri_to_path(params["textDocument"]["uri"])
         document = read(path, {})
         pointer = document.pointer_at(params["position"])
+        # A dimension spelled as a constant name is about the constant, not about the
+        # object dimensioned by it - the reference wins over the declaration holding it,
+        # exactly as an axis reference does for navigation.
+        constant = constant_at(document, pointer)
         name = subject_at(document, pointer)
-        if name is None:
+        if constant is None and name is None:
             return None
         dictionary = resolve(discover(self.root, self.build_directories), path, self.root)
-        described = describe(dictionary, name) if dictionary else None
+        described = None
+        if dictionary is not None:
+            if constant is not None:
+                described = describe_constant(dictionary, constant)
+            if described is None and name is not None:
+                described = describe(dictionary, name)
         if described is None:
             return None
         return {

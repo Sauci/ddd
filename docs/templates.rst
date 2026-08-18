@@ -182,6 +182,13 @@ The model
      - The name of the description file the dictionary was read from, for the banner.
    * - ``model.generator``
      - The tool and version that produced the file, such as ``ddd 0.0.1``.
+   * - ``model.constants``
+     - One entry per :doc:`declared constant <file_formats/constants>`, in name order, each
+       with ``.name``, ``.value`` and ``.description``; empty when the project declares
+       none. Offered so the template can emit them however the house style spells one - the
+       example templates write each as a ``#define`` in the types header - because an array
+       dimensioned by a constant renders its ``array_suffix`` with the constant's *name*,
+       which therefore has to be declared before the first array that uses it.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
@@ -264,7 +271,10 @@ themselves:
 
 ``.kind``, ``.c_type``, ``.array_suffix``, ``.qualifier`` and ``.initializer`` are there as
 well, for a template that would rather lay the declaration out itself than take
-``.definition`` whole. ``.qualifier`` is derived rather than stored, from the two answers a
+``.definition`` whole. ``.array_suffix`` spells each dimension as the project spells it - a
+dimension stated as a :doc:`declared constant <file_formats/constants>` renders as that
+name, ``[PRESSURE_CELLS]``, in ``.definition`` and ``.declaration(...)`` alike - while
+``.initializer`` lays its braces out over the resolved numeric shape. ``.qualifier`` is derived rather than stored, from the two answers a
 declaration can give about who writes the object: ``.constant`` is true for calibration data,
 which the software never writes and which is therefore generated ``const``, and ``.volatile``
 is what the description states on the definition, on every kind, to say that something

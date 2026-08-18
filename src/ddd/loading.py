@@ -17,6 +17,8 @@ from ddd.models import (
     AnyType,
     Component,
     ComponentFile,
+    ConstantDeclaration,
+    ConstantsFile,
     Conversion,
     Project,
     ProjectFile,
@@ -39,7 +41,7 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
-FILE_KINDS = ("project", "component", "types", "units", "sections")
+FILE_KINDS = ("project", "component", "types", "units", "sections", "constants")
 """Top level keys that identify a description file, in the order they are offered."""
 
 _INCLUDE_ONLY_KINDS = {
@@ -49,6 +51,8 @@ _INCLUDE_ONLY_KINDS = {
     "units it declares instead of analysing it on its own",
     "sections": "this is a memory section description; list it in the 'includes' of the "
     "project that places data in them instead of analysing it on its own",
+    "constants": "this is a constant vocabulary; list it in the 'includes' of the project "
+    "whose sizes it names instead of analysing it on its own",
 }
 """Why a vocabulary file is refused as the root, by kind.
 
@@ -198,6 +202,36 @@ class LoadedSection:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedConstant:
+    """One declared constant together with where it was declared.
+
+    One per constant rather than one per file, for the reason :class:`LoadedType` gives: a
+    finding about a constant has to point at the entry that declared it.
+    """
+
+    path: Path
+    index: int
+    """Position in the ``constants`` list of its file, which is what the location points
+    at."""
+
+    declared: ConstantDeclaration
+
+    @property
+    def name(self) -> str:
+        return self.declared.name
+
+    @property
+    def value(self) -> int:
+        return self.declared.value
+
+    def location(self, suffix: str = "") -> Location:
+        pointer = f"constants[{self.index}]"
+        if suffix:
+            pointer = f"{pointer}.{suffix}"
+        return Location(self.path, pointer)
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -227,6 +261,14 @@ class Workspace:
     Unlike a unit, a section is a reference rather than a spelling: a definition naming one
     that no file declares is ``unknown-section``, whether or not any sections file exists -
     a section without declared properties would be a name the checks can say nothing about.
+    """
+
+    constants: tuple[LoadedConstant, ...] = ()
+    """The named constants the project declares, sorted by name.
+
+    A constant is a reference the way a section is: a shape naming one that no file declares
+    is ``unknown-constant``, whether or not any constants file exists, because a name
+    without a value is a dimension nothing can resolve.
     """
 
     read_paths: tuple[Path, ...] = ()
@@ -317,6 +359,7 @@ class _Loader:
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
         self._sections_by_name: dict[str, LoadedSection] = {}
+        self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
 
@@ -362,6 +405,7 @@ class _Loader:
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
+            constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
         )
 
@@ -554,6 +598,26 @@ class _Loader:
             noun="section",
         )
 
+    def _load_constants(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a constant vocabulary and register what it declares.
+
+        A constant is registered under its name; the second file to declare
+        ``PRESSURE_CELLS`` is refused rather than merged: two files declaring one constant
+        is either a copy that will drift or a disagreement about its value, and a size that
+        depends on which file loads first is exactly what the vocabulary exists to prevent.
+        """
+        self._load_vocabulary(
+            path,
+            data,
+            file_model=ConstantsFile,
+            entries=lambda model: model.constants,
+            wrap=LoadedConstant,
+            key=lambda loaded: loaded.name,
+            location=lambda loaded: loaded.location(),
+            registry=self._constants_by_name,
+            noun="constant",
+        )
+
     def _load_project(
         self,
         path: Path,
@@ -639,6 +703,8 @@ class _Loader:
             self._load_units(path, data)
         elif kind == "sections":
             self._load_sections(path, data)
+        elif kind == "constants":
+            self._load_constants(path, data)
 
     def _report_validation_error(self, path: Path, error: ValidationError) -> None:
         _report_validation_error(path, error, self._bag)

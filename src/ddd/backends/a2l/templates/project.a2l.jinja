@@ -19,6 +19,14 @@ ASAP2_VERSION {{ model.version }}
       ALIGNMENT_FLOAT32_IEEE 4
       ALIGNMENT_FLOAT64_IEEE 8
     /end MOD_COMMON
+{% if model.system_constants %}
+
+    /begin MOD_PAR "named constants of {{ model.project }}"
+{% for constant in model.system_constants %}
+      SYSTEM_CONSTANT "{{ constant.name }}" "{{ constant.value }}"
+{% endfor %}
+    /end MOD_PAR
+{% endif %}
 {% for layout in model.record_layouts %}
 
     /begin RECORD_LAYOUT {{ layout.name }}

@@ -100,7 +100,8 @@ script, a linter or an editor match them with one pattern.  A description file w
 other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
-The top level key decides what a file is: `project`, `component`, `types`, `units` or `sections`.
+The top level key decides what a file is: `project`, `component`, `types`, `units`,
+`sections` or `constants`.
 Unknown keys are rejected, so typos are found instead of silently ignored - with one
 deliberate exception: a top level `$schema` key is allowed and ignored, because it is how an
 editor binds a file to its schema.  The machine readable contract of each kind is available
@@ -395,9 +396,9 @@ omitted when the shape is unambiguous.
 * `enum` requires an integer datatype and may also be written as a list of
   `{"name": ..., "value": ..., "description": ...}` objects to document each enumerator
 
-### Types, units and sections
+### Types, units, sections and constants
 
-Beside the project and the component there are three more file kinds, each listed in a
+Beside the project and the component there are four more file kinds, each listed in a
 project's `includes` like a component and each with its own page in the documentation:
 
 * a **types** file declares scalar types and structures the project shares by name: a
@@ -411,11 +412,17 @@ project's `includes` like a component and each with its own page in the document
 * a **sections** file declares the linker sections of the project - the name, whether the
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
-  ([documentation](https://sauci.github.io/ddd/file_formats/sections.html)).
+  ([documentation](https://sauci.github.io/ddd/file_formats/sections.html));
+* a **constants** file declares named integer constants, and a shape names one where it
+  would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
+  the generated c declares the array by the name, and the a2l records it as a
+  `SYSTEM_CONSTANT`
+  ([documentation](https://sauci.github.io/ddd/file_formats/constants.html)).
 
 [examples/structures](examples/structures) is a ready to run project declaring and consuming
 structured types, and [examples/vocabulary](examples/vocabulary) is one that pins its unit
-spellings and places its objects into declared memory sections; both check clean.
+spellings, places its objects into declared memory sections and dimensions an array by a
+declared constant; both check clean.
 
 ## Consistency checks
 
@@ -436,9 +443,11 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-type` | two files declare the same structured datatype name |
 | error | `duplicate-unit` | two files declare the same unit |
 | error | `duplicate-section` | two files declare the same memory section |
+| error | `duplicate-constant` | two files declare the same constant name |
 | error | `unknown-type` | a typename names no type any file declares |
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
 | error | `unknown-section` | a definition names a memory section no file declares |
+| error | `unknown-constant` | a shape names a constant no file declares |
 | error | `section-access` | a measurement is placed in a section the software cannot write |
 | error | `type-kind` | a declared type is used where its shape does not fit |
 | error | `type-cycle` | structures nest each other, so neither has a size |
@@ -615,7 +624,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
-| `ddd schema component\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
+| `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |

@@ -38,12 +38,15 @@ from ddd.models import (
     EnumConversion,
     Limits,
     Map,
+    Measurement,
     Member,
     ObjectKind,
     ScalarType,
     Scope,
     Shape,
     StructType,
+    ValueBlock,
+    WrittenShape,
     bitfield_range,
     check_shape,
     conversion_identity,
@@ -219,7 +222,14 @@ class Variable:
     """The effective definition, taken from the producing component."""
 
     shape: Shape
-    """The resolved array shape; for a curve or map it comes from the axes."""
+    """The resolved array shape, fully numeric; for a curve or map it comes from the axes."""
+
+    dimensions: WrittenShape
+    """The same shape as the producer spells it: numbers, or names of declared constants.
+
+    For a curve or a map the spelling of the axis's ``size`` carries over, because the axis
+    is where that dimension is written down.
+    """
 
     limits: Limits
     """The resolved physical limits: the producer's stated ones, else the first stated set
@@ -254,6 +264,7 @@ class Variable:
             conversion=definition.conversion,
             limits=self.limits,
             shape=self.shape,
+            dimensions=self.dimensions,
             init=definition.init,
             volatile=definition.volatile,
             section=definition.section,
@@ -400,6 +411,8 @@ class _Analysis:
         self._enums = _EnumRegistry()
         self._types = {entry.name: entry for entry in workspace.types}
         """Every type the project declares, by name - structures and scalars alike."""
+        self._constants = {entry.name: entry for entry in workspace.constants}
+        """Every constant the project declares, by name; a shape names one of them."""
         self._cyclic_types: set[str] = set()
         self._poisoned_types: set[str] = set()
         """Types no variable can resolve as: a member of theirs, however deeply nested, names
@@ -413,6 +426,7 @@ class _Analysis:
 
     def run(self) -> DataDictionary:
         workspace = self._workspace
+        self._check_constant_names()
         self._check_types()
         self._check_units()
         self._check_sections()
@@ -424,6 +438,7 @@ class _Analysis:
         ordered = sorted(self._refs.items())
         self._check_enumerator_collisions(ordered)
         self._check_type_name_collisions(ordered)
+        self._check_constant_collisions(ordered)
 
         # The producer owns the definition, so ownership has to be settled before anything
         # that reads a definition - in particular before curves and maps look up their axes.
@@ -454,6 +469,7 @@ class _Analysis:
             components=tuple(_resolve_component(loaded) for loaded in workspace.components),
             objects=tuple(variable.resolve() for variable in variables),
             enums=tuple(enum for enum, _ in (known[key] for key in sorted(known))),
+            constants=tuple(entry.declared for entry in workspace.constants),
             types=tuple(self._resolve_struct(entry) for entry in _ordered_structures(self._types)),
             instances=tuple(instance for instance, _ in instances),
             leaves=tuple(
@@ -663,6 +679,7 @@ class _Analysis:
                     entry.location("name"),
                 )
             self._check_member_names(entry)
+            self._check_member_dimensions(entry)
             self._register_member_enums(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
@@ -758,6 +775,28 @@ class _Analysis:
             return False
         return all(self._members_resolve(nested, seen) for _, _, nested in _nested_types(entry))
 
+    def _check_member_dimensions(self, entry: LoadedType) -> None:
+        """Every constant a member's shape names is declared, or the type is unusable.
+
+        Reported at the dimension entry that names it, exactly as on a declaration, and the
+        structure is poisoned the way one nesting an unknown type is: a member of no known
+        length leaves the structure without a size, so no variable can resolve as it.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for position, member in enumerate(structure.members):
+            for index, dimension in enumerate(member.dimensions):
+                if isinstance(dimension, str) and dimension not in self._constants:
+                    self._bag.add(
+                        "unknown-constant",
+                        f"member '{member.name}' of structure '{entry.name}' is dimensioned "
+                        f"by '{dimension}', which is not a constant any file of this "
+                        f"project declares{self._nearest_constant(dimension)}",
+                        entry.location(f"members[{position}].dimensions[{index}]"),
+                    )
+                    self._poisoned_types.add(entry.name)
+
     def _check_member_names(self, entry: LoadedType) -> None:
         """Every member of a structure becomes a c identifier in the generated types header.
 
@@ -775,6 +814,23 @@ class _Analysis:
                     f"member '{member.name}' of structure '{entry.name}' is reserved by the "
                     f"c language",
                     entry.location(f"members[{position}].name"),
+                )
+
+    def _check_constant_names(self) -> None:
+        """A declared constant becomes an identifier of the generated code, so it is
+        screened like one.
+
+        The templates receive every declared constant to emit - the shipped examples spell
+        each as a preprocessor definition - and an array dimensioned by one carries the name
+        in every declaration, so a constant called ``int`` or ``__N`` breaks every file that
+        spells it.
+        """
+        for entry in self._workspace.constants:
+            if is_reserved_identifier(entry.name):
+                self._bag.add(
+                    "reserved-identifier",
+                    f"constant name '{entry.name}' is reserved by the c language",
+                    entry.location("name"),
                 )
 
     def _check_project_names(self) -> None:
@@ -865,6 +921,57 @@ class _Analysis:
                     notes=[("enum declared here", declared[1])],
                 )
 
+    def _check_constant_collisions(self, ordered: list[tuple[str, list[DeclarationRef]]]) -> None:
+        """A declared constant cannot share a name with anything else the headers declare.
+
+        The constant reaches the generated code as an identifier of its own, in the same
+        file scope namespace as the variables, the typedef names and the enumerators - and
+        the example templates emit it as a preprocessor definition, which replaces the other
+        occupant textually wherever it appears. Exactly the pairs of the specification are
+        compared: a constant against a data object, an enum, an enumerator and a declared
+        type.
+        """
+        by_name = dict(ordered)
+        for name in sorted(self._constants):
+            entry = self._constants[name]
+            refs = by_name.get(name)
+            if refs:
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is declared as a variable and is also a declared constant; "
+                    f"both become the same c identifier",
+                    refs[0].location("definition.name"),
+                    notes=[("constant declared here", entry.location())],
+                )
+            known = self._enums.enumerators.get(name)
+            if known is not None:
+                enum_name, location = known
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is a declared constant and also an enumerator of enum "
+                    f"'{enum_name}'; both become the same c identifier",
+                    entry.location(),
+                    notes=[("enumerator declared here", location)],
+                )
+            declared_enum = self._enums.by_name.get(name)
+            if declared_enum is not None:
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is a declared constant and also the name of an enum; both "
+                    f"become the same c identifier",
+                    entry.location(),
+                    notes=[("enum declared here", declared_enum[1])],
+                )
+            declared_type = self._types.get(name)
+            if declared_type is not None:
+                self._bag.add(
+                    "name-collision",
+                    f"'{name}' is a declared constant and also the name of a type; both "
+                    f"become the same c identifier",
+                    entry.location(),
+                    notes=[("type declared here", declared_type.location())],
+                )
+
     def _nearest_type(self, named: str) -> str:
         """`` - did you mean 'uint16'?``, or nothing when nothing is close.
 
@@ -875,6 +982,49 @@ class _Analysis:
         """
         candidates = tuple(datatype.value for datatype in Datatype) + tuple(sorted(self._types))
         return _did_you_mean(named.lower(), candidates, cutoff=0.6)
+
+    def _nearest_constant(self, named: str) -> str:
+        """`` - did you mean 'PRESSURE_CELLS'?``, or nothing when nothing is close.
+
+        The constant cutoff is the type one: a constant is a full identifier rather than a
+        short spelling like a unit, so a loose match would suggest names that share little
+        more than a prefix.
+        """
+        return _did_you_mean(named, tuple(sorted(self._constants)), cutoff=0.6)
+
+    def _shape_resolves(self, ref: DeclarationRef) -> bool:
+        """Whether every constant this declaration's shape names is declared.
+
+        Reported where the name is written - the dimension entry, or the ``size`` key - and
+        a declaration whose shape does not resolve is dropped the way one naming an unknown
+        type is: a dimension without a value is storage without a size, and everything
+        downstream would be reasoning about an array of no known length.
+        """
+        resolves = True
+        for named, key in _symbolic_dimensions(ref.definition):
+            if named not in self._constants:
+                self._bag.add(
+                    "unknown-constant",
+                    f"'{ref.name}' is dimensioned by '{named}', which is not a constant any "
+                    f"file of this project declares{self._nearest_constant(named)}",
+                    ref.location(f"definition.{key}"),
+                )
+                resolves = False
+        return resolves
+
+    def _dimension_value(self, dimension: int | str) -> int:
+        """The number a dimension resolves to; a name looks its constant up.
+
+        Only ever asked once the spelling has resolved: a declaration or a type whose shape
+        names an unknown constant was reported and dropped before anything got this far.
+        """
+        if isinstance(dimension, int):
+            return dimension
+        return self._constants[dimension].value
+
+    def _numeric_shape(self, shape: WrittenShape) -> Shape:
+        """The shape with every named dimension resolved to its number."""
+        return tuple(self._dimension_value(dimension) for dimension in shape)
 
     def _resolve_type(self, ref: DeclarationRef) -> DeclarationRef | None:
         """Fill in the type a declaration names, or report that it names nothing.
@@ -1000,6 +1150,11 @@ class _Analysis:
             if ref is None:
                 # Its datatype names nothing this project declares, which is already reported.
                 # Everything after this point would be reasoning about a value with no storage.
+                continue
+            if not self._shape_resolves(ref):
+                # A dimension names a constant nobody declares, which is now reported. The
+                # declaration is dropped the way one naming an unknown type is: an array of
+                # no known length is storage nothing downstream can reason about.
                 continue
             previous = seen.get(ref.name)
             if previous is not None:
@@ -1255,14 +1410,25 @@ class _Analysis:
 
         return producers[0] if producers else None
 
-    def _resolve_shape(self, definition: DataObject, reference: DeclarationRef) -> Shape:
-        """The storage shape of an object; for a curve or map it follows from its axes."""
+    def _resolve_shape(
+        self, definition: DataObject, reference: DeclarationRef
+    ) -> tuple[Shape, WrittenShape]:
+        """The storage shape of an object, as numbers and as the project spells it.
+
+        For a curve or map both follow from its axes, the spelling included: the axis is
+        where that dimension is written down, so an axis sized by a constant carries the
+        constant's name into every curve and map interpolated over it. Every named
+        dimension resolves here, because a declaration or type whose shape does not was
+        dropped before ownership was settled.
+        """
         if isinstance(definition, Axis) and definition.input is not None:
             self._lookup(definition.input, ObjectKind.MEASUREMENT, "input", definition, reference)
 
         if isinstance(definition, Curve):
             axis = self._lookup(definition.axis, ObjectKind.AXIS, "axis", definition, reference)
-            return (axis.size,) if isinstance(axis, Axis) else ()
+            if isinstance(axis, Axis):
+                return ((self._dimension_value(axis.size),), (axis.size,))
+            return ((), ())
 
         if isinstance(definition, Map):
             x_axis = self._lookup(
@@ -1273,11 +1439,16 @@ class _Analysis:
             )
             if isinstance(x_axis, Axis) and isinstance(y_axis, Axis):
                 # A map is stored row wise: the x index runs fastest, so it is the last one.
-                return (y_axis.size, x_axis.size)
-            return ()
+                return (
+                    (self._dimension_value(y_axis.size), self._dimension_value(x_axis.size)),
+                    (y_axis.size, x_axis.size),
+                )
+            return ((), ())
 
         shape = definition.declared_shape
-        return shape if shape is not None else ()
+        # Only a curve or a map defers to its axes, and both returned above.
+        assert shape is not None
+        return (self._numeric_shape(shape), shape)
 
     def _lookup(
         self,
@@ -1345,12 +1516,14 @@ class _Analysis:
         structure = self._types[named].declared
         assert isinstance(structure, StructType)
 
+        spelled = definition.declared_shape or ()
         instance = ResolvedInstance(
             name=name,
             type=named,
             kind=definition.kind,
             description=definition.description,
-            shape=definition.declared_shape or (),
+            shape=self._numeric_shape(spelled),
+            dimensions=spelled,
             volatile=definition.volatile,
             section=definition.section,
             condition=reference.condition,
@@ -1409,7 +1582,8 @@ class _Analysis:
                         unit=unit,
                         conversion=conversion,
                         limits=limits,
-                        shape=member.dimensions,
+                        shape=self._numeric_shape(member.dimensions),
+                        dimensions=member.dimensions,
                         bits=member.bits,
                         volatile=instance.volatile,
                         section=instance.section,
@@ -1421,7 +1595,7 @@ class _Analysis:
                     )
                 )
                 continue
-            for suffix in _element_paths(member.dimensions):
+            for suffix in _element_paths(self._numeric_shape(member.dimensions)):
                 self._flatten(instance, nested, f"{here}{suffix}", out, reference)
 
     def _member_nested_structure(self, member: Member) -> StructType | None:
@@ -1449,8 +1623,9 @@ class _Analysis:
         refs: list[DeclarationRef],
         producer: DeclarationRef | None,
         definition: DataObject,
-        shape: Shape,
+        shapes: tuple[Shape, WrittenShape],
     ) -> Variable:
+        shape, dimensions = shapes
         reference = producer or refs[0]
         limits_reference = self._limits_reference(refs, producer)
 
@@ -1481,6 +1656,7 @@ class _Analysis:
             name=name,
             definition=definition,
             shape=shape,
+            dimensions=dimensions,
             limits=(
                 limits_reference.definition.physical_limits()
                 if limits_reference is not None
@@ -1539,7 +1715,9 @@ class _Analysis:
         if declared is None and not resolved:
             # A curve or map whose axes did not resolve; that is already reported.
             return
-        shape = declared if declared is not None else resolved
+        # The declaration's own shape, resolved to numbers: an init is counted against the
+        # value of a dimension, however that dimension happens to be spelled.
+        shape = self._numeric_shape(declared) if declared is not None else resolved
         problem = check_shape(init, shape)
         if problem is None:
             return
@@ -1613,6 +1791,25 @@ class _Analysis:
                     by_name[name][0].location("definition.name"),
                     notes=[("other variable", by_name[first][0].location("definition"))],
                 )
+
+
+def _symbolic_dimensions(definition: DataObject) -> list[tuple[str, str]]:
+    """Every dimension a definition spells as a constant name, with the key it is under.
+
+    ``(name, pointer suffix)`` pairs, so that the finding about an undeclared constant lands
+    on the entry that names it rather than on the definition as a whole. A curve or a map
+    spells no dimension of its own - its shape is the axes' business.
+    """
+    found: list[tuple[str, str]] = []
+    if isinstance(definition, Measurement | ValueBlock):
+        found.extend(
+            (dimension, f"dimensions[{index}]")
+            for index, dimension in enumerate(definition.dimensions)
+            if isinstance(dimension, str)
+        )
+    elif isinstance(definition, Axis) and isinstance(definition.size, str):
+        found.append((definition.size, "size"))
+    return found
 
 
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:

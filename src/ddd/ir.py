@@ -21,12 +21,29 @@ repeat that work, and two backends can never disagree about it.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from ddd.models.common import Datatype, Identifier
 from ddd.models.component import Scope
+from ddd.models.constants import ConstantDeclaration
 from ddd.models.conversion import Conversion, EnumConversion
-from ddd.models.objects import A2lObjectOptions, InitValue, Limits, ObjectKind
+from ddd.models.objects import A2lObjectOptions, Dimension, InitValue, Limits, ObjectKind
+
+
+def _check_dimensions_match(shape: tuple[int, ...], dimensions: tuple[int | str, ...]) -> None:
+    """Refuse a spelled shape that does not describe the numeric one beside it.
+
+    ``dimensions`` is ``shape`` again, spelling by spelling, so the two agree dimension for
+    dimension or the document contradicts itself. Empty is allowed whatever the shape: a
+    dictionary from format 3 or older spelled every dimension as its number and carries no
+    ``dimensions`` at all.
+    """
+    if dimensions and len(dimensions) != len(shape):
+        msg = (
+            f"'dimensions' spells {len(dimensions)} dimension(s) but 'shape' has "
+            f"{len(shape)}; the two describe the same shape and must agree"
+        )
+        raise ValueError(msg)
 
 
 class _Frozen(BaseModel):
@@ -94,7 +111,18 @@ class ResolvedObject(_Frozen):
     shape: tuple[PositiveInt, ...] = ()
     """Storage shape, empty for a scalar; for a curve or a map it comes from its axes.
 
-    Every dimension is at least one, like the ``dimensions`` and ``size`` it derives from.
+    Every dimension is at least one, like the ``dimensions`` and ``size`` it derives from,
+    and every dimension is a resolved number: a dimension stated as the name of a declared
+    constant carries its value here and its name in ``dimensions``.
+    """
+
+    dimensions: tuple[Dimension, ...] = ()
+    """The shape again, each dimension spelled the way the project spells it.
+
+    Parallel to ``shape``: the same dimensions in the same order, each the number itself or
+    the name of the declared constant that states it - the name under which the generated
+    code declares the array. Empty exactly when ``shape`` is empty; a dictionary from
+    format 3 or older leaves it empty, every dimension then being spelled as its number.
     """
 
     init: InitValue | None = None
@@ -136,6 +164,25 @@ class ResolvedObject(_Frozen):
     def is_calibration(self) -> bool:
         return self.kind.is_calibration
 
+    @property
+    def spelled_shape(self) -> tuple[int | str, ...]:
+        """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
+        return self.dimensions if self.dimensions else tuple(self.shape)
+
+    @property
+    def written_shape(self) -> tuple[tuple[int | str, int], ...]:
+        """Each dimension as its (spelling, value) pair.
+
+        What two deliveries compare: a name and its value are different spellings of one
+        size, so a dimension that changes either half is a changed interface.
+        """
+        return tuple(zip(self.spelled_shape, self.shape, strict=True))
+
+    @model_validator(mode="after")
+    def _dimensions_spell_the_shape(self) -> ResolvedObject:
+        _check_dimensions_match(self.shape, self.dimensions)
+        return self
+
 
 class ResolvedMember(_Frozen):
     """One member of a structure, as the c templates need it to declare the member.
@@ -157,8 +204,14 @@ class ResolvedMember(_Frozen):
     type: str | None = None
     """Name of the structure this member is, when it is one; ``None`` when it is a datatype."""
 
-    shape: tuple[PositiveInt, ...] = ()
-    """Array dimensions, empty for a scalar."""
+    shape: tuple[Dimension, ...] = ()
+    """Array dimensions, empty for a scalar, each spelled the way the member spells it.
+
+    A number, or the name of a declared constant, which is the spelling the member is
+    declared with. The numeric value of a named dimension is in the dictionary's
+    ``constants``, and every leaf of an instantiated structure carries its resolved numeric
+    shape - a member is the declaration side of the answer, a leaf the resolved one.
+    """
 
     bits: int | None = None
     """Width in bits when the member is a c bitfield; ``None`` when it is not."""
@@ -208,7 +261,16 @@ class ResolvedInstance(_Frozen):
 
     An array of structures reaches the a2l as its elements: there is no one address that
     describes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own
-    leaves at its own path.
+    leaves at its own path. Every dimension is a resolved number; the spelling is in
+    ``dimensions``.
+    """
+
+    dimensions: tuple[Dimension, ...] = ()
+    """The shape again, each dimension spelled the way the declaration spells it.
+
+    Parallel to ``shape`` exactly as on a plain object: the number, or the name of the
+    declared constant the generated code declares the array by. Empty in a dictionary from
+    format 3 or older.
     """
 
     volatile: bool = False
@@ -236,6 +298,16 @@ class ResolvedInstance(_Frozen):
     @property
     def is_calibration(self) -> bool:
         return self.kind.is_calibration
+
+    @property
+    def spelled_shape(self) -> tuple[int | str, ...]:
+        """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
+        return self.dimensions if self.dimensions else tuple(self.shape)
+
+    @model_validator(mode="after")
+    def _dimensions_spell_the_shape(self) -> ResolvedInstance:
+        _check_dimensions_match(self.shape, self.dimensions)
+        return self
 
 
 class ResolvedLeaf(_Frozen):
@@ -276,7 +348,18 @@ class ResolvedLeaf(_Frozen):
     """Always present: stated, or derived from the storage - a bitfield's from its width."""
 
     shape: tuple[PositiveInt, ...] = ()
-    """Array dimensions of this member; empty for a scalar."""
+    """Array dimensions of this member; empty for a scalar.
+
+    Every dimension is a resolved number, because this is the form the a2l consumes; a
+    dimension the member spells as a constant name carries that name in ``dimensions``.
+    """
+
+    dimensions: tuple[Dimension, ...] = ()
+    """The shape again, each dimension spelled the way the member spells it.
+
+    Parallel to ``shape`` exactly as on a plain object. Empty in a dictionary from format 3
+    or older.
+    """
 
     bits: int | None = None
     """Width in bits when the member is a c bitfield.
@@ -331,6 +414,21 @@ class ResolvedLeaf(_Frozen):
     def is_calibration(self) -> bool:
         return self.kind.is_calibration
 
+    @property
+    def spelled_shape(self) -> tuple[int | str, ...]:
+        """The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""
+        return self.dimensions if self.dimensions else tuple(self.shape)
+
+    @property
+    def written_shape(self) -> tuple[tuple[int | str, int], ...]:
+        """Each dimension as its (spelling, value) pair, exactly as on a plain object."""
+        return tuple(zip(self.spelled_shape, self.shape, strict=True))
+
+    @model_validator(mode="after")
+    def _dimensions_spell_the_shape(self) -> ResolvedLeaf:
+        _check_dimensions_match(self.shape, self.dimensions)
+        return self
+
 
 Comparable = ResolvedObject | ResolvedLeaf
 """What one delivery offers another: a plain object, or a member of a structured one.
@@ -341,7 +439,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 3
+DICTIONARY_FORMAT = 4
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -386,6 +484,14 @@ class DataDictionary(_Frozen):
 
     enums: tuple[EnumConversion, ...] = ()
     """Distinct enumerations used by the objects, sorted by name."""
+
+    constants: tuple[ConstantDeclaration, ...] = ()
+    """The named constants the project declares, sorted by name.
+
+    Recorded whole - name, value and description - so that a generator consuming the
+    dictionary can emit them the way the shipped templates do, and so that a dimension
+    spelled by name stays resolvable after the description files have moved on.
+    """
 
     types: tuple[ResolvedStruct, ...] = ()
     """The structures the project declares, each after every structure it nests.

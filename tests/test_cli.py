@@ -317,6 +317,7 @@ PINNED_LIST_PAYLOAD = """\
         "max": 15.0
       },
       "shape": [],
+      "dimensions": [],
       "init": 15,
       "section": null,
       "volatile": false,
@@ -347,6 +348,7 @@ PINNED_LIST_PAYLOAD = """\
         "max": 3276.75
       },
       "shape": [],
+      "dimensions": [],
       "init": 800,
       "section": null,
       "volatile": false,

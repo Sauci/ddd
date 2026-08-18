@@ -16,18 +16,20 @@ DDD describes the global variables of a component based embedded software projec
 description files, checks that every component agrees on them, and generates the artefacts a
 build and a calibration tool consume.
 
-* **Five description file kinds.**  A *project* file names the components and the shared
+* **Six description file kinds.**  A *project* file names the components and the shared
   vocabularies of an image; a *component* file declares that component's data interface -
   measurements, parameters, curves, maps, axes and value blocks, each stating its `kind`,
   its storage (`datatype` or `typename`), its `conversion` and its `volatile` qualifier
   explicitly; a *types* file declares scalar types and structures a project shares by name;
   a *units* file pins the unit spellings a project allows; a *sections* file declares the
-  linker sections a definition may place its object in.  Every format is published as a
-  json schema (`ddd schema component|dictionary|project|sections|types|units|all`).
+  linker sections a definition may place its object in; a *constants* file declares the
+  named integer constants a shape may state instead of a number, carried into the generated
+  c by name and into the a2l as `SYSTEM_CONSTANT`s.  Every format is published as a json
+  schema (`ddd schema component|constants|dictionary|project|sections|types|units|all`).
 * **Consistency checks with stable identifiers.**  `ddd check` verifies the description as
-  a whole - one producer per variable, agreeing declarations, resolvable types, units and
-  sections, representability in the a2l - and reports each finding under a stable check id
-  with a default severity a project can raise, lower or silence per check (`-W`,
+  a whole - one producer per variable, agreeing declarations, resolvable types, units,
+  sections and constants, representability in the a2l - and reports each finding under a
+  stable check id with a default severity a project can raise, lower or silence per check (`-W`,
   `SEVERITY` in CMake).  `ddd checks` lists them all.
 * **C generation from project owned templates.**  `ddd generate` renders the jinja2
   templates of the project - DDD ships a working example set behind `ddd templates-dir`,
@@ -35,7 +37,7 @@ build and a calibration tool consume.
   headers and the types header.
 * **A2L generation** following ASAM MCD-2 MC (ASAP2) 1.6.1, structures flattened into one
   record per member, with `--address-map` supplying the addresses a build reports.
-* **Deliveries.**  `ddd dump` archives the resolved dictionary (format 3) and
+* **Deliveries.**  `ddd dump` archives the resolved dictionary (format 4) and
   `ddd compare` reports whether one delivery can replace another.
 * **CMake integration.**  `cmake/Ddd.cmake` (behind `ddd cmake-dir`) provides
   `ddd_add_component()` and `ddd_generate()`, collecting the project from the c link graph

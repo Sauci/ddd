@@ -159,6 +159,21 @@ class ComponentHeaderView:
 
 
 @dataclass(frozen=True, slots=True)
+class ConstantView:
+    """One declared constant, for the templates to emit however the house style spells one.
+
+    The shipped example templates write each as a ``#define`` in the types header, so that
+    the arrays the generated code dimensions by the name compile against the same header
+    that declares them.
+    """
+
+    name: str
+    value: int
+    description: str
+    """Already safe to put in a comment; empty when the constant states none."""
+
+
+@dataclass(frozen=True, slots=True)
 class EnumeratorView:
     """One enumerator, with its documentation already safe to put in a comment."""
 
@@ -183,6 +198,14 @@ class CodeModel:
     source: str
     generator: str
     options: COptions
+    constants: tuple[ConstantView, ...]
+    """The declared constants, in name order; empty when the project declares none.
+
+    Offered so the templates can emit them - an object dimensioned by a constant spells the
+    constant's name in its definition and every declaration, and that name has to be
+    declared before the first array that uses it.
+    """
+
     enums: tuple[EnumView, ...]
     structures: tuple[StructView, ...]
     """The structures the project declares, each after every structure it nests.
@@ -299,6 +322,14 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         source=dictionary.source,
         generator=generator,
         options=options,
+        constants=tuple(
+            ConstantView(
+                name=entry.name,
+                value=entry.value,
+                description=sanitize_comment(entry.description),
+            )
+            for entry in dictionary.constants
+        ),
         enums=tuple(_enum_view(enum) for enum in dictionary.enums),
         structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
@@ -374,7 +405,8 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
         name=entry.name,
         kind=entry.kind,
         c_type=entry.type,
-        array_suffix=declarator_suffix(entry.shape),
+        # The spelled shape, so an array dimensioned by a constant is declared by its name.
+        array_suffix=declarator_suffix(entry.spelled_shape),
         constant=entry.is_calibration,
         volatile=entry.volatile,
         initializer=None,
@@ -391,7 +423,9 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         name=entry.name,
         kind=entry.kind,
         c_type=c_type(entry),
-        array_suffix=declarator_suffix(entry.shape),
+        # The spelled shape, so an array dimensioned by a constant is declared by its name;
+        # the initialiser below still lays its braces out over the numeric shape.
+        array_suffix=declarator_suffix(entry.spelled_shape),
         constant=entry.is_calibration,
         volatile=entry.volatile,
         initializer=initializer_of(entry),

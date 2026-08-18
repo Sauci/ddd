@@ -41,6 +41,7 @@ from ddd.ir import Comparable, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import (
     ComponentFile,
+    ConstantsFile,
     ProjectFile,
     SectionsFile,
     TypesFile,
@@ -468,6 +469,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "types": TypesFile,
     "units": UnitsFile,
     "sections": SectionsFile,
+    "constants": ConstantsFile,
     "dictionary": DataDictionary,
 }
 
@@ -736,7 +738,9 @@ def _print_table(dictionary: DataDictionary) -> None:
                 entry.kind.value,
                 entry.datatype.value,
                 entry.unit or "-",
-                format_shape(entry.shape) or "-",
+                # As the project spells it: a dimension stated as a constant shows its name,
+                # which is also how the generated code declares the array.
+                format_shape(entry.spelled_shape) or "-",
                 _init_cell(entry),
                 f"{owner}{' (local)' if entry.local else ''}",
                 ", ".join(entry.consumers) or "-",

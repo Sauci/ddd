@@ -50,6 +50,7 @@ from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
 from ddd.models.conversion import Conversion, physical_range
 from ddd.models.objects import (
     A2lObjectOptions,
+    Dimension,
     Limits,
     ObjectKind,
     check_conversion_stated,
@@ -124,10 +125,12 @@ class Member(BaseModel):
     room for a structure, and a scalar type would carry limits the width contradicts.
     """
 
-    dimensions: tuple[PositiveInt, ...] = ()
+    dimensions: tuple[Dimension, ...] = ()
     """Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.
 
     ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.
+    Each dimension is an integer of at least 1, or the name of a constant the project
+    declares in a constants file, exactly as on a declaration.
     """
 
     bits: PositiveInt | None = None

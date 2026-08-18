@@ -3,6 +3,7 @@
   "units": [
     { "unit": "rpm", "description": "rotational speed, revolutions per minute" },
     { "unit": "Nm", "description": "torque, newton metre" },
-    { "unit": "degC", "description": "temperature" }
+    { "unit": "degC", "description": "temperature" },
+    { "unit": "kPa", "description": "pressure" }
   ]
 }

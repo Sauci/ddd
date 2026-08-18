@@ -9,6 +9,7 @@ from ddd.models.common import (
     format_number,
 )
 from ddd.models.component import Component, ComponentFile, Declaration, Scope
+from ddd.models.constants import ConstantDeclaration, ConstantsFile
 from ddd.models.conversion import (
     IDENTITY,
     Conversion,
@@ -28,6 +29,7 @@ from ddd.models.objects import (
     Axis,
     Curve,
     DataObject,
+    Dimension,
     InitValue,
     Limits,
     Map,
@@ -36,6 +38,7 @@ from ddd.models.objects import (
     Parameter,
     Shape,
     ValueBlock,
+    WrittenShape,
     broadcast,
     check_shape,
     definition_keys,
@@ -72,12 +75,15 @@ __all__ = [
     "Axis",
     "Component",
     "ComponentFile",
+    "ConstantDeclaration",
+    "ConstantsFile",
     "Conversion",
     "ConversionRule",
     "Curve",
     "DataObject",
     "Datatype",
     "Declaration",
+    "Dimension",
     "EnumConversion",
     "Enumerator",
     "Identifier",
@@ -106,6 +112,7 @@ __all__ = [
     "UnitDeclaration",
     "UnitsFile",
     "ValueBlock",
+    "WrittenShape",
     "bitfield_range",
     "broadcast",
     "check_shape",

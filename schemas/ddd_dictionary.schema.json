@@ -89,6 +89,38 @@
       "title": "ComponentDeclaration",
       "type": "object"
     },
+    "ConstantDeclaration": {
+      "additionalProperties": false,
+      "description": "One named integer constant, declared once and named wherever a shape needs it.",
+      "properties": {
+        "name": {
+          "description": "The name a shape writes where it would state a number: ``PRESSURE_CELLS``.\n\nAn identifier, because the name reaches the generated code as an identifier of its own;\nthe templates receive every declared constant to emit.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.",
+          "minimum": 1,
+          "title": "Value",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "description": "What the constant counts, e.g. ``cells of the pressure manifold``.\n\nThis is where the meaning of a size is written down once, instead of being implied by\nevery object that happens to be dimensioned by it.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "ConstantDeclaration",
+      "type": "object"
+    },
     "Datatype": {
       "description": "The base datatypes DDD can allocate storage for.\n\n* ``boolean`` - A truth value, 0 or 1; 1 byte of storage.\n* ``uint8`` - Unsigned integer; 1 byte of storage, 0 to 255.\n* ``sint8`` - Signed integer; 1 byte of storage, -128 to 127.\n* ``uint16`` - Unsigned integer; 2 bytes of storage, 0 to 65535.\n* ``sint16`` - Signed integer; 2 bytes of storage, -32768 to 32767.\n* ``uint32`` - Unsigned integer; 4 bytes of storage, 0 to 4294967295.\n* ``sint32`` - Signed integer; 4 bytes of storage, -2147483648 to 2147483647.\n* ``uint64`` - Unsigned integer; 8 bytes of storage, 0 to 18446744073709551615.\n* ``sint64`` - Signed integer; 8 bytes of storage, -9223372036854775808 to 9223372036854775807.\n* ``float32`` - IEEE 754 single precision floating point; 4 bytes of storage, magnitude up to 3.4028234663852886e+38.\n* ``float64`` - IEEE 754 double precision floating point; 8 bytes of storage, magnitude up to 1.7976931348623157e+308.",
       "enum": [
@@ -371,12 +403,32 @@
         },
         "shape": {
           "default": [],
-          "description": "Array dimensions of the variable itself, empty for a single structure.\n\nAn array of structures reaches the a2l as its elements: there is no one address that\ndescribes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own\nleaves at its own path.",
+          "description": "Array dimensions of the variable itself, empty for a single structure.\n\nAn array of structures reaches the a2l as its elements: there is no one address that\ndescribes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own\nleaves at its own path. Every dimension is a resolved number; the spelling is in\n``dimensions``.",
           "items": {
             "exclusiveMinimum": 0,
             "type": "integer"
           },
           "title": "Shape",
+          "type": "array"
+        },
+        "dimensions": {
+          "default": [],
+          "description": "The shape again, each dimension spelled the way the declaration spells it.\n\nParallel to ``shape`` exactly as on a plain object: the number, or the name of the\ndeclared constant the generated code declares the array by. Empty in a dictionary from\nformat 3 or older.",
+          "items": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Dimensions",
           "type": "array"
         },
         "volatile": {
@@ -523,12 +575,32 @@
         },
         "shape": {
           "default": [],
-          "description": "Array dimensions of this member; empty for a scalar.",
+          "description": "Array dimensions of this member; empty for a scalar.\n\nEvery dimension is a resolved number, because this is the form the a2l consumes; a\ndimension the member spells as a constant name carries that name in ``dimensions``.",
           "items": {
             "exclusiveMinimum": 0,
             "type": "integer"
           },
           "title": "Shape",
+          "type": "array"
+        },
+        "dimensions": {
+          "default": [],
+          "description": "The shape again, each dimension spelled the way the member spells it.\n\nParallel to ``shape`` exactly as on a plain object. Empty in a dictionary from format 3\nor older.",
+          "items": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Dimensions",
           "type": "array"
         },
         "bits": {
@@ -670,10 +742,20 @@
         },
         "shape": {
           "default": [],
-          "description": "Array dimensions, empty for a scalar.",
+          "description": "Array dimensions, empty for a scalar, each spelled the way the member spells it.\n\nA number, or the name of a declared constant, which is the spelling the member is\ndeclared with. The numeric value of a named dimension is in the dictionary's\n``constants``, and every leaf of an instantiated structure carries its resolved numeric\nshape - a member is the declaration side of the answer, a leaf the resolved one.",
           "items": {
-            "exclusiveMinimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
           },
           "title": "Shape",
           "type": "array"
@@ -759,12 +841,32 @@
         },
         "shape": {
           "default": [],
-          "description": "Storage shape, empty for a scalar; for a curve or a map it comes from its axes.\n\nEvery dimension is at least one, like the ``dimensions`` and ``size`` it derives from.",
+          "description": "Storage shape, empty for a scalar; for a curve or a map it comes from its axes.\n\nEvery dimension is at least one, like the ``dimensions`` and ``size`` it derives from,\nand every dimension is a resolved number: a dimension stated as the name of a declared\nconstant carries its value here and its name in ``dimensions``.",
           "items": {
             "exclusiveMinimum": 0,
             "type": "integer"
           },
           "title": "Shape",
+          "type": "array"
+        },
+        "dimensions": {
+          "default": [],
+          "description": "The shape again, each dimension spelled the way the project spells it.\n\nParallel to ``shape``: the same dimensions in the same order, each the number itself or\nthe name of the declared constant that states it - the name under which the generated\ncode declares the array. Empty exactly when ``shape`` is empty; a dictionary from\nformat 3 or older leaves it empty, every dimension then being spelled as its number.",
+          "items": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Dimensions",
           "type": "array"
         },
         "init": {
@@ -921,7 +1023,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 3,
+      "default": 4,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"
@@ -971,6 +1073,15 @@
         "$ref": "#/$defs/EnumConversion"
       },
       "title": "Enums",
+      "type": "array"
+    },
+    "constants": {
+      "default": [],
+      "description": "The named constants the project declares, sorted by name.\n\nRecorded whole - name, value and description - so that a generator consuming the\ndictionary can emit them the way the shipped templates do, and so that a dimension\nspelled by name stays resolvable after the description files have moved on.",
+      "items": {
+        "$ref": "#/$defs/ConstantDeclaration"
+      },
+      "title": "Constants",
       "type": "array"
     },
     "types": {

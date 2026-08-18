@@ -34,7 +34,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 3,
+     "format": 4,
      "name": "DemoDevice",
      "description": "Demonstration project showing every DDD feature",
      "source": "demo.ddd.json",
@@ -105,6 +105,7 @@ and the dictionary hands the backends this:
      "conversion": { "kind": "linear", "factor": 0.01, "offset": 0.0 },
      "limits": { "min": 0.0, "max": 655.35 },
      "shape": [6],
+     "dimensions": [6],
      "init": [1200, 900, 800, 750, 700, 650],
      "volatile": false,
      "condition": null,
@@ -116,7 +117,10 @@ and the dictionary hands the backends this:
    }
 
 The six points come from ``AxisA``, and the limits from the full ``uint16`` range through
-the linear conversion: 65535 raw counts of 0.01 ms are 655.35 ms. The ``kind`` of the
+the linear conversion: 65535 raw counts of 0.01 ms are 655.35 ms. ``dimensions`` is the same
+shape again, spelled the way the project spells it: here the number, and for an array
+dimensioned by a :doc:`declared constant <file_formats/constants>` the constant's name, so a
+generator can declare the array by the name while sizing it by the number. The ``kind`` of the
 conversion, left out of the description because a block carrying a ``factor`` can only be
 linear, is spelled out. Both blocks above are folded onto fewer lines than the files
 themselves use; the values are exactly the ones in ``examples/demo`` and in the dump of it.
@@ -158,7 +162,7 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``3`` - and changes only when that shape changes, not with every release of the
+- currently ``4`` - and changes only when that shape changes, not with every release of the
 tool.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
@@ -168,7 +172,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 4, and this DDD understands up to 3; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 5, and this DDD understands up to 4; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -210,7 +214,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 3,
+         "default": 4,
          "title": "Format",
          "type": "integer"
        },
@@ -255,6 +259,14 @@ elided here for space):
          "title": "Enums",
          "type": "array"
        },
+       "constants": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/ConstantDeclaration"
+         },
+         "title": "Constants",
+         "type": "array"
+       },
        "types": {
          "default": [],
          "items": {
@@ -291,7 +303,10 @@ elided here for space):
 validating against the schema finds a key it was not expecting instead of skipping it.
 ``enums`` carries the distinct enumerations the objects use, so a consumer that wants to
 emit a type per enumeration - which is what the c backend offers its templates as
-``model.enums`` - does not have to walk every object and de-duplicate them itself. The
+``model.enums`` - does not have to walk every object and de-duplicate them itself.
+``constants`` records the :doc:`declared constants <file_formats/constants>` whole - name,
+value and description - so a dimension an object spells by name stays resolvable from the
+document alone. The
 conversions themselves are the same models the description files use, and they are documented
 with the other :doc:`data contracts <data_contracts>`. ``types``, ``instances`` and
 ``leaves`` describe the structured variables: the declared structures, the variables

@@ -6,7 +6,7 @@ from collections.abc import Container, Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ddd.models.common import (
     A2lFormat,
@@ -23,6 +23,19 @@ type InitValue = bool | int | Real | tuple[InitValue, ...]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object."""
 
 type Shape = tuple[int, ...]
+"""A fully numeric array shape, as the analysis resolves it."""
+
+Dimension = Annotated[int, Field(strict=True, ge=1)] | Identifier
+"""One array dimension as a definition writes it: a number, or the name of a constant.
+
+An integer of at least 1, or the name of a constant the project declares in a constants
+file.  Strict on the integer side so that the two spellings stay two: without it, a quoted
+``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,
+and the file would say something its author did not write.
+"""
+
+type WrittenShape = tuple[int | str, ...]
+"""An array shape as it is written: each dimension a number or the name of a constant."""
 
 
 class ObjectKind(StrEnum):
@@ -342,11 +355,13 @@ class DataObject(_Frozen):
         return self.kind.is_calibration
 
     @property
-    def declared_shape(self) -> Shape | None:
-        """The shape as far as the definition itself knows it.
+    def declared_shape(self) -> WrittenShape | None:
+        """The shape as far as the definition itself writes it, spelling and all.
 
         ``None`` for curves and maps, whose shape follows from the axes they refer to
-        and is therefore only known once the whole project is resolved.
+        and is therefore only known once the whole project is resolved.  A dimension stated
+        as the name of a constant stays that name here: declarations compare as written,
+        and the numeric value is the analysis's to resolve.
         """
         return ()
 
@@ -422,11 +437,15 @@ class Measurement(DataObject):
     """An online value: written by the software, only measured by the calibration tool."""
 
     kind: Literal[ObjectKind.MEASUREMENT]
-    dimensions: tuple[PositiveInt, ...] = ()
-    """Array dimensions; empty for a scalar."""
+    dimensions: tuple[Dimension, ...] = ()
+    """Array dimensions; empty for a scalar.
+
+    Each an integer of at least 1, or the name of a constant declared in the project's
+    constants file - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes.
+    """
 
     @property
-    def declared_shape(self) -> Shape:
+    def declared_shape(self) -> WrittenShape:
         return self.dimensions
 
 
@@ -440,11 +459,15 @@ class ValueBlock(DataObject):
     """An array of calibratable constants."""
 
     kind: Literal[ObjectKind.VALUE_BLOCK]
-    dimensions: Annotated[tuple[PositiveInt, ...], Field(min_length=1)]
-    """Array dimensions in c declaration order; a value block is never a scalar."""
+    dimensions: Annotated[tuple[Dimension, ...], Field(min_length=1)]
+    """Array dimensions in c declaration order; a value block is never a scalar.
+
+    Each an integer of at least 1, or the name of a constant declared in the project's
+    constants file, mixed freely.
+    """
 
     @property
-    def declared_shape(self) -> Shape:
+    def declared_shape(self) -> WrittenShape:
         return self.dimensions
 
 
@@ -452,14 +475,15 @@ class Axis(DataObject):
     """Shared axis points; several curves and maps may be interpolated over one axis."""
 
     kind: Literal[ObjectKind.AXIS]
-    size: PositiveInt
-    """Number of axis points."""
+    size: Dimension
+    """Number of axis points: an integer of at least 1, or the name of a declared
+    constant."""
 
     input: Identifier | None = None
     """Measurement that indexes the axis; the a2l input quantity."""
 
     @property
-    def declared_shape(self) -> Shape:
+    def declared_shape(self) -> WrittenShape:
         return (self.size,)
 
     @property
@@ -522,8 +546,13 @@ _VARIANTS: Final[dict[str, type[DataObject]]] = {
 """Each ``kind`` value and the model that describes it - see :func:`definition_keys`."""
 
 
-def format_shape(shape: Shape) -> str:
-    """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings."""
+def format_shape(shape: WrittenShape) -> str:
+    """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings.
+
+    A dimension spelled as the name of a constant renders as that name -
+    ``"[PRESSURE_CELLS]"`` - because the spelling is what the reader wrote and what the
+    generated code carries.
+    """
     return "".join(f"[{dimension}]" for dimension in shape)
 
 

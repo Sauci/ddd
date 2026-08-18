@@ -573,7 +573,7 @@ class TestCommittedSchemas:
             # and it points at the schema of the kind it actually is
             kind = next(
                 key
-                for key in ("project", "component", "types", "units", "sections")
+                for key in ("project", "component", "types", "units", "sections", "constants")
                 if key in document
             )
             assert target.name == f"ddd_{kind}.schema.json", (

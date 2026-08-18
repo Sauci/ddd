@@ -21,7 +21,7 @@
         },
         "includes": {
           "default": [],
-          "description": "Paths to component or sub-project files, relative to this file.\n\nShell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key.",
+          "description": "Paths to component, types, units, sections, constants or sub-project files,\nrelative to this file.\n\nShell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every\nincluded file is detected from its top level key.",
           "items": {
             "type": "string"
           },

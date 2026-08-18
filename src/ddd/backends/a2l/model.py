@@ -135,6 +135,19 @@ class AxisPtsView:
 
 
 @dataclass(frozen=True, slots=True)
+class SystemConstantView:
+    """One ``SYSTEM_CONSTANT`` of the ``MOD_PAR``: a declared constant, value as a string.
+
+    The format quotes both halves, so the value travels as text; every record still spells
+    its sizes as resolved numbers, because a ``MATRIX_DIM`` accepts no symbol where it
+    expects a count.
+    """
+
+    name: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
 class GroupView:
     name: str
     description: str
@@ -150,6 +163,10 @@ class A2lModel:
     generator: str
     version: str
     byte_order: str
+    system_constants: tuple[SystemConstantView, ...]
+    """One per declared constant, in name order; the ``MOD_PAR`` is written only when the
+    project declares any."""
+
     compu_methods: tuple[CompuMethodView, ...]
     compu_vtabs: tuple[CompuVtabView, ...]
     record_layouts: tuple[RecordLayoutView, ...]
@@ -221,6 +238,10 @@ class _A2lModelBuilder:
             generator=generator,
             version=self._options.version,
             byte_order=self._options.byte_order.a2l,
+            system_constants=tuple(
+                SystemConstantView(name=entry.name, value=str(entry.value))
+                for entry in dictionary.constants
+            ),
             compu_methods=self._methods.methods(),
             compu_vtabs=self._methods.vtabs(),
             record_layouts=self._layouts.layouts(),

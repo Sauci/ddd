@@ -593,6 +593,19 @@ are the natural alignment of each width, which is what a compiler targeting a mo
 does unless it is told to pack. The a2l is written unless ``--no-a2l`` says otherwise, and it
 is named after the project, so ``DemoDevice`` produces ``DemoDevice.a2l``.
 
+A project that declares a :doc:`constant vocabulary <file_formats/constants>` gets a
+``MOD_PAR`` after the ``MOD_COMMON``, stating one ``SYSTEM_CONSTANT`` per declared constant
+in name order, both halves quoted as the format wants them; a project that declares none
+gets no empty block. The records themselves still spell every size as a resolved number,
+because a ``MATRIX_DIM`` accepts no symbol where it expects a count - the ``MOD_PAR`` is
+where a downstream tool finds the name and the value it stands for:
+
+.. code-block:: text
+
+       /begin MOD_PAR "named constants of PumpDevice"
+         SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+       /end MOD_PAR
+
 What is emitted for what
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

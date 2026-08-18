@@ -37,7 +37,11 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
+    Axis,
+    DataObject,
     EnumConversion,
+    Measurement,
+    ValueBlock,
     is_reserved_identifier,
 )
 
@@ -52,7 +56,11 @@ _DECLARATION: Final = "component.interface["
 _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPES: Final = "types["
+_CONSTANTS: Final = "constants["
 _INCLUDES: Final = "project.includes["
+
+_DIMENSION_KEY: Final = re.compile(r"^(?:dimensions\[\d+\]|size)$")
+"""The keys whose string value names a constant: one dimension entry, or an axis size."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +86,12 @@ class Index:
 
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
+
+    constants: dict[str, Site] = field(default_factory=dict)
+    """Constant name -> where the constants file declares it."""
+
+    constant_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Constant name -> every dimension entry and axis size that spells it."""
 
     occupied: dict[str, str] = field(default_factory=dict)
     """C identifier -> what already spends it, for identifiers that are not variables.
@@ -114,6 +128,11 @@ def index(workspace: Workspace) -> Index:
             for key, target in declaration.definition.references.items():
                 where = loaded.declaration_location(position, f"definition.{key}")
                 built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
+            for named_size, suffix in _spelled_dimensions(declaration.definition):
+                where = loaded.declaration_location(position, f"definition.{suffix}")
+                built.constant_uses.setdefault(named_size, []).append(
+                    Site(where.path, where.pointer)
+                )
             named = declaration.definition.declared_type
             if named is not None:
                 where = loaded.declaration_location(position, "definition.typename")
@@ -136,7 +155,35 @@ def index(workspace: Workspace) -> Index:
                 built.type_uses.setdefault(member.typename, []).append(
                     Site(where.path, where.pointer)
                 )
+            for index, dimension in enumerate(member.dimensions):
+                if isinstance(dimension, str):
+                    where = entry.location(f"members[{position}].dimensions[{index}]")
+                    built.constant_uses.setdefault(dimension, []).append(
+                        Site(where.path, where.pointer)
+                    )
+    for constant in workspace.constants:
+        built.constants[constant.name] = Site(constant.path, constant.location().pointer)
+        built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
     return built
+
+
+def _spelled_dimensions(definition: DataObject) -> list[tuple[str, str]]:
+    """Every dimension a definition spells as a constant name, with the key it is under.
+
+    The same walk the analysis makes to place ``unknown-constant``: a measurement or a
+    value block spells its ``dimensions``, an axis its ``size``, and a curve or map spells
+    no dimension of its own.
+    """
+    found: list[tuple[str, str]] = []
+    if isinstance(definition, Measurement | ValueBlock):
+        found.extend(
+            (dimension, f"dimensions[{index}]")
+            for index, dimension in enumerate(definition.dimensions)
+            if isinstance(dimension, str)
+        )
+    elif isinstance(definition, Axis) and isinstance(definition.size, str):
+        found.append((definition.size, "size"))
+    return found
 
 
 def workspaces(
@@ -228,6 +275,22 @@ def variable_at(document: Document, pointer: str) -> str | None:
     return None
 
 
+def constant_at(document: Document, pointer: str) -> str | None:
+    """The declared constant the cursor names outright, if it names one.
+
+    A dimension entry or an axis ``size`` spelling a name rather than a number, or a value
+    inside a constants file - the places where the string under the cursor *is* a constant.
+    Whether the name is actually declared is the caller's question; an undeclared one simply
+    resolves to nothing, the way an unknown type does.
+    """
+    value = document.value_at(pointer)
+    if not isinstance(value, str):
+        return None
+    if _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS):
+        return value
+    return None
+
+
 def subject_at(document: Document, pointer: str) -> str | None:
     """The object a question asked at this position is about.
 
@@ -266,6 +329,12 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
     if isinstance(value, str):
         if pointer.startswith(_INCLUDES):
             return _files(path.parent, value)
+        # A dimension spelled as a name goes to the constant it names, wherever the
+        # constants file lives - the constant is what is under the pointer. A name nobody
+        # declares goes nowhere; the unknown-constant finding is already saying why.
+        if _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS):
+            declared = built.constants.get(value)
+            return [declared] if declared is not None else []
         # A datatype that names a declared type goes to that type, wherever it is written -
         # the type is what is under the pointer. A base datatype names no file, so it falls
         # through to the declaration jump, which is what somebody resting there expects.
@@ -288,6 +357,11 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     a use of it, and which one is "the" declaration is the question the jump above answers.
     """
     value = document.value_at(pointer)
+    if isinstance(value, str) and (
+        _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS)
+    ):
+        found = built.constants.get(value)
+        return [found, *built.constant_uses.get(value, ())] if found is not None else []
     if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
         declared = built.types.get(value)
         if declared is not None:

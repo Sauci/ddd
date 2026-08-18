@@ -111,35 +111,35 @@ number means and says nothing about where it is stored. It is a file of its own 
 section of a component, because a type is usually shared: the point of declaring
 <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code> once is that two components can agree on it without either of them owning it.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;../../schemas/ddd_types.schema.json&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;types&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"../../schemas/ddd_types.schema.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;scalar&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A temperature as every component of this project agrees to see it&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="w"> </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">}</span>
+<span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"scalar"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature_t"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A temperature as every component of this project agrees to see it"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">}</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;struct&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sample_t&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;One reading and the instant it was taken&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;members&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"struct"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sample_t"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"One reading and the instant it was taken"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"members"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;member&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The reading itself&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"value"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"member"</span><span class="p">:</span><span class="w"> </span><span class="s2">"value"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The reading itself"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"typename"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature_t"</span>
 <span class="w">        </span><span class="p">},</span>
 <span class="w">        </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;timestamp&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;member&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Milliseconds since the last reset&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint32&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ms&quot;</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"timestamp"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"member"</span><span class="p">:</span><span class="w"> </span><span class="s2">"value"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Milliseconds since the last reset"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint32"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ms"</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">]</span>
 <span class="w">    </span><span class="p">}</span>
@@ -148,7 +148,7 @@ section of a component, because a type is usually shared: the point of declaring
 </pre></div>
 </div>
 <p>The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project, next to its components:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;StructuredDevice&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;types.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;sensing.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;monitoring.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StructuredDevice"</span><span class="p">,</span><span class="w"> </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"types.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"sensing.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"monitoring.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">examples/structures</span></code> is exactly that, ready to run: a types file with those two entries and
@@ -163,7 +163,7 @@ rather than half-processed. There is nothing to resolve or generate from a layou
 component has instantiated, and validating the file against the published schema - which
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">types</span></code> prints - is what an editor is for:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/structures/types.ddd.json
-examples/structures/types.ddd.json: error[file-kind]: this is a structured datatype description; list it in the &#39;includes&#39; of the project that uses it instead of analysing it on its own
+examples/structures/types.ddd.json: error[file-kind]: this is a structured datatype description; list it in the 'includes' of the project that uses it instead of analysing it on its own
 1 error
 </pre></div>
 </div>
@@ -199,7 +199,7 @@ instead of silently becoming another one. An entry with no <code class="docutils
 it sits, rather than tried against each shape in turn and reported against whichever one it
 came closest to:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0]: error[schema]: Unable to extract tag using discriminator &#39;type&#39; (got: {&#39;name&#39;: &#39;S_t&#39;, &#39;members&#39;: [{&#39;name&#39;: &#39;a&#39;, &#39;member&#39;: &#39;valu...)
+types.ddd.json#types[0]: error[schema]: Unable to extract tag using discriminator 'type' (got: {'name': 'S_t', 'members': [{'name': 'a', 'member': 'valu...)
 1 error
 </pre></div>
 </div>
@@ -212,7 +212,7 @@ the name of a type this project declares. Exactly one of the two is stated where
 is named - on a member of a structure and on the definition of a variable alike - never
 both, never neither:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-a.ddd.json#component.interface[0].definition: error[schema]: Value error, storage is named exactly once: &#39;datatype&#39; for a base datatype, &#39;typename&#39; for a type the project declares (got: {&#39;name&#39;: &#39;Count&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;volatile&#39;: Fals...)
+a.ddd.json#component.interface[0].definition: error[schema]: Value error, storage is named exactly once: 'datatype' for a base datatype, 'typename' for a type the project declares (got: {'name': 'Count', 'kind': 'measurement', 'volatile': Fals...)
 1 error
 </pre></div>
 </div>
@@ -226,14 +226,14 @@ dresses like storage, because the key already says it is declared.</p>
 <code class="docutils literal notranslate"><span class="pre">UINT16</span></code> - would wear the name of storage it is not, and every declaration naming it would
 read like a typo:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].scalar.name: error[schema]: Value error, &#39;UINT16&#39; spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: &#39;UINT16&#39;)
+types.ddd.json#types[0].scalar.name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
 1 error
 </pre></div>
 </div>
 <p>A <code class="docutils literal notranslate"><span class="pre">typename</span></code> that names no type any file of the project declares is answered by the
 <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code> check, with the question a reader would have asked:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-a.ddd.json#component.interface[0].definition.typename: error[unknown-type]: &#39;Count&#39; is declared as &#39;unit16&#39;, which is neither a base datatype nor a type any file of this project declares - did you mean &#39;uint16&#39; or &#39;uint64&#39; or &#39;sint16&#39;?
+a.ddd.json#component.interface[0].definition.typename: error[unknown-type]: 'Count' is declared as 'unit16', which is neither a base datatype nor a type any file of this project declares - did you mean 'uint16' or 'uint64' or 'sint16'?
 1 error
 </pre></div>
 </div>
@@ -298,8 +298,8 @@ question “where is this unit written down” keeps one answer. The rule is the
 of a structure as on the definition of a variable, because the confusion it prevents is the
 same one:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;limits&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;Inlet&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;typename&#39;: &#39;Tem...)
-types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, &#39;Temperature_t&#39; is a declared type and already fixes what this value means, so &#39;unit&#39; may not be stated here as well (got: {&#39;name&#39;: &#39;value&#39;, &#39;member&#39;: &#39;value&#39;, &#39;typename&#39;: &#39;Tempera...)
+sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'typename': 'Tem...)
+types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
 2 errors
 </pre></div>
 </div>
@@ -345,8 +345,8 @@ half would put a structure in the generated c that the description does not desc
 forgotten <code class="docutils literal notranslate"><span class="pre">bits</span></code> is the same problem in the other direction: it would turn a one bit flag
 into a full width member and move every offset after it.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a &#39;bits&#39; member needs a &#39;bits&#39; (got: {&#39;name&#39;: &#39;ready&#39;, &#39;member&#39;: &#39;bits&#39;, &#39;datatype&#39;: &#39;uint16&#39;})
-types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a &#39;value&#39; member has no &#39;bits&#39; (got: {&#39;name&#39;: &#39;history&#39;, &#39;member&#39;: &#39;value&#39;, &#39;datatype&#39;: &#39;uint1...)
+types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a 'bits' member needs a 'bits' (got: {'name': 'ready', 'member': 'bits', 'datatype': 'uint16'})
+types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a 'value' member has no 'bits' (got: {'name': 'history', 'member': 'value', 'datatype': 'uint1...)
 2 errors
 </pre></div>
 </div>
@@ -384,9 +384,9 @@ belong to.</p>
 declared type are all refused - a scalar type would in any case bring limits that the width
 contradicts:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in &#39;uint16&#39;, which holds 16 (got: {&#39;name&#39;: &#39;wide&#39;, &#39;member&#39;: &#39;bits&#39;, &#39;datatype&#39;: &#39;uint16&#39;, ...)
-types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got &#39;float32&#39;; only an integer can carry one in c (got: {&#39;name&#39;: &#39;counted&#39;, &#39;member&#39;: &#39;bits&#39;, &#39;datatype&#39;: &#39;float3...)
-types.ddd.json#types[0].struct.members[2]: error[schema]: Value error, a &#39;bits&#39; member has no &#39;dimensions&#39; (got: {&#39;name&#39;: &#39;flags&#39;, &#39;member&#39;: &#39;bits&#39;, &#39;datatype&#39;: &#39;uint8&#39;, ...)
+types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in 'uint16', which holds 16 (got: {'name': 'wide', 'member': 'bits', 'datatype': 'uint16', ...)
+types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got 'float32'; only an integer can carry one in c (got: {'name': 'counted', 'member': 'bits', 'datatype': 'float3...)
+types.ddd.json#types[0].struct.members[2]: error[schema]: Value error, a 'bits' member has no 'dimensions' (got: {'name': 'flags', 'member': 'bits', 'datatype': 'uint8', ...)
 3 errors
 </pre></div>
 </div>
@@ -426,13 +426,13 @@ from a measured one and wrong on the first target whose alignment differs.</p>
 declaration states its <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, and everything else about the declaration is what it
 always was - the scope, the kind, the description, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Inlet&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The inlet sensor as this ecu sees it&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sensor_t&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inlet"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The inlet sensor as this ecu sees it"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"typename"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sensor_t"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -482,10 +482,10 @@ a map file all spell one thing one way. The reasoning is on the
 <a class="reference internal" href="../developer_documentation.html"><span class="doc">developer documentation</span></a> page and is not a matter of taste:
 ASAP2 has a typedef family for the native form, and the calibration tools this project targets
 load a file that uses it without a warning and then display nothing for it.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Inlet.latest.value &quot;The reading itself&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Inlet.latest.value "The reading itself"
   UWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Inlet.latest.value&quot; 0
+  SYMBOL_LINK "Inlet.latest.value" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -499,10 +499,10 @@ so a structured variable is not a hole in that component’s measurement list.</
 whether one record can honestly describe the whole of it. An array of <strong>values</strong> stays one
 object with a <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code>, because its elements are consecutive and one address plus a shape
 says where all of them are:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Inlet.history &quot;The last eight readings, oldest first&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Inlet.history "The last eight readings, oldest first"
   UWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Inlet.history&quot; 0
+  SYMBOL_LINK "Inlet.history" 0
   MATRIX_DIM 8 1 1
 /end MEASUREMENT
 </pre></div>
@@ -513,9 +513,9 @@ structure apart and no single record describes both at once. The same holds for 
 own <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> make it an array of structures.</p>
 <p>Calibration members go the same way, as <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> rather than <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code>, since
 the kind is the variable’s and every leaf of one variable has it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC InletCal.warnLimit &quot;Reading above which the sensor reports a fault&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC InletCal.warnLimit "Reading above which the sensor reports a fault"
   VALUE 0x00000000 RL_VALUES_UWORD 0 CM_LIN_DEGC -40 150
-  SYMBOL_LINK &quot;InletCal.warnLimit&quot; 0
+  SYMBOL_LINK "InletCal.warnLimit" 0
 /end CHARACTERISTIC
 </pre></div>
 </div>
@@ -582,7 +582,7 @@ same namespace as the variables, so <code class="docutils literal notranslate"><
 </table>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
 types.ddd.json#types[0]: error[type-cycle]: structured datatypes nest each other: A_t -&gt; B_t -&gt; A_t
-types.ddd.json#types[2].members[0]: error[unknown-type]: member &#39;gone&#39; names datatype &#39;Missing_t&#39;, which is neither a base datatype nor a type any file of this project declares
+types.ddd.json#types[2].members[0]: error[unknown-type]: member 'gone' names datatype 'Missing_t', which is neither a base datatype nor a type any file of this project declares
 2 errors
 </pre></div>
 </div>
@@ -594,9 +594,9 @@ would report it once per route.</p>
 usually perfectly good and the use made of it is not; the note points at the declaration of the
 type so that both ends are on screen:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.interface[0].definition: error[type-kind]: &#39;History&#39; is declared as the structure &#39;Sample_t&#39;, but a &#39;value_block&#39; refers to other objects or is an array of one datatype, and a structure is neither; a structured object is &#39;measurement&#39; or &#39;parameter&#39;
+sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but a 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
     note: types.ddd.json#types[0]: declared here
-sensing.ddd.json#component.interface[1].definition: error[type-kind]: &#39;Preset&#39; is declared as the structure &#39;Sample_t&#39;, but the initial value of a structure is written by the code that starts it
+sensing.ddd.json#component.interface[1].definition: error[type-kind]: 'Preset' is declared as the structure 'Sample_t', but the initial value of a structure is written by the code that starts it
     note: types.ddd.json#types[0]: declared here
 2 errors
 </pre></div>
@@ -604,15 +604,15 @@ sensing.ddd.json#component.interface[1].definition: error[type-kind]: &#39;Prese
 <p><code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> both name the other place, since the fix is to rename
 one of the two and the author needs to see both before choosing which:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0]: error[duplicate-type]: type &#39;Temperature_t&#39; is declared twice
+types.ddd.json#types[0]: error[duplicate-type]: type 'Temperature_t' is declared twice
     note: shared.ddd.json#types[0]: first declared here
 1 error
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.interface[0].definition.name: error[name-collision]: &#39;Sample_t&#39; is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
+sensing.ddd.json#component.interface[0].definition.name: error[name-collision]: 'Sample_t' is declared as a variable and is also the name of a type; the types header makes that a typedef name, which c keeps in the same namespace as the variable
     note: types.ddd.json#types[0]: type declared here
-types.ddd.json#types[1].name: error[reserved-identifier]: type name &#39;uint8_t&#39; is reserved by the c language
+types.ddd.json#types[1].name: error[reserved-identifier]: type name 'uint8_t' is reserved by the c language
 2 errors
 </pre></div>
 </div>

@@ -92,7 +92,7 @@
            <div itemprop="articleBody">
              
   <h1>Source code for ddd.models.component</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Contract for the software component description file.&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""Contract for the software component description file."""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -105,16 +105,16 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">Scope</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Direction of a variable with respect to the declaring component.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Direction of a variable with respect to the declaring component."""</span>
 
-    <span class="n">INPUT</span> <span class="o">=</span> <span class="s2">&quot;input&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The component reads the variable; another component has to produce it.&quot;&quot;&quot;</span>
+    <span class="n">INPUT</span> <span class="o">=</span> <span class="s2">"input"</span>
+<span class="w">    </span><span class="sd">"""The component reads the variable; another component has to produce it."""</span>
 
-    <span class="n">OUTPUT</span> <span class="o">=</span> <span class="s2">&quot;output&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The component writes the variable; exactly one component may do so.&quot;&quot;&quot;</span>
+    <span class="n">OUTPUT</span> <span class="o">=</span> <span class="s2">"output"</span>
+<span class="w">    </span><span class="sd">"""The component writes the variable; exactly one component may do so."""</span>
 
-    <span class="n">LOCAL</span> <span class="o">=</span> <span class="s2">&quot;local&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The component owns the variable exclusively; no other component may use it.&quot;&quot;&quot;</span>
+    <span class="n">LOCAL</span> <span class="o">=</span> <span class="s2">"local"</span>
+<span class="w">    </span><span class="sd">"""The component owns the variable exclusively; no other component may use it."""</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">is_producer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -124,53 +124,53 @@
 <div class="viewcode-block" id="Declaration">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Declaration">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Declaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One entry of the ``interface`` list of a component.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""One entry of the ``interface`` list of a component."""</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">scope</span><span class="p">:</span> <span class="n">Scope</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Direction of the declaration, which is what makes the interfaces check each other.</span>
+<span class="w">    </span><span class="sd">"""Direction of the declaration, which is what makes the interfaces check each other.</span>
 
 <span class="sd">    Exactly one component may produce a name - declare it ``output`` or ``local`` - and that</span>
-<span class="sd">    component&#39;s definition is the one the project uses. Every ``input`` declaring the same</span>
+<span class="sd">    component's definition is the one the project uses. Every ``input`` declaring the same</span>
 <span class="sd">    name has to agree with it on datatype, unit, conversion, limits and shape.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.</span>
+<span class="w">    </span><span class="sd">"""C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.</span>
 
 <span class="sd">    One expression, written as it would appear after ``#if``. It is emitted verbatim into the</span>
 <span class="sd">    generated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or</span>
 <span class="sd">    ``*/`` - each of which would let a description file put arbitrary directives, or live</span>
-<span class="sd">    code, into somebody else&#39;s build.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    code, into somebody else's build.</span>
+<span class="sd">    """</span>
 
     <span class="n">definition</span><span class="p">:</span> <span class="n">AnyDataObject</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The data object being declared; its ``kind`` decides which keys it carries.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The data object being declared; its ``kind`` decides which keys it carries."""</span>
 
-    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;condition&quot;</span><span class="p">)</span>
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"condition"</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_condition_is_a_single_expression</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;One preprocessor expression, and nothing that could end or start something else.</span>
+<span class="w">        </span><span class="sd">"""One preprocessor expression, and nothing that could end or start something else.</span>
 
 <span class="sd">        The text is emitted verbatim into ``#if &lt;condition&gt;`` and into the trailing</span>
 <span class="sd">        ``#endif /* &lt;condition&gt; */`` of every generated file, and into a comment in the a2l.</span>
 <span class="sd">        A line break would put arbitrary directives inside the guarded region, and a comment</span>
 <span class="sd">        marker would close the trailer early and leave whatever follows as live code -</span>
 <span class="sd">        neither of which the author of a description file should be able to do to somebody</span>
-<span class="sd">        else&#39;s build.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        else's build.</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="n">stripped</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">stripped</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">stripped</span> <span class="ow">or</span> <span class="s2">&quot;</span><span class="se">\r</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;a condition is a single expression and cannot contain a line break&quot;</span>
+        <span class="k">if</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">stripped</span> <span class="ow">or</span> <span class="s2">"</span><span class="se">\r</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a condition is a single expression and cannot contain a line break"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;/*&quot;</span><span class="p">,</span> <span class="s2">&quot;*/&quot;</span><span class="p">,</span> <span class="s2">&quot;//&quot;</span><span class="p">,</span> <span class="s2">&quot;#&quot;</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"/*"</span><span class="p">,</span> <span class="s2">"*/"</span><span class="p">,</span> <span class="s2">"//"</span><span class="p">,</span> <span class="s2">"#"</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;a condition cannot contain &#39;</span><span class="si">{</span><span class="n">token</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a condition cannot contain '</span><span class="si">{</span><span class="n">token</span><span class="si">}</span><span class="s2">'"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">stripped</span></div>
 
@@ -179,40 +179,40 @@
 <div class="viewcode-block" id="Component">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Component">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Component</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The interface specification of one software component.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The interface specification of one software component."""</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of the component; every component of a project needs a distinct one.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Name of the component; every component of a project needs a distinct one."""</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the component, offered to the c templates.&quot;&quot;&quot;</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing the component, offered to the c templates."""</span>
 
     <span class="n">interface</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The data interface: everything the component produces, consumes or keeps to itself.</span>
+<span class="w">    </span><span class="sd">"""The data interface: everything the component produces, consumes or keeps to itself.</span>
 
 <span class="sd">    Required with no default, so that a component with nothing to declare says so with an</span>
 <span class="sd">    empty list rather than by a key that might merely have been forgotten - the same</span>
 <span class="sd">    reasoning that makes ``volatile`` and ``kind`` required on a definition.</span>
-<span class="sd">    &quot;&quot;&quot;</span></div>
+<span class="sd">    """</span></div>
 
 
 
 <div class="viewcode-block" id="ComponentFile">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ComponentFile">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ComponentFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Root object of a ``*.ddd.json`` software component description.</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` software component description.</span>
 
 <span class="sd">    ``component`` is the top level key that makes this a component file rather than a project</span>
 <span class="sd">    or a types file; DDD decides what a file is from that key alone, so exactly one of them</span>
 <span class="sd">    appears here.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;DDD component description&quot;</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD component description"</span><span class="p">)</span>
 
     <span class="n">component</span><span class="p">:</span> <span class="n">Component</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The component this file describes; the key that identifies the file as a component.&quot;&quot;&quot;</span></div>
+<span class="w">    </span><span class="sd">"""The component this file describes; the key that identifies the file as a component."""</span></div>
 
 </pre></div>
 

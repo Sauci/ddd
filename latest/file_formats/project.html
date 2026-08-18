@@ -115,12 +115,12 @@ to.</p>
 <p>The project file is what a build script points DDD at, and it is the file whose name ends up
 on the generated a2l. <code class="docutils literal notranslate"><span class="pre">examples/demo/demo.ddd.json</span></code> is a complete one:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DemoDevice&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Demonstration project showing every DDD feature&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;components/*.ddd.json&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="s2">&quot;subsystems/logging/logging.ddd.json&quot;</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DemoDevice"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Demonstration project showing every DDD feature"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"components/*.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"subsystems/logging/logging.ddd.json"</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
@@ -161,8 +161,8 @@ opens the file in a calibration tool.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">includes</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
-<td><p>Paths to the component and sub-project files that make up the project, relative to
-this file. Wildcards are expanded.</p></td>
+<td><p>Paths to the component, types, units, sections, constants and sub-project files that
+make up the project, relative to this file. Wildcards are expanded.</p></td>
 </tr>
 </tbody>
 </table>
@@ -192,9 +192,9 @@ character, and <code class="docutils literal notranslate"><span class="pre">**</
 adding a component to the project is a matter of adding its file - nobody has to remember to
 edit the project as well, and nobody can forget to.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Wildcards&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;**/*.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;c/comp?.ddd.json&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Wildcards"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"**/*.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"c/comp?.ddd.json"</span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -211,7 +211,7 @@ project file work at all.</p>
 <p>A pattern that matches nothing is reported, because the usual cause is a directory that was
 renamed or a component that never arrived:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check empty.ddd.json
-empty.ddd.json#project.includes[0]: error[include-empty]: pattern &#39;variants/*.ddd.json&#39; matches no file
+empty.ddd.json#project.includes[0]: error[include-empty]: pattern 'variants/*.ddd.json' matches no file
 1 error
 </pre></div>
 </div>
@@ -227,11 +227,11 @@ can be delivered as a project of its own and pulled in as a single entry. The de
 exactly that: <code class="docutils literal notranslate"><span class="pre">subsystems/logging/logging.ddd.json</span></code> is a project, and it brings its own
 component with it.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Logging&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Sub project of its own, developed by a separate team&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;event_logger.ddd.json&quot;</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Logging"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sub project of its own, developed by a separate team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"event_logger.ddd.json"</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
@@ -249,9 +249,9 @@ does not need to know who includes it.</p>
 and both list it; a wildcard in one project and an explicit path in another commonly land on
 the same file. DDD resolves every path to a canonical absolute form before using it, so the
 two spellings are recognised as the same file and it is loaded once:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Top&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;left.ddd.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;right.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Left&quot;</span><span class="p">,</span><span class="w">  </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;shared/*.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<span class="p">{</span><span class="w"> </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Right&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;shared/common.ddd.json&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Top"</span><span class="p">,</span><span class="w">   </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"left.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"right.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Left"</span><span class="p">,</span><span class="w">  </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"shared/*.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Right"</span><span class="p">,</span><span class="w"> </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"shared/common.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check top.ddd.json
@@ -266,7 +266,7 @@ tolerated but expected.</p>
 component name. That is a real collision, since a component name decides the name of the
 generated header, and the second file would silently overwrite the first:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-second.ddd.json#component: error[duplicate-component]: component &#39;Sensing&#39; is declared twice
+second.ddd.json#component: error[duplicate-component]: component 'Sensing' is declared twice
     note: first.ddd.json#component: first declared here
 1 error
 </pre></div>

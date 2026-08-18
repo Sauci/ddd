@@ -158,17 +158,17 @@ to re-read it at every access, and, for calibration data, the axes it is defined
 about a shared variable stays implicit, and in particular nothing about it lives in a hand
 written header that only one team ever reads.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueF&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Signed measurement with a fixed point conversion&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-400</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueF"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Signed measurement with a fixed point conversion"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">-400</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -197,14 +197,14 @@ definition that gets generated, and the diagnostic points at the consumer that d
 it, which is also the component that has to change. Both appear in the <code class="docutils literal notranslate"><span class="pre">inconsistent</span></code>
 example, whose whole point is to fail:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
-examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
     note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
-examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
     note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
-examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -488,7 +488,7 @@ without addresses describes the software correctly but cannot be used to measure
 addresses are decided by the linker, so DDD is handed a symbol to address map extracted from
 the linker output and rewrites the a2l with the real values. The map is a flat json object,
 with the addresses written in decimal or hexadecimal:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ValueE&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x20000100&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;AxisA&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x08004000&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;CurveA&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"CurveA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map build/addresses.json
@@ -514,10 +514,10 @@ objects named in the map carry their real address, and the ones that are not nam
 <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE &quot;Measurement used as the input quantity of AxisA&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
   UWORD CM_LIN_HZ 0 0 0 8000
   ECU_ADDRESS 0x20000100
-  SYMBOL_LINK &quot;ValueE&quot; 0
+  SYMBOL_LINK "ValueE" 0
 /end MEASUREMENT
 </pre></div>
 </div>

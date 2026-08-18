@@ -111,11 +111,11 @@ a vocabulary the drift is invisible: each object agrees with itself, the a2l gro
 <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> per spelling, and the calibration tool shows two units for one quantity.
 The vocabulary is the opt-in that pins the spellings once, for the whole project.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;../../schemas/ddd_units.schema.json&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;units&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="s2">&quot;rpm&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Nm&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;torque, newton metre&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;temperature&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"../../schemas/ddd_units.schema.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"units"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">"rpm"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Nm"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"torque, newton metre"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"temperature"</span><span class="w"> </span><span class="p">}</span>
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
 </pre></div>
@@ -125,12 +125,13 @@ meaning of a unit is written down once, instead of being implied by every object
 happens to use it. Case counts: <code class="docutils literal notranslate"><span class="pre">mV</span></code> and <code class="docutils literal notranslate"><span class="pre">MV</span></code> are different units. The file is listed in
 the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">units</span></code> prints
 its published contract. <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project that declares a
-vocabulary like this next to its <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>; it checks clean, so it
-is the file set to start a project of your own from.</p>
+vocabulary like this next to its <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a> and
+<a class="reference internal" href="constants.html"><span class="doc">constants</span></a>; it checks clean, so it is the file set to start a project of
+your own from.</p>
 <p>With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: &#39;newton_meter&#39; is not a unit this project declares
+a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'newton_meter' is not a unit this project declares
 1 error
 </pre></div>
 </div>
@@ -141,7 +142,7 @@ vocabulary into a grown project can start with <code class="docutils literal not
 spellings are settled.</p>
 <p>The same unit declared twice, by one file or by two, is refused rather than merged:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-two.ddd.json#units[0]: error[duplicate-unit]: unit &#39;Nm&#39; is declared twice
+two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is declared twice
     note: one.ddd.json#units[0]: first declared here
 1 error
 </pre></div>

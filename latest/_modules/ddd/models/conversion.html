@@ -92,13 +92,13 @@
            <div itemprop="articleBody">
              
   <h1>Source code for ddd.models.conversion</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Conversions between the raw (implementation) and the physical value of a data object.</span>
+<span></span><span class="sd">"""Conversions between the raw (implementation) and the physical value of a data object.</span>
 
 <span class="sd">The three variants form a tagged union discriminated on ``kind``, and each one answers the</span>
 <span class="sd">same three questions - the interface :class:`ConversionRule` spells out. It is a Protocol</span>
 <span class="sd">rather than a base class because the variants are pydantic models whose only shared state is</span>
 <span class="sd">their tag: inheritance would put a ``kind`` field where each variant needs its own literal.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -110,48 +110,48 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">_Frozen</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 
 <span class="nd">@runtime_checkable</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ConversionRule</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What every conversion variant can do, whatever its kind.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""What every conversion variant can do, whatever its kind."""</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;The physical value a raw value stands for.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""The physical value a raw value stands for."""</span>
         <span class="o">...</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;The raw value needed to represent a physical one.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""The raw value needed to represent a physical one."""</span>
         <span class="o">...</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;A short phrase naming the rule, for diagnostics.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""A short phrase naming the rule, for diagnostics."""</span>
         <span class="o">...</span>
 
 
 <div class="viewcode-block" id="Enumerator">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Enumerator">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Enumerator</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One named value of an enum conversion, and what that value means.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""One named value of an enum conversion, and what that value means."""</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;C identifier of the enumerator; enumerators of all enums share one c namespace.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""C identifier of the enumerator; enumerators of all enums share one c namespace."""</span>
 
     <span class="n">value</span><span class="p">:</span> <span class="nb">int</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The raw value; every enumerator of one enum needs a value of its own.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The raw value; every enumerator of one enum needs a value of its own."""</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What the value means; documentation, not interface.&quot;&quot;&quot;</span></div>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the value means; documentation, not interface."""</span></div>
 
 
 
 <div class="viewcode-block" id="IdentityConversion">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.IdentityConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">IdentityConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;``physical == raw``; the default for every variable.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""``physical == raw``; the default for every variable."""</span>
 
-    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;identity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;identity&quot;</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"identity"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">raw</span>
@@ -160,26 +160,26 @@
         <span class="k">return</span> <span class="n">physical</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;identity&quot;</span></div>
+        <span class="k">return</span> <span class="s2">"identity"</span></div>
 
 
 
 <div class="viewcode-block" id="LinearConversion">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.LinearConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">LinearConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;``physical = raw * factor + offset``, the scaling of a fixed point value.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""``physical = raw * factor + offset``, the scaling of a fixed point value."""</span>
 
-    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;linear&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;linear&quot;</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"linear"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"linear"</span>
     <span class="n">factor</span><span class="p">:</span> <span class="n">Real</span> <span class="o">=</span> <span class="mf">1.0</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Scaling; must not be zero, or nothing could be converted back.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Scaling; must not be zero, or nothing could be converted back."""</span>
 
     <span class="n">offset</span><span class="p">:</span> <span class="n">Real</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What raw zero stands for, in the physical unit.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""What raw zero stands for, in the physical unit."""</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_factor_not_zero</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LinearConversion</span><span class="p">:</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;factor must not be zero&quot;</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"factor must not be zero"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
@@ -190,50 +190,50 @@
         <span class="k">return</span> <span class="p">(</span><span class="n">physical</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;linear(factor=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="p">)</span><span class="si">}</span><span class="s2">, offset=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span></div>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"linear(factor=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="p">)</span><span class="si">}</span><span class="s2">, offset=</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span></div>
 
 
 
 <div class="viewcode-block" id="EnumConversion">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.EnumConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">EnumConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A verbal conversion table; the raw value *is* the physical value.</span>
+<span class="w">    </span><span class="sd">"""A verbal conversion table; the raw value *is* the physical value.</span>
 
 <span class="sd">    Accepts both the explicit form::</span>
 
-<span class="sd">        {&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,</span>
-<span class="sd">         &quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}</span>
+<span class="sd">        {"kind": "enum", "name": "StateA",</span>
+<span class="sd">         "enumerators": [{"name": "STATE_OFF", "value": 0}]}</span>
 
 <span class="sd">    and the mapping shorthand::</span>
 
-<span class="sd">        {&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        {"kind": "enum", "name": "StateA", "enumerators": {"STATE_OFF": 0}}</span>
+<span class="sd">    """</span>
 
-    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;enum&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;enum&quot;</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"enum"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"enum"</span>
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;C identifier of the generated ``typedef enum``; shared enums must agree everywhere.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""</span>
 
     <span class="n">enumerators</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The named values, either as objects or as a ``{&quot;NAME&quot;: value}`` mapping.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The named values, either as objects or as a ``{"NAME": value}`` mapping."""</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;before&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_expand_mapping</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="n">enumerators</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;enumerators&quot;</span><span class="p">)</span>
+            <span class="n">enumerators</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"enumerators"</span><span class="p">)</span>
             <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">enumerators</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
                 <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-                <span class="n">data</span><span class="p">[</span><span class="s2">&quot;enumerators&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
-                    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">enumerators</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="n">data</span><span class="p">[</span><span class="s2">"enumerators"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">enumerators</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
                 <span class="p">]</span>
         <span class="k">return</span> <span class="n">data</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_unique_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EnumConversion</span><span class="p">:</span>
         <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">enumerator</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">enumerators</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">enumerator</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;duplicate enumerator name &#39;</span><span class="si">{</span><span class="n">enumerator</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"duplicate enumerator name '</span><span class="si">{</span><span class="n">enumerator</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">'"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">enumerator</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
@@ -249,60 +249,60 @@
         <span class="k">return</span> <span class="n">physical</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;enum(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">)&quot;</span></div>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"enum(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">)"</span></div>
 
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_infer_kind</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Allow ``kind`` to be omitted when the shape of the object is unambiguous.&quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;kind&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Allow ``kind`` to be omitted when the shape of the object is unambiguous."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">"kind"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
         <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="k">if</span> <span class="s2">&quot;enumerators&quot;</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">&quot;name&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;kind&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;enum&quot;</span>
-        <span class="k">elif</span> <span class="s2">&quot;factor&quot;</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">&quot;offset&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;kind&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;linear&quot;</span>
+        <span class="k">if</span> <span class="s2">"enumerators"</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">"name"</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"enum"</span>
+        <span class="k">elif</span> <span class="s2">"factor"</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">or</span> <span class="s2">"offset"</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"linear"</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;kind&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;identity&quot;</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
     <span class="k">return</span> <span class="n">data</span>
 
 
 <span class="n">Conversion</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
     <span class="n">IdentityConversion</span> <span class="o">|</span> <span class="n">LinearConversion</span> <span class="o">|</span> <span class="n">EnumConversion</span><span class="p">,</span>
-    <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">&quot;kind&quot;</span><span class="p">),</span>
+    <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"kind"</span><span class="p">),</span>
     <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">_infer_kind</span><span class="p">),</span>
 <span class="p">]</span>
-<span class="sd">&quot;&quot;&quot;Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous.&quot;&quot;&quot;</span>
+<span class="sd">"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous."""</span>
 
 <span class="n">IDENTITY</span> <span class="o">=</span> <span class="n">IdentityConversion</span><span class="p">()</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">conversion_identity</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">object</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What two spellings of one conversion have to agree on to be the same conversion.</span>
+<span class="w">    </span><span class="sd">"""What two spellings of one conversion have to agree on to be the same conversion.</span>
 
-<span class="sd">    An enumerator&#39;s ``description`` is documentation, not interface: the two spellings the</span>
+<span class="sd">    An enumerator's ``description`` is documentation, not interface: the two spellings the</span>
 <span class="sd">    file format offers - the mapping shorthand and the list of objects - cannot even carry</span>
 <span class="sd">    the same text, and two conversions differing only in it mean the same mapping. The</span>
 <span class="sd">    ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and</span>
 <span class="sd">    everything else compares as written, because ``linear`` with factor 1 is deliberately</span>
 <span class="sd">    not the identity. One function for both questions - declarations inside a project, and</span>
 <span class="sd">    one object across two deliveries - so the two can never drift over what a conversion is.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
         <span class="k">return</span> <span class="p">(</span>
-            <span class="s2">&quot;enum&quot;</span><span class="p">,</span>
+            <span class="s2">"enum"</span><span class="p">,</span>
             <span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
             <span class="nb">tuple</span><span class="p">((</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span><span class="p">),</span>
         <span class="p">)</span>
-    <span class="k">return</span> <span class="n">conversion</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">conversion</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"json"</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw_min</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">raw_max</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The physical range a raw range covers, in the order a reader expects.</span>
+<span class="w">    </span><span class="sd">"""The physical range a raw range covers, in the order a reader expects.</span>
 
 <span class="sd">    Takes the raw ends rather than a datatype, because they do not always come from one: a</span>
-<span class="sd">    bitfield&#39;s ends come from its width, and offering a two bit field over the whole range of</span>
+<span class="sd">    bitfield's ends come from its width, and offering a two bit field over the whole range of</span>
 <span class="sd">    the ``uint16`` carrying it would be an invitation to enter a value it cannot hold.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
         <span class="n">values</span> <span class="o">=</span> <span class="n">conversion</span><span class="o">.</span><span class="n">values</span>
         <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">values</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">values</span><span class="p">))</span>
@@ -312,12 +312,12 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">conversion_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The physical range covered by the full raw range of ``datatype``.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The physical range covered by the full raw range of ``datatype``."""</span>
     <span class="k">return</span> <span class="n">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_min</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_max</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">raw_reading</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What one raw value reads as, or ``None`` where the raw value already says it.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">raw_reading</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""What one raw value reads as, or ``None`` where the raw value already says it.</span>
 
 <span class="sd">    The forward direction only, which is always defined: every raw value has exactly one</span>
 <span class="sd">    physical image under a linear conversion, while most physical values are the image of no</span>
@@ -325,9 +325,9 @@
 <span class="sd">    names only the values of its table - both answer ``None`` rather than repeat the number</span>
 <span class="sd">    they were given. The unit rides along on a linear reading because the physical value is</span>
 <span class="sd">    the one it belongs to; an enumerator name carries no unit.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">LinearConversion</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">next</span><span class="p">((</span><span class="n">item</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span> <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">raw</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
     <span class="k">return</span> <span class="kc">None</span>

@@ -92,7 +92,7 @@
            <div itemprop="articleBody">
              
   <h1>Source code for ddd.models.project</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Contract for the project description file.&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""Contract for the project description file."""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -104,39 +104,40 @@
 <div class="viewcode-block" id="Project">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Project">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Project</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A project is a named list of components and/or sub-projects.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""A project is a named list of components and/or sub-projects."""</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of the project; also the a2l project and module name.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Name of the project; also the a2l project and module name."""</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the project.&quot;&quot;&quot;</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing the project."""</span>
 
     <span class="n">includes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Paths to component or sub-project files, relative to this file.</span>
+<span class="w">    </span><span class="sd">"""Paths to component, types, units, sections, constants or sub-project files,</span>
+<span class="sd">    relative to this file.</span>
 
 <span class="sd">    Shell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every</span>
 <span class="sd">    included file is detected from its top level key.</span>
-<span class="sd">    &quot;&quot;&quot;</span></div>
+<span class="sd">    """</span></div>
 
 
 
 <div class="viewcode-block" id="ProjectFile">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ProjectFile">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ProjectFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Root object of a ``*.ddd.json`` project description.</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` project description.</span>
 
 <span class="sd">    ``project`` is the top level key that makes this a project file rather than a component</span>
 <span class="sd">    or a types file; DDD decides what a file is from that key alone, so exactly one of them</span>
 <span class="sd">    appears here.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;DDD project description&quot;</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD project description"</span><span class="p">)</span>
 
     <span class="n">project</span><span class="p">:</span> <span class="n">Project</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The project this file describes; the key that identifies the file as a project.&quot;&quot;&quot;</span></div>
+<span class="w">    </span><span class="sd">"""The project this file describes; the key that identifies the file as a project."""</span></div>
 
 </pre></div>
 

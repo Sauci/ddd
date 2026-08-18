@@ -136,14 +136,14 @@ a single pattern, and it is the same pattern a project uses to collect its membe
 else, which is only safe because nothing else can be a description file.</p>
 <p>A file with any other name is reported as <code class="docutils literal notranslate"><span class="pre">file-extension</span></code>, an error by default:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check sensor_hub.json
-sensor_hub.json: error[file-extension]: &#39;sensor_hub.json&#39; is a DDD description file and has to be named &#39;*.ddd.json&#39;
+sensor_hub.json: error[file-extension]: 'sensor_hub.json' is a DDD description file and has to be named '*.ddd.json'
 1 error
 </pre></div>
 </div>
 <p>While a project is being migrated, the check can be relaxed like any other, and the run then
 continues into the interface checks as usual:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check sensor_hub.json -W file-extension=warning
-sensor_hub.json: warning[file-extension]: &#39;sensor_hub.json&#39; is a DDD description file and has to be named &#39;*.ddd.json&#39;
+sensor_hub.json: warning[file-extension]: 'sensor_hub.json' is a DDD description file and has to be named '*.ddd.json'
 1 warning
 </pre></div>
 </div>
@@ -169,13 +169,13 @@ which is what <code class="docutils literal notranslate"><span class="pre">missi
 read by components that are not there either, which <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> reports as a warning.
 Ignoring both is what makes the result meaningful:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
 2 errors, 5 warnings
 
 $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
@@ -206,7 +206,7 @@ calibration tool still using yesterday’s a2l:</p>
 ok: 1 variable in 2 components are consistent
 
 $ ddd compare baseline.json device.ddd.json
-device.ddd.json: error[changed-interface]: &#39;InletPressure&#39; is not the same object any more (conversion: linear(factor=0.2, offset=0) != linear(factor=0.1, offset=0)), read by Controller
+device.ddd.json: error[changed-interface]: 'InletPressure' is not the same object any more (conversion: linear(factor=0.2, offset=0) != linear(factor=0.1, offset=0)), read by Controller
 1 error
 device.ddd.json cannot replace baseline.json
 </pre></div>
@@ -226,7 +226,7 @@ every warning into an error. <code class="docutils literal notranslate"><span cl
 both an unknown identifier and an unknown severity are refused as a usage error rather than
 being quietly ignored, because a silently misspelled override is a check nobody runs:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W no-such-check=ignore
-ddd: unknown check &#39;no-such-check&#39;
+ddd: unknown check 'no-such-check'
 </pre></div>
 </div>
 <p>Five checks cannot be relaxed - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code>
@@ -235,7 +235,7 @@ could not be read at all, and a file that could not be read has nothing further 
 downgrading the finding would only replace one clear diagnostic with an unpredictable pile of
 consequences:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W schema=ignore
-ddd: the severity of check &#39;schema&#39; cannot be changed
+ddd: the severity of check 'schema' cannot be changed
 </pre></div>
 </div>
 <p>There is deliberately no severity section in the project description. A severity is a
@@ -245,7 +245,7 @@ over the same components may legitimately disagree - the component’s own pipel
 therefore the build system, where the <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> option of <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> passes the same
 overrides:</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">ddd_generate</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">NAME</span><span class="w"> </span><span class="s">DemoDevice</span>
-<span class="w">             </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">&quot;${templates}&quot;</span>
+<span class="w">             </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">"${templates}"</span>
 <span class="w">             </span><span class="s">SEVERITY</span><span class="w"> </span><span class="s">unused-output=ignore</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -269,7 +269,7 @@ being wrong about the data. Only two stated values can disagree that way; a cons
 merely leaves the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block or one of its keys out is not asking for anything and is not
 reported:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
-controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;InletTemperature&#39;: component &#39;Controller&#39; specifies a different a2l format than &#39;SensorHub&#39; (a2l format: &#39;%8.3&#39; != &#39;%5.1&#39;); the value of &#39;SensorHub&#39; is used
+controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'InletTemperature': component 'Controller' specifies a different a2l format than 'SensorHub' (a2l format: '%8.3' != '%5.1'); the value of 'SensorHub' is used
     note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 1 warning
 </pre></div>
@@ -297,17 +297,17 @@ lines are the ones that drift.</p>
 ok: 1 variable in 2 components are consistent
 
 $ ddd check device.ddd.json    # after the consumer changed its limits to [0, 150]
-controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;InletTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (limits: [0, 150] != [-40, 150])
+controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'InletTemperature' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 150] != [-40, 150])
     note: sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 1 error
 </pre></div>
 </div>
 <p>The limits that reach the a2l are the producer’s either way - a consumer never widens or
 narrows what the calibration tool is shown:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT InletTemperature &quot;InletTemperature&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT InletTemperature "InletTemperature"
   SWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;InletTemperature&quot; 0
+  SYMBOL_LINK "InletTemperature" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -321,7 +321,7 @@ is therefore required wherever storage is named by <code class="docutils literal
 structure member, on a scalar type - exactly as <code class="docutils literal notranslate"><span class="pre">kind</span></code> and <code class="docutils literal notranslate"><span class="pre">volatile</span></code> are, and the
 identity is an answer to state rather than a default to fall into:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check a.ddd.json
-a.ddd.json#component.interface[0].definition: error[schema]: Value error, a &#39;datatype&#39; comes with a &#39;conversion&#39;: the identity ({&quot;kind&quot;: &quot;identity&quot;}) is an answer to state, not a default to fall into (got: {&#39;name&#39;: &#39;Speed&#39;, &#39;kind&#39;: &#39;measurement&#39;, &#39;datatype&#39;: &#39;uin...)
+a.ddd.json#component.interface[0].definition: error[schema]: Value error, a 'datatype' comes with a 'conversion': the identity ({"kind": "identity"}) is an answer to state, not a default to fall into (got: {'name': 'Speed', 'kind': 'measurement', 'datatype': 'uin...)
 1 error
 </pre></div>
 </div>
@@ -334,16 +334,16 @@ along with the datatype, the unit and the limits.</p>
 <p>Declare a scalar type in a <a class="reference internal" href="file_formats/types.html"><span class="doc">types file</span></a>, list that file in the
 project’s <code class="docutils literal notranslate"><span class="pre">includes</span></code>, and let every declaration name it with <code class="docutils literal notranslate"><span class="pre">typename</span></code> instead of
 spelling out <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">limits</span></code> of its own:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;types&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;scalar&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"scalar"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature_t"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 <span class="p">]</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;InletTemperature&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;typename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature_t&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"InletTemperature"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"typename"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature_t"</span><span class="p">,</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>If all three consumers say <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code>, there is nothing left for them to disagree
@@ -359,14 +359,14 @@ this unit written down” keeps one answer.</p>
 <code class="docutils literal notranslate"><span class="pre">newton_meter</span></code> there - with each declaration agreeing with itself and the a2l growing one
 <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> per spelling. A <a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a> pins the spellings
 once, listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of the project like any other description:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;units&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;rpm&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Nm&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;torque, newton metre&quot;</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"units"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"rpm"</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Nm"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"torque, newton metre"</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>Declaring the vocabulary is opt-in - without a units file nothing changes - and with one,
 every stated unit is checked where it is written, on declarations, structure members and
 scalar types alike, with a near miss answered by the declared spelling:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-b.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: &#39;nm&#39; is not a unit this project declares - did you mean &#39;Nm&#39;?
+b.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'nm' is not a unit this project declares - did you mean 'Nm'?
 1 error
 </pre></div>
 </div>
@@ -378,12 +378,12 @@ spelling of one.</p>
 <p>Declare the section in a <a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a> - its name as the
 linker script spells it, whether the running software can write it, and the alignment it
 guarantees - and let the producing declaration place its object with the <code class="docutils literal notranslate"><span class="pre">section</span></code> key:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;sections&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.calib&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;access&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;read-only&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;alignment&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"sections"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="s2">".calib"</span><span class="p">,</span><span class="w"> </span><span class="nt">"access"</span><span class="p">:</span><span class="w"> </span><span class="s2">"read-only"</span><span class="p">,</span><span class="w"> </span><span class="nt">"alignment"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Gain&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parameter&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;section&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.calib&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gain"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="s2">".calib"</span><span class="p">,</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>Placement is storage, like <code class="docutils literal notranslate"><span class="pre">init</span></code>: the producer states it, a consumer stating one is
@@ -420,10 +420,10 @@ containing a double underscore, or starting with an underscore and a capital let
 refused. Beyond that, two enums may not contribute the same enumerator, and no variable may
 be named like an enumerator; both are reported as <code class="docutils literal notranslate"><span class="pre">name-collision</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enums.ddd.json
-enums.ddd.json#component.interface[0].definition.conversion: error[reserved-identifier]: enum name &#39;__state_t&#39; is reserved by the c language
-enums.ddd.json#component.interface[1].definition.conversion: error[name-collision]: enumerator &#39;OFF&#39; is defined by enum &#39;Mode_t&#39; and by enum &#39;__state_t&#39;; enumerators of different enums share one c namespace
+enums.ddd.json#component.interface[0].definition.conversion: error[reserved-identifier]: enum name '__state_t' is reserved by the c language
+enums.ddd.json#component.interface[1].definition.conversion: error[name-collision]: enumerator 'OFF' is defined by enum 'Mode_t' and by enum '__state_t'; enumerators of different enums share one c namespace
     note: enums.ddd.json#component.interface[0].definition.conversion: first defined here
-enums.ddd.json#component.interface[2].definition.name: error[name-collision]: &#39;ON&#39; is declared as a variable and is also an enumerator of enum &#39;__state_t&#39;; both become the same c identifier
+enums.ddd.json#component.interface[2].definition.name: error[name-collision]: 'ON' is declared as a variable and is also an enumerator of enum '__state_t'; both become the same c identifier
     note: enums.ddd.json#component.interface[0].definition.conversion: enumerator declared here
 3 errors
 </pre></div>
@@ -433,7 +433,7 @@ the same enum, and they then have to declare the <em>same</em> enum, because onl
 name is generated. Differing enumerator sets are an <code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code>, and the finding spells
 out both sides so that it is obvious which of the two moved:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
+b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
     note: here: OFF=0, ON=1, FAULT=2
     note: a.ddd.json#component.interface[0].definition.conversion: first defined as: OFF=0, ON=1
 1 error
@@ -447,16 +447,16 @@ reason to reach for it is a value that is meaningless to a calibration engineer:
 buffer, a component internal state, an array so large that it would double the size of the
 a2l without ever being looked at. The demo project uses it for <code class="docutils literal notranslate"><span class="pre">ValueD</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueD&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Component local measurement, kept out of the a2l&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
-<span class="w">    </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;export&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueD"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Component local measurement, kept out of the a2l"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -485,14 +485,14 @@ the axis would not produce a smaller a2l, it would produce an unusable one.</p>
 a curve pulls its axis, and that axis pulls the measurement named as its input quantity. In
 the following file <code class="docutils literal notranslate"><span class="pre">SpeedAxis</span></code> carries <code class="docutils literal notranslate"><span class="pre">&quot;export&quot;:</span> <span class="pre">false</span></code> and is exported anyway, because
 <code class="docutils literal notranslate"><span class="pre">InjectionTime</span></code> refers to it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin AXIS_PTS SpeedAxis &quot;SpeedAxis&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin AXIS_PTS SpeedAxis "SpeedAxis"
   0x00000000 NO_INPUT_QUANTITY RL_AXIS_UWORD 0 CM_IDENT_RPM 4 0 65535
-  SYMBOL_LINK &quot;SpeedAxis&quot; 0
+  SYMBOL_LINK "SpeedAxis" 0
 /end AXIS_PTS
 
-/begin CHARACTERISTIC InjectionTime &quot;InjectionTime&quot;
+/begin CHARACTERISTIC InjectionTime "InjectionTime"
   CURVE 0x00000000 RL_VALUES_UWORD 0 CM_IDENT_MS 0 65535
-  SYMBOL_LINK &quot;InjectionTime&quot; 0
+  SYMBOL_LINK "InjectionTime" 0
   /begin AXIS_DESCR
     COM_AXIS NO_INPUT_QUANTITY CM_IDENT_RPM 4 0 65535
     AXIS_PTS_REF SpeedAxis
@@ -511,15 +511,15 @@ twice per build: once before compiling, to produce the c code and an a2l with pl
 addresses, and once after linking, to produce the a2l the calibration tool is actually given.</p>
 <p>The map is a flat json object of symbol name to address, decimal or hexadecimal, produced
 from the linker output by whatever already parses it in your build:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ValueE&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x20000100&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;AxisA&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x08004000&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;ParameterA&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate demo.ddd.json -o gen -t templates --address-map addresses.json
-$ sed -n &#39;/MEASUREMENT ValueE/,/end MEASUREMENT/p&#39; gen/DemoDevice.a2l
-    /begin MEASUREMENT ValueE &quot;Measurement used as the input quantity of AxisA&quot;
+$ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
+    /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
       UWORD CM_LIN_HZ 0 0 0 8000
       ECU_ADDRESS 0x20000100
-      SYMBOL_LINK &quot;ValueE&quot; 0
+      SYMBOL_LINK "ValueE" 0
     /end MEASUREMENT
 </pre></div>
 </div>
@@ -528,7 +528,7 @@ negative value would otherwise render as <code class="docutils literal notransla
 and either makes the whole file unreadable - from a file that a linker script or a patch tool
 wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate demo.ddd.json -o gen -t templates --address-map bad.json
-ddd: bad.json: address of &#39;ValueE&#39; is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
+ddd: bad.json: address of 'ValueE' is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 </pre></div>
 </div>
 <p>The other route needs no map at all: <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is written for every object, always, so
@@ -547,10 +547,10 @@ mention that symbol, and the usual cause is a spelling difference: the map is ke
 exact name of the object as declared, which is also its c identifier and its a2l record name.
 A symbol the map does not mention keeps address zero silently, on the grounds that a partial
 map is a legitimate thing to hand over:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueF &quot;Signed measurement with a fixed point conversion&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueF "Signed measurement with a fixed point conversion"
   SWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueF&quot; 0
+  SYMBOL_LINK "ValueF" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -567,7 +567,7 @@ map.</p>
 <h2>Which a2l version does DDD write?<a class="headerlink" href="#which-a2l-version-does-ddd-write" title="Link to this heading"></a></h2>
 <p>ASAP2 1.6.1, declared in the second line of every generated file, and the version is not
 selectable:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from &#39;DemoDevice&#39; by ddd 0.0.1. DO NOT EDIT. */
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.0.1. DO NOT EDIT. */
 ASAP2_VERSION 1 61
 </pre></div>
 </div>
@@ -577,7 +577,7 @@ written padded - <code class="docutils literal notranslate"><span class="pre">MA
 dimensions cannot be described at all. DDD writes all of its dimensions out anyway, which
 only a 1.7 reader understands, and says so:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate buffers.ddd.json -o gen -t templates
-buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: &#39;Tesseract&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       gen/ddd_globals.c (created)
 ...

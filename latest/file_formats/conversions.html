@@ -112,9 +112,9 @@ comment, in a header of magic constants, or in the memory of whoever wrote the d
 fact is what a calibration engineer needs in order to read the value at all, and what a
 consuming component has to agree with in order to use it correctly, so DDD makes it part of
 the definition:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">}</span>
-<span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="w"> </span><span class="p">}</span>
-<span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;enum&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;StateA_t&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;enumerators&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;STATE_OFF&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;STATE_FAULT&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"enum"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StateA_t"</span><span class="p">,</span><span class="w"> </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"STATE_OFF"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"STATE_FAULT"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>The conversion is the rule that maps the <strong>raw</strong> value - the number in the storage the target
@@ -142,10 +142,10 @@ written, so two components spelling the no-op the two ways disagree
 <p>The identity is not the absence of a conversion, though, and the a2l shows the difference. An
 object with no unit gets <code class="docutils literal notranslate"><span class="pre">NO_COMPU_METHOD</span></code>, because there is genuinely nothing to say about
 how to read it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT FlagA &quot;Boolean measurement&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT FlagA "Boolean measurement"
   UBYTE NO_COMPU_METHOD 0 0 0 1
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;FlagA&quot; 0
+  SYMBOL_LINK "FlagA" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -153,14 +153,14 @@ how to read it:</p>
 content is that unit and a display format - so the calibration tool labels the axis of its
 plot and the column of its list, which is the entire point of having written <code class="docutils literal notranslate"><span class="pre">&quot;unit&quot;:</span>
 <span class="pre">&quot;degC&quot;</span></code> in the first place:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_IDENT_DEGC &quot;physical value in degC&quot;
-  IDENTICAL &quot;%8.3&quot; &quot;degC&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_IDENT_DEGC "physical value in degC"
+  IDENTICAL "%8.3" "degC"
 /end COMPU_METHOD
 
-/begin MEASUREMENT ValueC &quot;Floating point measurement without a conversion&quot;
+/begin MEASUREMENT ValueC "Floating point measurement without a conversion"
   FLOAT32_IEEE CM_IDENT_DEGC 0 0 -50 90
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueC&quot; 0
+  SYMBOL_LINK "ValueC" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -197,7 +197,7 @@ negative; may not be zero.</p></td>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">factor</span></code> must not be zero, and a file that says otherwise is refused when it is read:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check zerofactor.ddd.json
-zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {&#39;kind&#39;: &#39;linear&#39;, &#39;factor&#39;: 0})
+zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
 1 error
 </pre></div>
 </div>
@@ -214,15 +214,15 @@ the <strong>physical</strong> value to the raw one, <code class="docutils litera
 six coefficients <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">1</span> <span class="pre">-offset</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">factor</span></code> spell out <code class="docutils literal notranslate"><span class="pre">raw</span> <span class="pre">=</span> <span class="pre">(physical</span> <span class="pre">-</span> <span class="pre">offset)</span> <span class="pre">/</span> <span class="pre">factor</span></code>,
 which is DDD’s rule read backwards. The description string above the coefficients carries the
 rule in the readable direction:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC &quot;phys = raw * 0.1 + 0&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;degC&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.1 + 0"
+  RAT_FUNC "%8.3" "degC"
   COEFFS 0 1 0 0 0 0.1
 /end COMPU_METHOD
 
-/begin MEASUREMENT ValueF &quot;Signed measurement with a fixed point conversion&quot;
+/begin MEASUREMENT ValueF "Signed measurement with a fixed point conversion"
   SWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueF&quot; 0
+  SYMBOL_LINK "ValueF" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -238,7 +238,7 @@ enum conversion is a verbal conversion table - the raw value <em>is</em> the phy
 the conversion adds is a name for each of them. It requires an integer datatype, since a state
 machine cannot be in state 2.5 and no calibration tool would know what to display for it:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumfloat.ddd.json
-enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion &#39;E_t&#39; requires an integer datatype, got &#39;float32&#39; (got: {&#39;name&#39;: &#39;EnumOnFloat&#39;, &#39;datatype&#39;: &#39;float32&#39;, &#39;conversio...)
+enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
 1 error
 </pre></div>
 </div>
@@ -272,16 +272,16 @@ unique within the enum.</p></td>
 <p>The short one is a plain json object mapping each name to its value. It is the form to use
 when the names speak for themselves, and it keeps a twenty-entry fault code list readable:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Mode&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Short form&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint8&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;enum&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Mode_t&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;enumerators&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;MODE_OFF&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;MODE_RUN&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;MODE_FAULT&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mode"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Short form"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"enum"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mode_t"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"MODE_OFF"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"MODE_RUN"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"MODE_FAULT"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -289,19 +289,19 @@ when the names speak for themselves, and it keeps a twenty-entry fault code list
 enumerator - the sentence that explains what the state actually means to somebody who did not
 write the state machine:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Level&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Long form&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint8&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Level_t&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;enumerators&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LEVEL_LOW&quot;</span><span class="p">,</span><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;below the working range&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LEVEL_OK&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;inside the working range&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LEVEL_HIGH&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;above the working range&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Level"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Long form"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Level_t"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_LOW"</span><span class="p">,</span><span class="w">  </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"below the working range"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_OK"</span><span class="p">,</span><span class="w">   </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inside the working range"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_HIGH"</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"above the working range"</span><span class="w"> </span><span class="p">}</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -339,14 +339,14 @@ switch statements.</p>
 </div>
 <p>In the a2l, the enum becomes a <code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code> holding the table and a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> of type
 <code class="docutils literal notranslate"><span class="pre">TAB_VERB</span></code> pointing at it, so the calibration tool shows the name and not the number:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_VTAB VTAB_Mode_t &quot;values of Mode_t&quot; TAB_VERB 3
-  0 &quot;MODE_OFF&quot;
-  1 &quot;MODE_RUN&quot;
-  15 &quot;MODE_FAULT&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_VTAB VTAB_Mode_t "values of Mode_t" TAB_VERB 3
+  0 "MODE_OFF"
+  1 "MODE_RUN"
+  15 "MODE_FAULT"
 /end COMPU_VTAB
 
-/begin COMPU_METHOD CM_Mode_t &quot;verbal conversion for Mode_t&quot;
-  TAB_VERB &quot;%8.0&quot; &quot;&quot;
+/begin COMPU_METHOD CM_Mode_t "verbal conversion for Mode_t"
+  TAB_VERB "%8.0" ""
   COMPU_TAB_REF VTAB_Mode_t
 /end COMPU_METHOD
 </pre></div>
@@ -358,7 +358,7 @@ switch statements.</p>
 that name for two different sets of values is an error, and the finding prints both sets so
 that the difference does not have to be hunted for:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum &#39;State_t&#39; is defined with different enumerators
+b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
     note: here: STATE_OFF=0, STATE_ON=2
     note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
 1 error
@@ -379,8 +379,8 @@ short form loses nothing:</p>
 <p>Two further things are checked. Every enumerator has to fit into the datatype of the object,
 which is an error, since the constant would otherwise be truncated silently:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json
-dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum &#39;N_t&#39; do not fit into int8
-dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum &#39;M_t&#39;: M_A, M_B all have the value 1
+dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
+dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
 1 error, 1 warning
 </pre></div>
 </div>
@@ -409,24 +409,24 @@ would be rejected by the very validation that keeps hand-written limits sane. An
 <code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">-0.25,</span> <span class="pre">offset</span> <span class="pre">10</span></code> runs from raw -128, which is 42, down to raw 127, which is -21.75,
 and the derived limits come out in the order a reader expects:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Inverted&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint8&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bar&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inverted"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bar"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">-0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_BAR &quot;phys = raw * -0.25 + 10&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;bar&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_BAR "phys = raw * -0.25 + 10"
+  RAT_FUNC "%8.3" "bar"
   COEFFS 0 1 -10 0 0 -0.25
 /end COMPU_METHOD
 
-/begin MEASUREMENT Inverted &quot;Inverted&quot;
+/begin MEASUREMENT Inverted "Inverted"
   SBYTE CM_LIN_BAR 0 0 -21.75 42
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Inverted&quot; 0
+  SYMBOL_LINK "Inverted" 0
 /end MEASUREMENT
 </pre></div>
 </div>

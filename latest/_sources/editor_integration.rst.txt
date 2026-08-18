@@ -49,21 +49,27 @@ derived from a datatype and a conversion nobody wrote down, its producer and its
 what an enum's numbers are called, the physical reading of a scalar ``init`` beside the raw
 value the file states, and the initial values as a sparkline. Those are the *initial*
 values - DDD describes an interface, and what an engineer calibrates lives in the
-calibration tool.
+calibration tool. A dimension spelled as the name of a
+:doc:`declared constant <file_formats/constants>` hovers as the constant itself - its value
+and its description - because the number is in another file, next to the one statement of
+what is being counted.
 
 **Go to definition and find references.** From anywhere in a declaration - or from an
 ``axis``, ``x_axis``, ``y_axis`` or ``input`` reference - go to definition lands on the
 declaration that *writes* the object, in whichever component that is, and find references
 lists every declaration of it. The same works from a type name to the structure it names and
-back, and from an ``includes`` entry to the files it matches, wildcards included.
+back, from a dimension spelled as a constant name to the constants file that declares it
+and back to every shape that spells it, and from an ``includes`` entry to the files it
+matches, wildcards included.
 
 **Rename.** ``F2`` on a variable renames it in every declaration and in every reference that
 names it, across as many files as that takes. A name c reserves, one that is not a usable
-identifier, or one the project already uses - for another object, an enum, an enumerator or
-a type - is refused with the reason before anything is written, because a rename that
-silently merges two objects compiles, links, and shares storage nobody intended to share.
-Only the characters between the quotes are replaced, so formatting survives and free text is
-left alone.
+identifier, or one the project already uses - for another object, an enum, an enumerator, a
+type or a declared constant - is refused with the reason before anything is written, because
+a rename that silently merges two objects compiles, links, and shares storage nobody
+intended to share. Renaming starts from a variable; a type or a constant is renamed where
+it is declared, which is one file rather than a project wide rewrite. Only the characters
+between the quotes are replaced, so formatting survives and free text is left alone.
 
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
@@ -91,12 +97,12 @@ three stages:
   project instead: the server walks from the file's directory up to the workspace root and
   checks the file under the project descriptions of the nearest directory that include it.
 * **Standalone.** A file belonging to no build and to no such project is still checked, on
-  its own, but only for what one file can decide. The six checks that need every component
+  its own, but only for what one file can decide. The seven checks that need every component
   of a project - ``unknown-type``, ``unknown-unit``, ``unknown-section``,
-  ``missing-producer``, ``unknown-reference`` and ``unused-output`` - are held back, because
-  a component read alone has inputs nobody produces and outputs nobody reads by construction
-  rather than by mistake. Each check declares whether it needs the whole project, so the two
-  modes cannot drift apart.
+  ``unknown-constant``, ``missing-producer``, ``unknown-reference`` and ``unused-output`` -
+  are held back, because a component read alone has inputs nobody produces and outputs
+  nobody reads by construction rather than by mistake. Each check declares whether it needs
+  the whole project, so the two modes cannot drift apart.
 
 VS Code
 -------

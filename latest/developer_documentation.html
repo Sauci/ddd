@@ -216,12 +216,12 @@ happens to coincide with it is not a leak.</p>
 described by the protocol in <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/base.py</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@runtime_checkable</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">Backend</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Turns a data dictionary into files.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Turns a data dictionary into files."""</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dictionary</span><span class="p">:</span> <span class="n">DataDictionary</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">GeneratedFile</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Render every artefact of this backend; nothing is written to disk.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Render every artefact of this backend; nothing is written to disk."""</span>
         <span class="o">...</span>
 </pre></div>
 </div>
@@ -244,11 +244,11 @@ honour correctly.</p></li>
 constructed, and the constructor is a backend’s own business. That is where the two differ:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">CBackend</span><span class="p">:</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">template_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">COptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ddd&quot;</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">template_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">COptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"ddd"</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
 <span class="k">class</span><span class="w"> </span><span class="nc">A2lBackend</span><span class="p">:</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">A2lOptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ddd&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">A2lOptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"ddd"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 </pre></div>
 </div>
 <p>The template directory comes first for the c backend because it is the one argument that has
@@ -331,10 +331,10 @@ what a project targeting both can rely on.</p>
 <p>Coverage runs with every test run, over statements <strong>and</strong> branches, and a gap fails the
 run:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[tool.pytest.ini_options]
-addopts = &quot;-q --cov --cov-report=term-missing --cov-fail-under=100&quot;
+addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
-source = [&quot;ddd&quot;]
+source = ["ddd"]
 branch = true
 </pre></div>
 </div>
@@ -417,7 +417,7 @@ permanent.</p>
 </section>
 <section id="building-this-documentation">
 <h2>Building this documentation<a class="headerlink" href="#building-this-documentation" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[docs]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[docs]"</span>
 sphinx-build<span class="w"> </span>-b<span class="w"> </span>html<span class="w"> </span>docs<span class="w"> </span>build/docs/html<span class="w"> </span>-W<span class="w"> </span>--keep-going
 </pre></div>
 </div>

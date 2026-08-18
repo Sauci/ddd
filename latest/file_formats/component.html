@@ -116,23 +116,23 @@ the others: because every component states both what it produces and what it exp
 consume, DDD can compare the two sides of every shared variable and report a disagreement
 before it becomes a field report. That comparison is what the <a class="reference internal" href="../consistency_checks.html"><span class="doc">consistency checks</span></a> do; this page describes what the file itself may contain.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Controller&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Consumes the raw values and produces the derived ones&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Controller"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Consumes the raw values and produces the derived ones"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;defined(FEATURE_X)&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueG&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Measurement that only exists when FEATURE_X is defined&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;V&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"condition"</span><span class="p">:</span><span class="w"> </span><span class="s2">"defined(FEATURE_X)"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueG"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that only exists when FEATURE_X is defined"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"V"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">    </span><span class="p">]</span>
@@ -176,7 +176,7 @@ explicit <code class="docutils literal notranslate"><span class="pre">[]</span><
 has any data, or may genuinely have none - but it is reported at severity <code class="docutils literal notranslate"><span class="pre">info</span></code>, because
 far more often it means a file that was started and never finished:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check emptycomp.ddd.json
-emptycomp.ddd.json#component: info[empty-component]: component &#39;Nothing&#39; declares no variable
+emptycomp.ddd.json#component: info[empty-component]: component 'Nothing' declares no variable
 1 info
 </pre></div>
 </div>
@@ -185,7 +185,7 @@ checked about a component name is that two of them cannot end up asking for the 
 file, which on
 a case insensitive file system means names differing only in case:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-b.ddd.json#component.name: error[name-collision]: components &#39;Sensorhub&#39; and &#39;SensorHub&#39; differ only in upper/lower case, so they ask for the same generated header
+b.ddd.json#component.name: error[name-collision]: components 'Sensorhub' and 'SensorHub' differ only in upper/lower case, so they ask for the same generated header
     note: a.ddd.json#component.name: other component
 1 error
 </pre></div>
@@ -234,7 +234,7 @@ consumer that deviates.</p>
 <p>Declaring the same variable twice inside <strong>one</strong> component is a different matter, and always a
 mistake - there is no second opinion to have with oneself:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupdecl.ddd.json
-dupdecl.ddd.json#component.interface[1]: error[duplicate-declaration]: component &#39;Dup&#39; declares &#39;V&#39; twice (as local and as local)
+dupdecl.ddd.json#component.interface[1]: error[duplicate-declaration]: component 'Dup' declares 'V' twice (as local and as local)
     note: dupdecl.ddd.json#component.interface[0]: first declared here
 1 error
 </pre></div>
@@ -280,14 +280,14 @@ owns it, <code class="docutils literal notranslate"><span class="pre">local</spa
 <p>The three scopes are what <code class="docutils literal notranslate"><span class="pre">examples/inconsistent/</span></code> exists to demonstrate; every rule above
 appears in one run:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: component_a.ddd.json#component.interface[0]: also written here
-component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
     note: component_a.ddd.json#component.interface[0].definition: reference declaration
-component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
     note: component_a.ddd.json#component.interface[2]: declared local here
-component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -345,18 +345,18 @@ the declaration is written. The whole picture is on the
 feature behind a compile time switch, a signal that only the variant with the second sensor
 produces. <code class="docutils literal notranslate"><span class="pre">condition</span></code> carries that, as a c preprocessor expression:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;defined(FEATURE_X)&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueG&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Measurement that only exists when FEATURE_X is defined&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;V&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"condition"</span><span class="p">:</span><span class="w"> </span><span class="s2">"defined(FEATURE_X)"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueG"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Measurement that only exists when FEATURE_X is defined"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"V"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -376,10 +376,10 @@ generates it before the build has happened. The object is therefore exported any
 condition written above it as a comment, so that a calibration engineer who cannot find the
 symbol in the image knows immediately why:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* only present in the build when: defined(FEATURE_X) */
-/begin MEASUREMENT ValueG &quot;Measurement that only exists when FEATURE_X is defined&quot;
+/begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
   UWORD CM_LIN_V 0 0 0 5
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueG&quot; 0
+  SYMBOL_LINK "ValueG" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -390,8 +390,8 @@ stripped, and a condition that is empty or only whitespace is the same as no con
 but a line break and the comment markers <code class="docutils literal notranslate"><span class="pre">/*</span></code>, <code class="docutils literal notranslate"><span class="pre">*/</span></code> and <code class="docutils literal notranslate"><span class="pre">//</span></code> are refused, and so is
 <code class="docutils literal notranslate"><span class="pre">#</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check cond.ddd.json
-cond.ddd.json#component.interface[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: &#39;defined(A)\n#undef NDEBUG&#39;)
-cond.ddd.json#component.interface[2].condition: error[schema]: Value error, a condition cannot contain &#39;/*&#39; (got: &#39;defined(B) /* sneaky */&#39;)
+cond.ddd.json#component.interface[1].condition: error[schema]: Value error, a condition is a single expression and cannot contain a line break (got: 'defined(A)\n#undef NDEBUG')
+cond.ddd.json#component.interface[2].condition: error[schema]: Value error, a condition cannot contain '/*' (got: 'defined(B) /* sneaky */')
 2 errors
 </pre></div>
 </div>
@@ -413,7 +413,7 @@ exists in the builds the producer says it exists in, and a consumer guarded by a
 symbol will either fail to link or quietly disappear - so it is reported, and the producer’s
 condition is the one that is generated:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-consumer.ddd.json#component.interface[0].condition: warning[condition-mismatch]: &#39;ValueX&#39;: component &#39;Consumer&#39; uses condition &#39;defined(FEATURE_Y)&#39; while &#39;Producer&#39; uses &#39;defined(FEATURE_X)&#39;
+consumer.ddd.json#component.interface[0].condition: warning[condition-mismatch]: 'ValueX': component 'Consumer' uses condition 'defined(FEATURE_Y)' while 'Producer' uses 'defined(FEATURE_X)'
     note: producer.ddd.json#component.interface[0]: reference declaration
 1 warning
 </pre></div>
@@ -449,11 +449,11 @@ check its own description before integrating it into a project. The inputs of th
 have no producer in such a run, by definition, so silence the check that would otherwise
 dominate the output:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check controller.ddd.json -W missing-producer=ignore
-controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
 5 warnings
 </pre></div>
 </div>

@@ -92,7 +92,7 @@
            <div itemprop="articleBody">
              
   <h1>Source code for ddd.models.types</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Contract for the type description file.</span>
+<span></span><span class="sd">"""Contract for the type description file.</span>
 
 <span class="sd">A ``types`` file declares the types a project names: structures, and scalars that fix what a</span>
 <span class="sd">number means.  It is a file of its own rather than a section of a component, because a type is</span>
@@ -131,7 +131,7 @@
 <span class="sd">the compiler rather than of this file.  The same holds for the offset of every member.  DDD</span>
 <span class="sd">reads both back out of the build and never predicts them - see the address map, which is keyed</span>
 <span class="sd">on access paths for exactly this reason.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -144,6 +144,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">physical_range</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">A2lObjectOptions</span><span class="p">,</span>
+    <span class="n">Dimension</span><span class="p">,</span>
     <span class="n">Limits</span><span class="p">,</span>
     <span class="n">ObjectKind</span><span class="p">,</span>
     <span class="n">check_conversion_stated</span><span class="p">,</span>
@@ -156,19 +157,19 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">MemberKind</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What shape a structure member has.</span>
+<span class="w">    </span><span class="sd">"""What shape a structure member has.</span>
 
 <span class="sd">    Stated rather than inferred from which keys are present: a file that omits a key by mistake</span>
 <span class="sd">    should be told which member shape it failed to describe, not silently become another one.</span>
 <span class="sd">    A forgotten ``bits`` would otherwise turn a one bit flag into a full width member and move</span>
 <span class="sd">    every offset after it.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">VALUE</span> <span class="o">=</span> <span class="s2">&quot;value&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A datatype, scalar or array; the datatype may be a declared type.&quot;&quot;&quot;</span>
+    <span class="n">VALUE</span> <span class="o">=</span> <span class="s2">"value"</span>
+<span class="w">    </span><span class="sd">"""A datatype, scalar or array; the datatype may be a declared type."""</span>
 
-    <span class="n">BITS</span> <span class="o">=</span> <span class="s2">&quot;bits&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;An integer datatype and a width in bits: a c bitfield.&quot;&quot;&quot;</span>
+    <span class="n">BITS</span> <span class="o">=</span> <span class="s2">"bits"</span>
+<span class="w">    </span><span class="sd">"""An integer datatype and a width in bits: a c bitfield."""</span>
 
 
 <span class="c1">#: Which object kinds may instantiate a structure. A structured variable is a plain value or a</span>
@@ -180,20 +181,20 @@
 <div class="viewcode-block" id="Member">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Member">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Member</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One member of a structure, in the order the structure declares it.</span>
+<span class="w">    </span><span class="sd">"""One member of a structure, in the order the structure declares it.</span>
 
 <span class="sd">    Order is significant: it is the order the c struct is generated in, and therefore the order</span>
 <span class="sd">    the compiler lays out.  Reordering members of a released structure moves every address after</span>
 <span class="sd">    the change, which is why a comparison against a baseline reports it.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of the member, unique within its structure.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Name of the member, unique within its structure."""</span>
 
     <span class="n">member</span><span class="p">:</span> <span class="n">MemberKind</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Which shape this member has, and with it which other keys the member may carry.</span>
+<span class="w">    </span><span class="sd">"""Which shape this member has, and with it which other keys the member may carry.</span>
 
 <span class="sd">    * ``value`` needs ``datatype`` or ``typename`` and may add ``dimensions``,</span>
 <span class="sd">    * ``bits`` needs ``datatype`` and ``bits``.</span>
@@ -201,72 +202,74 @@
 <span class="sd">    A key belonging to the other shape is refused rather than ignored: ``bits`` together with</span>
 <span class="sd">    ``dimensions`` has no single meaning - c has no array of bitfields - and quietly dropping</span>
 <span class="sd">    one of the two would put a structure in the generated c that this file does not describe.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the member, offered to the c templates.&quot;&quot;&quot;</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing the member, offered to the c templates."""</span>
 
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Storage of this member, one of the eleven base datatypes.</span>
+<span class="w">    </span><span class="sd">"""Storage of this member, one of the eleven base datatypes.</span>
 
 <span class="sd">    Exactly one of ``datatype`` and ``typename`` is stated, here exactly as on a declaration.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">typename</span><span class="p">:</span> <span class="n">TypeName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of a declared type, stated instead of ``datatype``.</span>
+<span class="w">    </span><span class="sd">"""Name of a declared type, stated instead of ``datatype``.</span>
 
 <span class="sd">    A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what</span>
 <span class="sd">    its number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no</span>
 <span class="sd">    room for a structure, and a scalar type would carry limits the width contradicts.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.</span>
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.</span>
 
 <span class="sd">    ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    Each dimension is an integer of at least 1, or the name of a constant the project</span>
+<span class="sd">    declares in a constants file, exactly as on a declaration.</span>
+<span class="sd">    """</span>
 
     <span class="n">bits</span><span class="p">:</span> <span class="n">PositiveInt</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Width of a ``bits`` member, in bits; required on one, refused on the other.</span>
+<span class="w">    </span><span class="sd">"""Width of a ``bits`` member, in bits; required on one, refused on the other.</span>
 
 <span class="sd">    It has to fit the datatype carrying it - at most 16 in a ``uint16`` - and that datatype</span>
 <span class="sd">    has to be an integer, since c allows a bitfield in nothing else.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical unit of this member, e.g. ``&quot;degC&quot;``.</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Physical unit of this member, e.g. ``"degC"``.</span>
 
 <span class="sd">    Written here, or fixed by a scalar type this member names, and never both.  Which of the</span>
 <span class="sd">    two to reach for is a question of whether the answer is shared: a unit written here says it</span>
 <span class="sd">    for this member of this structure, and a ``Temperature_t`` says it for everything that</span>
 <span class="sd">    names it, across every component of the project.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;How this member&#39;s raw value maps to a physical one: identity, linear or an enumeration.</span>
+<span class="w">    </span><span class="sd">"""How this member's raw value maps to a physical one: identity, linear or an enumeration.</span>
 
 <span class="sd">    Required on a member whose storage is a base ``datatype``, exactly as on a definition;</span>
 <span class="sd">    a member naming a scalar ``typename`` states none, the type fixing it.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical limits of this member; derived from its storage and conversion if omitted.</span>
+<span class="w">    </span><span class="sd">"""Physical limits of this member; derived from its storage and conversion if omitted.</span>
 
 <span class="sd">    For a ``bits`` member the derivation uses the *width*, not the datatype carrying it: a two</span>
 <span class="sd">    bit field offered to a calibration tool as ``0 .. 65535`` invites somebody to enter a value</span>
 <span class="sd">    the field cannot hold and the software then reads back something else.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;What this member asks of the a2l file once the structure is flattened into it.</span>
+<span class="w">    </span><span class="sd">"""What this member asks of the a2l file once the structure is flattened into it.</span>
 
 <span class="sd">    Per member rather than per structure, because that is the granularity the a2l ends up with:</span>
 <span class="sd">    each member becomes an object of its own, so keeping one of them out of the file, or giving</span>
 <span class="sd">    one of them a display format, is a decision about that member alone.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">physical_limits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Limits</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stated limits, or the range this member&#39;s storage and conversion imply.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Stated limits, or the range this member's storage and conversion imply."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span>
         <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
@@ -279,75 +282,75 @@
         <span class="n">low</span><span class="p">,</span> <span class="n">high</span> <span class="o">=</span> <span class="n">physical_range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="o">*</span><span class="n">raw</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">Limits</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="n">low</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="n">high</span><span class="p">)</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_storage_is_named_exactly_once</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
         <span class="n">check_storage_named_once</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_base_storage_states_its_conversion</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
         <span class="n">check_conversion_stated</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
         <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_a_named_type_is_not_restated</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">refuse_restating</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_shape_and_keys_agree</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Each member shape allows exactly the keys it needs.</span>
+<span class="w">        </span><span class="sd">"""Each member shape allows exactly the keys it needs.</span>
 
 <span class="sd">        Refusing the others matters more here than it looks: ``bits`` on a member that also has</span>
 <span class="sd">        ``dimensions`` has no single meaning - an array of bitfields is not a thing c can express</span>
 <span class="sd">        - and quietly ignoring one of the two would put a structure in the generated c that the</span>
 <span class="sd">        description does not describe.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">member</span> <span class="ow">is</span> <span class="n">MemberKind</span><span class="o">.</span><span class="n">BITS</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;a &#39;bits&#39; member has no &#39;dimensions&#39;&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a 'bits' member has no 'dimensions'"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;a &#39;bits&#39; member needs a &#39;bits&#39;&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a 'bits' member needs a 'bits'"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;a &#39;value&#39; member has no &#39;bits&#39;&quot;</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a 'value' member has no 'bits'"</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_a_bitfield_fits_its_storage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;A width no wider than the datatype, and a base integer to put it in.</span>
+<span class="w">        </span><span class="sd">"""A width no wider than the datatype, and a base integer to put it in.</span>
 
 <span class="sd">        A field wider than its storage does not compile, and one in a float, a boolean or a</span>
 <span class="sd">        declared type is not a bitfield at all - c allows a bitfield only in an integer type.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;a bitfield needs a base integer datatype, got the declared type &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="si">}</span><span class="s2">&#39;; only an integer can carry one in c&quot;</span>
+                <span class="sa">f</span><span class="s2">"a bitfield needs a base integer datatype, got the declared type "</span>
+                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="si">}</span><span class="s2">'; only an integer can carry one in c"</span>
             <span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">is_integer</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;a bitfield needs an integer datatype, got &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;; only an &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;integer can carry one in c&quot;</span>
+                <span class="sa">f</span><span class="s2">"a bitfield needs an integer datatype, got '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">'; only an "</span>
+                <span class="sa">f</span><span class="s2">"integer can carry one in c"</span>
             <span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="n">capacity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">size</span> <span class="o">*</span> <span class="n">BITS_PER_BYTE</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bits</span> <span class="o">&gt;</span> <span class="n">capacity</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;a bitfield of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bits</span><span class="si">}</span><span class="s2"> bits does not fit in &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;, which &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;holds </span><span class="si">{</span><span class="n">capacity</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">"a bitfield of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bits</span><span class="si">}</span><span class="s2"> bits does not fit in '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">', which "</span>
+                <span class="sa">f</span><span class="s2">"holds </span><span class="si">{</span><span class="n">capacity</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -357,32 +360,32 @@
 <div class="viewcode-block" id="StructType">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.StructType">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">StructType</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One structured datatype: a name and the members it lays out, in order.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""One structured datatype: a name and the members it lays out, in order."""</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;struct&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Says this entry describes a structure; stated on every entry of a types file.&quot;&quot;&quot;</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"struct"</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""Says this entry describes a structure; stated on every entry of a types file."""</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">TypeName</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of the structure; every type of a project needs a distinct one.</span>
+<span class="w">    </span><span class="sd">"""Name of the structure; every type of a project needs a distinct one.</span>
 
 <span class="sd">    Refused if it reads as a base datatype, which would be a type nothing could ever refer to:</span>
 <span class="sd">    where a name is written, a base datatype wins the union.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing the structure, offered to the c templates.&quot;&quot;&quot;</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing the structure, offered to the c templates."""</span>
 
     <span class="n">members</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Member</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The members, in the order they are laid out.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The members, in the order they are laid out."""</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_member_names_are_distinct</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">StructType</span><span class="p">:</span>
         <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">members</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">member</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;structure &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; declares member &#39;</span><span class="si">{</span><span class="n">member</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; twice&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"structure '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' declares member '</span><span class="si">{</span><span class="n">member</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' twice"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">member</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -390,7 +393,7 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">ScalarType</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A name for what a number means, so components agree by naming rather than by copying.</span>
+<span class="w">    </span><span class="sd">"""A name for what a number means, so components agree by naming rather than by copying.</span>
 
 <span class="sd">    Three components consuming an engine speed each used to write out the datatype, the unit,</span>
 <span class="sd">    the scaling and the limits, leaving DDD to notice when one of them was wrong.  If all three</span>
@@ -401,79 +404,79 @@
 <span class="sd">    else.  ``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:</span>
 <span class="sd">    they are properties of one object rather than of the type, and two measurements of the same</span>
 <span class="sd">    type may well differ in whether an interrupt writes one of them.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;scalar&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Says this entry names a scalar rather than describing a structure.&quot;&quot;&quot;</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"scalar"</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""Says this entry names a scalar rather than describing a structure."""</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="n">TypeName</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Name of the type; every type of a project needs a distinct one.</span>
+<span class="w">    </span><span class="sd">"""Name of the type; every type of a project needs a distinct one.</span>
 
-<span class="sd">    Refused if it reads as a base datatype, for the reason a structure&#39;s name is.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    Refused if it reads as a base datatype, for the reason a structure's name is.</span>
+<span class="sd">    """</span>
 
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Free text describing what the type is, offered to the c templates.&quot;&quot;&quot;</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing what the type is, offered to the c templates."""</span>
 
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Storage of the value: one of the base datatypes.</span>
+<span class="w">    </span><span class="sd">"""Storage of the value: one of the base datatypes.</span>
 
 <span class="sd">    A base datatype rather than another declared type, so that a scalar type cannot be defined</span>
 <span class="sd">    in terms of a second one.  A chain of names would have to be resolved, could form a cycle,</span>
 <span class="sd">    and buys nothing a reader of the one entry could not already see.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical unit of the value, e.g. ``&quot;rpm&quot;``.&quot;&quot;&quot;</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Physical unit of the value, e.g. ``"rpm"``."""</span>
 
     <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
+<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
 
 <span class="sd">    Required: fixing what a value means is the one job a scalar type has, and the identity</span>
 <span class="sd">    is part of the answer rather than a silence to interpret.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Physical limits, in the unit above; derived from datatype and conversion if omitted.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Physical limits, in the unit above; derived from datatype and conversion if omitted."""</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScalarType</span><span class="p">:</span>
         <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
 
-<span class="n">AnyType</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">&quot;type&quot;</span><span class="p">)]</span>
-<span class="sd">&quot;&quot;&quot;Any entry of a types file, told apart by its required ``type``.</span>
+<span class="n">AnyType</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"type"</span><span class="p">)]</span>
+<span class="sd">"""Any entry of a types file, told apart by its required ``type``.</span>
 
 <span class="sd">Discriminated on a stated key rather than inferred from which other keys are present, for the</span>
 <span class="sd">reason the member shapes already give: a file that omits a key by mistake should be told which</span>
 <span class="sd">shape it failed to describe, not silently become another one.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 
 <div class="viewcode-block" id="TypesFile">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.TypesFile">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">TypesFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Root object of a ``*.ddd.json`` type description.</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` type description.</span>
 
 <span class="sd">    ``types`` is the top level key that makes this a types file rather than a project or a</span>
 <span class="sd">    component file; DDD decides what a file is from that key alone, so exactly one of them</span>
 <span class="sd">    appears here.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;DDD type description&quot;</span><span class="p">)</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD type description"</span><span class="p">)</span>
 
     <span class="n">types</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">AnyType</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The types this file declares.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""The types this file declares."""</span>
 
-    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_type_names_are_distinct</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TypesFile</span><span class="p">:</span>
         <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">types</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;type &#39;</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; is declared twice in this file&quot;</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"type '</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' is declared twice in this file"</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -481,7 +484,7 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">bitfield_range</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Number</span><span class="p">,</span> <span class="n">Number</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The raw values a bitfield of that width holds, for deriving its limits.</span>
+<span class="w">    </span><span class="sd">"""The raw values a bitfield of that width holds, for deriving its limits.</span>
 
 <span class="sd">    A two bit ``mode`` offered to a calibration tool as ``0 .. 65535`` is worse than no limits</span>
 <span class="sd">    at all: the tool lets somebody enter a value the field cannot store, and the software reads</span>
@@ -491,7 +494,7 @@
 <span class="sd">    A signed field spends one bit on the sign, so ``sint8 : 4`` runs ``-8 .. 7``. No clamp</span>
 <span class="sd">    against the storage is needed: a member may not be wider than the datatype carrying it, and</span>
 <span class="sd">    at exactly that width the two answers are the same one.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">datatype</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">is_signed</span><span class="p">:</span>
         <span class="n">top</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="n">bits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="p">(</span><span class="o">-</span><span class="n">top</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">top</span><span class="p">)</span>

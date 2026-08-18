@@ -54,6 +54,7 @@ down should be read after a DDD upgrade:
    duplicate-type         error    two different files declare the same type name
    duplicate-unit         error    two different files declare the same unit
    duplicate-section      error    two different files declare the same memory section
+   duplicate-constant     error    two different files declare the same constant name
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -248,8 +249,8 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``file-kind``
      - error (fixed)
      - the top level of the document is not a json object, or names none of the description
-       kinds (``project``, ``component``, ``types``, ``units``, ``sections``), or several of
-       them at once.
+       kinds (``project``, ``component``, ``types``, ``units``, ``sections``,
+       ``constants``), or several of them at once.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -293,6 +294,12 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - two different files declare the same memory section: either a copy that will drift or
        a disagreement about its properties, and neither is worth keeping quiet.
+   * - ``duplicate-constant``
+     - error
+     - two different files declare the same constant name (see the
+       :doc:`constants file <file_formats/constants>`): either a copy that will drift or a
+       disagreement about the value, and a size that depends on which file loads first is
+       exactly what the vocabulary exists to prevent.
    * - ``unknown-section``
      - error
      - a definition names a memory section no file declares (see the
@@ -304,6 +311,13 @@ or an a2l file that does not do what the description says - or that does not com
      - a measurement, which the software writes, is placed in a ``read-only`` section. A
        calibration object may live in either direction: ``const`` data in RAM is a mirrored
        calibration.
+   * - ``unknown-constant``
+     - error
+     - a shape - a ``dimensions`` entry, or the ``size`` of an axis - names a constant no
+       file of the project declares (see the
+       :doc:`constants file <file_formats/constants>`). Like a section there is no free
+       text fallback, because a name without a value is a dimension nothing can resolve.
+       The nearest declared name is suggested.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the

@@ -124,25 +124,25 @@ machine readable already. In json the diagnostics become part of the document th
 command prints, next to whatever else it has to report:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
 {
-  &quot;diagnostics&quot;: [],
-  &quot;summary&quot;: {
-    &quot;error&quot;: 0,
-    &quot;warning&quot;: 0,
-    &quot;info&quot;: 0
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
   },
-  &quot;generated&quot;: [
+  "generated": [
     {
-      &quot;path&quot;: &quot;build/gen/ddd_globals.c&quot;,
-      &quot;status&quot;: &quot;created&quot;
+      "path": "build/gen/ddd_globals.c",
+      "status": "created"
     },
     {
-      &quot;path&quot;: &quot;build/gen/ddd_globals.h&quot;,
-      &quot;status&quot;: &quot;created&quot;
+      "path": "build/gen/ddd_globals.h",
+      "status": "created"
     },
     ...
     {
-      &quot;path&quot;: &quot;build/gen/DemoDevice.a2l&quot;,
-      &quot;status&quot;: &quot;created&quot;
+      "path": "build/gen/DemoDevice.a2l",
+      "status": "created"
     }
   ]
 }
@@ -217,9 +217,10 @@ writes this?”.</p></td>
 gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">KIND</span></code></p></td>
-<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, <code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
-<code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">units</span></code>, for an editor that offers completion inside a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>
-file or for a validator in a ci job; <code class="docutils literal notranslate"><span class="pre">all</span></code> writes every schema into a directory.</p></td>
+<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, <code class="docutils literal notranslate"><span class="pre">project</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sections</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">units</span></code>, for an editor that offers completion inside a
+<code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file or for a validator in a ci job; <code class="docutils literal notranslate"><span class="pre">all</span></code> writes every schema into
+a directory.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
 <td><p>list every description file the project is built out of, for the dependency list of a
@@ -291,13 +292,13 @@ file, and nobody reads its outputs yet, so the two checks about the other side o
 interface have to be switched off - while everything DDD can decide from the file alone still
 applies.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: &#39;ValueF&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: &#39;StateA&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: &#39;ValueG&#39; is written by component &#39;Controller&#39; but read by nobody
-examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: &#39;AxisA&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
 2 errors, 5 warnings
 
 $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
@@ -308,10 +309,10 @@ ok: 12 variables in 1 component are consistent
 no-op, because the opposite behaviour would let a typo in a ci script disable a check for
 years without anybody noticing:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W no-such-check=ignore
-ddd: unknown check &#39;no-such-check&#39;
+ddd: unknown check 'no-such-check'
 
 $ ddd check examples/demo/demo.ddd.json -W unused-output=nope
-ddd: unknown severity &#39;nope&#39; for check &#39;unused-output&#39;, expected one of error, warning, info, ignore
+ddd: unknown severity 'nope' for check 'unused-output', expected one of error, warning, info, ignore
 </pre></div>
 </div>
 <p>Both exit with <code class="docutils literal notranslate"><span class="pre">2</span></code>. Five checks cannot be relaxed at all - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>,
@@ -320,7 +321,7 @@ be read has nothing further to say, and a run that carried on regardless would r
 absence of findings about a project it never saw. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks those <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>, and
 an attempt to override one is refused rather than ignored:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W schema=ignore
-ddd: the severity of check &#39;schema&#39; cannot be changed
+ddd: the severity of check 'schema' cannot be changed
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--strict</span></code> is the other end of the same dial: it turns every warning into an error, which is
@@ -729,7 +730,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h4>ddd schema<a class="headerlink" href="#ddd-schema" title="Link to this heading"></a></h4>
 <p>Prints the json schema of one file format, or writes every schema into a directory with ‘all’. Committing those files and pointing the ‘$schema’ key of each description at the matching one is what gives an editor completion, hover documentation and validation while a description file is being written.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT]</span>
-<span class="go">                  {component,dictionary,project,sections,types,units,all}</span>
+<span class="go">                  {component,constants,dictionary,project,sections,types,units,all}</span>
 </pre></div>
 </div>
 <dl class="std option">

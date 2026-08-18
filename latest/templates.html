@@ -294,39 +294,47 @@ writing every component into every file.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.generator</span></code></p></td>
 <td><p>The tool and version that produced the file, such as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">0.0.1</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.constants</span></code></p></td>
+<td><p>One entry per <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a>, in name order, each
+with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>; empty when the project declares
+none. Offered so the template can emit them however the house style spells one - the
+example templates write each as a <code class="docutils literal notranslate"><span class="pre">#define</span></code> in the types header - because an array
+dimensioned by a constant renders its <code class="docutils literal notranslate"><span class="pre">array_suffix</span></code> with the constant’s <em>name</em>,
+which therefore has to be declared before the first array that uses it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
 <td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
 enumerator has <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.groups</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.groups</span></code></p></td>
 <td><p>The objects to be <em>defined</em>, grouped by owning component: <code class="docutils literal notranslate"><span class="pre">.name</span></code>,
 <code class="docutils literal notranslate"><span class="pre">.description</span></code>, <code class="docutils literal notranslate"><span class="pre">.measurements</span></code>, <code class="docutils literal notranslate"><span class="pre">.calibration</span></code> and <code class="docutils literal notranslate"><span class="pre">.variables</span></code>, the last
 being the two lists one after the other. A component owning nothing has no group, and
 objects no component declares as an output end up in a final group called
 <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
 <td><p>The placed objects grouped per <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a>, one
 entry per section with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.objects</span></code>, strictest alignment first so that
 data of one section packs without padding. Objects without a <code class="docutils literal notranslate"><span class="pre">section</span></code> are not
 here - they stay in their component’s group and the toolchain’s default placement -
 and the sequence is empty when the project places nothing.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
 <td><p>One entry per component, in project order, whether or not the component declares
 anything. These are the interfaces, described below.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
 <td><p>Whether any datatype of the project needs that standard header, so that the generated
 type header includes it only when something uses it.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
 <td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
 <code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
 a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
 Offered rather than imposed - a template that has its own convention writes it out.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
 <td><p>What the command line let the caller decide, which for the c backend is
 <code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
 property of the template you write.</p></td>
@@ -395,7 +403,10 @@ that says where a value comes from.</p></td>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> and <code class="docutils literal notranslate"><span class="pre">.initializer</span></code> are there as
 well, for a template that would rather lay the declaration out itself than take
-<code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a
+<code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole. <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> spells each dimension as the project spells it - a
+dimension stated as a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> renders as that
+name, <code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code>, in <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration(...)</span></code> alike - while
+<code class="docutils literal notranslate"><span class="pre">.initializer</span></code> lays its braces out over the resolved numeric shape. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a
 declaration can give about who writes the object: <code class="docutils literal notranslate"><span class="pre">.constant</span></code> is true for calibration data,
 which the software never writes and which is therefore generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and <code class="docutils literal notranslate"><span class="pre">.volatile</span></code>
 is what the description states on the definition, on every kind, to say that something
@@ -456,7 +467,7 @@ with <code class="docutils literal notranslate"><span class="pre">.variable.owne
 That is what a helper template is for: a name starting with an underscore renders nothing on
 its own and exists to be imported. The example set keeps its banner in <code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code>,
 and every other template opens with:</p>
-<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
 </pre></div>
 </div>
@@ -475,7 +486,7 @@ each of them turning into a generated file it has to explain.</p>
 <code class="docutils literal notranslate"><span class="pre">model.groups</span></code>, <code class="docutils literal notranslate"><span class="pre">variable.commment</span></code> for <code class="docutils literal notranslate"><span class="pre">variable.comment</span></code> - raises instead of
 rendering as an empty string, and the run ends with a traceback naming the template, the line
 and the attribute:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>jinja2.exceptions.UndefinedError: &#39;ddd.backends.c.model.CodeModel object&#39; has no attribute &#39;grops&#39;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>jinja2.exceptions.UndefinedError: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
 </pre></div>
 </div>
 <p>This is worth the noise. The alternative, which is jinja2’s default, is that the typo
@@ -518,7 +529,7 @@ project may be built against several installations:</p>
 <p>Copy that directory into the project, next to the description files or wherever the coding
 standard says generated-code templates live, and check it in - it is source code of the
 project now:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>ddd<span class="w"> </span>templates-dir<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>tools/ddd_templates
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp<span class="w"> </span>-r<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>ddd<span class="w"> </span>templates-dir<span class="k">)</span><span class="s2">"</span><span class="w"> </span>tools/ddd_templates
 ddd<span class="w"> </span>generate<span class="w"> </span>project.ddd.json<span class="w"> </span>-o<span class="w"> </span>build/gen<span class="w"> </span>-t<span class="w"> </span>tools/ddd_templates
 </pre></div>
 </div>
@@ -537,8 +548,8 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x">/*</span>
 <span class="x"> * </span><span class="cp">{{</span> <span class="nv">filename</span> <span class="cp">}}</span>
 <span class="x"> *</span>
-<span class="x"> * Global variable data dictionary of project &#39;</span><span class="cp">{{</span> <span class="nv">model.project</span> <span class="cp">}}</span><span class="x">&#39;.</span>
-<span class="x"> * Generated from &#39;</span><span class="cp">{{</span> <span class="nv">model.source</span> <span class="cp">}}</span><span class="x">&#39; by </span><span class="cp">{{</span> <span class="nv">model.generator</span> <span class="cp">}}</span><span class="x">.</span>
+<span class="x"> * Global variable data dictionary of project '</span><span class="cp">{{</span> <span class="nv">model.project</span> <span class="cp">}}</span><span class="x">'.</span>
+<span class="x"> * Generated from '</span><span class="cp">{{</span> <span class="nv">model.source</span> <span class="cp">}}</span><span class="x">' by </span><span class="cp">{{</span> <span class="nv">model.generator</span> <span class="cp">}}</span><span class="x">.</span>
 <span class="x"> *</span>
 <span class="x"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="x"> */</span>
@@ -548,10 +559,10 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 </div>
 <div class="literal-block-wrapper docutils container" id="id2">
 <div class="code-block-caption"><span class="caption-text">ddd_types.h.jinja2 - the standard includes and the enum typedefs</span><a class="headerlink" href="#id2" title="Link to this code"></a></div>
-<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
-<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;types&quot;</span><span class="o">)</span> <span class="cp">}}</span>
-<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;types&quot;</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
 
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdint</span> <span class="cp">%}</span>
 <span class="x">#include &lt;stdint.h&gt;</span>
@@ -559,41 +570,48 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdbool</span> <span class="cp">%}</span>
 <span class="x">#include &lt;stdbool.h&gt;</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
+
+<span class="x">/* named constants of the data dictionary */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">constant</span> <span class="k">in</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">constant.name</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">constant.value</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">constant.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">constant.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">enum</span> <span class="k">in</span> <span class="nv">model.enums</span> <span class="cp">%}</span>
 
 <span class="x">/* </span><span class="cp">{{</span> <span class="nv">enum.name</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="x">typedef enum</span>
 <span class="x">{</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">enumerator</span> <span class="k">in</span> <span class="nv">enum.enumerators</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span> <span class="nv">enumerator.name</span> <span class="cp">}}</span><span class="x"> = </span><span class="cp">{{</span> <span class="nv">enumerator.value</span> <span class="cp">}}{{</span> <span class="s2">&quot;,&quot;</span> <span class="k">if</span> <span class="k">not</span> <span class="nb">loop</span><span class="nv">.last</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">&quot; /**&lt; &quot;</span> <span class="o">~</span> <span class="nv">enumerator.description</span> <span class="o">~</span> <span class="s2">&quot; */&quot;</span><span class="o">)</span> <span class="k">if</span> <span class="nv">enumerator.description</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{{</span> <span class="nv">enumerator.name</span> <span class="cp">}}</span><span class="x"> = </span><span class="cp">{{</span> <span class="nv">enumerator.value</span> <span class="cp">}}{{</span> <span class="s2">","</span> <span class="k">if</span> <span class="k">not</span> <span class="nb">loop</span><span class="nv">.last</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">enumerator.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">enumerator.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="x">} </span><span class="cp">{{</span> <span class="nv">enum.name</span> <span class="cp">}}</span><span class="x">;</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">structure</span> <span class="k">in</span> <span class="nv">model.structures</span> <span class="cp">%}</span>
 
-<span class="x">/* </span><span class="cp">{{</span> <span class="nv">structure.name</span> <span class="cp">}}{{</span> <span class="s2">&quot; - &quot;</span> <span class="o">~</span> <span class="nv">structure.comment</span> <span class="k">if</span> <span class="nv">structure.comment</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="x">/* </span><span class="cp">{{</span> <span class="nv">structure.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">structure.comment</span> <span class="k">if</span> <span class="nv">structure.comment</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="x">typedef struct</span>
 <span class="x">{</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">member</span> <span class="k">in</span> <span class="nv">structure.members</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span> <span class="nv">member.declaration</span> <span class="cp">}}</span><span class="x">;</span><span class="cp">{{</span> <span class="o">(</span><span class="s2">&quot; /**&lt; &quot;</span> <span class="o">~</span> <span class="nv">member.comment</span> <span class="o">~</span> <span class="s2">&quot; */&quot;</span><span class="o">)</span> <span class="k">if</span> <span class="nv">member.comment</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{{</span> <span class="nv">member.declaration</span> <span class="cp">}}</span><span class="x">;</span><span class="cp">{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">member.comment</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">member.comment</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="x">} </span><span class="cp">{{</span> <span class="nv">structure.name</span> <span class="cp">}}</span><span class="x">;</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 
-<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;types&quot;</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
 </pre></div>
 </div>
 </div>
 <div class="literal-block-wrapper docutils container" id="id3">
 <div class="code-block-caption"><span class="caption-text">ddd_globals.c.jinja2 - the single definition of every global variable</span><a class="headerlink" href="#id3" title="Link to this code"></a></div>
-<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">macro</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> -<span class="cp">%}</span>
 <span class="cp">{{</span> <span class="nv">variable.qualifier</span> <span class="cp">}}{{</span> <span class="nv">variable.c_type</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}{{</span> <span class="nv">variable.array_suffix</span> -<span class="cp">}}</span>
-<span class="cp">{{</span> <span class="s1">&#39; __attribute__((section(&quot;&#39;</span> <span class="o">~</span> <span class="nv">variable.section</span> <span class="o">~</span> <span class="s1">&#39;&quot;)))&#39;</span> <span class="k">if</span> <span class="nv">variable.section</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span> -<span class="cp">}}</span>
-<span class="cp">{{</span> <span class="s1">&#39; = &#39;</span> <span class="o">~</span> <span class="nv">variable.initializer</span> <span class="k">if</span> <span class="nv">variable.initializer</span> <span class="k">is</span> <span class="k">not</span> <span class="nf">none</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{{</span> <span class="s1">' __attribute__((section("'</span> <span class="o">~</span> <span class="nv">variable.section</span> <span class="o">~</span> <span class="s1">'")))'</span> <span class="k">if</span> <span class="nv">variable.section</span> <span class="k">else</span> <span class="s1">''</span> -<span class="cp">}}</span>
+<span class="cp">{{</span> <span class="s1">' = '</span> <span class="o">~</span> <span class="nv">variable.initializer</span> <span class="k">if</span> <span class="nv">variable.initializer</span> <span class="k">is</span> <span class="k">not</span> <span class="nf">none</span> <span class="k">else</span> <span class="s1">''</span> <span class="cp">}}</span><span class="x">;</span>
 <span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
-<span class="x">#include &quot;ddd_globals.h&quot;</span>
+<span class="x">#include "ddd_globals.h"</span>
 
 <span class="x">/*</span>
 <span class="x"> * Definition of every global variable of the project.  Compile and link this</span>
@@ -602,7 +620,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">group</span> <span class="k">in</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
 
 <span class="x">/* ---------------------------------------------------------------------------</span>
-<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">&quot; - &quot;</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="x"> * ------------------------------------------------------------------------ */</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">group.measurements</span> <span class="k">and</span> <span class="nv">group.calibration</span> <span class="cp">%}</span>
 
@@ -646,12 +664,12 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 </div>
 <div class="literal-block-wrapper docutils container" id="id4">
 <div class="code-block-caption"><span class="caption-text">ddd_globals.h.jinja2 - the declarations that definition file is compiled against</span><a class="headerlink" href="#id4" title="Link to this code"></a></div>
-<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
-<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;globals&quot;</span><span class="o">)</span> <span class="cp">}}</span>
-<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;globals&quot;</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span>
 
-<span class="x">#include &quot;ddd_types.h&quot;</span>
+<span class="x">#include "ddd_types.h"</span>
 
 <span class="x">/*</span>
 <span class="x"> * Declarations of every global variable of the project.  Software components</span>
@@ -661,7 +679,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">group</span> <span class="k">in</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
 
 <span class="x">/* ---------------------------------------------------------------------------</span>
-<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">&quot; - &quot;</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="x"> * ------------------------------------------------------------------------ */</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">variable</span> <span class="k">in</span> <span class="nv">group.variables</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
@@ -677,16 +695,16 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 
-<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">&quot;ddd&quot;</span><span class="o">,</span> <span class="s2">&quot;globals&quot;</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
 </pre></div>
 </div>
 </div>
 <div class="literal-block-wrapper docutils container" id="id5">
 <div class="code-block-caption"><span class="caption-text">{component}.h.jinja2 - the interface header, rendered once per component</span><a class="headerlink" href="#id5" title="Link to this code"></a></div>
-<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">&quot;_macros.jinja2&quot;</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="x">/*</span>
-<span class="x"> * Interface of software component &#39;</span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x">&#39;.</span>
+<span class="x"> * Interface of software component '</span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x">'.</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.description</span> <span class="cp">%}</span>
 <span class="x"> *</span>
 <span class="x"> * </span><span class="cp">{{</span> <span class="nv">header.description</span> <span class="cp">}}</span>
@@ -698,7 +716,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">header.guard</span> <span class="cp">}}</span>
 <span class="x">#define </span><span class="cp">{{</span> <span class="nv">header.guard</span> <span class="cp">}}</span>
 
-<span class="x">#include &quot;ddd_types.h&quot;</span>
+<span class="x">#include "ddd_types.h"</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.outputs</span> <span class="cp">%}</span>
 
 <span class="x">/* outputs - written by </span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x">, read by other components */</span>
@@ -725,7 +743,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.variable.comment</span> <span class="cp">%}</span>
 <span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
-<span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}{{</span> <span class="s2">&quot;  /* produced by &quot;</span> <span class="o">~</span> <span class="nv">entry.variable.owner</span> <span class="o">~</span> <span class="s2">&quot; */&quot;</span> <span class="k">if</span> <span class="nv">entry.variable.owner</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="cp">}}</span>
+<span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}{{</span> <span class="s2">"  /* produced by "</span> <span class="o">~</span> <span class="nv">entry.variable.owner</span> <span class="o">~</span> <span class="s2">" */"</span> <span class="k">if</span> <span class="nv">entry.variable.owner</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
 <span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>

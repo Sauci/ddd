@@ -1,0 +1,251 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Constant vocabulary &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Consistency checks" href="../consistency_checks.html" />
+    <link rel="prev" title="Memory sections" href="sections.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Constant vocabulary</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/constants.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="constant-vocabulary">
+<h1>Constant vocabulary<a class="headerlink" href="#constant-vocabulary" title="Link to this heading"></a></h1>
+<p>A <code class="docutils literal notranslate"><span class="pre">constants</span></code> file declares named integer constants, so that a size lives in one place and
+is shared by name. An array dimension is commonly a named constant of the c project - stated
+once, and used by every loop that walks the array - and a bare number in a description
+restates that constant and drifts from it silently. With the vocabulary declared, a shape
+names the constant where it would state the number, the generated c declares the array by
+that name, and the a2l records the constant for the calibration tool.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"../../schemas/ddd_constants.schema.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"constants"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PRESSURE_CELLS"</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cells of the pressure manifold"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AXIS_POINTS"</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">name</span></code> is a c identifier: it reaches the generated code as an identifier of its own, so
+the length cap, <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> apply to it like to any other
+name. <code class="docutils literal notranslate"><span class="pre">value</span></code> is an integer of at least 1, written as a number and as a literal only: an
+expression would put a parser and an evaluation order into a description format, and a
+constant cannot name another constant - what cannot be written cannot cycle. <code class="docutils literal notranslate"><span class="pre">description</span></code>
+is where the meaning of a size is written down once, instead of being implied by every
+object that happens to be dimensioned by it. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a
+project like any other description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">constants</span></code> prints its published
+contract. <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project that declares one next to its
+<a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>; it checks clean.</p>
+<p>A shape then names a constant where it would state a number: an entry of <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, or
+the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis, is either an integer or the name of a declared constant, and a list
+mixes the two freely - <code class="docutils literal notranslate"><span class="pre">[3,</span> <span class="pre">4]</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;,</span> <span class="pre">4]</span></code> are both shapes, on a
+declaration and on a structure member alike:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ManifoldPressure"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kPa"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"PRESSURE_CELLS"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Like a section, a constant is a reference rather than a spelling: naming one that no file
+declares is refused whether or not any constants file exists, with the nearest declared name
+suggested, and the finding lands on the dimension entry that names it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
+1 error
+</pre></div>
+</div>
+<p>The same constant declared twice, by one file or by two, is refused rather than merged - a
+size that depends on which file loads first is exactly what the vocabulary exists to
+prevent:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is declared twice
+    note: one.ddd.json#constants[0]: first declared here
+1 error
+</pre></div>
+</div>
+<p>A name and its value are different spellings of one size, so declarations of one object have
+to agree on the spelling (<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>), exactly as conversions compare as
+written: <code class="docutils literal notranslate"><span class="pre">[8]</span></code> here and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;]</span></code> there generate different c, and the
+spelling is what reaches every consumer’s header. The delivery comparison holds the same
+line - a dimension compares as its spelling <em>and</em> its value, so renaming the constant an
+array is dimensioned by is a <code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> even while the number stands.</p>
+<section id="what-the-outputs-make-of-it">
+<h2>What the outputs make of it<a class="headerlink" href="#what-the-outputs-make-of-it" title="Link to this heading"></a></h2>
+<p>The generated c declares a constant-dimensioned array by the constant’s name, in its
+definition and in every declaration, and the templates receive the declared constants under
+<code class="docutils literal notranslate"><span class="pre">model.constants</span></code> to emit however the house style spells one. The shipped example
+templates write each as a <code class="docutils literal notranslate"><span class="pre">#define</span></code> in the types header, so the arrays compile against the
+same header that declares their sizes:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* ddd_types.h */</span>
+<span class="cp">#define PRESSURE_CELLS 8 </span><span class="cm">/**&lt; cells of the pressure manifold */</span>
+
+<span class="cm">/* ddd_globals.c */</span>
+<span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ManifoldPressure</span><span class="p">[</span><span class="n">PRESSURE_CELLS</span><span class="p">]</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".fast_ram"</span><span class="p">)));</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> shows the spelling too - the <code class="docutils literal notranslate"><span class="pre">SHAPE</span></code> column of <code class="docutils literal notranslate"><span class="pre">ManifoldPressure</span></code> reads
+<code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code> - while every record of the a2l spells its sizes as resolved numbers,
+because a <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> accepts no symbol where it expects a count. The declared constants
+themselves reach the a2l as one <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code> per constant, in name order, inside the
+<code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> of the module:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MOD_PAR "named constants of PumpDevice"
+  SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+/end MOD_PAR
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a> carries both halves: every resolved object
+states its numeric <code class="docutils literal notranslate"><span class="pre">shape</span></code> beside <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, the same shape as the project spells it,
+and the declared constants are recorded whole at the top level, so a generator consuming the
+dictionary can emit them the way the shipped templates do.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="sections.html" class="btn btn-neutral float-left" title="Memory sections" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../consistency_checks.html" class="btn btn-neutral float-right" title="Consistency checks" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

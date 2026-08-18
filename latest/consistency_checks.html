@@ -25,7 +25,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Comparing deliveries" href="comparing_deliveries.html" />
-    <link rel="prev" title="Memory sections" href="file_formats/sections.html" /> 
+    <link rel="prev" title="Constant vocabulary" href="file_formats/constants.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -153,7 +153,7 @@ down should be read after a DDD upgrade:</p>
 file-not-found         error    a referenced file does not exist (fixed)
 json-syntax            error    a file is not valid json (fixed)
 file-kind              error    the top level key of a file names no description kind, or several (fixed)
-file-extension         error    a description file is not named &#39;*.ddd.json&#39;
+file-extension         error    a description file is not named '*.ddd.json'
 schema                 error    a file does not match the DDD contract (fixed)
 include-cycle          error    projects include each other recursively (fixed)
 include-empty          error    an include pattern matches no file
@@ -161,6 +161,7 @@ duplicate-component    error    two different files declare the same component n
 duplicate-type         error    two different files declare the same type name
 duplicate-unit         error    two different files declare the same unit
 duplicate-section      error    two different files declare the same memory section
+duplicate-constant     error    two different files declare the same constant name
 ...
 </pre></div>
 </div>
@@ -171,7 +172,7 @@ duplicate-section      error    two different files declare the same memory sect
 <p>Every finding is one line, in a shape an editor or a log parser can pick apart, followed by
 zero or more indented notes:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
 ...
 </pre></div>
@@ -241,7 +242,7 @@ options composable: a project can turn its warnings into errors and still exempt
 it has consciously decided to live with.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json --strict -W unused-output=info
 ...
-examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
 4 errors, 1 info
 </pre></div>
 </div>
@@ -255,9 +256,9 @@ written once into the build system - the CMake integration takes them as <code c
 is the normal thing to do, because the components producing its inputs and consuming its
 outputs are by definition not part of the file:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
-examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: &#39;ValueA&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: &#39;ValueB&#39; is read by component &#39;Controller&#39; but no component declares it as output
-examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: &#39;ValueE&#39; is written by component &#39;Controller&#39; but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
 ...
 2 errors, 5 warnings
 
@@ -284,15 +285,15 @@ variant of a project is a normal thing to allow.</p>
 naming a check or a severity that does not exist - the value of stable identifiers would be
 lost if a typo in a build script quietly disabled a rule:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json -W schema=warning
-ddd: the severity of check &#39;schema&#39; cannot be changed
+ddd: the severity of check 'schema' cannot be changed
 $ echo $?
 2
 
 $ ddd check examples/inconsistent/project.ddd.json -W typo=warning
-ddd: unknown check &#39;typo&#39;
+ddd: unknown check 'typo'
 
 $ ddd check examples/inconsistent/project.ddd.json -W unused-output=fatal
-ddd: unknown severity &#39;fatal&#39; for check &#39;unused-output&#39;, expected one of error, warning, info, ignore
+ddd: unknown severity 'fatal' for check 'unused-output', expected one of error, warning, info, ignore
 </pre></div>
 </div>
 <div class="admonition note">
@@ -341,8 +342,8 @@ utf-8. The finding carries the line and the column the parser stopped at.</p></t
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file-kind</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>the top level of the document is not a json object, or names none of the description
-kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>), or several of
-them at once.</p></td>
+kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
+<code class="docutils literal notranslate"><span class="pre">constants</span></code>), or several of them at once.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
 <td><p>error</p></td>
@@ -396,18 +397,33 @@ and neither is worth keeping quiet.</p></td>
 <td><p>two different files declare the same memory section: either a copy that will drift or
 a disagreement about its properties, and neither is worth keeping quiet.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two different files declare the same constant name (see the
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>): either a copy that will drift or a
+disagreement about the value, and a size that depends on which file loads first is
+exactly what the vocabulary exists to prevent.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a definition names a memory section no file declares (see the
 <a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a>). Unlike a unit there is no free text
 fallback: a section without declared properties is a name the placement checks can
 say nothing about. The nearest declared name is suggested.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a measurement, which the software writes, is placed in a <code class="docutils literal notranslate"><span class="pre">read-only</span></code> section. A
 calibration object may live in either direction: <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored
 calibration.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a shape - a <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> entry, or the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis - names a constant no
+file of the project declares (see the
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>). Like a section there is no free
+text fallback, because a name without a value is a dimension nothing can resolve.
+The nearest declared name is suggested.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
 <td><p>error</p></td>
@@ -688,21 +704,21 @@ hardware will do.</p>
 <p>Two things follow. The first is that the diagnostic points at the <strong>deviating consumer</strong>, with
 a note referring back to the producer, so that the finding lands on the file that has to
 change:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
     note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
 </pre></div>
 </div>
 <p>The second is that a property which merely shapes how the a2l <em>presents</em> the object does not
 have to stop the build, precisely because the outcome is defined. Given a producer and a
 consumer that ask for different display formats,</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%5.0&quot;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueA"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"%5.0"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueA&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;%8.3&quot;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueA"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"%8.3"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>the check names the value that is going to be used:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: &#39;ValueA&#39;: component &#39;Consumer&#39; specifies a different a2l format than &#39;Producer&#39; (a2l format: &#39;%8.3&#39; != &#39;%5.0&#39;); the value of &#39;Producer&#39; is used
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l format than 'Producer' (a2l format: '%8.3' != '%5.0'); the value of 'Producer' is used
     note: producer.ddd.json#component.interface[0].definition: reference declaration
 </pre></div>
 </div>
@@ -741,13 +757,13 @@ between its consumers, instead of hiding the second finding behind the first.</p
 repository so that the checks can be seen firing on something small. The project file only
 collects them:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BrokenProject&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Deliberately inconsistent project, used to demonstrate the checks&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">      </span><span class="s2">&quot;component_a.ddd.json&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="s2">&quot;component_b.ddd.json&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="s2">&quot;component_c.ddd.json&quot;</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"BrokenProject"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Deliberately inconsistent project, used to demonstrate the checks"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"component_a.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"component_b.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"component_c.ddd.json"</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
@@ -759,14 +775,14 @@ collects them:</p>
 a <code class="docutils literal notranslate"><span class="pre">MissingValue</span></code> nobody writes, and reads <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>’s <code class="docutils literal notranslate"><span class="pre">Scratch</span></code>. Checking the project
 gives:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
-examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: &#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
-examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;SharedValue&#39; is declared differently by component &#39;ComponentC&#39; than by &#39;ComponentA&#39; (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
     note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
-examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: &#39;MissingValue&#39; is read by component &#39;ComponentC&#39; but no component declares it as output
-examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: &#39;Scratch&#39; is local to component &#39;ComponentA&#39; but is also declared as input by component &#39;ComponentC&#39;
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
     note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
-examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: &#39;UnusedSignal&#39; is written by component &#39;ComponentA&#39; but read by nobody
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -851,35 +867,35 @@ empty, so a job can consume the whole of stdout without having to recognise wher
 document begins:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json --format json
 {
-  &quot;diagnostics&quot;: [
+  "diagnostics": [
     {
-      &quot;check&quot;: &quot;multiple-producers&quot;,
-      &quot;severity&quot;: &quot;error&quot;,
-      &quot;message&quot;: &quot;&#39;SharedValue&#39; is written by component &#39;ComponentB&#39; and by component &#39;ComponentA&#39;; exactly one writer is allowed&quot;,
-      &quot;location&quot;: {
-        &quot;path&quot;: &quot;C:/work/project/component_b.ddd.json&quot;,
-        &quot;pointer&quot;: &quot;component.interface[0]&quot;,
-        &quot;line&quot;: null,
-        &quot;column&quot;: null
+      "check": "multiple-producers",
+      "severity": "error",
+      "message": "'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed",
+      "location": {
+        "path": "C:/work/project/component_b.ddd.json",
+        "pointer": "component.interface[0]",
+        "line": null,
+        "column": null
       },
-      &quot;notes&quot;: [
+      "notes": [
         {
-          &quot;message&quot;: &quot;also written here&quot;,
-          &quot;location&quot;: {
-            &quot;path&quot;: &quot;C:/work/project/component_a.ddd.json&quot;,
-            &quot;pointer&quot;: &quot;component.interface[0]&quot;,
-            &quot;line&quot;: null,
-            &quot;column&quot;: null
+          "message": "also written here",
+          "location": {
+            "path": "C:/work/project/component_a.ddd.json",
+            "pointer": "component.interface[0]",
+            "line": null,
+            "column": null
           }
         }
       ]
     },
     ...
   ],
-  &quot;summary&quot;: {
-    &quot;error&quot;: 4,
-    &quot;warning&quot;: 1,
-    &quot;info&quot;: 0
+  "summary": {
+    "error": 4,
+    "warning": 1,
+    "info": 0
   }
 }
 </pre></div>
@@ -898,10 +914,10 @@ usage error:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd checks --format json
 [
   {
-    &quot;check&quot;: &quot;file-not-found&quot;,
-    &quot;default_severity&quot;: &quot;error&quot;,
-    &quot;description&quot;: &quot;a referenced file does not exist&quot;,
-    &quot;overridable&quot;: false
+    "check": "file-not-found",
+    "default_severity": "error",
+    "description": "a referenced file does not exist",
+    "overridable": false
   },
   ...
 ]
@@ -916,7 +932,7 @@ load time checks whose severity cannot be changed, <code class="docutils literal
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="file_formats/sections.html" class="btn btn-neutral float-left" title="Memory sections" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="file_formats/constants.html" class="btn btn-neutral float-left" title="Constant vocabulary" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="comparing_deliveries.html" class="btn btn-neutral float-right" title="Comparing deliveries" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

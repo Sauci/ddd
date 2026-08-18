@@ -101,9 +101,10 @@ The commands
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later.
    * - ``ddd schema KIND``
-     - print the json schema of ``component``, ``dictionary``, ``project``, ``sections``,
-       ``types`` or ``units``, for an editor that offers completion inside a ``*.ddd.json``
-       file or for a validator in a ci job; ``all`` writes every schema into a directory.
+     - print the json schema of ``component``, ``constants``, ``dictionary``, ``project``,
+       ``sections``, ``types`` or ``units``, for an editor that offers completion inside a
+       ``*.ddd.json`` file or for a validator in a ci job; ``all`` writes every schema into
+       a directory.
    * - ``ddd sources FILE``
      - list every description file the project is built out of, for the dependency list of a
        build system.

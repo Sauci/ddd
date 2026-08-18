@@ -240,8 +240,8 @@ component sharing the enum sees the same definition:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * ddd_types.h</span>
 <span class="cm"> *</span>
-<span class="cm"> * Global variable data dictionary of project &#39;DemoDevice&#39;.</span>
-<span class="cm"> * Generated from &#39;demo.ddd.json&#39; by ddd 0.0.1.</span>
+<span class="cm"> * Global variable data dictionary of project 'DemoDevice'.</span>
+<span class="cm"> * Generated from 'demo.ddd.json' by ddd 0.0.1.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
@@ -340,7 +340,7 @@ header declares the objects that component declared, and a reference to any othe
 undeclared identifier that the compiler rejects. The header of <code class="docutils literal notranslate"><span class="pre">UserInterface</span></code> looks like
 this:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
-<span class="cm"> * Interface of software component &#39;UserInterface&#39;.</span>
+<span class="cm"> * Interface of software component 'UserInterface'.</span>
 <span class="cm"> *</span>
 <span class="cm"> * Reads the values of the other components and drives the display</span>
 <span class="cm"> *</span>
@@ -350,7 +350,7 @@ this:</p>
 <span class="cp">#ifndef DDD_COMPONENT_USERINTERFACE_H</span>
 <span class="cp">#define DDD_COMPONENT_USERINTERFACE_H</span>
 
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ddd_types.h&quot;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_types.h"</span>
 
 <span class="cm">/* outputs - written by UserInterface, read by other components */</span>
 <span class="cm">/** Bit coded measurement written by the user interface */</span>
@@ -501,10 +501,10 @@ definition of every kind, required and without a default, so a parameter, an axi
 and a map state it exactly as a measurement does. The two qualifiers describe two different
 things - <code class="docutils literal notranslate"><span class="pre">const</span></code> that this software never writes the object, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> that somebody
 else does - so DDD composes them independently instead of letting one displace the other:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="p">;</span><span class="w">            </span><span class="cm">/* measurement, &quot;volatile&quot;: true  */</span>
-<span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="p">;</span><span class="w">                     </span><span class="cm">/* measurement, &quot;volatile&quot;: false */</span>
-<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span><span class="w">  </span><span class="cm">/* parameter,   &quot;volatile&quot;: true  */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span><span class="w">           </span><span class="cm">/* parameter,   &quot;volatile&quot;: false */</span>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="p">;</span><span class="w">            </span><span class="cm">/* measurement, "volatile": true  */</span>
+<span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="p">;</span><span class="w">                     </span><span class="cm">/* measurement, "volatile": false */</span>
+<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span><span class="w">  </span><span class="cm">/* parameter,   "volatile": true  */</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span><span class="w">           </span><span class="cm">/* parameter,   "volatile": false */</span>
 </pre></div>
 </div>
 <p>Every <code class="docutils literal notranslate"><span class="pre">extern</span></code> declaration of the object is qualified to match, in <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code> and in
@@ -586,8 +586,8 @@ every file they render:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * ddd_globals.c</span>
 <span class="cm"> *</span>
-<span class="cm"> * Global variable data dictionary of project &#39;DemoDevice&#39;.</span>
-<span class="cm"> * Generated from &#39;demo.ddd.json&#39; by ddd 0.0.1.</span>
+<span class="cm"> * Global variable data dictionary of project 'DemoDevice'.</span>
+<span class="cm"> * Generated from 'demo.ddd.json' by ddd 0.0.1.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
@@ -655,19 +655,19 @@ would write build/gen/DemoDevice.a2l (created)
 <p>The second artefact is the ASAM MCD-2 MC description, better known by the extension of its
 files, and it is what lets a measurement and calibration tool display and tune the data of a
 running target. DDD writes <strong>ASAP2 1.6.1</strong> and says so on the second line of the file:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from &#39;DemoDevice&#39; by ddd 0.0.1. DO NOT EDIT. */
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.0.1. DO NOT EDIT. */
 ASAP2_VERSION 1 61
 
-/begin PROJECT DemoDevice &quot;Demonstration project showing every DDD feature&quot;
+/begin PROJECT DemoDevice "Demonstration project showing every DDD feature"
 
-  /begin HEADER &quot;Demonstration project showing every DDD feature&quot;
+  /begin HEADER "Demonstration project showing every DDD feature"
     PROJECT_NO DemoDevice
-    VERSION &quot;generated by ddd 0.0.1&quot;
+    VERSION "generated by ddd 0.0.1"
   /end HEADER
 
-  /begin MODULE DemoDevice &quot;Demonstration project showing every DDD feature&quot;
+  /begin MODULE DemoDevice "Demonstration project showing every DDD feature"
 
-    /begin MOD_COMMON &quot;global variables of DemoDevice&quot;
+    /begin MOD_COMMON "global variables of DemoDevice"
       BYTE_ORDER MSB_LAST
       ALIGNMENT_BYTE 1
       ALIGNMENT_WORD 2
@@ -685,6 +685,17 @@ image are one target, not several. <code class="docutils literal notranslate"><s
 are the natural alignment of each width, which is what a compiler targeting a modern core
 does unless it is told to pack. The a2l is written unless <code class="docutils literal notranslate"><span class="pre">--no-a2l</span></code> says otherwise, and it
 is named after the project, so <code class="docutils literal notranslate"><span class="pre">DemoDevice</span></code> produces <code class="docutils literal notranslate"><span class="pre">DemoDevice.a2l</span></code>.</p>
+<p>A project that declares a <a class="reference internal" href="file_formats/constants.html"><span class="doc">constant vocabulary</span></a> gets a
+<code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> after the <code class="docutils literal notranslate"><span class="pre">MOD_COMMON</span></code>, stating one <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code> per declared constant
+in name order, both halves quoted as the format wants them; a project that declares none
+gets no empty block. The records themselves still spell every size as a resolved number,
+because a <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> accepts no symbol where it expects a count - the <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> is
+where a downstream tool finds the name and the value it stands for:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MOD_PAR "named constants of PumpDevice"
+  SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+/end MOD_PAR
+</pre></div>
+</div>
 <section id="what-is-emitted-for-what">
 <h3>What is emitted for what<a class="headerlink" href="#what-is-emitted-for-what" title="Link to this heading"></a></h3>
 <p>Every object that ends up in the file - which is every object of the project unless its
@@ -754,10 +765,10 @@ declaration is the array itself and not a pointer to it.</p>
 <p>The records share a skeleton. A measurement is written as its name, its long identifier, the
 a2l datatype, the compu method, a resolution and an accuracy field, and the lower and upper
 physical limits:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueF &quot;Signed measurement with a fixed point conversion&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueF "Signed measurement with a fixed point conversion"
   SWORD CM_LIN_DEGC 0 0 -40 150
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueF&quot; 0
+  SYMBOL_LINK "ValueF" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -769,10 +780,10 @@ object, either as the description gave them or derived from the datatype and the
 when it did not - <code class="docutils literal notranslate"><span class="pre">ValueF</span></code> is an <code class="docutils literal notranslate"><span class="pre">sint16</span></code> scaled by <code class="docutils literal notranslate"><span class="pre">0.1</span></code>, and the description restricts
 it to -40 .. 150 degC. A measurement with <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> also carries a <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> - the
 demo’s array measurement is written as</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueB &quot;Array measurement with four elements&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueB "Array measurement with four elements"
   UWORD CM_LIN_V 0 0 0 65.535
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueB&quot; 0
+  SYMBOL_LINK "ValueB" 0
   MATRIX_DIM 4 1 1
 /end MEASUREMENT
 </pre></div>
@@ -785,13 +796,13 @@ description asks for one under its <code class="docutils literal notranslate"><s
 <p>A <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> is created per distinct pair of conversion and unit, and the unit is part
 of the key because two objects scaled by the same factor but measured in different units are
 not the same conversion to a calibration tool - one displays <code class="docutils literal notranslate"><span class="pre">Hz</span></code> and the other <code class="docutils literal notranslate"><span class="pre">%</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_HZ &quot;phys = raw * 0.25 + 0&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;Hz&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_HZ "phys = raw * 0.25 + 0"
+  RAT_FUNC "%8.3" "Hz"
   COEFFS 0 1 0 0 0 0.25
 /end COMPU_METHOD
 
-/begin COMPU_METHOD CM_LIN_PCT &quot;phys = raw * 0.5 + 0&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;%&quot;
+/begin COMPU_METHOD CM_LIN_PCT "phys = raw * 0.5 + 0"
+  RAT_FUNC "%8.3" "%"
   COEFFS 0 1 0 0 0 0.5
 /end COMPU_METHOD
 </pre></div>
@@ -815,8 +826,8 @@ tool has to work out the bit pattern to write into the target. Substituting the 
 <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-offset</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span> <span class="pre">=</span> <span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">f</span> <span class="pre">=</span> <span class="pre">factor</span></code> - so the factor
 appears in the denominator slot and the offset appears negated. A conversion with a non-zero
 offset makes that visible: <code class="docutils literal notranslate"><span class="pre">{&quot;factor&quot;:</span> <span class="pre">0.25,</span> <span class="pre">&quot;offset&quot;:</span> <span class="pre">-40.0}</span></code> becomes</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC &quot;phys = raw * 0.25 + -40&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;degC&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.25 + -40"
+  RAT_FUNC "%8.3" "degC"
   COEFFS 0 1 40 0 0 0.25
 /end COMPU_METHOD
 </pre></div>
@@ -828,14 +839,14 @@ invert a rational function in their head to find out that the raw value 0 means 
 identity conversion on an object that has no unit either becomes no compu method at all - the
 literal keyword <code class="docutils literal notranslate"><span class="pre">NO_COMPU_METHOD</span></code>, since there is nothing to convert and nothing to
 display:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_IDENT_DEGC &quot;physical value in degC&quot;
-  IDENTICAL &quot;%8.3&quot; &quot;degC&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_IDENT_DEGC "physical value in degC"
+  IDENTICAL "%8.3" "degC"
 /end COMPU_METHOD
 
-/begin MEASUREMENT ValueI &quot;Bit coded measurement written by the user interface&quot;
+/begin MEASUREMENT ValueI "Bit coded measurement written by the user interface"
   ULONG NO_COMPU_METHOD 0 0 0 4294967295
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueI&quot; 0
+  SYMBOL_LINK "ValueI" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -854,23 +865,23 @@ that record and overrides the compu method for it.</p>
 enumerator - the same names that became the members of <code class="docutils literal notranslate"><span class="pre">StateA_t</span></code> in the generated c code,
 so that the identifier the c code uses and the text the calibration tool displays are one and
 the same string:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_VTAB VTAB_StateA_t &quot;values of StateA_t&quot; TAB_VERB 5
-  0 &quot;STATE_OFF&quot;
-  1 &quot;STATE_INIT&quot;
-  2 &quot;STATE_ACTIVE&quot;
-  3 &quot;STATE_DEGRADED&quot;
-  15 &quot;STATE_FAULT&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_VTAB VTAB_StateA_t "values of StateA_t" TAB_VERB 5
+  0 "STATE_OFF"
+  1 "STATE_INIT"
+  2 "STATE_ACTIVE"
+  3 "STATE_DEGRADED"
+  15 "STATE_FAULT"
 /end COMPU_VTAB
 
-/begin COMPU_METHOD CM_StateA_t &quot;verbal conversion for StateA_t&quot;
-  TAB_VERB &quot;%8.0&quot; &quot;&quot;
+/begin COMPU_METHOD CM_StateA_t "verbal conversion for StateA_t"
+  TAB_VERB "%8.0" ""
   COMPU_TAB_REF VTAB_StateA_t
 /end COMPU_METHOD
 
-/begin MEASUREMENT StateA &quot;Measurement with a verbal conversion table&quot;
+/begin MEASUREMENT StateA "Measurement with a verbal conversion table"
   UBYTE CM_StateA_t 0 0 0 15
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;StateA&quot; 0
+  SYMBOL_LINK "StateA" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -892,10 +903,10 @@ running index first, c declares it last.</strong> A declaration of</p>
 <p>is two rows of three elements: the second subscript is the one that walks over consecutive
 addresses, so it is the fastest running index, and it is written last in c. ASAP2 wants the
 dimensions in the opposite order, so DDD reverses them:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Table &quot;Two rows of three columns&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Table "Two rows of three columns"
   UBYTE NO_COMPU_METHOD 0 0 0 255
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Table&quot; 0
+  SYMBOL_LINK "Table" 0
   MATRIX_DIM 3 2 1
 /end MEASUREMENT
 </pre></div>
@@ -912,7 +923,7 @@ three dimensions cannot be expressed at all in this version. DDD writes all of i
 anyway, which is what ASAP2 1.7 expects and what a 1.7 reader will understand, and reports
 the situation rather than silently truncating:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
-cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: &#39;Cube&#39; has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
+cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       build/gen/ddd_globals.c (created)
 ...
@@ -920,10 +931,10 @@ wrote       build/gen/ddd_globals.c (created)
 </div>
 <p>The record that comes out of it carries all four dimensions, again reversed, which is what a
 1.7 reader expects and more than a 1.6.1 reader is specified to handle:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Cube &quot;Cube&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Cube "Cube"
   UBYTE NO_COMPU_METHOD 0 0 0 255
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Cube&quot; 0
+  SYMBOL_LINK "Cube" 0
   MATRIX_DIM 5 4 3 2
 /end MEASUREMENT
 </pre></div>
@@ -939,9 +950,9 @@ for the same fact to be wrong. A parameter is a scalar and has no shape to descr
 address, break points stored in the target, and its own conversion and limits. The
 <code class="docutils literal notranslate"><span class="pre">input</span></code> of the axis - the measurement whose value selects the position along it - becomes
 the input quantity of the record:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin AXIS_PTS AxisA &quot;Shared axis indexed by ValueE&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin AXIS_PTS AxisA "Shared axis indexed by ValueE"
   0x00000000 ValueE RL_AXIS_UWORD 0 CM_LIN_HZ 6 0 8000
-  SYMBOL_LINK &quot;AxisA&quot; 0
+  SYMBOL_LINK "AxisA" 0
 /end AXIS_PTS
 </pre></div>
 </div>
@@ -954,18 +965,18 @@ gets the keyword <code class="docutils literal notranslate"><span class="pre">NO
 <p>A curve or a map then refers to that axis instead of carrying its own copy of the break
 points. The reference is an <code class="docutils literal notranslate"><span class="pre">AXIS_DESCR</span></code> of attribute <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code> - a <em>common</em> axis, one
 shared between several characteristics - plus an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code> naming the record above:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC CurveA &quot;Calibratable curve over AxisA&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC CurveA "Calibratable curve over AxisA"
   CURVE 0x00000000 RL_VALUES_UWORD 0 CM_LIN_MS 0 655.35
-  SYMBOL_LINK &quot;CurveA&quot; 0
+  SYMBOL_LINK "CurveA" 0
   /begin AXIS_DESCR
     COM_AXIS ValueE CM_LIN_HZ 6 0 8000
     AXIS_PTS_REF AxisA
   /end AXIS_DESCR
 /end CHARACTERISTIC
 
-/begin CHARACTERISTIC MapA &quot;Calibratable map over AxisA and AxisB&quot;
+/begin CHARACTERISTIC MapA "Calibratable map over AxisA and AxisB"
   MAP 0x00000000 RL_VALUES_SBYTE 0 CM_LIN_PCT -64 63.5
-  SYMBOL_LINK &quot;MapA&quot; 0
+  SYMBOL_LINK "MapA" 0
   /begin AXIS_DESCR
     COM_AXIS ValueE CM_LIN_HZ 6 0 8000
     AXIS_PTS_REF AxisA
@@ -994,20 +1005,20 @@ and pulls in whatever they point at, transitively: a curve pulls its axis, and t
 pulls the measurement it is indexed by. In the following description, <code class="docutils literal notranslate"><span class="pre">Speed</span></code> and
 <code class="docutils literal notranslate"><span class="pre">SpeedAxis</span></code> are both marked <code class="docutils literal notranslate"><span class="pre">{&quot;export&quot;:</span> <span class="pre">false}</span></code> and both appear in the a2l anyway,
 because <code class="docutils literal notranslate"><span class="pre">Fuel</span></code> needs them:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Speed &quot;Speed&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT Speed "Speed"
   UWORD CM_IDENT_HZ 0 0 0 65535
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;Speed&quot; 0
+  SYMBOL_LINK "Speed" 0
 /end MEASUREMENT
 
-/begin AXIS_PTS SpeedAxis &quot;SpeedAxis&quot;
+/begin AXIS_PTS SpeedAxis "SpeedAxis"
   0x00000000 Speed RL_AXIS_UWORD 0 CM_IDENT_HZ 3 0 65535
-  SYMBOL_LINK &quot;SpeedAxis&quot; 0
+  SYMBOL_LINK "SpeedAxis" 0
 /end AXIS_PTS
 
-/begin CHARACTERISTIC Fuel &quot;Fuel&quot;
+/begin CHARACTERISTIC Fuel "Fuel"
   CURVE 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255
-  SYMBOL_LINK &quot;Fuel&quot; 0
+  SYMBOL_LINK "Fuel" 0
   /begin AXIS_DESCR
     COM_AXIS Speed CM_IDENT_HZ 3 0 65535
     AXIS_PTS_REF SpeedAxis
@@ -1027,7 +1038,7 @@ put it.</p>
 compilation and linking there are only symbols - but it is exactly the structure a
 calibration engineer wants to navigate by, so it is preserved in the a2l as one <code class="docutils literal notranslate"><span class="pre">GROUP</span></code> per
 component, listing the objects that component declared:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin GROUP SensorHub &quot;Produces the raw input values of the device&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin GROUP SensorHub "Produces the raw input values of the device"
   ROOT
   /begin REF_MEASUREMENT
     ValueA
@@ -1050,10 +1061,10 @@ all produces no group rather than an empty one.</p>
 <h3>Addresses<a class="headerlink" href="#addresses" title="Link to this heading"></a></h3>
 <p>The address of an object is not known until the linker has run, and DDD generates the c code
 <em>before</em> that. Every record therefore carries <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> unless it is told better:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE &quot;Measurement used as the input quantity of AxisA&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
   UWORD CM_LIN_HZ 0 0 0 8000
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueE&quot; 0
+  SYMBOL_LINK "ValueE" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -1071,28 +1082,28 @@ linking needs no configuration on the DDD side at all.</p>
 json object mapping symbol names to addresses, written either as decimal numbers or as
 hexadecimal strings, whichever the tool producing it finds easier:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ValueE&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x20000100&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;AxisA&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x08004000&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;ParameterA&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span>
+<span class="w">  </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p>Running the generator a second time with that map produces the same a2l with the addresses
 filled in:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE &quot;Measurement used as the input quantity of AxisA&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
   UWORD CM_LIN_HZ 0 0 0 8000
   ECU_ADDRESS 0x20000100
-  SYMBOL_LINK &quot;ValueE&quot; 0
+  SYMBOL_LINK "ValueE" 0
 /end MEASUREMENT
 
-/begin AXIS_PTS AxisA &quot;Shared axis indexed by ValueE&quot;
+/begin AXIS_PTS AxisA "Shared axis indexed by ValueE"
   0x08004000 ValueE RL_AXIS_UWORD 0 CM_LIN_HZ 6 0 8000
-  SYMBOL_LINK &quot;AxisA&quot; 0
+  SYMBOL_LINK "AxisA" 0
 /end AXIS_PTS
 
-/begin CHARACTERISTIC ParameterA &quot;Single calibratable constant&quot;
+/begin CHARACTERISTIC ParameterA "Single calibratable constant"
   VALUE 0x08004000 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
-  SYMBOL_LINK &quot;ParameterA&quot; 0
+  SYMBOL_LINK "ParameterA" 0
 /end CHARACTERISTIC
 </pre></div>
 </div>
@@ -1106,7 +1117,7 @@ produced from a linker output legitimately contains only the objects that ended 
 image - a conditional object absent from this build has no address to report. An address
 outside the range an a2l can hold, on the other hand, is refused before anything is written:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
-ddd: bad.json: address of &#39;ValueE&#39; is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
+ddd: bad.json: address of 'ValueE' is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 $ echo $?
 2
 </pre></div>
@@ -1125,10 +1136,10 @@ only when <code class="docutils literal notranslate"><span class="pre">FEATURE_X
 defined when the image was built. DDD therefore exports a conditional object unconditionally
 and states the condition in a comment above the record:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* only present in the build when: defined(FEATURE_X) */
-/begin MEASUREMENT ValueG &quot;Measurement that only exists when FEATURE_X is defined&quot;
+/begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
   UWORD CM_LIN_V 0 0 0 5
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;ValueG&quot; 0
+  SYMBOL_LINK "ValueG" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -1150,16 +1161,16 @@ variable.</p>
 reference rule above. The demo uses it twice, on scratch data that a calibration tool has no
 business displaying:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ValueD&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Component local measurement, kept out of the a2l&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;identity&quot;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
-<span class="w">    </span><span class="nt">&quot;a2l&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;export&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueD"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Component local measurement, kept out of the a2l"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>

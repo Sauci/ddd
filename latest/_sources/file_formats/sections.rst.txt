@@ -25,9 +25,9 @@ business and deliberately not modelled, because the object's ``volatile`` alread
 what the software has to assume. ``alignment`` is what the section guarantees, in bytes, a
 power of two. The file is listed in the ``includes`` of a project like any other
 description, and ``ddd schema sections`` prints its published contract.
-``examples/vocabulary`` is a ready to run project placing a measurement and a parameter
-into exactly these two sections, next to the :doc:`unit vocabulary <units>` of the same
-project; it checks clean.
+``examples/vocabulary`` is a ready to run project placing measurements and a parameter
+into exactly these two sections, next to the :doc:`unit vocabulary <units>` and the
+:doc:`constants <constants>` of the same project; it checks clean.
 
 A definition then states its ``section`` - a storage key like ``init``: the producer states
 it, a consumer stating one is refused as ``consumer-storage``, and a structured variable is
@@ -91,6 +91,8 @@ the GCC attribute, with the attribute between the declarator and the initialiser
 Templates also receive the placed objects grouped per section under ``model.sections``,
 ordered strictest alignment first with names breaking ties, so that a project wanting
 padding-minimal layout can emit each section's data in that order. Describing the layout in
-the a2l with ``MOD_PAR`` / ``MEMORY_SEGMENT`` is planned: a segment's address and size exist
-only after linking, so they will arrive with the address information rather than being
-restated in the vocabulary - the linker script already owns them, and a copy would drift.
+the a2l with ``MEMORY_SEGMENT`` is planned: a segment's address and size exist only after
+linking, so they will arrive with the address information rather than being restated in the
+vocabulary - the linker script already owns them, and a copy would drift. The ``MOD_PAR``
+block that will carry them already exists for the
+:doc:`constant vocabulary <constants>`.

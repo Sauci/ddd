@@ -193,10 +193,10 @@ prescribed; it merely lets the project file collect its members with a single pa
 <p>A project is a name and a list of members. It carries no data of its own, because the data
 belongs to the components, and it is the file a build script points DDD at.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Thermostat&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A cabin thermostat built out of two components&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;includes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;components/*.ddd.json&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Thermostat"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A cabin thermostat built out of two components"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"components/*.ddd.json"</span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -219,22 +219,22 @@ name is reported under the <code class="docutils literal notranslate"><span clas
 that SensorHub owns it and writes it, and that exactly one component in the whole project may
 say so:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SensorHub&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Reads the sensors and publishes their conditioned values&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"SensorHub"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Reads the sensors and publishes their conditioned values"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CabinTemperature&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature measured in the cabin&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CabinTemperature"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature measured in the cabin"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">    </span><span class="p">]</span>
@@ -259,35 +259,35 @@ refused under the <code class="docutils literal notranslate"><span class="pre">s
 <p><code class="docutils literal notranslate"><span class="pre">components/controller.ddd.json</span></code> declares the same variable with scope <code class="docutils literal notranslate"><span class="pre">input</span></code>, and adds a
 calibration parameter of its own with scope <code class="docutils literal notranslate"><span class="pre">local</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;component&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Controller&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Decides when to heat, from the cabin temperature&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Controller"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Decides when to heat, from the cabin temperature"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CabinTemperature&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature measured in the cabin&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CabinTemperature"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature measured in the cabin"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;definition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parameter&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;HeaterOnThreshold&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Temperature below which the heater is switched on&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;datatype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sint16&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degC&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;conversion&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;linear&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;factor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;limits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">&quot;init&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;volatile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"HeaterOnThreshold"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature below which the heater is switched on"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">    </span><span class="p">]</span>
@@ -359,7 +359,7 @@ ddd generate: error: the following arguments are required: -t/--template-dir
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code> prints where that set is installed - inside the package in a normal
 installation, <code class="docutils literal notranslate"><span class="pre">examples/templates</span></code> in a source checkout - so copying it needs no path
 written by hand:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ cp -r &quot;$(ddd templates-dir)&quot; templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ cp -r "$(ddd templates-dir)" templates
 $ ls templates
 _macros.jinja2
 ddd_globals.c.jinja2
@@ -451,12 +451,12 @@ than written by hand so that no variable can be defined twice or defined by the 
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * ddd_globals.c</span>
 <span class="cm"> *</span>
-<span class="cm"> * Global variable data dictionary of project &#39;Thermostat&#39;.</span>
-<span class="cm"> * Generated from &#39;thermostat.ddd.json&#39; by ddd 0.0.1.</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.0.1.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ddd_globals.h&quot;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_globals.h"</span>
 
 <span class="cm">/*</span>
 <span class="cm"> * Definition of every global variable of the project.  Compile and link this</span>
@@ -483,13 +483,13 @@ path:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * SensorHub.h</span>
 <span class="cm"> *</span>
-<span class="cm"> * Global variable data dictionary of project &#39;Thermostat&#39;.</span>
-<span class="cm"> * Generated from &#39;thermostat.ddd.json&#39; by ddd 0.0.1.</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.0.1.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
 <span class="cm">/*</span>
-<span class="cm"> * Interface of software component &#39;SensorHub&#39;.</span>
+<span class="cm"> * Interface of software component 'SensorHub'.</span>
 <span class="cm"> *</span>
 <span class="cm"> * Reads the sensors and publishes their conditioned values</span>
 <span class="cm"> *</span>
@@ -499,7 +499,7 @@ path:</p>
 <span class="cp">#ifndef DDD_COMPONENT_SENSORHUB_H</span>
 <span class="cp">#define DDD_COMPONENT_SENSORHUB_H</span>
 
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ddd_types.h&quot;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_types.h"</span>
 
 <span class="cm">/* outputs - written by SensorHub, read by other components */</span>
 <span class="cm">/** Temperature measured in the cabin [degC] */</span>
@@ -514,13 +514,13 @@ description files. The local parameter appears in its own section, and only here
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * Controller.h</span>
 <span class="cm"> *</span>
-<span class="cm"> * Global variable data dictionary of project &#39;Thermostat&#39;.</span>
-<span class="cm"> * Generated from &#39;thermostat.ddd.json&#39; by ddd 0.0.1.</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.0.1.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
 <span class="cm">/*</span>
-<span class="cm"> * Interface of software component &#39;Controller&#39;.</span>
+<span class="cm"> * Interface of software component 'Controller'.</span>
 <span class="cm"> *</span>
 <span class="cm"> * Decides when to heat, from the cabin temperature</span>
 <span class="cm"> *</span>
@@ -530,7 +530,7 @@ description files. The local parameter appears in its own section, and only here
 <span class="cp">#ifndef DDD_COMPONENT_CONTROLLER_H</span>
 <span class="cp">#define DDD_COMPONENT_CONTROLLER_H</span>
 
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ddd_types.h&quot;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_types.h"</span>
 
 <span class="cm">/* inputs - produced elsewhere, Controller may only read them */</span>
 <span class="cm">/** Temperature measured in the cabin [degC] */</span>
@@ -558,15 +558,15 @@ project that wants one more generated file adds one more template. What the temp
 to work with is the subject of <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>.</p>
 <p>The last artefact is the a2l, generated from the very same declarations, so the calibration
 tool sees the physical values the description promised rather than raw counts:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC &quot;phys = raw * 0.1 + 0&quot;
-  RAT_FUNC &quot;%8.3&quot; &quot;degC&quot;
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.1 + 0"
+  RAT_FUNC "%8.3" "degC"
   COEFFS 0 1 0 0 0 0.1
 /end COMPU_METHOD
 
-/begin MEASUREMENT CabinTemperature &quot;Temperature measured in the cabin&quot;
+/begin MEASUREMENT CabinTemperature "Temperature measured in the cabin"
   SWORD CM_LIN_DEGC 0 0 -40 85
   ECU_ADDRESS 0x00000000
-  SYMBOL_LINK &quot;CabinTemperature&quot; 0
+  SYMBOL_LINK "CabinTemperature" 0
 /end MEASUREMENT
 </pre></div>
 </div>
@@ -583,7 +583,7 @@ produced from the linker output and writes the real addresses straight away.</p>
 kind of change that happens when a signal is reworked in one component and the other one is not
 told - and check the project again:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
-components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
 1 error, 1 warning
@@ -611,7 +611,7 @@ rather than something the c compiler will ever see.</p>
 at all when one of them fails, because half-generated sources that describe a project nobody
 agreed on are worse than no sources:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen2 -t templates
-components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: &#39;CabinTemperature&#39; is declared differently by component &#39;Controller&#39; than by &#39;SensorHub&#39; (datatype: uint16 != sint16)
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
 1 error, 1 warning

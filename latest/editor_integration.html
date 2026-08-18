@@ -115,7 +115,7 @@ Speaks the Language Server Protocol on stdin and stdout. It reports the
 consistency checks while a description file is being written, which a json
 schema cannot do: whether an axis names a declared axis, whether exactly one
 component produces a name, whether two components agree on a unit. Which
-project a file belongs to is read from the &#39;ddd-build.json&#39; that ddd_generate
+project a file belongs to is read from the 'ddd-build.json' that ddd_generate
 writes, so the editor and the build apply the same severities.
 
 options:
@@ -144,19 +144,25 @@ derived from a datatype and a conversion nobody wrote down, its producer and its
 what an enum’s numbers are called, the physical reading of a scalar <code class="docutils literal notranslate"><span class="pre">init</span></code> beside the raw
 value the file states, and the initial values as a sparkline. Those are the <em>initial</em>
 values - DDD describes an interface, and what an engineer calibrates lives in the
-calibration tool.</p>
+calibration tool. A dimension spelled as the name of a
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> hovers as the constant itself - its value
+and its description - because the number is in another file, next to the one statement of
+what is being counted.</p>
 <p><strong>Go to definition and find references.</strong> From anywhere in a declaration - or from an
 <code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> reference - go to definition lands on the
 declaration that <em>writes</em> the object, in whichever component that is, and find references
 lists every declaration of it. The same works from a type name to the structure it names and
-back, and from an <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry to the files it matches, wildcards included.</p>
+back, from a dimension spelled as a constant name to the constants file that declares it
+and back to every shape that spells it, and from an <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry to the files it
+matches, wildcards included.</p>
 <p><strong>Rename.</strong> <code class="docutils literal notranslate"><span class="pre">F2</span></code> on a variable renames it in every declaration and in every reference that
 names it, across as many files as that takes. A name c reserves, one that is not a usable
-identifier, or one the project already uses - for another object, an enum, an enumerator or
-a type - is refused with the reason before anything is written, because a rename that
-silently merges two objects compiles, links, and shares storage nobody intended to share.
-Only the characters between the quotes are replaced, so formatting survives and free text is
-left alone.</p>
+identifier, or one the project already uses - for another object, an enum, an enumerator, a
+type or a declared constant - is refused with the reason before anything is written, because
+a rename that silently merges two objects compiles, links, and shares storage nobody
+intended to share. Renaming starts from a variable; a type or a constant is renamed where
+it is declared, which is one file rather than a project wide rewrite. Only the characters
+between the quotes are replaced, so formatting survives and free text is left alone.</p>
 <p><strong>Quick fixes.</strong> On a key the declarations of one object have to agree on - a <code class="docutils literal notranslate"><span class="pre">unit</span></code>, a
 <code class="docutils literal notranslate"><span class="pre">conversion</span></code>, a <code class="docutils literal notranslate"><span class="pre">datatype</span></code> - a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> offers every way of reconciling
 it: take the producing component’s value, spread this one to the others, or, when nobody
@@ -182,12 +188,12 @@ read is skipped.</p></li>
 project instead: the server walks from the file’s directory up to the workspace root and
 checks the file under the project descriptions of the nearest directory that include it.</p></li>
 <li><p><strong>Standalone.</strong> A file belonging to no build and to no such project is still checked, on
-its own, but only for what one file can decide. The six checks that need every component
+its own, but only for what one file can decide. The seven checks that need every component
 of a project - <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
-<code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - are held back, because
-a component read alone has inputs nobody produces and outputs nobody reads by construction
-rather than by mistake. Each check declares whether it needs the whole project, so the two
-modes cannot drift apart.</p></li>
+<code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> -
+are held back, because a component read alone has inputs nobody produces and outputs
+nobody reads by construction rather than by mistake. Each check declares whether it needs
+the whole project, so the two modes cannot drift apart.</p></li>
 </ul>
 </section>
 <section id="vs-code">

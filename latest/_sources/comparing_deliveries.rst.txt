@@ -67,6 +67,7 @@ and the conversion), the owning component and the list of components that read i
      "shape": [],
      "dimensions": [],
      "init": null,
+     "section": null,
      "volatile": false,
      "condition": null,
      "references": {},
@@ -190,7 +191,9 @@ ones differ. A dimension compares as its spelling and its value: a name from the
 :doc:`constant vocabulary <file_formats/constants>` and the number it stands for are
 different spellings of one size, and the spelling is what the generated code carries, so
 respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
-stands. ``changed-storage`` covers the three properties that change how an object behaves
+stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
+against such a baseline only the values are compared: adopting a constant for a size that
+stands reads clean, and a changed size still does not. ``changed-storage`` covers the three properties that change how an object behaves
 rather than what it means, the initial value, ``volatile`` and the memory ``section``;
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.

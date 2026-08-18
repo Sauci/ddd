@@ -84,6 +84,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#how-do-i-get-the-real-addresses-into-the-a2l">How do I get the real addresses into the a2l?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-is-the-address-of-my-variable-still-0x00000000">Why is the address of my variable still <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code>?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#which-a2l-version-does-ddd-write">Which a2l version does DDD write?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-large-may-an-array-be">How large may an array be?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-do-i-generate-for-two-images-built-from-the-same-components">How do I generate for two images built from the same components?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-does-regenerating-not-retrigger-my-build">Why does regenerating not retrigger my build?</a></li>
 </ul>
@@ -592,6 +593,19 @@ calibration tool would address the wrong element.</p>
 <p>The generated a2l describes the data, not the protocol that reaches it: no file DDD writes
 today contains an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> section for XCP or CCP, or a DAQ list.</p>
 </div>
+</section>
+<section id="how-large-may-an-array-be">
+<h2>How large may an array be?<a class="headerlink" href="#how-large-may-an-array-be" title="Link to this heading"></a></h2>
+<p>There is no bound: a dimension is any integer of at least one, stated as a number or through
+a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a>, and DDD caps neither the number of
+dimensions nor their product. What grows with that product is the work. A structured object
+is resolved into one member object per element and member, and those objects are what the
+checks walk, what the dumped dictionary records and what the a2l describes, so a structured
+object of several million elements takes correspondingly long to check and correspondingly
+much space to archive. The generated initialiser grows the same way, because an <code class="docutils literal notranslate"><span class="pre">init</span></code> is
+spelled out element by element and a scalar one fills every element of the shape: a value
+block of a thousand by a thousand elements initialised to <code class="docutils literal notranslate"><span class="pre">0</span></code> is a definition holding a
+million zeros.</p>
 </section>
 <section id="how-do-i-generate-for-two-images-built-from-the-same-components">
 <h2>How do I generate for two images built from the same components?<a class="headerlink" href="#how-do-i-generate-for-two-images-built-from-the-same-components" title="Link to this heading"></a></h2>

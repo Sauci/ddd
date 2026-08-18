@@ -107,6 +107,7 @@ and the dictionary hands the backends this:
      "shape": [6],
      "dimensions": [6],
      "init": [1200, 900, 800, 750, 700, 650],
+     "section": null,
      "volatile": false,
      "condition": null,
      "references": { "axis": "AxisA" },

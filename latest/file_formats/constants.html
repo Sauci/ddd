@@ -157,11 +157,11 @@ a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-consta
 1 error
 </pre></div>
 </div>
-<p>The same constant declared twice, by one file or by two, is refused rather than merged - a
+<p>A constant declared a second time, in the same file or another, is refused rather than merged - a
 size that depends on which file loads first is exactly what the vocabulary exists to
 prevent:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is declared twice
+two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is already declared
     note: one.ddd.json#constants[0]: first declared here
 1 error
 </pre></div>
@@ -171,7 +171,10 @@ to agree on the spelling (<code class="docutils literal notranslate"><span class
 written: <code class="docutils literal notranslate"><span class="pre">[8]</span></code> here and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;]</span></code> there generate different c, and the
 spelling is what reaches every consumer’s header. The delivery comparison holds the same
 line - a dimension compares as its spelling <em>and</em> its value, so renaming the constant an
-array is dimensioned by is a <code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> even while the number stands.</p>
+array is dimensioned by is a <code class="docutils literal notranslate"><span class="pre">changed-interface</span></code> even while the number stands. A baseline
+archived before dictionary format 4 recorded no spellings, so against such a baseline only
+the values are compared: adopting a constant for a size that stands reads clean, and a
+changed size is still a <code class="docutils literal notranslate"><span class="pre">changed-interface</span></code>.</p>
 <section id="what-the-outputs-make-of-it">
 <h2>What the outputs make of it<a class="headerlink" href="#what-the-outputs-make-of-it" title="Link to this heading"></a></h2>
 <p>The generated c declares a constant-dimensioned array by the constant’s name, in its

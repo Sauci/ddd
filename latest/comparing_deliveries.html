@@ -173,6 +173,7 @@ and the conversion), the owning component and the list of components that read i
 <span class="w">  </span><span class="nt">"shape"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 <span class="w">  </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 <span class="w">  </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"condition"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"references"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
@@ -307,7 +308,9 @@ ones differ. A dimension compares as its spelling and its value: a name from the
 <a class="reference internal" href="file_formats/constants.html"><span class="doc">constant vocabulary</span></a> and the number it stands for are
 different spellings of one size, and the spelling is what the generated code carries, so
 respelling <code class="docutils literal notranslate"><span class="pre">[8]</span></code> as <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;]</span></code> changes the interface even while the number
-stands. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the three properties that change how an object behaves
+stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
+against such a baseline only the values are compared: adopting a constant for a size that
+stands reads clean, and a changed size still does not. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the three properties that change how an object behaves
 rather than what it means, the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and the memory <code class="docutils literal notranslate"><span class="pre">section</span></code>;
 <code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.</p>

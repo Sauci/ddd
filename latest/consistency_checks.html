@@ -159,9 +159,9 @@ include-cycle          error    projects include each other recursively (fixed)
 include-empty          error    an include pattern matches no file
 duplicate-component    error    two different files declare the same component name
 duplicate-type         error    two different files declare the same type name
-duplicate-unit         error    two different files declare the same unit
-duplicate-section      error    two different files declare the same memory section
-duplicate-constant     error    two different files declare the same constant name
+duplicate-unit         error    a unit is declared more than once, in one file or across files
+duplicate-section      error    a memory section is declared more than once, in one file or across files
+duplicate-constant     error    a constant is declared more than once, in one file or across files
 ...
 </pre></div>
 </div>
@@ -388,18 +388,18 @@ like <code class="docutils literal notranslate"><span class="pre">unit16</span><
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code></p></td>
 <td><p>error</p></td>
-<td><p>two different files declare the same unit. The vocabulary is a set of spellings, so a
+<td><p>a unit is declared more than once, in one file or across files. The vocabulary is a set of spellings, so a
 second entry is either a copy that will drift or a disagreement about the description,
 and neither is worth keeping quiet.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code></p></td>
 <td><p>error</p></td>
-<td><p>two different files declare the same memory section: either a copy that will drift or
+<td><p>a memory section is declared more than once, in one file or across files: either a copy that will drift or
 a disagreement about its properties, and neither is worth keeping quiet.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code></p></td>
 <td><p>error</p></td>
-<td><p>two different files declare the same constant name (see the
+<td><p>a constant is declared more than once, in one file or across files (see the
 <a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>): either a copy that will drift or a
 disagreement about the value, and a size that depends on which file loads first is
 exactly what the vocabulary exists to prevent.</p></td>
@@ -448,8 +448,9 @@ contains itself has no size at all.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
 <td><p>error</p></td>
-<td><p>a component, variable, type, enum or enumerator name is a c keyword, or is declared by one of
-the headers the generated code includes (everything <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code>
+<td><p>a project, component, variable, type, structure member, enum, enumerator or constant
+name is a c keyword, or is declared by one of the headers the generated code includes
+(everything <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code>
 bring in, so <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code> is out), or is reserved for the implementation by C11 7.1.3 -
 any name containing a double underscore, or starting with an underscore followed by a
 capital letter.</p></td>
@@ -460,8 +461,10 @@ capital letter.</p></td>
 or the same generated file: an enumerator and a variable, a variable and the name of an
 enum or of a declared type (both of which the types header makes typedef names, in the
 same file scope namespace as the variables), an enumerator claimed by two enums (all
-enumerators share one c namespace), or two component names differing only in case, which
-ask for the same header on a case insensitive filesystem.</p></td>
+enumerators share one c namespace), a declared constant and a variable, an enum, an
+enumerator or a declared type (the constant reaches the generated code as an identifier
+of its own, in that same namespace), or two component names differing only in case,
+which ask for the same header on a case insensitive filesystem.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
 <td><p>error</p></td>
@@ -470,11 +473,12 @@ as <code class="docutils literal notranslate"><span class="pre">output</span></c
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
 <td><p>error</p></td>
-<td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code>. What a variable starts out as is decided by
-the component that produces it, so a component that only reads it is claiming storage it
-does not own - which is a different thing from the disagreements above, and is reported
-where the claim is written rather than where it is overruled. Relaxable, so a project
-migrating existing descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> keys are removed.</p></td>
+<td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code> or <code class="docutils literal notranslate"><span class="pre">section</span></code>. What a variable starts out
+as, and which memory it lives in, is decided by the component that produces it, so a
+component that only reads it is claiming storage it does not own - which is a
+different thing from the disagreements above, and is reported where the claim is
+written rather than where it is overruled. Relaxable, so a project migrating existing
+descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> keys are removed.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
 <td><p>error</p></td>

@@ -325,9 +325,15 @@
 <span class="sd">    names only the values of its table - both answer ``None`` rather than repeat the number</span>
 <span class="sd">    they were given. The unit rides along on a linear reading because the physical value is</span>
 <span class="sd">    the one it belongs to; an enumerator name carries no unit.</span>
+
+<span class="sd">    The reading is rounded to 12 significant digits before it is spelled. A decimal factor</span>
+<span class="sd">    has no exact binary float, so 3 raw counts of 0.1 compute as 0.30000000000000004 - an</span>
+<span class="sd">    artifact of the arithmetic, not part of the reading. Twelve digits erase it while a</span>
+<span class="sd">    genuinely long value still shows itself as approximate.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">LinearConversion</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+        <span class="n">physical</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">conversion</span><span class="o">.</span><span class="n">to_physical</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="si">:</span><span class="s2">.12g</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="n">physical</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">next</span><span class="p">((</span><span class="n">item</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">conversion</span><span class="o">.</span><span class="n">enumerators</span> <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">raw</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
     <span class="k">return</span> <span class="kc">None</span>

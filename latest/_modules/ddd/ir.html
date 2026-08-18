@@ -223,8 +223,8 @@
 
 <span class="sd">    Parallel to ``shape``: the same dimensions in the same order, each the number itself or</span>
 <span class="sd">    the name of the declared constant that states it - the name under which the generated</span>
-<span class="sd">    code declares the array. Empty exactly when ``shape`` is empty; a dictionary from</span>
-<span class="sd">    format 3 or older leaves it empty, every dimension then being spelled as its number.</span>
+<span class="sd">    code declares the array. Empty in a dictionary from format 3 or older, which recorded</span>
+<span class="sd">    no spellings.</span>
 <span class="sd">    """</span>
 
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -307,13 +307,14 @@
     <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype."""</span>
 
-    <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Array dimensions, empty for a scalar, each spelled the way the member spells it.</span>
 
-<span class="sd">    A number, or the name of a declared constant, which is the spelling the member is</span>
-<span class="sd">    declared with. The numeric value of a named dimension is in the dictionary's</span>
-<span class="sd">    ``constants``, and every leaf of an instantiated structure carries its resolved numeric</span>
-<span class="sd">    shape - a member is the declaration side of the answer, a leaf the resolved one.</span>
+<span class="sd">    A number, or the name of a declared constant, exactly as ``dimensions`` is spelled on</span>
+<span class="sd">    an object or an instance. A member carries no numeric ``shape`` beside it: it is the</span>
+<span class="sd">    declaration side of the answer, and the resolved numbers live on the leaves of every</span>
+<span class="sd">    instantiated structure, with the value of a named dimension in the dictionary's</span>
+<span class="sd">    ``constants``.</span>
 <span class="sd">    """</span>
 
     <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>

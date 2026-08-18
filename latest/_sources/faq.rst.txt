@@ -550,6 +550,20 @@ calibration tool would address the wrong element.
    The generated a2l describes the data, not the protocol that reaches it: no file DDD writes
    today contains an ``IF_DATA`` section for XCP or CCP, or a DAQ list.
 
+How large may an array be?
+--------------------------
+
+There is no bound: a dimension is any integer of at least one, stated as a number or through
+a :doc:`declared constant <file_formats/constants>`, and DDD caps neither the number of
+dimensions nor their product. What grows with that product is the work. A structured object
+is resolved into one member object per element and member, and those objects are what the
+checks walk, what the dumped dictionary records and what the a2l describes, so a structured
+object of several million elements takes correspondingly long to check and correspondingly
+much space to archive. The generated initialiser grows the same way, because an ``init`` is
+spelled out element by element and a scalar one fills every element of the shape: a value
+block of a thousand by a thousand elements initialised to ``0`` is a definition holding a
+million zeros.
+
 How do I generate for two images built from the same components?
 -----------------------------------------------------------------
 

@@ -6,7 +6,7 @@ One entry of a component interface, in the order the component declared it.
 A reference to an object rather than the object itself: the definition lives once, under
 ``objects``, and is the one the producing component gave. Two components declaring the
 same name appear here twice and in ``objects`` once.
-" alt="" coords="1192,119,1381,231"/>
+" alt="" coords="1193,119,1383,231"/>
 <area shape="rect" id="node2" title="ddd.ir.DataDictionary
 
 The resolved data of one project.
@@ -64,26 +64,26 @@ Accepts both the explicit form::
 and the mapping shorthand::
 
  &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
-" alt="" coords="1154,461,1419,573"/>
+" alt="" coords="1155,461,1421,573"/>
 <area shape="rect" id="node10" title="ddd.models.objects.A2lObjectOptions
 
 What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="1168,1538,1405,1650"/>
+" alt="" coords="1169,1538,1407,1650"/>
 <area shape="rect" id="node11" title="ddd.models.conversion.IdentityConversion
 
 ``physical == raw``; the default for every variable.
-" alt="" coords="1201,713,1372,769"/>
+" alt="" coords="1203,713,1373,769"/>
 <area shape="rect" id="node12" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="1203,1002,1370,1114"/>
+" alt="" coords="1205,1002,1371,1114"/>
 <area shape="rect" id="node13" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
-" alt="" coords="1202,1209,1371,1293"/>
+" alt="" coords="1203,1209,1373,1293"/>
 <area shape="rect" id="node14" title="ddd.ir.ResolvedMember
 
 One member of a structure, as the c templates need it to declare the member.
@@ -91,9 +91,9 @@ One member of a structure, as the c templates need it to declare the member.
 Only what a declaration takes. The meaning of the member &#45; its unit, its conversion, its
 limits &#45; travels with the *leaf* instead, because that is the form the a2l consumes and
 there is no second place a reader should have to look.
-" alt="" coords="1149,1699,1424,1895"/>
+" alt="" coords="1149,1699,1427,1895"/>
 <area shape="rect" id="node15" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
-" alt="" coords="1568,546,1685,658"/>
+" alt="" coords="1571,546,1688,658"/>
 </map>

@@ -42,11 +42,11 @@ spelling of one. A project without a units file keeps its units free; introducin
 vocabulary into a grown project can start with ``-W unknown-unit=warning`` until the
 spellings are settled.
 
-The same unit declared twice, by one file or by two, is refused rather than merged:
+A unit declared a second time, in the same file or another, is refused rather than merged:
 
 .. code-block:: text
 
    $ ddd check p.ddd.json
-   two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is declared twice
+   two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is already declared
        note: one.ddd.json#units[0]: first declared here
    1 error

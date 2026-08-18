@@ -140,9 +140,9 @@ the empty unit is always allowed: a dimensionless value states no unit rather th
 spelling of one. A project without a units file keeps its units free; introducing a
 vocabulary into a grown project can start with <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">unknown-unit=warning</span></code> until the
 spellings are settled.</p>
-<p>The same unit declared twice, by one file or by two, is refused rather than merged:</p>
+<p>A unit declared a second time, in the same file or another, is refused rather than merged:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
-two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is declared twice
+two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is already declared
     note: one.ddd.json#units[0]: first declared here
 1 error
 </pre></div>

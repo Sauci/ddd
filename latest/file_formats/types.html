@@ -604,7 +604,7 @@ sensing.ddd.json#component.interface[1].definition: error[type-kind]: 'Preset' i
 <p><code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> both name the other place, since the fix is to rename
 one of the two and the author needs to see both before choosing which:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0]: error[duplicate-type]: type 'Temperature_t' is declared twice
+types.ddd.json#types[0]: error[duplicate-type]: type 'Temperature_t' is already declared
     note: shared.ddd.json#types[0]: first declared here
 1 error
 </pre></div>

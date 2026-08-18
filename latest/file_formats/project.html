@@ -266,7 +266,7 @@ tolerated but expected.</p>
 component name. That is a real collision, since a component name decides the name of the
 generated header, and the second file would silently overwrite the first:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-second.ddd.json#component: error[duplicate-component]: component 'Sensing' is declared twice
+second.ddd.json#component: error[duplicate-component]: component 'Sensing' is already declared
     note: first.ddd.json#component: first declared here
 1 error
 </pre></div>

@@ -60,14 +60,14 @@ suggested, and the finding lands on the dimension entry that names it:
    a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
    1 error
 
-The same constant declared twice, by one file or by two, is refused rather than merged - a
+A constant declared a second time, in the same file or another, is refused rather than merged - a
 size that depends on which file loads first is exactly what the vocabulary exists to
 prevent:
 
 .. code-block:: text
 
    $ ddd check p.ddd.json
-   two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is declared twice
+   two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is already declared
        note: one.ddd.json#constants[0]: first declared here
    1 error
 
@@ -76,7 +76,10 @@ to agree on the spelling (``definition-mismatch``), exactly as conversions compa
 written: ``[8]`` here and ``["PRESSURE_CELLS"]`` there generate different c, and the
 spelling is what reaches every consumer's header. The delivery comparison holds the same
 line - a dimension compares as its spelling *and* its value, so renaming the constant an
-array is dimensioned by is a ``changed-interface`` even while the number stands.
+array is dimensioned by is a ``changed-interface`` even while the number stands. A baseline
+archived before dictionary format 4 recorded no spellings, so against such a baseline only
+the values are compared: adopting a constant for a size that stands reads clean, and a
+changed size is still a ``changed-interface``.
 
 What the outputs make of it
 ---------------------------

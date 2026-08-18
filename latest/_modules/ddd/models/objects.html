@@ -667,6 +667,28 @@
 <span class="sd">"""Each ``kind`` value and the model that describes it - see :func:`definition_keys`."""</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">spelled_dimensions</span><span class="p">(</span><span class="n">definition</span><span class="p">:</span> <span class="n">DataObject</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Every dimension a definition spells as a constant name, with the key it is under.</span>
+
+<span class="sd">    ``(name, pointer suffix)`` pairs, so that a finding or a jump about the constant lands</span>
+<span class="sd">    on the entry that names it rather than on the definition as a whole. A measurement or a</span>
+<span class="sd">    value block spells its ``dimensions``, an axis its ``size``, and a curve or a map</span>
+<span class="sd">    spells no dimension of its own - its shape is the axes' business. One walk for the</span>
+<span class="sd">    analysis and the editor alike, so the two can never disagree about where a name is</span>
+<span class="sd">    spelled.</span>
+<span class="sd">    """</span>
+    <span class="n">found</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="p">,</span> <span class="n">Measurement</span> <span class="o">|</span> <span class="n">ValueBlock</span><span class="p">):</span>
+        <span class="n">found</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">dimension</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"dimensions[</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">]"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">dimension</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dimension</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="p">,</span> <span class="n">Axis</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">found</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">definition</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="s2">"size"</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">found</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">format_shape</span><span class="p">(</span><span class="n">shape</span><span class="p">:</span> <span class="n">WrittenShape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings.</span>
 

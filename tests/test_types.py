@@ -369,7 +369,7 @@ class TestTypesFile:
 
     def test_two_types_cannot_share_a_name(self) -> None:
         """Across both kinds: a name is what the whole project agrees on."""
-        with pytest.raises(ValidationError, match="'Speed_t' is declared twice"):
+        with pytest.raises(ValidationError, match="'Speed_t' is already declared"):
             TypesFile.model_validate({"types": [structure(name="Speed_t"), scalar(name="Speed_t")]})
 
     def test_the_schema_key_is_allowed(self) -> None:

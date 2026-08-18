@@ -363,9 +363,13 @@ class TestPublishedSchemas:
     """
 
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
-        from ddd.models import ComponentFile, ProjectFile, TypesFile, UnitsFile
+        """Every root, not a hand-kept list of them: a new file kind joins the guard by
+        subclassing ``FileRoot``, instead of silently shipping without the ``$schema`` key."""
+        from ddd.models.common import FileRoot
 
-        for model in (ProjectFile, ComponentFile, TypesFile, UnitsFile):
+        roots = FileRoot.__subclasses__()
+        assert len(roots) >= 6, f"expected every file root, found {roots}"
+        for model in roots:
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
 

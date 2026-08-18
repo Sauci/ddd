@@ -111,6 +111,7 @@ class CBackend:
                             environment,
                             template,
                             output_dir / filename,
+                            component=header.name,
                             filename=filename,
                             model=model,
                             header=header,

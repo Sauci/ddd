@@ -41,6 +41,15 @@ def constants(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"constants": list(entries)}
 
 
+def struct_type(name: str, *members: dict[str, Any]) -> dict[str, Any]:
+    """A types file declaring one structure - the scaffold the tests here keep needing."""
+    return {"types": [{"type": "struct", "name": name, "members": list(members)}]}
+
+
+def value_member(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
+    return {"name": name, "member": "value", "datatype": datatype, "conversion": {}, **extra}
+
+
 def constant(name: str, value: int, description: str = "") -> dict[str, Any]:
     declared = {"name": name, "value": value}
     if description:
@@ -103,7 +112,7 @@ class TestTheFile:
         )
         assert checks(bag) == ["duplicate-constant"]
         rendered = messages(bag)
-        assert "constant 'N' is declared twice" in rendered
+        assert "constant 'N' is already declared" in rendered
         assert "one.ddd.json#constants[0]: first declared here" in rendered
 
 
@@ -206,16 +215,50 @@ class TestTheCheck:
         assert checks(bag) == ["unknown-constant"]
 
     def test_the_declaration_is_dropped_from_resolution(self, tree: Path) -> None:
-        """The poisoning pattern of an unknown type: a curve over the dropped axis reports
-        an unknown reference rather than reasoning about an array of no known length."""
-        _, bag = run_analysis(
+        """The poisoning pattern of an unknown type: the axis is dropped, and the curve over
+        it is dropped along with it, quietly - saying that nobody declares the axis would be
+        false, and the finding at the unknown constant is the one to act on."""
+        dictionary, bag = run_analysis(
             tree,
             self.files(
                 declare("local", "Ax", kind="axis", size="MISSING", datatype="uint16"),
                 declare("local", "C", kind="curve", axis="Ax", datatype="uint16"),
             ),
         )
-        assert sorted(checks(bag)) == ["unknown-constant", "unknown-reference"]
+        assert checks(bag) == ["unknown-constant"]
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_the_drop_carries_through_a_chain_of_references(self, tree: Path) -> None:
+        """An axis indexed by a dropped measurement is dropped, and the curve over that
+        axis with it: any link kept would leave a dangling name in the a2l, and the one
+        finding at the root already names the cause."""
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "Meas", dimensions=["MISSING"]),
+                declare("local", "Ax", kind="axis", size=4, datatype="uint16", input="Meas"),
+                declare("local", "C", kind="curve", axis="Ax", datatype="uint16"),
+            ),
+        )
+        assert checks(bag) == ["unknown-constant"]
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_the_dropped_declarations_leave_the_component_interface(self, tree: Path) -> None:
+        """The dictionary's interfaces name only what its objects carry, so a generator
+        walking a component's declarations never meets a name that resolves to nothing."""
+        dictionary, _ = run_analysis(
+            tree,
+            self.files(
+                declare("local", "Ax", kind="axis", size="MISSING", datatype="uint16"),
+                declare("local", "C", kind="curve", axis="Ax", datatype="uint16"),
+                declare("local", "Kept", dimensions=["PRESSURE_CELLS"]),
+            ),
+        )
+        assert dictionary is not None
+        (component_a,) = dictionary.components
+        assert [entry.name for entry in component_a.declarations] == ["Kept"]
 
     def test_a_member_dimension_is_checked_and_poisons_the_type(self, tree: Path) -> None:
         _, bag = run_analysis(
@@ -225,23 +268,9 @@ class TestTheCheck:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("PRESSURE_CELLS", 8)),
-                "types.ddd.json": {
-                    "types": [
-                        {
-                            "type": "struct",
-                            "name": "S_t",
-                            "members": [
-                                {
-                                    "name": "raw",
-                                    "member": "value",
-                                    "datatype": "uint16",
-                                    "conversion": {},
-                                    "dimensions": ["PRESURE_CELLS"],
-                                }
-                            ],
-                        }
-                    ]
-                },
+                "types.ddd.json": struct_type(
+                    "S_t", value_member("raw", dimensions=["PRESURE_CELLS"])
+                ),
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
@@ -258,6 +287,39 @@ class TestTheCheck:
         )
         assert checks(bag) == ["unknown-constant"]
         assert not bag.has_errors
+
+    def test_an_ignored_unknown_constant_keeps_the_shape_free_findings(self, tree: Path) -> None:
+        """Silencing the shape finding must not silence what the shape never decided: the
+        declaration stays out of the dictionary, but an init outside the datatype is wrong
+        whatever the shape turns out to be."""
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(declare("local", "X", dimensions=["MISSING"], init=999)),
+            severities=["unknown-constant=ignore"],
+        )
+        assert checks(bag) == ["init-invalid"]
+        assert "does not fit into uint8" in messages(bag)
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_a_declaration_of_a_poisoned_type_keeps_its_name_checks(self, tree: Path) -> None:
+        """The poisoned type makes the declaration unresolvable, but the checks that need
+        neither its storage nor its shape still run - here, a consumer claiming the initial
+        value of a variable it only reads."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "constants.ddd.json": constants(constant("PRESSURE_CELLS", 8)),
+                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["MISSING"])),
+                "a.ddd.json": component("A", declare("input", "X", typename="S_t", init=1)),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        assert checks(bag) == ["consumer-storage"]
+        assert "the initial value is decided by the component that produces" in messages(bag)
 
 
 class TestSpellingIsInterface:
@@ -357,23 +419,7 @@ class TestResolution:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELLS", 2), constant("TAPS", 4)),
-                "types.ddd.json": {
-                    "types": [
-                        {
-                            "type": "struct",
-                            "name": "Cell_t",
-                            "members": [
-                                {
-                                    "name": "raw",
-                                    "member": "value",
-                                    "datatype": "uint16",
-                                    "conversion": {},
-                                    "dimensions": ["TAPS"],
-                                }
-                            ],
-                        }
-                    ]
-                },
+                "types.ddd.json": struct_type("Cell_t", value_member("raw", dimensions=["TAPS"])),
                 "a.ddd.json": component(
                     "A", declare("local", "Inlet", typename="Cell_t", dimensions=["CELLS"])
                 ),
@@ -392,7 +438,7 @@ class TestResolution:
         assert leaf.shape == (4,)
         assert leaf.dimensions == ("TAPS",)
         (declared_type,) = dictionary.types
-        assert declared_type.members[0].shape == ("TAPS",)
+        assert declared_type.members[0].dimensions == ("TAPS",)
 
     def test_the_a2l_dimension_count_uses_the_values(self, tree: Path) -> None:
         """Four dimensions are four however they are spelled."""
@@ -535,23 +581,7 @@ class TestGeneratedC:
                     "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
                 ),
                 "constants.ddd.json": constants(constant("CELLS", 2), constant("TAPS", 4)),
-                "types.ddd.json": {
-                    "types": [
-                        {
-                            "type": "struct",
-                            "name": "Cell_t",
-                            "members": [
-                                {
-                                    "name": "raw",
-                                    "member": "value",
-                                    "datatype": "uint16",
-                                    "conversion": {},
-                                    "dimensions": ["TAPS"],
-                                }
-                            ],
-                        }
-                    ]
-                },
+                "types.ddd.json": struct_type("Cell_t", value_member("raw", dimensions=["TAPS"])),
                 "a.ddd.json": component(
                     "A", declare("local", "Inlet", typename="Cell_t", dimensions=["CELLS"])
                 ),
@@ -724,21 +754,36 @@ class TestComparingDeliveries:
         compare(baseline, candidate, bag)
         assert checks(bag) == []
 
-    def test_an_older_baseline_compares_by_its_numbers(self, tree: Path) -> None:
-        """A format 3 baseline spelled every dimension as its number, so a candidate that
-        now names a constant has changed the spelling."""
-        from ddd.compare import compare
-
-        baseline, candidate = self.deliveries(tree, [8], ["N"])
-        stripped = json.loads(baseline.model_dump_json())
+    def archived(self, dictionary: DataDictionary) -> DataDictionary:
+        """The dictionary as a format 3 dump carried it: no spellings, no constants."""
+        stripped = json.loads(dictionary.model_dump_json())
         stripped["format"] = 3
         for entry in stripped["objects"]:
             del entry["dimensions"]
         del stripped["constants"]
-        old = DataDictionary.model_validate(stripped)
+        return DataDictionary.model_validate(stripped)
+
+    def test_an_older_baseline_compares_its_dimensions_by_value(self, tree: Path) -> None:
+        """A format 3 baseline recorded no spellings, so only the values can disagree:
+        adopting a constant for a dimension whose size stands is a clean migration, not a
+        changed interface."""
+        from ddd.compare import compare
+
+        baseline, candidate = self.deliveries(tree, [8], ["N"])
         bag = DiagnosticBag()
-        compare(old, candidate, bag)
+        compare(self.archived(baseline), candidate, bag)
+        assert checks(bag) == []
+
+    def test_a_value_change_against_an_older_baseline_still_reports(self, tree: Path) -> None:
+        """The deference is about the spelling only; a dimension of another size is a
+        changed interface whichever format the baseline was dumped in."""
+        from ddd.compare import compare
+
+        baseline, candidate = self.deliveries(tree, [8], ["N"], value=12)
+        bag = DiagnosticBag()
+        compare(self.archived(baseline), candidate, bag)
         assert checks(bag) == ["changed-interface"]
+        assert "shape: [N] != [8]" in messages(bag)
 
 
 class TestTheListTable:
@@ -776,30 +821,11 @@ class TestTheEditor:
                 "constants.ddd.json": constants(
                     constant("PRESSURE_CELLS", 8, "cells of the manifold")
                 ),
-                "types.ddd.json": {
-                    "types": [
-                        {
-                            "type": "struct",
-                            "name": "S_t",
-                            "members": [
-                                {
-                                    "name": "raw",
-                                    "member": "value",
-                                    "datatype": "uint16",
-                                    "conversion": {},
-                                    "dimensions": ["PRESSURE_CELLS"],
-                                },
-                                {
-                                    "name": "plain",
-                                    "member": "value",
-                                    "datatype": "uint8",
-                                    "conversion": {},
-                                    "dimensions": [2],
-                                },
-                            ],
-                        }
-                    ]
-                },
+                "types.ddd.json": struct_type(
+                    "S_t",
+                    value_member("raw", dimensions=["PRESSURE_CELLS"]),
+                    value_member("plain", "uint8", dimensions=[2]),
+                ),
                 "a.ddd.json": component(
                     "A",
                     declare("local", "Cells", dimensions=["PRESSURE_CELLS", 2]),
@@ -1009,6 +1035,26 @@ class TestTheEditor:
         )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
         assert {entry["code"] for findings in reports.values() for entry in findings} == set()
+
+    def test_a_lonely_file_still_reports_what_no_constant_is_needed_for(
+        self, tmp_path: Path
+    ) -> None:
+        """The held back unknown-constant drops the declaration, not the whole file's
+        checks: an init outside the datatype needs no other component to be wrong."""
+        from ddd.lsp import diagnostics as service
+
+        write_tree(
+            tmp_path,
+            {
+                "lonely.ddd.json": component(
+                    "Lonely", declare("local", "X", dimensions=["ELSEWHERE"], init=999)
+                )
+            },
+        )
+        reports = service.collect([], [tmp_path / "lonely.ddd.json"])
+        assert {entry["code"] for findings in reports.values() for entry in findings} == {
+            "init-invalid"
+        }
 
     def test_exactly_seven_checks_need_every_component(self) -> None:
         from ddd.diagnostics import CHECKS

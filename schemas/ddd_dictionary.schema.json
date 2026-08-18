@@ -740,9 +740,9 @@
           "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.",
           "title": "Type"
         },
-        "shape": {
+        "dimensions": {
           "default": [],
-          "description": "Array dimensions, empty for a scalar, each spelled the way the member spells it.\n\nA number, or the name of a declared constant, which is the spelling the member is\ndeclared with. The numeric value of a named dimension is in the dictionary's\n``constants``, and every leaf of an instantiated structure carries its resolved numeric\nshape - a member is the declaration side of the answer, a leaf the resolved one.",
+          "description": "Array dimensions, empty for a scalar, each spelled the way the member spells it.\n\nA number, or the name of a declared constant, exactly as ``dimensions`` is spelled on\nan object or an instance. A member carries no numeric ``shape`` beside it: it is the\ndeclaration side of the answer, and the resolved numbers live on the leaves of every\ninstantiated structure, with the value of a named dimension in the dictionary's\n``constants``.",
           "items": {
             "anyOf": [
               {
@@ -757,7 +757,7 @@
               }
             ]
           },
-          "title": "Shape",
+          "title": "Dimensions",
           "type": "array"
         },
         "bits": {
@@ -851,7 +851,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "The shape again, each dimension spelled the way the project spells it.\n\nParallel to ``shape``: the same dimensions in the same order, each the number itself or\nthe name of the declared constant that states it - the name under which the generated\ncode declares the array. Empty exactly when ``shape`` is empty; a dictionary from\nformat 3 or older leaves it empty, every dimension then being spelled as its number.",
+          "description": "The shape again, each dimension spelled the way the project spells it.\n\nParallel to ``shape``: the same dimensions in the same order, each the number itself or\nthe name of the declared constant that states it - the name under which the generated\ncode declares the array. Empty in a dictionary from format 3 or older, which recorded\nno spellings.",
           "items": {
             "anyOf": [
               {

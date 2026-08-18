@@ -121,8 +121,8 @@ class ResolvedObject(_Frozen):
 
     Parallel to ``shape``: the same dimensions in the same order, each the number itself or
     the name of the declared constant that states it - the name under which the generated
-    code declares the array. Empty exactly when ``shape`` is empty; a dictionary from
-    format 3 or older leaves it empty, every dimension then being spelled as its number.
+    code declares the array. Empty in a dictionary from format 3 or older, which recorded
+    no spellings.
     """
 
     init: InitValue | None = None
@@ -204,13 +204,14 @@ class ResolvedMember(_Frozen):
     type: str | None = None
     """Name of the structure this member is, when it is one; ``None`` when it is a datatype."""
 
-    shape: tuple[Dimension, ...] = ()
+    dimensions: tuple[Dimension, ...] = ()
     """Array dimensions, empty for a scalar, each spelled the way the member spells it.
 
-    A number, or the name of a declared constant, which is the spelling the member is
-    declared with. The numeric value of a named dimension is in the dictionary's
-    ``constants``, and every leaf of an instantiated structure carries its resolved numeric
-    shape - a member is the declaration side of the answer, a leaf the resolved one.
+    A number, or the name of a declared constant, exactly as ``dimensions`` is spelled on
+    an object or an instance. A member carries no numeric ``shape`` beside it: it is the
+    declaration side of the answer, and the resolved numbers live on the leaves of every
+    instantiated structure, with the value of a named dimension in the dictionary's
+    ``constants``.
     """
 
     bits: int | None = None

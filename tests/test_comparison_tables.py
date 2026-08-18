@@ -250,3 +250,13 @@ class TestComparisonTables:
             kind="curve", name="C", datatype="uint8", conversion={}, axis="Ax", volatile=False
         )
         assert declared.value(curve) is None  # not known yet, it comes from the axis
+
+    def test_the_deferred_table_differs_only_in_the_shape_entry(self) -> None:
+        """A baseline from before dictionary format 4 recorded no dimension spellings, so
+        against one the shape entry compares values alone. The deferred table is the same
+        table with that one entry swapped, so the two cannot drift apart anywhere else."""
+        paired = zip(compare._INTERFACE_FIELDS, compare._DEFERRED_INTERFACE_FIELDS, strict=True)
+        for spelled, deferred in paired:
+            assert spelled.name == deferred.name
+            if spelled.name != "shape":
+                assert spelled is deferred

@@ -38,14 +38,12 @@ from ddd.models import (
     EnumConversion,
     Limits,
     Map,
-    Measurement,
     Member,
     ObjectKind,
     ScalarType,
     Scope,
     Shape,
     StructType,
-    ValueBlock,
     WrittenShape,
     bitfield_range,
     check_shape,
@@ -56,6 +54,7 @@ from ddd.models import (
     is_reserved_identifier,
     physical_range,
     resolve_export,
+    spelled_dimensions,
 )
 
 _A2L_MAX_DIMENSIONS = 3
@@ -374,18 +373,23 @@ def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ..
     return walk(start)
 
 
-def _resolve_component(loaded: LoadedComponent) -> ResolvedComponent:
-    """The component and its interface, in the order the author wrote it."""
-    seen: set[str] = set()
+def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
+    """The component and its interface, in the order the author wrote it.
+
+    Only the declarations the analysis kept. One that was dropped - a duplicate of an
+    earlier one, an unknown type or constant, a poisoned structure, a curve over a dropped
+    axis - is left out here exactly as it was left out of resolution, so a consumer of
+    ``declarations`` never meets a name that no ``objects`` or ``instances`` entry answers.
+    """
     declarations = []
-    for declaration in loaded.component.interface:
-        name = declaration.definition.name
-        if name in seen:  # a duplicate declaration is reported and then ignored
+    for index, declaration in enumerate(loaded.component.interface):
+        if (loaded.name, index) not in kept:
             continue
-        seen.add(name)
         declarations.append(
             ComponentDeclaration(
-                name=name, scope=declaration.scope, condition=declaration.condition
+                name=declaration.definition.name,
+                scope=declaration.scope,
+                condition=declaration.condition,
             )
         )
     return ResolvedComponent(
@@ -413,13 +417,18 @@ class _Analysis:
         """Every type the project declares, by name - structures and scalars alike."""
         self._constants = {entry.name: entry for entry in workspace.constants}
         """Every constant the project declares, by name; a shape names one of them."""
-        self._cyclic_types: set[str] = set()
         self._poisoned_types: set[str] = set()
-        """Types no variable can resolve as: a member of theirs, however deeply nested, names
-        a type nobody declares or carries a conversion that was refused. The finding sits at
-        the member or at the type; a declaration naming such a type is dropped the way one
-        naming a recursive structure is, so nothing downstream reasons about a leaf it cannot
-        have."""
+        """Types no variable can resolve as: they nest each other recursively, or a member
+        of theirs, however deeply nested, names a type nobody declares or carries a
+        conversion that was refused. The finding sits at the member or at the type; a
+        declaration naming such a type is dropped, so nothing downstream reasons about a
+        leaf it cannot have."""
+        self._dropped: set[str] = set()
+        """Names of the declarations that were dropped as unresolvable, whatever the reason.
+
+        What :meth:`_unresolved` starts from: a name in here with no surviving declaration
+        resolves to no object at all, and whatever refers to it is dropped along with it
+        rather than reported a second time."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -444,13 +453,15 @@ class _Analysis:
         # that reads a definition - in particular before curves and maps look up their axes.
         owners = {name: self._select_producer(name, refs) for name, refs in ordered}
         self._effective = {name: (owners[name] or refs[0]).definition for name, refs in ordered}
+        unresolved = self._unresolved()
+        resolved = [(name, refs) for name, refs in ordered if name not in unresolved]
         shapes = {
             name: self._resolve_shape(self._effective[name], owners[name] or refs[0])
-            for name, refs in ordered
+            for name, refs in resolved
         }
 
-        structured = [(name, refs) for name, refs in ordered if self._is_structured(name)]
-        plain = [(name, refs) for name, refs in ordered if not self._is_structured(name)]
+        structured = [(name, refs) for name, refs in resolved if self._is_structured(name)]
+        plain = [(name, refs) for name, refs in resolved if not self._is_structured(name)]
         variables = [
             self._build_variable(name, refs, owners[name], self._effective[name], shapes[name])
             for name, refs in plain
@@ -461,12 +472,15 @@ class _Analysis:
         ]
         self._check_similar_names(ordered)
 
+        # Only the declarations whose object resolved: the dictionary's component interfaces
+        # must never name an object its `objects` and `instances` lists do not carry.
+        kept = {(ref.component_name, ref.index) for _, refs in resolved for ref in refs}
         known = self._enums.by_name
         return DataDictionary(
             name=workspace.name,
             description=workspace.description,
             source=workspace.root.name,
-            components=tuple(_resolve_component(loaded) for loaded in workspace.components),
+            components=tuple(_resolve_component(loaded, kept) for loaded in workspace.components),
             objects=tuple(variable.resolve() for variable in variables),
             enums=tuple(enum for enum, _ in (known[key] for key in sorted(known))),
             constants=tuple(entry.declared for entry in workspace.constants),
@@ -516,7 +530,7 @@ class _Analysis:
                     description=member.description,
                     datatype=self._member_storage(member),
                     type=self._member_structure(member),
-                    shape=member.dimensions,
+                    dimensions=member.dimensions,
                     bits=member.bits,
                 )
                 for member in structure.members
@@ -700,8 +714,8 @@ class _Analysis:
             cycle = _nesting_cycle(entry.name, declared)
             if cycle:
                 # Every type whose walk reaches the cycle is unusable: it has no size, so a
-                # variable of it cannot be flattened. Recorded here, refused at resolution.
-                self._cyclic_types.add(entry.name)
+                # variable of it cannot be flattened. Poisoned here, refused at resolution.
+                self._poisoned_types.add(entry.name)
             if not cycle or frozenset(cycle) in reported:
                 continue
             reported.add(frozenset(cycle))
@@ -1001,7 +1015,7 @@ class _Analysis:
         downstream would be reasoning about an array of no known length.
         """
         resolves = True
-        for named, key in _symbolic_dimensions(ref.definition):
+        for named, key in spelled_dimensions(ref.definition):
             if named not in self._constants:
                 self._bag.add(
                     "unknown-constant",
@@ -1049,7 +1063,7 @@ class _Analysis:
             return None
         entry = declared.declared
         if isinstance(entry, StructType):
-            if named in self._cyclic_types or named in self._poisoned_types:
+            if named in self._poisoned_types:
                 # The cycle, the unknown member type or the refused conversion is already
                 # reported at the type; a variable of a structure whose leaves cannot be
                 # resolved cannot be either, and a second finding here would only repeat the
@@ -1146,15 +1160,26 @@ class _Analysis:
 
         seen: dict[str, DeclarationRef] = {}
         for index, declaration in enumerate(component.interface):
-            ref = self._resolve_type(DeclarationRef(loaded, index, declaration))
+            original = DeclarationRef(loaded, index, declaration)
+            ref = self._resolve_type(original)
             if ref is None:
-                # Its datatype names nothing this project declares, which is already reported.
-                # Everything after this point would be reasoning about a value with no storage.
+                # Its datatype names nothing this project declares, or a type that was
+                # refused, and the finding sits there. The declaration is dropped - every
+                # later check would be reasoning about a value with no storage - but what
+                # needs neither storage nor shape still runs: the name it takes, and the
+                # claims a consumer may not make.
+                self._dropped.add(original.name)
+                self._check_declared_name(original)
                 continue
             if not self._shape_resolves(ref):
                 # A dimension names a constant nobody declares, which is now reported. The
-                # declaration is dropped the way one naming an unknown type is: an array of
-                # no known length is storage nothing downstream can reason about.
+                # declaration is dropped the way one naming an unknown type is - an array
+                # of no known length is storage nothing downstream can reason about - but
+                # every check that does not need the resolved shape still runs: an init
+                # outside the datatype is wrong whatever the shape turns out to be, and
+                # silencing unknown-constant must not silence that.
+                self._dropped.add(ref.name)
+                self._check_declaration(ref)
                 continue
             previous = seen.get(ref.name)
             if previous is not None:
@@ -1170,9 +1195,15 @@ class _Analysis:
             self._refs[ref.name].append(ref)
             self._check_declaration(ref)
 
-    def _check_declaration(self, ref: DeclarationRef) -> None:
+    def _check_declared_name(self, ref: DeclarationRef) -> None:
+        """The checks that need neither the storage nor the shape of the declaration.
+
+        Split out so a declaration that is dropped because its type resolves to nothing
+        still gets them: whether the name is reserved and whether a consumer claims storage
+        it does not own are questions about the declaration alone, and silencing the finding
+        that dropped it must not silence these.
+        """
         definition = ref.definition
-        location = ref.location("definition")
 
         if is_reserved_identifier(definition.name):
             self._bag.add(
@@ -1198,6 +1229,12 @@ class _Analysis:
                 f"produces the variable, not by '{ref.component_name}', which reads it",
                 ref.location("definition.section"),
             )
+
+    def _check_declaration(self, ref: DeclarationRef) -> None:
+        definition = ref.definition
+        location = ref.location("definition")
+
+        self._check_declared_name(ref)
 
         if definition.declared_type is not None and self._is_structure(definition.declared_type):
             # A structured object has no single storage, so there is nothing here to check it
@@ -1409,6 +1446,29 @@ class _Analysis:
                 )
 
         return producers[0] if producers else None
+
+    def _unresolved(self) -> set[str]:
+        """The names that resolve to no object, dropped declarations and their dependents.
+
+        The seed is every name whose declarations were all dropped - unknown type or
+        constant, poisoned structure - and the finding for each of those already sits at the
+        root cause. An object *referring* to such a name joins the set, transitively: a
+        curve over a dropped axis cannot resolve its shape, and an axis whose ``input`` is a
+        dropped measurement would leave a dangling name in the a2l. Both are dropped without
+        a finding of their own - ``unknown-reference`` would claim that nobody declares the
+        target, which is false, and the one finding at the root already covers the chain.
+        """
+        dropped = {name for name in self._dropped if name not in self._effective}
+        settled = False
+        while not settled:
+            settled = True
+            for name, definition in self._effective.items():
+                if name in dropped:
+                    continue
+                if any(target in dropped for target in definition.references.values()):
+                    dropped.add(name)
+                    settled = False
+        return dropped
 
     def _resolve_shape(
         self, definition: DataObject, reference: DeclarationRef
@@ -1791,25 +1851,6 @@ class _Analysis:
                     by_name[name][0].location("definition.name"),
                     notes=[("other variable", by_name[first][0].location("definition"))],
                 )
-
-
-def _symbolic_dimensions(definition: DataObject) -> list[tuple[str, str]]:
-    """Every dimension a definition spells as a constant name, with the key it is under.
-
-    ``(name, pointer suffix)`` pairs, so that the finding about an undeclared constant lands
-    on the entry that names it rather than on the definition as a whole. A curve or a map
-    spells no dimension of its own - its shape is the axes' business.
-    """
-    found: list[tuple[str, str]] = []
-    if isinstance(definition, Measurement | ValueBlock):
-        found.extend(
-            (dimension, f"dimensions[{index}]")
-            for index, dimension in enumerate(definition.dimensions)
-            if isinstance(dimension, str)
-        )
-    elif isinstance(definition, Axis) and isinstance(definition.size, str):
-        found.append((definition.size, "size"))
-    return found
 
 
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:

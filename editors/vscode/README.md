@@ -20,7 +20,7 @@ It is **not on the marketplace**. Every release attaches a `ddd-<version>.vsix` 
 no account. Download that file, then either:
 
 ```bash
-code --install-extension ddd-0.2.0.vsix
+code --install-extension ddd-<version>.vsix
 ```
 
 or, in VS Code, open the Extensions view, use the `...` menu at the top of it and pick

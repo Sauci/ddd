@@ -374,7 +374,7 @@ class TypesFile(FileRoot):
         seen: set[str] = set()
         for entry in self.types:
             if entry.name in seen:
-                msg = f"type '{entry.name}' is declared twice in this file"
+                msg = f"type '{entry.name}' is already declared in this file"
                 raise ValueError(msg)
             seen.add(entry.name)
         return self

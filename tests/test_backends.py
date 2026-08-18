@@ -254,6 +254,20 @@ class TestTemplateErrorReporting:
         described = describe_template_error("x.c.jinja2", TemplateError("boom"))
         assert described == "cannot render template 'x.c.jinja2': boom"
 
+    def test_a_per_component_render_names_its_component(self) -> None:
+        """One template, many renders: without the component the author cannot tell which
+        of them tripped over data only that component has."""
+        from jinja2 import TemplateError
+
+        from ddd.backends.base import describe_template_error
+
+        described = describe_template_error(
+            "{component}.h.jinja2", TemplateError("boom"), component="Beta"
+        )
+        assert described == (
+            "cannot render template '{component}.h.jinja2' for component 'Beta': boom"
+        )
+
 
 class TestObjectViewComposition:
     """``.definition`` is documented template api, kept whole for templates that want the

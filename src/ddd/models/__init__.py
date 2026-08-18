@@ -45,6 +45,7 @@ from ddd.models.objects import (
     discriminator_tags,
     format_shape,
     resolve_export,
+    spelled_dimensions,
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
@@ -126,4 +127,5 @@ __all__ = [
     "physical_range",
     "raw_reading",
     "resolve_export",
+    "spelled_dimensions",
 ]

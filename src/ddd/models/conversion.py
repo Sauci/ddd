@@ -219,9 +219,15 @@ def raw_reading(conversion: Conversion, raw: float, unit: str = "") -> str | Non
     names only the values of its table - both answer ``None`` rather than repeat the number
     they were given. The unit rides along on a linear reading because the physical value is
     the one it belongs to; an enumerator name carries no unit.
+
+    The reading is rounded to 12 significant digits before it is spelled. A decimal factor
+    has no exact binary float, so 3 raw counts of 0.1 compute as 0.30000000000000004 - an
+    artifact of the arithmetic, not part of the reading. Twelve digits erase it while a
+    genuinely long value still shows itself as approximate.
     """
     if isinstance(conversion, LinearConversion):
-        return f"{format_number(conversion.to_physical(raw))} {unit}".rstrip()
+        physical = float(f"{conversion.to_physical(raw):.12g}")
+        return f"{format_number(physical)} {unit}".rstrip()
     if isinstance(conversion, EnumConversion):
         return next((item.name for item in conversion.enumerators if item.value == raw), None)
     return None

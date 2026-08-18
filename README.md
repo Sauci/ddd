@@ -441,9 +441,9 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
 | error | `duplicate-type` | two files declare the same structured datatype name |
-| error | `duplicate-unit` | two files declare the same unit |
-| error | `duplicate-section` | two files declare the same memory section |
-| error | `duplicate-constant` | two files declare the same constant name |
+| error | `duplicate-unit` | a unit is declared more than once, in one file or across files |
+| error | `duplicate-section` | a memory section is declared more than once, in one file or across files |
+| error | `duplicate-constant` | a constant is declared more than once, in one file or across files |
 | error | `unknown-type` | a typename names no type any file declares |
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
 | error | `unknown-section` | a definition names a memory section no file declares |
@@ -457,7 +457,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
-| error | `consumer-storage` | an `input` declaration states `init`, which only the producing component decides |
+| error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |

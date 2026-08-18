@@ -100,7 +100,7 @@ class TestReadingTypes:
             },
         )
         assert findings(bag) == ["duplicate-type"]
-        assert "is declared twice" in first(bag).render()
+        assert "is already declared" in first(bag).render()
         assert first(bag).notes, "the first declaration has to be pointed at as well"
 
     def test_a_malformed_types_file_is_reported_against_its_keys(self, tree: Path) -> None:
@@ -213,6 +213,24 @@ class TestTypeGraph:
         # once, not once per participant: the chain names them all
         assert findings(bag) == ["type-cycle"]
         assert "A_t -> B_t -> A_t" in first(bag).render()
+
+    def test_a_structure_nested_twice_is_not_a_cycle(self, tree: Path) -> None:
+        """A diamond is not a cycle: the resolvability walk meets ``Inner_t`` a second time,
+        already cleared, and simply does not follow it again."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    struct("Inner_t", val("v")),
+                    struct("S_t", nest("first", "Inner_t"), nest("second", "Inner_t")),
+                ),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert findings(bag) == []
+        assert dictionary is not None
+        assert [leaf.path for leaf in dictionary.leaves] == ["X.first.v", "X.second.v"]
 
     def test_a_structure_nesting_itself(self, tree: Path) -> None:
         _, bag = run_analysis(

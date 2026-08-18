@@ -224,6 +224,157 @@ class TestGenerate:
         assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2" in err
         assert "Traceback" not in err
 
+    def test_a_component_template_error_names_the_component(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A ``{component}`` template renders once per component, over data that differs per
+        render, so the one line says which component's render failed."""
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        (templates / "{component}.h.jinja2").write_text(
+            "/* fine */\n/* {{ header.nonsense }} */\n", encoding="utf-8"
+        )
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "beta.ddd.json"),
+                "beta.ddd.json": component("Beta", declare("local", "X")),
+            },
+        )
+        arguments = [
+            "generate",
+            str(tmp_path / "project.ddd.json"),
+            "-o",
+            str(tmp_path / "gen"),
+            "-t",
+            str(templates),
+            "--no-a2l",
+        ]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        expected = "cannot render template '{component}.h.jinja2' for component 'Beta', line 2"
+        assert f"ddd: {expected}" in err
+        assert "Traceback" not in err
+
+    def test_a_dropped_declaration_is_absent_from_every_artefact(self, tmp_path: Path) -> None:
+        """unknown-constant relaxed to a warning: per the spec a warnings-only run is clean,
+        the artefacts are written, and the dropped axis - with the curve over it, dropped
+        along quietly - is simply absent from the headers and the a2l."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "GoneAxis", kind="axis", size="NOPE", datatype="uint16"),
+                    declare("local", "GoneCurve", kind="curve", axis="GoneAxis", datatype="uint16"),
+                    declare("local", "KeptValue"),
+                ),
+            },
+        )
+        output = tmp_path / "gen"
+        arguments = [
+            "generate",
+            str(tmp_path / "project.ddd.json"),
+            "-o",
+            str(output),
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "unknown-constant=warning",
+        ]
+        assert main(arguments) == EXIT_OK
+        generated = {path.name: path.read_text(encoding="utf-8") for path in output.iterdir()}
+        assert "KeptValue" in generated["A.h"]
+        assert "KeptValue" in generated["ddd_globals.c"]
+        for content in generated.values():
+            assert "GoneAxis" not in content
+            assert "GoneCurve" not in content
+
+    def test_force_generates_through_every_kind_of_dropped_declaration(
+        self, tmp_path: Path
+    ) -> None:
+        """Every way a declaration can be dropped, stacked into one project: an unknown
+        member type, a type cycle, a poisoned member dimension, an unknown declaration
+        dimension, a curve over the dropped axis, and an init on a structure. ``--force``
+        still writes the artefacts, without the dropped objects and without a traceback."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Bad_t",
+                            "members": [
+                                {
+                                    "name": "a",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "dimensions": ["NOPE"],
+                                }
+                            ],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Cyc_t",
+                            "members": [{"name": "b", "member": "value", "typename": "Cyc2_t"}],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Cyc2_t",
+                            "members": [{"name": "c", "member": "value", "typename": "Cyc_t"}],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Ghostly_t",
+                            "members": [{"name": "d", "member": "value", "typename": "Ghost_t"}],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Fine_t",
+                            "members": [
+                                {
+                                    "name": "e",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                }
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "GonePoisoned", typename="Bad_t"),
+                    declare("local", "GoneCyclic", typename="Cyc_t"),
+                    declare("local", "GoneGhostly", typename="Ghostly_t"),
+                    declare("local", "GoneAxis", kind="axis", size="NOPE2", datatype="uint16"),
+                    declare("local", "GoneCurve", kind="curve", axis="GoneAxis", datatype="uint16"),
+                    declare("local", "GoneDims", dimensions=["NOPE3"]),
+                    declare("local", "GoneInit", typename="Fine_t", init=1),
+                    declare("local", "KeptValue"),
+                ),
+            },
+        )
+        output = tmp_path / "gen"
+        arguments = [
+            "generate",
+            str(tmp_path / "project.ddd.json"),
+            "-o",
+            str(output),
+            "-t",
+            str(TEMPLATES),
+            "--force",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        generated = {path.name: path.read_text(encoding="utf-8") for path in output.iterdir()}
+        assert "KeptValue" in generated["A.h"]
+        for content in generated.values():
+            assert "Gone" not in content
+
     def test_address_map(self, tmp_path: Path) -> None:
         addresses = tmp_path / "addresses.json"
         addresses.write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
@@ -395,6 +546,24 @@ class TestList:
         assert "0 (= STATE_OFF)" in out  # an enum init reads as its enumerator
         assert "[...]" in out  # a nested init is abbreviated, not spelled out
         assert "1000 (= 1 V)" in out  # the reading round-trips through format_number
+
+    def test_the_reading_carries_no_float_artifacts(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """3 raw counts of 0.1 compute as 0.30000000000000004 in binary floats; the reading
+        rounds the artifact away and says what the author meant."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Offset", unit="V", conversion={"factor": 0.1}, init=3),
+                ),
+            },
+        )
+        assert main(["list", str(tmp_path / "project.ddd.json")]) == EXIT_OK
+        assert "3 (= 0.3 V)" in capsys.readouterr().out
 
     def test_json_payload_is_byte_identical_to_the_published_shape(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

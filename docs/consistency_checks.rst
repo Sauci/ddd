@@ -52,9 +52,9 @@ down should be read after a DDD upgrade:
    include-empty          error    an include pattern matches no file
    duplicate-component    error    two different files declare the same component name
    duplicate-type         error    two different files declare the same type name
-   duplicate-unit         error    two different files declare the same unit
-   duplicate-section      error    two different files declare the same memory section
-   duplicate-constant     error    two different files declare the same constant name
+   duplicate-unit         error    a unit is declared more than once, in one file or across files
+   duplicate-section      error    a memory section is declared more than once, in one file or across files
+   duplicate-constant     error    a constant is declared more than once, in one file or across files
    ...
 
 The ``(fixed)`` marker means the severity of that check cannot be changed; the reason is in
@@ -287,16 +287,16 @@ or an a2l file that does not do what the description says - or that does not com
        like ``unit16``.
    * - ``duplicate-unit``
      - error
-     - two different files declare the same unit. The vocabulary is a set of spellings, so a
+     - a unit is declared more than once, in one file or across files. The vocabulary is a set of spellings, so a
        second entry is either a copy that will drift or a disagreement about the description,
        and neither is worth keeping quiet.
    * - ``duplicate-section``
      - error
-     - two different files declare the same memory section: either a copy that will drift or
+     - a memory section is declared more than once, in one file or across files: either a copy that will drift or
        a disagreement about its properties, and neither is worth keeping quiet.
    * - ``duplicate-constant``
      - error
-     - two different files declare the same constant name (see the
+     - a constant is declared more than once, in one file or across files (see the
        :doc:`constants file <file_formats/constants>`): either a copy that will drift or a
        disagreement about the value, and a size that depends on which file loads first is
        exactly what the vocabulary exists to prevent.
@@ -338,8 +338,9 @@ or an a2l file that does not do what the description says - or that does not com
        contains itself has no size at all.
    * - ``reserved-identifier``
      - error
-     - a component, variable, type, enum or enumerator name is a c keyword, or is declared by one of
-       the headers the generated code includes (everything ``<stdint.h>`` and ``<stdbool.h>``
+     - a project, component, variable, type, structure member, enum, enumerator or constant
+       name is a c keyword, or is declared by one of the headers the generated code includes
+       (everything ``<stdint.h>`` and ``<stdbool.h>``
        bring in, so ``uint16_t`` is out), or is reserved for the implementation by C11 7.1.3 -
        any name containing a double underscore, or starting with an underscore followed by a
        capital letter.
@@ -349,19 +350,22 @@ or an a2l file that does not do what the description says - or that does not com
        or the same generated file: an enumerator and a variable, a variable and the name of an
        enum or of a declared type (both of which the types header makes typedef names, in the
        same file scope namespace as the variables), an enumerator claimed by two enums (all
-       enumerators share one c namespace), or two component names differing only in case, which
-       ask for the same header on a case insensitive filesystem.
+       enumerators share one c namespace), a declared constant and a variable, an enum, an
+       enumerator or a declared type (the constant reaches the generated code as an identifier
+       of its own, in that same namespace), or two component names differing only in case,
+       which ask for the same header on a case insensitive filesystem.
    * - ``duplicate-declaration``
      - error
      - one component declares the same variable twice, for instance once as ``input`` and once
        as ``output``. The second declaration is ignored for the rest of the run.
    * - ``consumer-storage``
      - error
-     - an ``input`` declaration states ``init``. What a variable starts out as is decided by
-       the component that produces it, so a component that only reads it is claiming storage it
-       does not own - which is a different thing from the disagreements above, and is reported
-       where the claim is written rather than where it is overruled. Relaxable, so a project
-       migrating existing descriptions can lower it while the ``init`` keys are removed.
+     - an ``input`` declaration states ``init`` or ``section``. What a variable starts out
+       as, and which memory it lives in, is decided by the component that produces it, so a
+       component that only reads it is claiming storage it does not own - which is a
+       different thing from the disagreements above, and is reported where the claim is
+       written rather than where it is overruled. Relaxable, so a project migrating existing
+       descriptions can lower it while the ``init`` and ``section`` keys are removed.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns

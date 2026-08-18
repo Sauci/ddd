@@ -72,7 +72,7 @@ class TestTheFile:
             },
         )
         assert checks(bag) == ["duplicate-unit"]
-        assert "is declared twice" in messages(bag)
+        assert "is already declared" in messages(bag)
 
 
 class TestTheCheck:

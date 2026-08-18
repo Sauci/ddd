@@ -71,7 +71,7 @@ class TestTheFile:
             },
         )
         assert checks(bag) == ["duplicate-section"]
-        assert "is declared twice" in messages(bag)
+        assert "is already declared" in messages(bag)
 
 
 class TestTheChecks:

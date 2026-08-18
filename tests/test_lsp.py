@@ -1331,6 +1331,19 @@ class TestHover:
         )
         assert describe(dictionary, "Ratio").endswith("init `800` = 40")
 
+    def test_a_reading_shows_no_float_artifacts(self, tmp_path: Path) -> None:
+        """0.1 has no exact binary float, so 3 raw counts compute as 0.30000000000000004;
+        the tail is the arithmetic's, not the reading's, and is rounded away."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output", "Offset", datatype="uint8", unit="V", conversion={"factor": 0.1}, init=3
+            ),
+        )
+        assert "init `3` = 0.3 V" in describe(dictionary, "Offset")
+
     def test_an_enum_init_reads_as_its_enumerator(self, tmp_path: Path) -> None:
         from ddd.lsp.hover import describe
 

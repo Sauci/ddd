@@ -95,8 +95,9 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ),
     # A dimension compares as its (spelling, value) pair: a name and its value are different
     # spellings of one size, and the spelling is what the generated code carries, so a
-    # dimension that changes either half is a changed interface. A baseline dumped before
-    # format 4 recorded no spellings; its dimensions read as spelled by their numbers.
+    # dimension that changes either half is a changed interface. Against a baseline dumped
+    # before format 4, which recorded no spellings, the comparison defers to the values
+    # alone - see :data:`_VALUE_SHAPE_FIELD`.
     ComparedField(
         "shape",
         lambda o: o.written_shape,
@@ -105,6 +106,36 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField("references", lambda o: o.references, _describe_references),
     ComparedField("local", lambda o: o.local, lambda o: str(o.local).lower()),
 )
+
+_VALUE_SHAPE_FIELD: ComparedField[Comparable] = ComparedField(
+    "shape",
+    lambda o: tuple(o.shape),
+    lambda o: format_shape(o.spelled_shape) or "scalar",
+)
+"""The shape comparison a baseline without spellings falls back to: values only.
+
+A dictionary dumped before format 4 recorded no ``dimensions``, so its spellings are not
+"the numbers" - they are unknown. Against such a baseline only the values can disagree:
+adopting a constant for a dimension that keeps its size is silent, while a changed size is
+still a changed interface. Two format 4 dictionaries keep comparing spelling and value.
+"""
+
+_DEFERRED_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
+    _VALUE_SHAPE_FIELD if field.name == "shape" else field for field in _INTERFACE_FIELDS
+)
+
+
+def _spells_dimensions(entry: Comparable) -> bool:
+    """Whether the entry records how its dimensions are spelled; a format 3 one does not."""
+    return bool(entry.dimensions) or not entry.shape
+
+
+def _interface_fields(old: Comparable, new: Comparable) -> tuple[ComparedField[Comparable], ...]:
+    """The interface table for this pair: spelling aware only when both sides spell."""
+    if _spells_dimensions(old) and _spells_dimensions(new):
+        return _INTERFACE_FIELDS
+    return _DEFERRED_INTERFACE_FIELDS
+
 
 # Changing these alters behaviour or the generated files, but no consumer becomes wrong.
 _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
@@ -183,7 +214,7 @@ def _compare_object(
     bag: DiagnosticBag,
     location: Location | None,
 ) -> None:
-    interface = differing(_INTERFACE_FIELDS, old, new)
+    interface = differing(_interface_fields(old, new), old, new)
     if interface:
         readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
         bag.add(

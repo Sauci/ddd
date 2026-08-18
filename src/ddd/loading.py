@@ -492,7 +492,7 @@ class _Loader:
         if previous is not None:
             self._bag.add(
                 "duplicate-component",
-                f"component '{loaded.name}' is declared twice",
+                f"component '{loaded.name}' is already declared",
                 loaded.location(),
                 notes=[("first declared here", previous.location())],
             )
@@ -516,7 +516,7 @@ class _Loader:
     ) -> None:
         """Read one vocabulary file and register each entry it declares under its key.
 
-        The one shape behind the three loaders below: validate the file, wrap every entry
+        The one shape behind the vocabulary loaders below: validate the file, wrap every entry
         together with where it was declared, and refuse the second declaration of a key as
         ``duplicate-<noun>`` - with a note at the first - rather than letting one of them
         quietly win.
@@ -533,7 +533,7 @@ class _Loader:
             if previous is not None:
                 self._bag.add(
                     f"duplicate-{noun}",
-                    f"{noun} '{key(loaded)}' is declared twice",
+                    f"{noun} '{key(loaded)}' is already declared",
                     location(loaded),
                     notes=[("first declared here", location(previous))],
                 )

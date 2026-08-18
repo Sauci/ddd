@@ -144,7 +144,7 @@ function(_ddd_description_name variable description)
 endfunction()
 
 # Whether a description file's top level key is "component". The per-component check target may only run "ddd check"
-# on component files: a types, units or sections file has no interfaces of its own, and handing one to "check" is an
+# on component files: a vocabulary file - types, units, sections, constants - has no interfaces of its own, and handing one to "check" is an
 # unrelaxable file-kind error that would break the <target>.ddd target for good. Such files still register on the
 # target and are checked in context, through the project of every image that links the component.
 #
@@ -230,7 +230,7 @@ function(ddd_add_component target)
     if(check_target)
         foreach(description IN LISTS arg_JSON)
             _ddd_absolute_input(description "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_add_component")
-            # Only component files are checked on their own; a registered types, units or sections file is
+            # Only component files are checked on their own; a registered vocabulary file (types, units, sections, constants) is
             # checked through the image project instead. A target registering only such files keeps its
             # <target>.ddd target as a no-op rather than one that can never pass.
             _ddd_is_component_file(is_component "${description}")

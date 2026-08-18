@@ -38,7 +38,8 @@ build and a calibration tool consume.
 * **A2L generation** following ASAM MCD-2 MC (ASAP2) 1.6.1, structures flattened into one
   record per member, with `--address-map` supplying the addresses a build reports.
 * **Deliveries.**  `ddd dump` archives the resolved dictionary (format 4) and
-  `ddd compare` reports whether one delivery can replace another.
+  `ddd compare` reports whether one delivery can replace another; against a baseline from
+  format 3 or older, which recorded no dimension spellings, dimensions compare by value.
 * **CMake integration.**  `cmake/Ddd.cmake` (behind `ddd cmake-dir`) provides
   `ddd_add_component()` and `ddd_generate()`, collecting the project from the c link graph
   or taking an explicit `PROJECT`, wiring the checks into the build and recording the

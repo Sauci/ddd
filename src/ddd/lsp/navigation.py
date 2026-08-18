@@ -37,12 +37,9 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
-    Axis,
-    DataObject,
     EnumConversion,
-    Measurement,
-    ValueBlock,
     is_reserved_identifier,
+    spelled_dimensions,
 )
 
 VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
@@ -128,7 +125,7 @@ def index(workspace: Workspace) -> Index:
             for key, target in declaration.definition.references.items():
                 where = loaded.declaration_location(position, f"definition.{key}")
                 built.mentions.setdefault(target, []).append(Site(where.path, where.pointer))
-            for named_size, suffix in _spelled_dimensions(declaration.definition):
+            for named_size, suffix in spelled_dimensions(declaration.definition):
                 where = loaded.declaration_location(position, f"definition.{suffix}")
                 built.constant_uses.setdefault(named_size, []).append(
                     Site(where.path, where.pointer)
@@ -165,25 +162,6 @@ def index(workspace: Workspace) -> Index:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
     return built
-
-
-def _spelled_dimensions(definition: DataObject) -> list[tuple[str, str]]:
-    """Every dimension a definition spells as a constant name, with the key it is under.
-
-    The same walk the analysis makes to place ``unknown-constant``: a measurement or a
-    value block spells its ``dimensions``, an axis its ``size``, and a curve or map spells
-    no dimension of its own.
-    """
-    found: list[tuple[str, str]] = []
-    if isinstance(definition, Measurement | ValueBlock):
-        found.extend(
-            (dimension, f"dimensions[{index}]")
-            for index, dimension in enumerate(definition.dimensions)
-            if isinstance(dimension, str)
-        )
-    elif isinstance(definition, Axis) and isinstance(definition.size, str):
-        found.append((definition.size, "size"))
-    return found
 
 
 def workspaces(
@@ -332,7 +310,7 @@ def definition(built: Index, document: Document, path: Path, pointer: str) -> li
         # A dimension spelled as a name goes to the constant it names, wherever the
         # constants file lives - the constant is what is under the pointer. A name nobody
         # declares goes nowhere; the unknown-constant finding is already saying why.
-        if _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS):
+        if constant_at(document, pointer) is not None:
             declared = built.constants.get(value)
             return [declared] if declared is not None else []
         # A datatype that names a declared type goes to that type, wherever it is written -
@@ -356,12 +334,11 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     without it, but here the distinction has little to say: every declaration of a variable is
     a use of it, and which one is "the" declaration is the question the jump above answers.
     """
+    named = constant_at(document, pointer)
+    if named is not None:
+        found = built.constants.get(named)
+        return [found, *built.constant_uses.get(named, ())] if found is not None else []
     value = document.value_at(pointer)
-    if isinstance(value, str) and (
-        _DIMENSION_KEY.match(_key(pointer)) or pointer.startswith(_CONSTANTS)
-    ):
-        found = built.constants.get(value)
-        return [found, *built.constant_uses.get(value, ())] if found is not None else []
     if isinstance(value, str) and (pointer.startswith(_TYPES) or _key(pointer) == "typename"):
         declared = built.types.get(value)
         if declared is not None:

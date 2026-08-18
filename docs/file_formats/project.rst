@@ -179,7 +179,7 @@ generated header, and the second file would silently overwrite the first:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   second.ddd.json#component: error[duplicate-component]: component 'Sensing' is declared twice
+   second.ddd.json#component: error[duplicate-component]: component 'Sensing' is already declared
        note: first.ddd.json#component: first declared here
    1 error
 

@@ -515,7 +515,7 @@ one of the two and the author needs to see both before choosing which:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   types.ddd.json#types[0]: error[duplicate-type]: type 'Temperature_t' is declared twice
+   types.ddd.json#types[0]: error[duplicate-type]: type 'Temperature_t' is already declared
        note: shared.ddd.json#types[0]: first declared here
    1 error
 

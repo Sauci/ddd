@@ -367,7 +367,7 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
                 # One of the two is always set: a member is spelled with a base datatype or it
                 # is another structure, and the analysis has already worked out which.
                 c_type=C_TYPE[member.datatype] if member.datatype is not None else str(member.type),
-                array_suffix=declarator_suffix(member.shape),
+                array_suffix=declarator_suffix(member.dimensions),
                 bits=member.bits,
                 comment=sanitize_comment(member.description) or None,
             )
@@ -442,7 +442,9 @@ def _header(
 ) -> ComponentHeaderView:
     buckets: dict[Scope, list[DeclarationView]] = {scope: [] for scope in Scope}
     for declaration in component.declarations:
-        # Every declared name has an entry: the analysis dropped duplicates from both lists.
+        # Every name here has a view: the analysis keeps a declaration out of the component's
+        # list whenever it keeps the object out of the dictionary - duplicates and
+        # unresolvable declarations alike - so the interface never names what did not resolve.
         buckets[declaration.scope].append(
             DeclarationView(
                 variable=views[declaration.name],

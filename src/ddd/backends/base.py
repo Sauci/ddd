@@ -111,30 +111,43 @@ def make_environment(template_dir: Path) -> Environment:
 
 
 def render_template(
-    environment: Environment, template_name: str, path: Path, **context: object
+    environment: Environment,
+    template_name: str,
+    path: Path,
+    *,
+    component: str | None = None,
+    **context: object,
 ) -> GeneratedFile:
     """Render one template, turning what jinja says into something an author can act on.
 
     The templates are the project's own files, so a typo in one is a usage mistake and not a
     defect of the tool: it is reported as one line naming the template rather than escaping
-    as a python traceback through a library the author never imported.
+    as a python traceback through a library the author never imported. ``component`` names
+    the component a per-component template is being rendered for, so a failure that only
+    one component's data provokes says which one.
     """
     try:
         template = environment.get_template(template_name)
         content = template.render(**context)
     except TemplateError as error:
-        raise ValueError(describe_template_error(template_name, error)) from None
+        raise ValueError(
+            describe_template_error(template_name, error, component=component)
+        ) from None
     if not content.endswith("\n"):
         content += "\n"
     return GeneratedFile(path, content)
 
 
-def describe_template_error(template_name: str, error: TemplateError) -> str:
+def describe_template_error(
+    template_name: str, error: TemplateError, *, component: str | None = None
+) -> str:
     """One line: the template, the line in it, and what jinja had to say.
 
     A syntax error knows its own line. A runtime error - an undefined name under
     ``StrictUndefined``, most of the time - does not, but jinja rewrites its traceback with a
     frame per template line it passed through, and the deepest of those is where it happened.
+    A ``{component}`` template is rendered once per component, with data that differs per
+    run, so the message carries the component the failing render was for.
     """
     if isinstance(error, TemplateSyntaxError):
         line: int | None = error.lineno
@@ -142,7 +155,11 @@ def describe_template_error(template_name: str, error: TemplateError) -> str:
     else:
         line = _template_line(error)
         reason = str(error)
-    where = f"template '{template_name}'" + (f", line {line}" if line is not None else "")
+    where = f"template '{template_name}'"
+    if component is not None:
+        where += f" for component '{component}'"
+    if line is not None:
+        where += f", line {line}"
     return f"cannot render {where}: {reason}"
 
 

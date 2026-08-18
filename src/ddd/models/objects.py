@@ -546,6 +546,28 @@ _VARIANTS: Final[dict[str, type[DataObject]]] = {
 """Each ``kind`` value and the model that describes it - see :func:`definition_keys`."""
 
 
+def spelled_dimensions(definition: DataObject) -> list[tuple[str, str]]:
+    """Every dimension a definition spells as a constant name, with the key it is under.
+
+    ``(name, pointer suffix)`` pairs, so that a finding or a jump about the constant lands
+    on the entry that names it rather than on the definition as a whole. A measurement or a
+    value block spells its ``dimensions``, an axis its ``size``, and a curve or a map
+    spells no dimension of its own - its shape is the axes' business. One walk for the
+    analysis and the editor alike, so the two can never disagree about where a name is
+    spelled.
+    """
+    found: list[tuple[str, str]] = []
+    if isinstance(definition, Measurement | ValueBlock):
+        found.extend(
+            (dimension, f"dimensions[{index}]")
+            for index, dimension in enumerate(definition.dimensions)
+            if isinstance(dimension, str)
+        )
+    elif isinstance(definition, Axis) and isinstance(definition.size, str):
+        found.append((definition.size, "size"))
+    return found
+
+
 def format_shape(shape: WrittenShape) -> str:
     """``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings.
 

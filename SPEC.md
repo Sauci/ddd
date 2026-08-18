@@ -568,8 +568,9 @@ A sections file declares at least one section (`schema`).
 
 - `"section"` (required): the name as the linker script spells it. It is a linker name
   rather than a C identifier, so `.calib` is a normal spelling, and it contains no
-  whitespace (`schema`). A section declared twice,
-  by one file or by two, is `duplicate-section`.
+  whitespace (`schema`). A section is declared exactly once: every declaration after the
+  first, whether it appears in the same file or in another, is `duplicate-section`, with a
+  note at the first.
 - `"access"` (required): `read-write` or `read-only`, from the point of view of the running
   software. Whether a calibration tool can write a read-only section, for example through
   an emulation overlay or a calibratable flash, is a property of the target and is
@@ -749,7 +750,9 @@ with a hint at the include that carries it. The file declares at least one unit
 (`schema`). An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
 of being implied by every object that happens to use it. Case counts: `mV` and `MV` are
-different units. The same unit declared twice, by one file or by two, is `duplicate-unit`.
+different units. A unit is declared exactly once: every declaration after the first,
+whether it appears in the same file or in another, is `duplicate-unit`, with a note at the
+first.
 
 Declaring the vocabulary is opt-in: a project without a units file keeps its units free.
 With a vocabulary, every stated unit, whether on a definition, on a structure member or on
@@ -779,8 +782,9 @@ file declares at least one constant (`schema`).
 
 - `"name"` (required): a C identifier. The name reaches the generated C, so the length cap
   of [section 3.3](#33-data-object-definition), `reserved-identifier` and `name-collision`
-  apply to it. The same name declared twice, by one file or by two, is
-  `duplicate-constant`.
+  apply to it. A constant is declared exactly once: every declaration of its name after
+  the first, whether it appears in the same file or in another, is `duplicate-constant`,
+  with a note at the first.
 - `"value"` (required): an integer of at least 1, written as a number. The value is a
   literal only: an expression would put a parser and an evaluation order into a
   description format, and a constant cannot name another constant, for the reason a scalar
@@ -796,7 +800,13 @@ suggested. A name and its value are different spellings of one size: declaration
 object **must** agree on the spelling (`definition-mismatch`), exactly as conversions
 compare as written ([section 3.4](#34-conversions)), because the spelling is what reaches
 every consumer's header. In a delivery comparison a dimension likewise compares as its
-spelling and its value ([section 4.1](#41-comparing-two-deliveries)).
+spelling and its value ([section 4.1](#41-comparing-two-deliveries)); a baseline archived
+before the dictionary carried spellings states none, so against it the values alone
+compare, exactly as an unstated answer defers everywhere else.
+
+A declaration whose shape does not resolve is dropped from the resolved dictionary
+whatever severity the finding is reported with; its shape independent validity, such as an
+initial value against its datatype, is still checked.
 
 The generated C renders a constant-dimensioned object by the constant's name, and the
 templates receive the declared constants to emit ([section 5.1](#51-c-code)); the A2L
@@ -855,11 +865,12 @@ Errors:
   to be outvoted.
 - `duplicate-component`: two files declare the same component name.
 - `duplicate-type`: two files declare the same type name.
-- `duplicate-unit`: two files declare the same unit ([section 3.8](#38-unit-vocabulary)).
-- `duplicate-section`: two files declare the same memory section
-  ([section 3.5](#35-memory-placement)).
-- `duplicate-constant`: two files declare the same constant name
-  ([section 3.9](#39-constant-vocabulary)).
+- `duplicate-unit`: a unit is declared more than once, within one file or across files
+  ([section 3.8](#38-unit-vocabulary)).
+- `duplicate-section`: a memory section is declared more than once, within one file or
+  across files ([section 3.5](#35-memory-placement)).
+- `duplicate-constant`: a constant is declared more than once, within one file or across
+  files ([section 3.9](#39-constant-vocabulary)).
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit, or structures
   nest each other so that neither has a size.
@@ -879,7 +890,9 @@ Errors:
   not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
-  not exist or has the wrong kind.
+  not exist or has the wrong kind. A reference to an object that was declared but dropped
+  as unresolvable is not reported a second time: the finding at the declaration is the one
+  to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
   `<stdbool.h>` declares, or with an identifier the C standard reserves for the
   implementation, that is a double underscore anywhere, or a leading underscore followed by
@@ -1007,7 +1020,8 @@ directory is importable but never rendered. A project template receives two vari
 `filename`, the name of the file being rendered, and `model`, the resolved view of the
 dictionary; a `{component}` template additionally receives `header`, the view of its
 component. The rendering is strict: a name a template misspells, or a template that does
-not parse, is a usage error naming the template and the line
+not parse, is a usage error naming the template, the line and, for a template rendered
+per component, the component
 ([section 7](#7-tool-interface)), not silently empty output. A template directory containing no template, and two artefacts claiming the
 same output path, are usage errors rather than findings
 ([section 7](#7-tool-interface)).

@@ -122,8 +122,8 @@
 <span class="n">Dimension</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="n">Identifier</span>
 <span class="sd">"""One array dimension as a definition writes it: a number, or the name of a constant.</span>
 
-<span class="sd">An integer of at least 1, or the name of a constant the project declares in a constants</span>
-<span class="sd">file.  Strict on the integer side so that the two spellings stay two: without it, a quoted</span>
+<span class="sd">An integer of at least 1, or the name of a constant the project declares.  Strict on the</span>
+<span class="sd">integer side so that the two spellings stay two: without it, a quoted</span>
 <span class="sd">``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,</span>
 <span class="sd">and the file would say something its author did not write.</span>
 <span class="sd">"""</span>
@@ -545,8 +545,9 @@
     <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Array dimensions; empty for a scalar.</span>
 
-<span class="sd">    Each an integer of at least 1, or the name of a constant declared in the project's</span>
-<span class="sd">    constants file - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes.</span>
+<span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, in a</span>
+<span class="sd">    constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both</span>
+<span class="sd">    shapes.</span>
 <span class="sd">    """</span>
 
     <span class="nd">@property</span>
@@ -573,8 +574,8 @@
     <span class="n">dimensions</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
 <span class="w">    </span><span class="sd">"""Array dimensions in c declaration order; a value block is never a scalar.</span>
 
-<span class="sd">    Each an integer of at least 1, or the name of a constant declared in the project's</span>
-<span class="sd">    constants file, mixed freely.</span>
+<span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, mixed</span>
+<span class="sd">    freely.</span>
 <span class="sd">    """</span>
 
     <span class="nd">@property</span>

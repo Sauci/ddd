@@ -129,8 +129,17 @@ constant cannot name another constant - what cannot be written cannot cycle. <co
 is where the meaning of a size is written down once, instead of being implied by every
 object that happens to be dimensioned by it. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a
 project like any other description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">constants</span></code> prints its published
-contract. <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project that declares one next to its
-<a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>; it checks clean.</p>
+contract.</p>
+<p>A declared constant has a second possible home, with entries of exactly this form: the
+<code class="docutils literal notranslate"><span class="pre">constants</span></code> list a <a class="reference internal" href="component.html"><span class="doc">component</span></a> may carry for the constants it publishes.
+Either home puts the name in the same project wide namespace - any shape of any component
+names it, and <code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code> holds across both - so the choice between them is
+ownership, not visibility: a size that belongs to one component’s contract reads best next
+to the interface it dimensions, and a size no single component owns stays here.
+<code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project showing both: its pump declares
+<code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> inside its own description, the shared <code class="docutils literal notranslate"><span class="pre">TREND_SAMPLES</span></code> lives in a
+standalone file next to the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the
+<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and the project checks clean.</p>
 <p>A shape then names a constant where it would state a number: an entry of <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, or
 the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis, is either an integer or the name of a declared constant, and a list
 mixes the two freely - <code class="docutils literal notranslate"><span class="pre">[3,</span> <span class="pre">4]</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;,</span> <span class="pre">4]</span></code> are both shapes, on a
@@ -196,9 +205,13 @@ themselves reach the a2l as one <code class="docutils literal notranslate"><span
 <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> of the module:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MOD_PAR "named constants of PumpDevice"
   SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+  SYSTEM_CONSTANT "TREND_SAMPLES" "16"
 /end MOD_PAR
 </pre></div>
 </div>
+<p>Which home declared a constant is invisible here, as it is in every output: the embedded
+<code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> and the standalone <code class="docutils literal notranslate"><span class="pre">TREND_SAMPLES</span></code> are recorded and emitted alike,
+because the resolved dictionary does not remember the declaring file.</p>
 <p>The <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a> carries both halves: every resolved object
 states its numeric <code class="docutils literal notranslate"><span class="pre">shape</span></code> beside <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, the same shape as the project spells it,
 and the declared constants are recorded whole at the top level, so a generator consuming the

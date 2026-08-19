@@ -79,7 +79,9 @@ Five templates live there, and four of them produce a file:
        generated file without being written five times.
    * - ``ddd_types.h.jinja2``
      - ``ddd_types.h``, the types the generated declarations are written in: ``<stdint.h>``,
-       ``<stdbool.h>`` when the project declares a ``boolean``, and one ``typedef enum`` per enum
+       ``<stdbool.h>`` when the project declares a ``boolean``, the headers of the
+       :doc:`external types <file_formats/types>` in use - deduplicated, sorted by spelling,
+       quoted or angled exactly as declared - and one ``typedef enum`` per enum
        conversion. Every other generated header includes this one and nothing else, so a
        component that includes its own interface header needs no further include to compile.
    * - ``ddd_globals.h.jinja2``
@@ -604,6 +606,7 @@ where a downstream tool finds the name and the value it stands for:
 
        /begin MOD_PAR "named constants of PumpDevice"
          SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+         SYSTEM_CONSTANT "TREND_SAMPLES" "16"
        /end MOD_PAR
 
 What is emitted for what
@@ -611,7 +614,11 @@ What is emitted for what
 
 Every object that ends up in the file - which is every object of the project unless its
 description asks otherwise, see `Keeping an object out of the a2l`_ - becomes exactly one
-record, and the kind of the object decides which:
+record, and the kind of the object decides which. Two structure members are the exception
+and produce no record at all: a ``bits`` member, which waits for a build that can report
+where its bits sit, and a member of an :doc:`external type <file_formats/types>`, because
+the format cannot describe storage whose layout DDD does not know; neither appears in any
+``GROUP`` either.
 
 .. list-table::
    :header-rows: 1

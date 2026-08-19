@@ -210,6 +210,12 @@ The model
    * - ``model.needs_stdint``, ``model.needs_stdbool``
      - Whether any datatype of the project needs that standard header, so that the generated
        type header includes it only when something uses it.
+   * - ``model.external_includes``
+     - The headers of the :doc:`external types <file_formats/types>` in use, deduplicated and
+       sorted by spelling, each ready to paste after ``#include``: ``"my_driver.h"`` with its
+       quotes for the quoted form, ``<os_types.h>`` as written for the angle form. Empty when
+       no structure has an external member; the example templates emit them in the types
+       header after the standard includes, before the first structure that needs them.
    * - ``model.guard(*parts)``
      - A normalised include guard, e.g. ``model.guard("ddd", "globals")`` for
        ``DDD_GLOBALS_H``: the parts are joined, upper cased, anything that is not a letter or

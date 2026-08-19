@@ -170,6 +170,18 @@ identifier of the a2l <code class="docutils literal notranslate"><span class="pr
 Required with no default, so a component with nothing to declare says so with an
 explicit <code class="docutils literal notranslate"><span class="pre">[]</span></code> rather than with a key that might merely have been forgotten.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">types</span></code></p></td>
+<td><p>none</p></td>
+<td><p>The declared types this component publishes, a non-empty list whose entries are
+exactly those of a <a class="reference internal" href="types.html"><span class="doc">types file</span></a>. See <a class="reference internal" href="#types-and-constants-of-the-component">Types and constants of the
+component</a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">constants</span></code></p></td>
+<td><p>none</p></td>
+<td><p>The declared constants this component publishes, a non-empty list whose entries are
+exactly those of a <a class="reference internal" href="constants.html"><span class="doc">constants file</span></a>. See <a class="reference internal" href="#types-and-constants-of-the-component">Types and constants of
+the component</a>.</p></td>
+</tr>
 </tbody>
 </table>
 <p>A component whose <code class="docutils literal notranslate"><span class="pre">interface</span></code> is the empty list is legal - a component may exist before it
@@ -442,6 +454,72 @@ the a2l and asking wins over declining.</p>
 </div>
 </section>
 </section>
+<section id="types-and-constants-of-the-component">
+<h2>Types and constants of the component<a class="headerlink" href="#types-and-constants-of-the-component" title="Link to this heading"></a></h2>
+<p>A component <strong>may</strong> declare the types and the constants it publishes inside its own
+description, in two optional keys whose entries are exactly those of the standalone files: a
+<code class="docutils literal notranslate"><span class="pre">types</span></code> list as a <a class="reference internal" href="types.html"><span class="doc">types file</span></a> writes it, and a <code class="docutils literal notranslate"><span class="pre">constants</span></code> list as a
+<a class="reference internal" href="constants.html"><span class="doc">constants file</span></a> writes it. This is the pump of <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code>,
+shortened to the parts that matter:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Pump"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"scalar"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Torque_t"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A torque as the pump publishes it: hundredths of a newton metre"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Nm"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"constants"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PRESSURE_CELLS"</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cells of the pressure manifold"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TorqueLimit"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Torque above which the pump is derated"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"typename"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Torque_t"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">250</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="s2">".calib"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Declaring them here co-locates a library’s contract in one file; it does <strong>not</strong> scope it.
+The names join the same project wide namespace as those of the standalone files, every
+consistency check applies to them unchanged - <code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code> and <code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code>
+across both homes, <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code>, <code class="docutils literal notranslate"><span class="pre">name-collision</span></code>, the unit vocabulary - and
+any component of the project may name them, exactly as if a types or constants file had
+declared them. Which home to choose is therefore a question of ownership rather than of
+visibility: a type or constant that belongs to one component’s published contract reads
+best next to the interface that uses it, and one shared between several components, with no
+single owner to live inside, stays in a standalone file. <code class="docutils literal notranslate"><span class="pre">units</span></code> and <code class="docutils literal notranslate"><span class="pre">sections</span></code> are
+project wide vocabularies with no owner at all, so neither may appear inside a component:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check own_units.ddd.json
+own_units.ddd.json#component.units: error[schema]: Extra inputs are not permitted (got: ['rpm'])
+1 error
+</pre></div>
+</div>
+<p>A name declared twice is refused wherever the second declaration lives, embedded or
+standalone, with a note at whichever home declared it first:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+shared.ddd.json#types[0]: error[duplicate-type]: type 'Torque_t' is already declared
+    note: pump.ddd.json#component.types[0]: first declared here
+1 error
+</pre></div>
+</div>
+</section>
 <section id="checking-a-component-on-its-own">
 <h2>Checking a component on its own<a class="headerlink" href="#checking-a-component-on-its-own" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> accept a component file directly, which is what lets a team
@@ -462,6 +540,22 @@ it is a warning, so the run still exits zero. Everything else applies unchanged:
 the reserved identifiers, the references between curves, maps and axes, the initial values
 against the datatypes and against the shapes. What cannot be checked this way is precisely
 what the project is for - whether the other components agree.</p>
+<p>The types and constants the component declares inline resolve in such a run, which is the
+practical payoff of the co-location: a self-contained library file answers <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> on its own, and only the references that genuinely live elsewhere stay open.
+The pump of <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> names its own <code class="docutils literal notranslate"><span class="pre">Torque_t</span></code> and <code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> and
+leans on the project only for its sections and for one shared size:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check pump.ddd.json
+pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
+pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
+pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
+pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
+4 errors
+
+$ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore
+ok: 3 variables in 1 component are consistent
+</pre></div>
+</div>
 </section>
 </section>
 

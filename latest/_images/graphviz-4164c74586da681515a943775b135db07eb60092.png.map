@@ -91,7 +91,7 @@ One member of a structure, as the c templates need it to declare the member.
 Only what a declaration takes. The meaning of the member &#45; its unit, its conversion, its
 limits &#45; travels with the *leaf* instead, because that is the form the a2l consumes and
 there is no second place a reader should have to look.
-" alt="" coords="1149,1699,1427,1895"/>
+" alt="" coords="1149,1699,1427,1951"/>
 <area shape="rect" id="node15" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.

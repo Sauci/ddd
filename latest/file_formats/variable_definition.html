@@ -167,7 +167,9 @@ of <code class="docutils literal notranslate"><span class="pre">datatype</span><
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">typename</span></code></p></td>
 <td><p>one of the two</p></td>
 <td><p>The name of a <a class="reference internal" href="types.html"><span class="doc">declared type</span></a>, stated instead of <code class="docutils literal notranslate"><span class="pre">datatype</span></code>: a scalar
-type fixes what the value means, a structure makes this a structured variable.</p></td>
+type fixes what the value means, a structure makes this a structured variable. An
+external type cannot be named here (<code class="docutils literal notranslate"><span class="pre">type-kind</span></code>): only a structure member may name
+one, because DDD knows neither its layout nor its meaning.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
 <td><p>required</p></td>
@@ -593,7 +595,7 @@ writes - the c ones as the example templates render them, the a2l ones as DDD wr
 <p>A measurement is a value the software computes and writes, declared with
 <code class="docutils literal notranslate"><span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;measurement&quot;</span></code> like every other kind. One key is its own: <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, a list of
 array dimensions that is empty for a scalar - each an integer of at least 1, or the name of a
-constant the project declares in its <a class="reference internal" href="constants.html"><span class="doc">constant vocabulary</span></a>, mixed freely, so
+<a class="reference internal" href="constants.html"><span class="doc">declared constant</span></a> of the project, mixed freely, so
 <code class="docutils literal notranslate"><span class="pre">[4]</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;,</span> <span class="pre">4]</span></code> are both shapes. The <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis follows the
 same rule. It is also the one kind that is not generated
 <code class="docutils literal notranslate"><span class="pre">const</span></code>, so the <code class="docutils literal notranslate"><span class="pre">volatile</span></code> every definition states is the whole of its qualifier -

@@ -302,10 +302,24 @@
 <span class="w">    </span><span class="sd">"""What the member is, for a comment beside its declaration."""</span>
 
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``None`` when it names a structure."""</span>
+<span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``None`` when it names a declared type."""</span>
 
     <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype."""</span>
+
+    <span class="n">external</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Name of the external type this member is, when it is one; ``None`` otherwise.</span>
+
+<span class="sd">    An external type is one DDD does not declare - a hand written header defines it - so the</span>
+<span class="sd">    member is opaque storage: it appears in the generated structure verbatim, spelled with</span>
+<span class="sd">    this name, and contributes no leaf, because DDD knows neither its layout nor its meaning.</span>
+<span class="sd">    """</span>
+
+    <span class="n">header</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The header defining the external type, spelled the way the generated inclusion writes</span>
+<span class="sd">    it: ``my_driver.h`` for the quoted form, ``&lt;os_types.h&gt;`` for the angle form.  Stated</span>
+<span class="sd">    exactly when ``external`` is, and carried on the member so a consumer of the dictionary</span>
+<span class="sd">    never has to resolve the type name a second time."""</span>
 
     <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
 <span class="w">    </span><span class="sd">"""Array dimensions, empty for a scalar, each spelled the way the member spells it.</span>
@@ -319,6 +333,22 @@
 
     <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield; ``None`` when it is not."""</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_an_external_member_carries_its_header</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedMember</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""``external`` and ``header`` travel together, and beside no other storage.</span>
+
+<span class="sd">        A member is spelled exactly one way - a base datatype, a structure, or an external</span>
+<span class="sd">        type - so an external name next to either of the others, or a header without the</span>
+<span class="sd">        name it defines, is a document contradicting itself.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">header</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"'external' and 'header' are stated together: the header defines the type"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"an external member names no 'datatype' and no 'type'; it is opaque storage"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedStruct</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>

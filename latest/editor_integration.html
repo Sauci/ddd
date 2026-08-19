@@ -146,15 +146,15 @@ value the file states, and the initial values as a sparkline. Those are the <em>
 values - DDD describes an interface, and what an engineer calibrates lives in the
 calibration tool. A dimension spelled as the name of a
 <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> hovers as the constant itself - its value
-and its description - because the number is in another file, next to the one statement of
-what is being counted.</p>
+and its description - because the number is declared somewhere else, next to the one
+statement of what is being counted.</p>
 <p><strong>Go to definition and find references.</strong> From anywhere in a declaration - or from an
 <code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> reference - go to definition lands on the
 declaration that <em>writes</em> the object, in whichever component that is, and find references
 lists every declaration of it. The same works from a type name to the structure it names and
-back, from a dimension spelled as a constant name to the constants file that declares it
-and back to every shape that spells it, and from an <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry to the files it
-matches, wildcards included.</p>
+back, from a dimension spelled as a constant name to the entry that declares it - in a
+constants file, or inside the component that publishes it - and back to every shape that
+spells it, and from an <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry to the files it matches, wildcards included.</p>
 <p><strong>Rename.</strong> <code class="docutils literal notranslate"><span class="pre">F2</span></code> on a variable renames it in every declaration and in every reference that
 names it, across as many files as that takes. A name c reserves, one that is not a usable
 identifier, or one the project already uses - for another object, an enum, an enumerator, a

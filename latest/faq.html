@@ -352,7 +352,10 @@ about. A type fixes exactly <code class="docutils literal notranslate"><span cla
 <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and <code class="docutils literal notranslate"><span class="pre">a2l</span></code> stay on the variable, because two
 measurements of one type may well differ in whether an interrupt writes one of them. Naming
 a type and then restating what it fixes is an error rather than an override, so “where is
-this unit written down” keeps one answer.</p>
+this unit written down” keeps one answer. A type that belongs to one component’s published
+contract can also be declared inside that
+<a class="reference internal" href="file_formats/component.html"><span class="doc">component’s own description</span></a>, with the same entry and the
+same project wide name; the standalone file is the home of the shared ones.</p>
 </section>
 <section id="how-do-i-keep-everybody-spelling-units-the-same-way">
 <h2>How do I keep everybody spelling units the same way?<a class="headerlink" href="#how-do-i-keep-everybody-spelling-units-the-same-way" title="Link to this heading"></a></h2>

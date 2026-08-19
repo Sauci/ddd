@@ -27,8 +27,18 @@ constant cannot name another constant - what cannot be written cannot cycle. ``d
 is where the meaning of a size is written down once, instead of being implied by every
 object that happens to be dimensioned by it. The file is listed in the ``includes`` of a
 project like any other description, and ``ddd schema constants`` prints its published
-contract. ``examples/vocabulary`` is a ready to run project that declares one next to its
-:doc:`unit vocabulary <units>` and :doc:`memory sections <sections>`; it checks clean.
+contract.
+
+A declared constant has a second possible home, with entries of exactly this form: the
+``constants`` list a :doc:`component <component>` may carry for the constants it publishes.
+Either home puts the name in the same project wide namespace - any shape of any component
+names it, and ``duplicate-constant`` holds across both - so the choice between them is
+ownership, not visibility: a size that belongs to one component's contract reads best next
+to the interface it dimensions, and a size no single component owns stays here.
+``examples/vocabulary`` is a ready to run project showing both: its pump declares
+``PRESSURE_CELLS`` inside its own description, the shared ``TREND_SAMPLES`` lives in a
+standalone file next to the :doc:`unit vocabulary <units>` and the
+:doc:`memory sections <sections>`, and the project checks clean.
 
 A shape then names a constant where it would state a number: an entry of ``dimensions``, or
 the ``size`` of an axis, is either an integer or the name of a declared constant, and a list
@@ -108,7 +118,12 @@ themselves reach the a2l as one ``SYSTEM_CONSTANT`` per constant, in name order,
 
    /begin MOD_PAR "named constants of PumpDevice"
      SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+     SYSTEM_CONSTANT "TREND_SAMPLES" "16"
    /end MOD_PAR
+
+Which home declared a constant is invisible here, as it is in every output: the embedded
+``PRESSURE_CELLS`` and the standalone ``TREND_SAMPLES`` are recorded and emitted alike,
+because the resolved dictionary does not remember the declaring file.
 
 The :doc:`data dictionary </data_dictionary>` carries both halves: every resolved object
 states its numeric ``shape`` beside ``dimensions``, the same shape as the project spells it,

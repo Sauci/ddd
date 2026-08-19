@@ -94,10 +94,12 @@
   <h1>Source code for ddd.models.types</h1><div class="highlight"><pre>
 <span></span><span class="sd">"""Contract for the type description file.</span>
 
-<span class="sd">A ``types`` file declares the types a project names: structures, and scalars that fix what a</span>
-<span class="sd">number means.  It is a file of its own rather than a section of a component, because a type is</span>
-<span class="sd">usually shared: the point of declaring ``Engine_t`` once is that two components can agree on it</span>
-<span class="sd">without either owning it.</span>
+<span class="sd">A ``types`` file declares the types a project names: structures, scalars that fix what a</span>
+<span class="sd">number means, and external types that a hand written header defines.  It is the home of the</span>
+<span class="sd">shared ones, because a type with no single owner has no component to live inside: the point</span>
+<span class="sd">of declaring ``Engine_t`` once is that two components can agree on it without either owning</span>
+<span class="sd">it.  A component may instead declare the types it publishes in its own description, with</span>
+<span class="sd">entries of exactly this form; either home puts the name in the same project wide namespace.</span>
 
 <span class="sd">**Two keys name the storage, everywhere.**  ``datatype`` is one of the base datatypes and</span>
 <span class="sd">nothing else; ``typename`` is the name of a type declared here.  Exactly one of the two is</span>
@@ -138,7 +140,15 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Literal</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">PositiveInt</span><span class="p">,</span> <span class="n">model_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AfterValidator</span><span class="p">,</span>
+    <span class="n">BaseModel</span><span class="p">,</span>
+    <span class="n">ConfigDict</span><span class="p">,</span>
+    <span class="n">Field</span><span class="p">,</span>
+    <span class="n">PositiveInt</span><span class="p">,</span>
+    <span class="n">StringConstraints</span><span class="p">,</span>
+    <span class="n">model_validator</span><span class="p">,</span>
+<span class="p">)</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Number</span><span class="p">,</span> <span class="n">TypeName</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">physical_range</span>
@@ -216,9 +226,10 @@
     <span class="n">typename</span><span class="p">:</span> <span class="n">TypeName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Name of a declared type, stated instead of ``datatype``.</span>
 
-<span class="sd">    A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what</span>
-<span class="sd">    its number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no</span>
-<span class="sd">    room for a structure, and a scalar type would carry limits the width contradicts.</span>
+<span class="sd">    A ``value`` member may name a structure, which nests it, a scalar type, which fixes what</span>
+<span class="sd">    its number means, or an external type, which makes it opaque storage a hand written header</span>
+<span class="sd">    defines.  A ``bits`` member states a base integer ``datatype``: a bitfield has no room for</span>
+<span class="sd">    a structure, and a scalar type would carry limits the width contradicts.</span>
 <span class="sd">    """</span>
 
     <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
@@ -226,7 +237,7 @@
 
 <span class="sd">    ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.</span>
 <span class="sd">    Each dimension is an integer of at least 1, or the name of a constant the project</span>
-<span class="sd">    declares in a constants file, exactly as on a declaration.</span>
+<span class="sd">    declares, exactly as on a declaration.</span>
 <span class="sd">    """</span>
 
     <span class="n">bits</span><span class="p">:</span> <span class="n">PositiveInt</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -447,13 +458,110 @@
         <span class="k">return</span> <span class="bp">self</span>
 
 
-<span class="n">AnyType</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"type"</span><span class="p">)]</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_valid_include_spelling</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse a header spelling that cannot survive the trip into the generated inclusion.</span>
+
+<span class="sd">    The value is written out exactly as stated - ``my_driver.h`` in the quoted form,</span>
+<span class="sd">    ``&lt;os_types.h&gt;`` in the angle form, a subdirectory path in either - so a spelling that</span>
+<span class="sd">    would unbalance the line is refused where it is written rather than handed to a compiler</span>
+<span class="sd">    as somebody else's problem: whitespace, a quote of its own, an angle form that never</span>
+<span class="sd">    closes, or angle brackets in the middle of a quoted name.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">character</span><span class="o">.</span><span class="n">isspace</span><span class="p">()</span> <span class="k">for</span> <span class="n">character</span> <span class="ow">in</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a header spelling cannot contain whitespace"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s1">'"'</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">"a header spelling carries no quotes of its own; write the name bare for the "</span>
+            <span class="s2">"quoted form, or wrap it in '&lt;' and '&gt;' for the angle form"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"&lt;"</span><span class="p">):</span>
+        <span class="n">inner</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"&gt;"</span><span class="p">)</span> <span class="k">else</span> <span class="s2">""</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">inner</span> <span class="ow">or</span> <span class="s2">"&lt;"</span> <span class="ow">in</span> <span class="n">inner</span> <span class="ow">or</span> <span class="s2">"&gt;"</span> <span class="ow">in</span> <span class="n">inner</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">' is not a valid angle form header; it is spelled '&lt;name&gt;' with "</span>
+                <span class="sa">f</span><span class="s2">"the name between exactly one pair of angle brackets"</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">if</span> <span class="s2">"&lt;"</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">or</span> <span class="s2">"&gt;"</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">' mixes the quoted and the angle form; angle brackets wrap the whole name"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span>
+
+
+<span class="n">IncludeSpelling</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
+    <span class="nb">str</span><span class="p">,</span>
+    <span class="n">StringConstraints</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+    <span class="n">AfterValidator</span><span class="p">(</span><span class="n">_valid_include_spelling</span><span class="p">),</span>
+<span class="p">]</span>
+<span class="sd">"""A header name spelled the way the generated inclusion writes it.</span>
+
+<span class="sd">``my_driver.h`` for the quoted form and ``&lt;os_types.h&gt;`` for the angle form, subdirectory</span>
+<span class="sd">paths allowed in both.  The spelling is data about the project's own headers, carried through</span>
+<span class="sd">verbatim; which form to use is the project's convention, exactly as it is in hand written c.</span>
+<span class="sd">"""</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ExternalType</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A name for a c type that DDD does not declare: a hand written header defines it.</span>
+
+<span class="sd">    DDD generates no typedef for it and knows neither its layout nor its meaning - which is</span>
+<span class="sd">    the point: a driver's status word or an operating system's handle already has one</span>
+<span class="sd">    authoritative definition, and a copy of it in the description would drift.  Only a</span>
+<span class="sd">    structure member may name one, as opaque storage that reaches the generated structure</span>
+<span class="sd">    verbatim; such a member states no unit, conversion or limits, because DDD does not check</span>
+<span class="sd">    meaning it cannot see.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"external"</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""Says this entry names an external type rather than declaring one of DDD's own."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">TypeName</span>
+<span class="w">    </span><span class="sd">"""The type's c identifier, as the defining header spells it.</span>
+
+<span class="sd">    Every type of a project needs a distinct name, and the rules are those of the declared</span>
+<span class="sd">    types: it cannot read as a base datatype, and it shares the project wide namespace with</span>
+<span class="sd">    the structures and the scalars.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing what the type is, offered to the c templates."""</span>
+
+    <span class="n">header</span><span class="p">:</span> <span class="n">IncludeSpelling</span>
+<span class="w">    </span><span class="sd">"""The header that defines the type, spelled the way the generated inclusion writes it.</span>
+
+<span class="sd">    ``my_driver.h`` for the quoted form, ``&lt;os_types.h&gt;`` for the angle form; a subdirectory</span>
+<span class="sd">    path such as ``drivers/status.h`` is allowed in either.</span>
+<span class="sd">    """</span>
+
+
+<span class="n">AnyType</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span> <span class="o">|</span> <span class="n">ExternalType</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"type"</span><span class="p">)]</span>
 <span class="sd">"""Any entry of a types file, told apart by its required ``type``.</span>
 
 <span class="sd">Discriminated on a stated key rather than inferred from which other keys are present, for the</span>
 <span class="sd">reason the member shapes already give: a file that omits a key by mistake should be told which</span>
 <span class="sd">shape it failed to describe, not silently become another one.</span>
 <span class="sd">"""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_distinct_type_names</span><span class="p">(</span><span class="n">entries</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span> <span class="o">|</span> <span class="n">ExternalType</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Two entries of one list must not share a name.</span>
+
+<span class="sd">    One rule for the two places a list of type entries can be written - a types file, and the</span>
+<span class="sd">    ``types`` a component declares inline - so the second spelling of a name is refused where</span>
+<span class="sd">    it is written, in either home. The same name declared by two *lists* is not this rule's</span>
+<span class="sd">    business: that is ``duplicate-type``, reported with a note at the first declaration.</span>
+<span class="sd">    """</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"type '</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' is already declared in this file"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="TypesFile">
@@ -473,12 +581,7 @@
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_type_names_are_distinct</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TypesFile</span><span class="p">:</span>
-        <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">types</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"type '</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' is already declared in this file"</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">check_distinct_type_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">types</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
 
 

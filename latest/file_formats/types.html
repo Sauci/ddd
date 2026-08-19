@@ -105,10 +105,15 @@
              
   <section id="type-description">
 <h1>Type description<a class="headerlink" href="#type-description" title="Link to this heading"></a></h1>
-<p>A <code class="docutils literal notranslate"><span class="pre">types</span></code> file declares the types a project names. There are two of them: a <strong>structure</strong>,
-which lays several values out in one c object, and a <strong>scalar type</strong>, which fixes what one
-number means and says nothing about where it is stored. It is a file of its own rather than a
-section of a component, because a type is usually shared: the point of declaring
+<p>A <code class="docutils literal notranslate"><span class="pre">types</span></code> file declares the types a project names. There are three of them: a <strong>structure</strong>,
+which lays several values out in one c object, a <strong>scalar type</strong>, which fixes what one
+number means and says nothing about where it is stored, and an <strong>external type</strong>, which names
+a c type that a hand written header defines and DDD does not. A declared type has two possible
+homes, and the entries are the same in both: the standalone file this page describes, and
+the <code class="docutils literal notranslate"><span class="pre">types</span></code> list a <a class="reference internal" href="component.html"><span class="doc">component</span></a> may carry for the types it publishes.
+The choice between them is ownership, not visibility - either home puts the name in the
+same project wide namespace. The standalone file is the home of shared types, because a
+type with no single owner has no component to live inside: the point of declaring
 <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code> once is that two components can agree on it without either of them owning it.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"../../schemas/ddd_types.schema.json"</span><span class="p">,</span>
@@ -152,8 +157,8 @@ section of a component, because a type is usually shared: the point of declaring
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">examples/structures</span></code> is exactly that, ready to run: a types file with those two entries and
-three more, a component that declares variables of them, and a second component that reads the
-structured output, so the interface has its two sides:</p>
+four more - an external type among them - a component that declares variables of them, and a
+second component that reads the structured output, so the interface has its two sides:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/structures/project.ddd.json
 ok: 9 variables in 2 components are consistent
 </pre></div>
@@ -167,10 +172,10 @@ examples/structures/types.ddd.json: error[file-kind]: this is a structured datat
 1 error
 </pre></div>
 </div>
-<section id="two-kinds-of-entry">
-<h2>Two kinds of entry<a class="headerlink" href="#two-kinds-of-entry" title="Link to this heading"></a></h2>
-<p>Every entry says which of the two it is, in a required <code class="docutils literal notranslate"><span class="pre">type</span></code> key, and that key decides which
-of the others the entry may carry:</p>
+<section id="three-kinds-of-entry">
+<h2>Three kinds of entry<a class="headerlink" href="#three-kinds-of-entry" title="Link to this heading"></a></h2>
+<p>Every entry says which of the three it is, in a required <code class="docutils literal notranslate"><span class="pre">type</span></code> key, and that key decides
+which of the others the entry may carry:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 12.0%" />
@@ -189,10 +194,14 @@ of the others the entry may carry:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">struct</span></code></p></td>
 <td><p>a name for a layout: the <code class="docutils literal notranslate"><span class="pre">members</span></code>, in the order the generated c declares them.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">external</span></code></p></td>
+<td><p>a name for a c type DDD does not declare: the <code class="docutils literal notranslate"><span class="pre">header</span></code> that defines it, and nothing
+else, because DDD knows neither its layout nor its meaning.</p></td>
+</tr>
 </tbody>
 </table>
-<p>Both carry a <code class="docutils literal notranslate"><span class="pre">name</span></code> and an optional <code class="docutils literal notranslate"><span class="pre">description</span></code>, and nothing else is shared, because
-nothing else means the same thing to both. Which of the two an entry is, is stated rather than
+<p>All three carry a <code class="docutils literal notranslate"><span class="pre">name</span></code> and an optional <code class="docutils literal notranslate"><span class="pre">description</span></code>, and nothing else is shared, because
+nothing else means the same thing to each. Which of the three an entry is, is stated rather than
 inferred from the keys that happen to be present, for the reason the member shapes below give
 as well: a file that omits a key by mistake should be told which shape it failed to describe
 instead of silently becoming another one. An entry with no <code class="docutils literal notranslate"><span class="pre">type</span></code> is therefore refused where
@@ -420,6 +429,71 @@ the answer keyed on the access path of each member. A predicted offset would be 
 from a measured one and wrong on the first target whose alignment differs.</p>
 </section>
 </section>
+<section id="external-types">
+<h2>External types<a class="headerlink" href="#external-types" title="Link to this heading"></a></h2>
+<p>An <code class="docutils literal notranslate"><span class="pre">external</span></code> entry names a c type that DDD does not declare - a driver’s status word, an
+operating system’s handle - together with the header that defines it. The point is precisely
+that there is no second definition: the vendor’s header already owns the layout, and a copy of
+it in the description would drift.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"external"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DriverStatus_t"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw state of the vendor's sensor driver, as its own header defines it"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"header"</span><span class="p">:</span><span class="w"> </span><span class="s2">"driver_status.h"</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">header</span></code> is spelled exactly the way the generated inclusion writes it: <code class="docutils literal notranslate"><span class="pre">my_driver.h</span></code> for
+the quoted form, <code class="docutils literal notranslate"><span class="pre">&lt;os_types.h&gt;</span></code> for the angle form, a subdirectory path such as
+<code class="docutils literal notranslate"><span class="pre">drivers/status.h</span></code> in either. The <code class="docutils literal notranslate"><span class="pre">name</span></code> follows the rules of every declared type - it
+cannot spell a base datatype, it shares the project wide namespace, and <code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code>,
+<code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> reach it unchanged.</p>
+<p>Only a structure <strong>member</strong> may name an external type, and such a member is opaque storage: it
+reaches the generated structure verbatim, may carry <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, and states nothing about
+meaning, because DDD does not check meaning it cannot see. <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and
+<code class="docutils literal notranslate"><span class="pre">limits</span></code> are refused as on any member that names a declared type, and the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block is
+refused too, because no a2l record exists for it to shape:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+types.ddd.json#types[1].members[0]: error[schema]: Value error, 'DriverStatus_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'status', 'member': 'value', 'typename': 'Driver...)
+1 error
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+types.ddd.json#types[1].members[0].a2l: error[schema]: member 'status' of structure 'Inlet_t' names the external type 'DriverStatus_t', which DDD cannot see into: the member reaches no a2l, so there is no record for the 'a2l' block to shape
+1 error
+</pre></div>
+</div>
+<p>A whole <em>variable</em> of an external type is refused as <code class="docutils literal notranslate"><span class="pre">type-kind</span></code>, for the reason the check
+exists: DDD knows neither the layout nor the meaning, so a definition of one would be a
+declaration the checks could say nothing about:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'DriverWord' is declared as 'DriverStatus_t', but that is an external type, whose layout and meaning DDD does not know; only a structure member may name one
+    note: types.ddd.json#types[0]: declared here
+1 error
+</pre></div>
+</div>
+<p>DDD generates no typedef for an external type; what it generates is the include. The headers
+of the external types in use reach <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> after the standard includes, deduplicated
+and sorted by spelling, quoted or angled exactly as the entry spells them, so that a structure
+whose member comes from a hand written header compiles without the template being edited.
+<code class="docutils literal notranslate"><span class="pre">examples/structures</span></code> declares <code class="docutils literal notranslate"><span class="pre">DriverStatus_t</span></code> and ships the little header beside the
+project, and its generated types header opens like this:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdint.h&gt;</span>
+
+<span class="cm">/* headers defining the external types */</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"driver_status.h"</span>
+</pre></div>
+</div>
+<p>Three consequences follow from the layout being unknown, and all three are silences rather
+than findings. The member reaches <strong>no a2l</strong> - the format cannot describe storage whose
+layout DDD does not know - exactly as a <code class="docutils literal notranslate"><span class="pre">bits</span></code> member reaches none. A structure containing
+such a member gets <strong>no section-alignment estimate</strong>, because the strictest of the <em>other</em>
+members would be an estimate of part of the structure dressed up as the whole. And the member
+contributes <strong>no leaf</strong>: it does not appear in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code>, in the dictionary’s <code class="docutils literal notranslate"><span class="pre">leaves</span></code>,
+or in a delivery comparison, because there is no datatype, unit or range to compare. The
+dictionary still records the member itself, name, external type and header included, so a
+generator consuming the dump never has to resolve the name a second time.</p>
+</section>
 <section id="a-variable-of-a-declared-type">
 <h2>A variable of a declared type<a class="headerlink" href="#a-variable-of-a-declared-type" title="Link to this heading"></a></h2>
 <p>A component declares a structured variable by naming the structure: <code class="docutils literal notranslate"><span class="pre">typename</span></code> where a plain
@@ -439,8 +513,9 @@ always was - the scope, the kind, the description, <code class="docutils literal
 </div>
 <p>The structures reach <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code>, each after every structure it nests, because c needs the
 nested one complete first and a template has to be able to write them out in the order it is
-given them. A member that names a scalar type is declared with that type’s storage, and a
-member that names a structure is declared with the structure:</p>
+given them. A member that names a scalar type is declared with that type’s storage, a member
+that names a structure is declared with the structure, and a member that names an external
+type is declared with the external name verbatim, the include above making it compile:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* Sample_t - One reading and the instant it was taken */</span>
 <span class="k">typedef</span><span class="w"> </span><span class="k">struct</span>
 <span class="p">{</span>
@@ -461,6 +536,7 @@ member that names a structure is declared with the structure:</p>
 <span class="p">{</span>
 <span class="w">    </span><span class="n">Sample_t</span><span class="w"> </span><span class="n">latest</span><span class="p">;</span><span class="w"> </span><span class="cm">/**&lt; The most recent reading */</span>
 <span class="w">    </span><span class="n">Status_t</span><span class="w"> </span><span class="n">status</span><span class="p">;</span><span class="w"> </span><span class="cm">/**&lt; The flags of this sensor */</span>
+<span class="w">    </span><span class="n">DriverStatus_t</span><span class="w"> </span><span class="n">driver</span><span class="p">;</span><span class="w"> </span><span class="cm">/**&lt; Raw driver state, kept verbatim for the vendor's own diagnosis code */</span>
 <span class="w">    </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">history</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span><span class="w"> </span><span class="cm">/**&lt; The last eight readings, oldest first */</span>
 <span class="p">}</span><span class="w"> </span><span class="n">Sensor_t</span><span class="p">;</span>
 </pre></div>
@@ -527,7 +603,9 @@ a bit position: leaving the mask out would claim the whole word, and writing zer
 claim nothing. Both are wrong answers dressed up as output, so the member waits for a build
 that can say. Everything else about it is generated as usual - the c declaration, the width,
 the limits derived from that width - and <code class="docutils literal notranslate"><span class="pre">Status_t</span></code> in the example is therefore fully
-described in <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> and absent from <code class="docutils literal notranslate"><span class="pre">StructuredDevice.a2l</span></code>.</p>
+described in <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> and absent from <code class="docutils literal notranslate"><span class="pre">StructuredDevice.a2l</span></code>. A member of an
+external type reaches no a2l either, for a reason one step earlier: the format cannot
+describe storage whose layout DDD does not know.</p>
 </div>
 </section>
 </section>
@@ -560,8 +638,9 @@ addresses that point at the wrong bytes without anything looking broken.</p></td
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
 <td><p>a declared type is used where its shape does not fit - a structure named by a <code class="docutils literal notranslate"><span class="pre">curve</span></code>,
 a <code class="docutils literal notranslate"><span class="pre">map</span></code>, an <code class="docutils literal notranslate"><span class="pre">axis</span></code> or a <code class="docutils literal notranslate"><span class="pre">value_block</span></code>, all of which refer to other objects or are
-an array of one datatype, or a structured declaration carrying an <code class="docutils literal notranslate"><span class="pre">init</span></code>, since the
-initial value of a structure is written by the code that starts it.</p></td>
+an array of one datatype, a structured declaration carrying an <code class="docutils literal notranslate"><span class="pre">init</span></code>, since the
+initial value of a structure is written by the code that starts it, or a declaration
+naming an external type, which only a structure member may do.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
 <td><p>structures nest each other, directly or through others. A structure that contains itself

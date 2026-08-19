@@ -61,6 +61,16 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
      - The data interface: one entry per data object the component reads, writes or owns.
        Required with no default, so a component with nothing to declare says so with an
        explicit ``[]`` rather than with a key that might merely have been forgotten.
+   * - ``types``
+     - none
+     - The declared types this component publishes, a non-empty list whose entries are
+       exactly those of a :doc:`types file <types>`. See `Types and constants of the
+       component`_.
+   * - ``constants``
+     - none
+     - The declared constants this component publishes, a non-empty list whose entries are
+       exactly those of a :doc:`constants file <constants>`. See `Types and constants of
+       the component`_.
 
 A component whose ``interface`` is the empty list is legal - a component may exist before it
 has any data, or may genuinely have none - but it is reported at severity ``info``, because
@@ -341,6 +351,78 @@ both conditions and says which one won.
    as. ``export`` is compared by nobody, because any component may ask for an object to reach
    the a2l and asking wins over declining.
 
+Types and constants of the component
+------------------------------------
+
+A component **may** declare the types and the constants it publishes inside its own
+description, in two optional keys whose entries are exactly those of the standalone files: a
+``types`` list as a :doc:`types file <types>` writes it, and a ``constants`` list as a
+:doc:`constants file <constants>` writes it. This is the pump of ``examples/vocabulary``,
+shortened to the parts that matter:
+
+.. code-block:: json
+
+   {
+     "component": {
+       "name": "Pump",
+       "types": [
+         {
+           "type": "scalar",
+           "name": "Torque_t",
+           "description": "A torque as the pump publishes it: hundredths of a newton metre",
+           "datatype": "uint16",
+           "unit": "Nm",
+           "conversion": { "kind": "linear", "factor": 0.01, "offset": 0.0 }
+         }
+       ],
+       "constants": [
+         { "name": "PRESSURE_CELLS", "value": 8,
+           "description": "cells of the pressure manifold" }
+       ],
+       "interface": [
+         {
+           "scope": "local",
+           "definition": {
+             "name": "TorqueLimit",
+             "kind": "parameter",
+             "description": "Torque above which the pump is derated",
+             "typename": "Torque_t",
+             "init": 250,
+             "section": ".calib",
+             "volatile": false
+           }
+         }
+       ]
+     }
+   }
+
+Declaring them here co-locates a library's contract in one file; it does **not** scope it.
+The names join the same project wide namespace as those of the standalone files, every
+consistency check applies to them unchanged - ``duplicate-type`` and ``duplicate-constant``
+across both homes, ``reserved-identifier``, ``name-collision``, the unit vocabulary - and
+any component of the project may name them, exactly as if a types or constants file had
+declared them. Which home to choose is therefore a question of ownership rather than of
+visibility: a type or constant that belongs to one component's published contract reads
+best next to the interface that uses it, and one shared between several components, with no
+single owner to live inside, stays in a standalone file. ``units`` and ``sections`` are
+project wide vocabularies with no owner at all, so neither may appear inside a component:
+
+.. code-block:: text
+
+   $ ddd check own_units.ddd.json
+   own_units.ddd.json#component.units: error[schema]: Extra inputs are not permitted (got: ['rpm'])
+   1 error
+
+A name declared twice is refused wherever the second declaration lives, embedded or
+standalone, with a note at whichever home declared it first:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   shared.ddd.json#types[0]: error[duplicate-type]: type 'Torque_t' is already declared
+       note: pump.ddd.json#component.types[0]: first declared here
+   1 error
+
 Checking a component on its own
 -------------------------------
 
@@ -364,3 +446,21 @@ it is a warning, so the run still exits zero. Everything else applies unchanged:
 the reserved identifiers, the references between curves, maps and axes, the initial values
 against the datatypes and against the shapes. What cannot be checked this way is precisely
 what the project is for - whether the other components agree.
+
+The types and constants the component declares inline resolve in such a run, which is the
+practical payoff of the co-location: a self-contained library file answers ``ddd check`` and
+``ddd list`` on its own, and only the references that genuinely live elsewhere stay open.
+The pump of ``examples/vocabulary`` names its own ``Torque_t`` and ``PRESSURE_CELLS`` and
+leans on the project only for its sections and for one shared size:
+
+.. code-block:: text
+
+   $ ddd check pump.ddd.json
+   pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
+   pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
+   pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
+   pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
+   4 errors
+
+   $ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore
+   ok: 3 variables in 1 component are consistent

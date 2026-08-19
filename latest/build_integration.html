@@ -345,7 +345,11 @@ includes its interface header without knowing where the image put it.</p></td>
 <td><p>object library compiling every generated <code class="docutils literal notranslate"><span class="pre">.c</span></code> file, linked into the image. It is an
 object library on purpose: a static library would drop the members whose symbols
 nobody references, and a measurement that only the calibration tool ever reads has no
-referencing code at all.</p></td>
+referencing code at all. In the collected mode it is compiled with the <em>interface
+include directories</em> of every registered component - include paths only, never link
+edges - so that a header an <a class="reference internal" href="file_formats/types.html"><span class="doc">external type</span></a> names is found
+without further wiring: the component that publishes the type already publishes the
+directory its header lives in, and the generated <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> includes that header.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_check</span></code></p></td>
 <td><p>runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> on the collected project on its own, for a ci job that wants the
@@ -423,8 +427,11 @@ the source tree stays an error.</p></td>
 generation and the check target.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
-<td><p>usage requirements for compiling the generated definition file, for a project whose
-compiler flags come from an interface library.</p></td>
+<td><p>usage requirements for compiling the generated definition file, stated by hand. The
+manual fallback: in the collected mode the definition file already gets the interface
+include directories of every registered component, so this remains for the hand
+written <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> mode, for headers the link graph does not carry, and for a
+project whose compiler flags come from an interface library.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>

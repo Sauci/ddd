@@ -194,7 +194,9 @@ generated file without being written five times.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h.jinja2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code>, the types the generated declarations are written in: <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code>,
-<code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> when the project declares a <code class="docutils literal notranslate"><span class="pre">boolean</span></code>, and one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> per enum
+<code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> when the project declares a <code class="docutils literal notranslate"><span class="pre">boolean</span></code>, the headers of the
+<a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use - deduplicated, sorted by spelling,
+quoted or angled exactly as declared - and one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> per enum
 conversion. Every other generated header includes this one and nothing else, so a
 component that includes its own interface header needs no further include to compile.</p></td>
 </tr>
@@ -693,6 +695,7 @@ because a <code class="docutils literal notranslate"><span class="pre">MATRIX_DI
 where a downstream tool finds the name and the value it stands for:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MOD_PAR "named constants of PumpDevice"
   SYSTEM_CONSTANT "PRESSURE_CELLS" "8"
+  SYSTEM_CONSTANT "TREND_SAMPLES" "16"
 /end MOD_PAR
 </pre></div>
 </div>
@@ -700,7 +703,11 @@ where a downstream tool finds the name and the value it stands for:</p>
 <h3>What is emitted for what<a class="headerlink" href="#what-is-emitted-for-what" title="Link to this heading"></a></h3>
 <p>Every object that ends up in the file - which is every object of the project unless its
 description asks otherwise, see <a class="reference internal" href="#keeping-an-object-out-of-the-a2l">Keeping an object out of the a2l</a> - becomes exactly one
-record, and the kind of the object decides which:</p>
+record, and the kind of the object decides which. Two structure members are the exception
+and produce no record at all: a <code class="docutils literal notranslate"><span class="pre">bits</span></code> member, which waits for a build that can report
+where its bits sit, and a member of an <a class="reference internal" href="file_formats/types.html"><span class="doc">external type</span></a>, because
+the format cannot describe storage whose layout DDD does not know; neither appears in any
+<code class="docutils literal notranslate"><span class="pre">GROUP</span></code> either.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 30.0%" />

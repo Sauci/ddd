@@ -97,11 +97,14 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">field_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyDataObject</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyType</span><span class="p">,</span> <span class="n">check_distinct_type_names</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">Scope</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
@@ -195,7 +198,33 @@
 <span class="sd">    Required with no default, so that a component with nothing to declare says so with an</span>
 <span class="sd">    empty list rather than by a key that might merely have been forgotten - the same</span>
 <span class="sd">    reasoning that makes ``volatile`` and ``kind`` required on a definition.</span>
-<span class="sd">    """</span></div>
+<span class="sd">    """</span>
+
+    <span class="n">types</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">AnyType</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Declared types this component publishes, each entry exactly as a types file writes it.</span>
+
+<span class="sd">    Declaring them here co-locates a library's contract in one file; it does not scope it.</span>
+<span class="sd">    The names join the same project wide namespace as the types of the standalone files,</span>
+<span class="sd">    every consistency check applies to them unchanged, and any component of the project may</span>
+<span class="sd">    name them. Types shared between several components, with no single owner to live inside,</span>
+<span class="sd">    stay in a standalone types file.</span>
+<span class="sd">    """</span>
+
+    <span class="n">constants</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">ConstantDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Declared constants this component publishes, each entry exactly as a constants file</span>
+<span class="sd">    writes it.</span>
+
+<span class="sd">    Co-located for the reason ``types`` may be, and no more scoped than they are: the names</span>
+<span class="sd">    join the same project wide namespace as the constants of the standalone files, and any</span>
+<span class="sd">    shape of any component names one where it would state a number. ``units`` and</span>
+<span class="sd">    ``sections`` remain project wide vocabularies and have no place inside a component.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_type_names_are_distinct</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Component</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">types</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check_distinct_type_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">types</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
 
 
 

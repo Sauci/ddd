@@ -260,7 +260,11 @@ usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers`
      - object library compiling every generated ``.c`` file, linked into the image. It is an
        object library on purpose: a static library would drop the members whose symbols
        nobody references, and a measurement that only the calibration tool ever reads has no
-       referencing code at all.
+       referencing code at all. In the collected mode it is compiled with the *interface
+       include directories* of every registered component - include paths only, never link
+       edges - so that a header an :doc:`external type <file_formats/types>` names is found
+       without further wiring: the component that publishes the type already publishes the
+       directory its header lives in, and the generated ``ddd_types.h`` includes that header.
    * - ``<image>_ddd_check``
      - runs ``ddd check`` on the collected project on its own, for a ci job that wants the
        verdict without producing artefacts. Checking is part of generating anyway - the
@@ -323,8 +327,11 @@ Options
      - severity overrides, exactly like ``-W`` on the command line. They apply to both the
        generation and the check target.
    * - ``LINK_LIBRARIES <target>...``
-     - usage requirements for compiling the generated definition file, for a project whose
-       compiler flags come from an interface library.
+     - usage requirements for compiling the generated definition file, stated by hand. The
+       manual fallback: in the collected mode the definition file already gets the interface
+       include directories of every registered component, so this remains for the hand
+       written ``PROJECT`` mode, for headers the link graph does not carry, and for a
+       project whose compiler flags come from an interface library.
    * - ``DEPENDS <file>...``
      - additional files that retrigger the generation.
    * - ``CONST_INPUTS``

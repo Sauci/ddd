@@ -328,13 +328,20 @@ anything. These are the interfaces, described below.</p></td>
 <td><p>Whether any datatype of the project needs that standard header, so that the generated
 type header includes it only when something uses it.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.external_includes</span></code></p></td>
+<td><p>The headers of the <a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use, deduplicated and
+sorted by spelling, each ready to paste after <code class="docutils literal notranslate"><span class="pre">#include</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;my_driver.h&quot;</span></code> with its
+quotes for the quoted form, <code class="docutils literal notranslate"><span class="pre">&lt;os_types.h&gt;</span></code> as written for the angle form. Empty when
+no structure has an external member; the example templates emit them in the types
+header after the standard includes, before the first structure that needs them.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
 <td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
 <code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
 a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
 Offered rather than imposed - a template that has its own convention writes it out.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
 <td><p>What the command line let the caller decide, which for the c backend is
 <code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
 property of the template you write.</p></td>
@@ -569,6 +576,13 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdbool</span> <span class="cp">%}</span>
 <span class="x">#include &lt;stdbool.h&gt;</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.external_includes</span> <span class="cp">%}</span>
+
+<span class="x">/* headers defining the external types */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">include</span> <span class="k">in</span> <span class="nv">model.external_includes</span> <span class="cp">%}</span>
+<span class="x">#include </span><span class="cp">{{</span> <span class="nv">include</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
 

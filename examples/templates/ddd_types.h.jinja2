@@ -9,6 +9,13 @@
 {% if model.needs_stdbool %}
 #include <stdbool.h>
 {% endif %}
+{% if model.external_includes %}
+
+/* headers defining the external types */
+{% for include in model.external_includes %}
+#include {{ include }}
+{% endfor %}
+{% endif %}
 {% if model.constants %}
 
 /* named constants of the data dictionary */

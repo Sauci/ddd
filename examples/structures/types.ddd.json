@@ -17,6 +17,12 @@
       }
     },
     {
+      "type": "external",
+      "name": "DriverStatus_t",
+      "description": "The raw state of the vendor's sensor driver, as its own header defines it",
+      "header": "driver_status.h"
+    },
+    {
       "type": "struct",
       "name": "Sample_t",
       "description": "One reading and the instant it was taken",
@@ -110,6 +116,12 @@
           "member": "value",
           "description": "The flags of this sensor",
           "typename": "Status_t"
+        },
+        {
+          "name": "driver",
+          "member": "value",
+          "description": "Raw driver state, kept verbatim for the vendor's own diagnosis code",
+          "typename": "DriverStatus_t"
         },
         {
           "name": "history",

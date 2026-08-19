@@ -408,10 +408,12 @@ omitted when the shape is unambiguous.
 Beside the project and the component there are four more file kinds, each listed in a
 project's `includes` like a component and each with its own page in the documentation:
 
-* a **types** file declares scalar types and structures the project shares by name: a
-  declaration states `"typename": "Sensor_t"` instead of `datatype`, the type fixes the
-  datatype, unit, conversion and limits, and there is nothing left for two components to
-  disagree about ([documentation](https://sauci.github.io/ddd/file_formats/types.html));
+* a **types** file declares scalar types, structures and external types the project shares
+  by name: a declaration states `"typename": "Sensor_t"` instead of `datatype`, the type
+  fixes the datatype, unit, conversion and limits, and there is nothing left for two
+  components to disagree about; an external type names a c type a hand written header
+  defines, which a structure member carries verbatim
+  ([documentation](https://sauci.github.io/ddd/file_formats/types.html));
 * a **units** file pins the unit spellings the project allows, so `Nm` here and
   `newton_meter` there is an `unknown-unit` finding instead of two quiet spellings of one
   quantity; declaring one is opt-in

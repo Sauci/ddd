@@ -22,7 +22,9 @@ build and a calibration tool consume.
   its storage (`datatype` or `typename`), its `conversion` and its `volatile` qualifier
   explicitly - and may declare the types and constants it publishes inline, entries exactly
   those of the standalone files and names in the same project wide namespace; a *types*
-  file declares scalar types and structures a project shares by name;
+  file declares scalar types, structures and external types a project shares by name, an
+  external type naming a c type a hand written header defines, carried verbatim by a
+  structure member and included by the generated types header;
   a *units* file pins the unit spellings a project allows; a *sections* file declares the
   linker sections a definition may place its object in; a *constants* file declares the
   named integer constants a shape may state instead of a number, carried into the generated

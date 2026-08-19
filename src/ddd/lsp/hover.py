@@ -31,6 +31,7 @@ from ddd.lsp.navigation import workspaces
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
+from ddd.models.types import ExternalType
 
 BARS: Final = "▁▂▃▄▅▆▇█"
 """Eight levels, which is as much as a proportional font renders evenly."""
@@ -109,6 +110,28 @@ def describe_constant(dictionary: DataDictionary, name: str) -> str | None:
     return "\n".join(lines)
 
 
+def describe_external(
+    builds: Sequence[BuildInfo], document: Path, name: str, root: Path | None = None
+) -> str | None:
+    """The markdown for one external type, or nothing when no project declares that name so.
+
+    Answered from the loaded workspace rather than from the resolved dictionary, because an
+    external type deliberately resolves to nothing: DDD knows neither its layout nor its
+    meaning, so what there is to say - the name, the header that defines it, the free text -
+    is exactly what the description states, and the header is the half that lives in another
+    file from the member naming the type.
+    """
+    for workspace in workspaces(builds, document, root):
+        for entry in workspace.types:
+            declared = entry.declared
+            if isinstance(declared, ExternalType) and declared.name == name:
+                lines = [f"**{declared.name}** — external type, defined by `{declared.header}`"]
+                if declared.description:
+                    lines += ["", declared.description]
+                return "\n".join(lines)
+    return None
+
+
 def describe(dictionary: DataDictionary, name: str) -> str | None:
     """The markdown an editor shows for one data object, or nothing if it has none."""
     instance = next((entry for entry in dictionary.instances if entry.name == name), None)
@@ -148,8 +171,9 @@ def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> s
     lines += ["| | |", "|---|---|"]
     lines += [f"| {label} | {value} |" for label, value in facts]
 
-    # Never empty: a structure declares at least one member, and every member of every one it
-    # nests arrives here too, so there is no "holds nothing" case to write a branch for.
+    # The value holding members: a member of an external type contributes no leaf - DDD
+    # knows neither its layout nor its meaning - so a structure of only external members
+    # honestly reports zero, and the count below spells that without a branch.
     leaves = [leaf for leaf in dictionary.leaves if leaf.instance == entry.name]
     lines += ["", f"**{len(leaves)} member{'s' if len(leaves) != 1 else ''}**", ""]
     lines += ["| member | type | unit | limits |", "|---|---|---|---|"]

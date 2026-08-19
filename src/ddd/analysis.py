@@ -36,6 +36,7 @@ from ddd.models import (
     Datatype,
     Declaration,
     EnumConversion,
+    ExternalType,
     Limits,
     Map,
     Member,
@@ -524,20 +525,24 @@ class _Analysis:
         return ResolvedStruct(
             name=structure.name,
             description=structure.description,
-            members=tuple(
-                ResolvedMember(
-                    name=member.name,
-                    description=member.description,
-                    datatype=self._member_storage(member),
-                    type=self._member_structure(member),
-                    dimensions=member.dimensions,
-                    bits=member.bits,
-                )
-                for member in structure.members
-            ),
+            members=tuple(self._resolve_member(member) for member in structure.members),
         )
 
-    def _declared_of(self, member: Member) -> StructType | ScalarType | None:
+    def _resolve_member(self, member: Member) -> ResolvedMember:
+        """One member as the dictionary records it, its storage worked out from the registry."""
+        external = self._member_external(member)
+        return ResolvedMember(
+            name=member.name,
+            description=member.description,
+            datatype=self._member_storage(member),
+            type=self._member_structure(member),
+            external=member.typename if external is not None else None,
+            header=external.header if external is not None else None,
+            dimensions=member.dimensions,
+            bits=member.bits,
+        )
+
+    def _declared_of(self, member: Member) -> StructType | ScalarType | ExternalType | None:
         """The declared type a member names, or nothing - it names none, or an unknown one.
 
         The lookup only; each caller narrows the answer to the kind of type it is after.
@@ -558,6 +563,11 @@ class _Analysis:
         """The structure a member is, or nothing when it is spelled with a datatype."""
         entry = self._declared_of(member)
         return member.typename if isinstance(entry, StructType) else None
+
+    def _member_external(self, member: Member) -> ExternalType | None:
+        """The external type a member names, or nothing when DDD declares its storage itself."""
+        entry = self._declared_of(member)
+        return entry if isinstance(entry, ExternalType) else None
 
     def _check_units(self) -> None:
         """Every stated unit is in the vocabulary, where the project declares one.
@@ -595,7 +605,9 @@ class _Analysis:
                 check(scalar.unit, entry.location("unit"))
                 continue
             structure = entry.structure
-            assert structure is not None
+            if structure is None:
+                # An external type: DDD does not see its meaning, so it states no unit.
+                continue
             for position, member in enumerate(structure.members):
                 check(member.unit, entry.location(f"members[{position}].unit"))
 
@@ -663,8 +675,17 @@ class _Analysis:
         if loaded is None:
             return None
         entry = loaded.declared
+        if isinstance(entry, ExternalType):
+            # DDD does not see the layout, so there is nothing to estimate - and a structure
+            # containing such a member gets no estimate either, which _reaches_external says.
+            return None
         if isinstance(entry, ScalarType):
             return entry.datatype.size
+        if self._reaches_external(name, set()):
+            # One unknown member unknowns the whole: the strictest of the others is not an
+            # estimate of the structure's need, only of part of it, and a warning built on
+            # that would blame a section for a number the description never stated.
+            return None
         strictest = 1
         for member in entry.members:
             if member.datatype is not None:
@@ -675,6 +696,22 @@ class _Analysis:
             if nested is not None:
                 strictest = max(strictest, nested)
         return strictest
+
+    def _reaches_external(self, name: str, seen: set[str]) -> bool:
+        """Whether a variable of that type contains an external member, however deeply.
+
+        A cycle is not this walk's business - it is reported as ``type-cycle`` - so a name
+        already seen is simply not followed again, exactly as in :meth:`_members_resolve`.
+        """
+        if name in seen:
+            return False
+        seen.add(name)
+        entry = self._types.get(name)
+        if entry is None:
+            return False
+        if entry.external is not None:
+            return True
+        return any(self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry))
 
     def _check_types(self) -> None:
         """Every nested structure is declared, and no structure contains itself.
@@ -694,6 +731,7 @@ class _Analysis:
                 )
             self._check_member_names(entry)
             self._check_member_dimensions(entry)
+            self._check_opaque_members(entry)
             self._register_member_enums(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
@@ -756,6 +794,9 @@ class _Analysis:
                 )
                 self._poisoned_types.add(entry.name)
             return
+        if not isinstance(declared, StructType):
+            # An external type states no datatype and no conversion: nothing to derive.
+            return
         for index, member in enumerate(declared.members):
             if member.datatype is None:
                 continue
@@ -810,6 +851,31 @@ class _Analysis:
                         entry.location(f"members[{position}].dimensions[{index}]"),
                     )
                     self._poisoned_types.add(entry.name)
+
+    def _check_opaque_members(self, entry: LoadedType) -> None:
+        """A member naming an external type is opaque storage, so its ``a2l`` block is refused.
+
+        The contract already refuses ``unit``, ``conversion`` and ``limits`` beside any
+        ``typename``; the ``a2l`` block is legal beside a scalar type - presentation stays
+        the member's own - which is why the refusal has to live here, where the registry says
+        which kind of type the name refers to. No record exists for the block to shape: an
+        opaque member reaches no a2l at all, because the format cannot describe storage
+        whose layout DDD does not know.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for position, member in enumerate(structure.members):
+            named = self._member_external(member)
+            if named is None or "a2l" not in member.model_fields_set:
+                continue
+            self._bag.add(
+                "schema",
+                f"member '{member.name}' of structure '{entry.name}' names the external type "
+                f"'{named.name}', which DDD cannot see into: the member reaches no a2l, so "
+                f"there is no record for the 'a2l' block to shape",
+                entry.location(f"members[{position}].a2l"),
+            )
 
     def _check_member_names(self, entry: LoadedType) -> None:
         """Every member of a structure becomes a c identifier in the generated types header.
@@ -1062,6 +1128,19 @@ class _Analysis:
             )
             return None
         entry = declared.declared
+        if isinstance(entry, ExternalType):
+            # The same family of refusal a structure gets for a kind that does not fit: the
+            # type is perfectly good, and the use made of it is not. DDD knows neither the
+            # layout nor the meaning of an external type, so a whole variable of one is a
+            # definition the checks could say nothing about.
+            self._bag.add(
+                "type-kind",
+                f"'{ref.name}' is declared as '{named}', but that is an external type, whose "
+                f"layout and meaning DDD does not know; only a structure member may name one",
+                ref.location("definition"),
+                notes=[("declared here", declared.location())],
+            )
+            return None
         if isinstance(entry, StructType):
             if named in self._poisoned_types:
                 # The cycle, the unknown member type or the refused conversion is already
@@ -1628,6 +1707,11 @@ class _Analysis:
         array of values is left whole: the a2l describes that with a ``MATRIX_DIM``.
         """
         for member in structure.members:
+            if self._member_external(member) is not None:
+                # Opaque storage: the member reaches the generated structure verbatim and
+                # nothing else. DDD knows neither its layout nor its meaning, so there is no
+                # leaf to resolve and nothing for the a2l to describe.
+                continue
             here = f"{path}.{member.name}"
             nested = self._member_nested_structure(member)
             if nested is None:

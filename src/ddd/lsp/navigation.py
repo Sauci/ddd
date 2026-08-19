@@ -54,6 +54,8 @@ _WITHIN_DECLARATION: Final = re.compile(r"^component\.interface\[\d+\]")
 """Anywhere inside one declaration, however deep - the prefix names the declaration."""
 _TYPE_ENTRIES: Final = re.compile(r"^(?:component\.)?types\[")
 """Inside a type entry, in either of its homes: a types file, or a component's own list."""
+_TYPE_ENTRY: Final = re.compile(r"^(?:component\.)?types\[\d+\]")
+"""One type entry, the prefix naming it; what a question about the whole entry starts from."""
 _CONSTANT_ENTRIES: Final = re.compile(r"^(?:component\.)?constants\[")
 """Inside a constant entry, in a constants file or in a component's own list."""
 _INCLUDES: Final = "project.includes["
@@ -270,6 +272,25 @@ def constant_at(document: Document, pointer: str) -> str | None:
     if _DIMENSION_KEY.match(_key(pointer)) or _CONSTANT_ENTRIES.match(pointer):
         return value
     return None
+
+
+def type_at(document: Document, pointer: str) -> str | None:
+    """The declared type the cursor is about, if it is about one.
+
+    Two positions answer: a ``typename`` value, wherever it is written - on a declaration or
+    on a structure member - and anywhere inside a type entry, which is about the type it
+    declares from its opening brace on, exactly as a declaration is about its object. Whether
+    the name is actually declared is the caller's question; an unknown one simply resolves to
+    nothing, the way an unknown constant does.
+    """
+    value = document.value_at(pointer)
+    if isinstance(value, str) and _key(pointer) == "typename":
+        return value
+    entry = _TYPE_ENTRY.match(pointer)
+    if entry is None:
+        return None
+    name = document.value_at(f"{entry.group()}.name")
+    return name if isinstance(name, str) else None
 
 
 def subject_at(document: Document, pointer: str) -> str | None:

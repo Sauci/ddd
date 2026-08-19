@@ -1,9 +1,10 @@
 Type description
 ================
 
-A ``types`` file declares the types a project names. There are two of them: a **structure**,
-which lays several values out in one c object, and a **scalar type**, which fixes what one
-number means and says nothing about where it is stored. A declared type has two possible
+A ``types`` file declares the types a project names. There are three of them: a **structure**,
+which lays several values out in one c object, a **scalar type**, which fixes what one
+number means and says nothing about where it is stored, and an **external type**, which names
+a c type that a hand written header defines and DDD does not. A declared type has two possible
 homes, and the entries are the same in both: the standalone file this page describes, and
 the ``types`` list a :doc:`component <component>` may carry for the types it publishes.
 The choice between them is ownership, not visibility - either home puts the name in the
@@ -56,8 +57,8 @@ The file is listed in the ``includes`` of a project, next to its components:
    { "project": { "name": "StructuredDevice", "includes": ["types.ddd.json", "sensing.ddd.json", "monitoring.ddd.json"] } }
 
 ``examples/structures`` is exactly that, ready to run: a types file with those two entries and
-three more, a component that declares variables of them, and a second component that reads the
-structured output, so the interface has its two sides:
+four more - an external type among them - a component that declares variables of them, and a
+second component that reads the structured output, so the interface has its two sides:
 
 .. code-block:: text
 
@@ -75,11 +76,11 @@ component has instantiated, and validating the file against the published schema
    examples/structures/types.ddd.json: error[file-kind]: this is a structured datatype description; list it in the 'includes' of the project that uses it instead of analysing it on its own
    1 error
 
-Two kinds of entry
-------------------
+Three kinds of entry
+--------------------
 
-Every entry says which of the two it is, in a required ``type`` key, and that key decides which
-of the others the entry may carry:
+Every entry says which of the three it is, in a required ``type`` key, and that key decides
+which of the others the entry may carry:
 
 .. list-table::
    :header-rows: 1
@@ -92,9 +93,12 @@ of the others the entry may carry:
        ``limits`` that go with it.
    * - ``struct``
      - a name for a layout: the ``members``, in the order the generated c declares them.
+   * - ``external``
+     - a name for a c type DDD does not declare: the ``header`` that defines it, and nothing
+       else, because DDD knows neither its layout nor its meaning.
 
-Both carry a ``name`` and an optional ``description``, and nothing else is shared, because
-nothing else means the same thing to both. Which of the two an entry is, is stated rather than
+All three carry a ``name`` and an optional ``description``, and nothing else is shared, because
+nothing else means the same thing to each. Which of the three an entry is, is stated rather than
 inferred from the keys that happen to be present, for the reason the member shapes below give
 as well: a file that omits a key by mistake should be told which shape it failed to describe
 instead of silently becoming another one. An entry with no ``type`` is therefore refused where
@@ -325,6 +329,82 @@ writes ``0x00000000`` into the a2l until a build tells it otherwise, and ``--add
 the answer keyed on the access path of each member. A predicted offset would be indistinguishable
 from a measured one and wrong on the first target whose alignment differs.
 
+External types
+--------------
+
+An ``external`` entry names a c type that DDD does not declare - a driver's status word, an
+operating system's handle - together with the header that defines it. The point is precisely
+that there is no second definition: the vendor's header already owns the layout, and a copy of
+it in the description would drift.
+
+.. code-block:: json
+
+   {
+     "type": "external",
+     "name": "DriverStatus_t",
+     "description": "The raw state of the vendor's sensor driver, as its own header defines it",
+     "header": "driver_status.h"
+   }
+
+``header`` is spelled exactly the way the generated inclusion writes it: ``my_driver.h`` for
+the quoted form, ``<os_types.h>`` for the angle form, a subdirectory path such as
+``drivers/status.h`` in either. The ``name`` follows the rules of every declared type - it
+cannot spell a base datatype, it shares the project wide namespace, and ``duplicate-type``,
+``reserved-identifier`` and ``name-collision`` reach it unchanged.
+
+Only a structure **member** may name an external type, and such a member is opaque storage: it
+reaches the generated structure verbatim, may carry ``dimensions``, and states nothing about
+meaning, because DDD does not check meaning it cannot see. ``unit``, ``conversion`` and
+``limits`` are refused as on any member that names a declared type, and the ``a2l`` block is
+refused too, because no a2l record exists for it to shape:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   types.ddd.json#types[1].members[0]: error[schema]: Value error, 'DriverStatus_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'status', 'member': 'value', 'typename': 'Driver...)
+   1 error
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   types.ddd.json#types[1].members[0].a2l: error[schema]: member 'status' of structure 'Inlet_t' names the external type 'DriverStatus_t', which DDD cannot see into: the member reaches no a2l, so there is no record for the 'a2l' block to shape
+   1 error
+
+A whole *variable* of an external type is refused as ``type-kind``, for the reason the check
+exists: DDD knows neither the layout nor the meaning, so a definition of one would be a
+declaration the checks could say nothing about:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json
+   sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'DriverWord' is declared as 'DriverStatus_t', but that is an external type, whose layout and meaning DDD does not know; only a structure member may name one
+       note: types.ddd.json#types[0]: declared here
+   1 error
+
+DDD generates no typedef for an external type; what it generates is the include. The headers
+of the external types in use reach ``ddd_types.h`` after the standard includes, deduplicated
+and sorted by spelling, quoted or angled exactly as the entry spells them, so that a structure
+whose member comes from a hand written header compiles without the template being edited.
+``examples/structures`` declares ``DriverStatus_t`` and ships the little header beside the
+project, and its generated types header opens like this:
+
+.. code-block:: c
+
+   #include <stdint.h>
+
+   /* headers defining the external types */
+   #include "driver_status.h"
+
+Three consequences follow from the layout being unknown, and all three are silences rather
+than findings. The member reaches **no a2l** - the format cannot describe storage whose
+layout DDD does not know - exactly as a ``bits`` member reaches none. A structure containing
+such a member gets **no section-alignment estimate**, because the strictest of the *other*
+members would be an estimate of part of the structure dressed up as the whole. And the member
+contributes **no leaf**: it does not appear in ``ddd list``, in the dictionary's ``leaves``,
+or in a delivery comparison, because there is no datatype, unit or range to compare. The
+dictionary still records the member itself, name, external type and header included, so a
+generator consuming the dump never has to resolve the name a second time.
+
 A variable of a declared type
 -----------------------------
 
@@ -347,8 +427,9 @@ always was - the scope, the kind, the description, ``volatile``:
 
 The structures reach ``ddd_types.h``, each after every structure it nests, because c needs the
 nested one complete first and a template has to be able to write them out in the order it is
-given them. A member that names a scalar type is declared with that type's storage, and a
-member that names a structure is declared with the structure:
+given them. A member that names a scalar type is declared with that type's storage, a member
+that names a structure is declared with the structure, and a member that names an external
+type is declared with the external name verbatim, the include above making it compile:
 
 .. code-block:: c
 
@@ -372,6 +453,7 @@ member that names a structure is declared with the structure:
    {
        Sample_t latest; /**< The most recent reading */
        Status_t status; /**< The flags of this sensor */
+       DriverStatus_t driver; /**< Raw driver state, kept verbatim for the vendor's own diagnosis code */
        uint16_t history[8]; /**< The last eight readings, oldest first */
    } Sensor_t;
 
@@ -447,7 +529,9 @@ the kind is the variable's and every leaf of one variable has it:
    claim nothing. Both are wrong answers dressed up as output, so the member waits for a build
    that can say. Everything else about it is generated as usual - the c declaration, the width,
    the limits derived from that width - and ``Status_t`` in the example is therefore fully
-   described in ``ddd_types.h`` and absent from ``StructuredDevice.a2l``.
+   described in ``ddd_types.h`` and absent from ``StructuredDevice.a2l``. A member of an
+   external type reaches no a2l either, for a reason one step earlier: the format cannot
+   describe storage whose layout DDD does not know.
 
 Checks over the types
 ---------------------
@@ -473,8 +557,9 @@ well. All six are errors.
    * - ``type-kind``
      - a declared type is used where its shape does not fit - a structure named by a ``curve``,
        a ``map``, an ``axis`` or a ``value_block``, all of which refer to other objects or are
-       an array of one datatype, or a structured declaration carrying an ``init``, since the
-       initial value of a structure is written by the code that starts it.
+       an array of one datatype, a structured declaration carrying an ``init``, since the
+       initial value of a structure is written by the code that starts it, or a declaration
+       naming an external type, which only a structure member may do.
    * - ``type-cycle``
      - structures nest each other, directly or through others. A structure that contains itself
        has no size at all, and the finding names the chain because that says which member to

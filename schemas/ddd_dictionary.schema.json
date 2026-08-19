@@ -725,7 +725,7 @@
             }
           ],
           "default": null,
-          "description": "Storage of the member when it is a base one; ``None`` when it names a structure."
+          "description": "Storage of the member when it is a base one; ``None`` when it names a declared type."
         },
         "type": {
           "anyOf": [
@@ -739,6 +739,32 @@
           "default": null,
           "description": "Name of the structure this member is, when it is one; ``None`` when it is a datatype.",
           "title": "Type"
+        },
+        "external": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the external type this member is, when it is one; ``None`` otherwise.\n\nAn external type is one DDD does not declare - a hand written header defines it - so the\nmember is opaque storage: it appears in the generated structure verbatim, spelled with\nthis name, and contributes no leaf, because DDD knows neither its layout nor its meaning.",
+          "title": "External"
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The header defining the external type, spelled the way the generated inclusion writes\nit: ``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form.  Stated\nexactly when ``external`` is, and carried on the member so a consumer of the dictionary\nnever has to resolve the type name a second time.",
+          "title": "Header"
         },
         "dimensions": {
           "default": [],

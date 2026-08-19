@@ -266,6 +266,7 @@
               "items": {
                 "discriminator": {
                   "mapping": {
+                    "external": "#/$defs/ExternalType",
                     "scalar": "#/$defs/ScalarType",
                     "struct": "#/$defs/StructType"
                   },
@@ -277,6 +278,9 @@
                   },
                   {
                     "$ref": "#/$defs/ScalarType"
+                  },
+                  {
+                    "$ref": "#/$defs/ExternalType"
                   }
                 ]
               },
@@ -665,6 +669,45 @@
         "value"
       ],
       "title": "Enumerator",
+      "type": "object"
+    },
+    "ExternalType": {
+      "additionalProperties": false,
+      "description": "A name for a c type that DDD does not declare: a hand written header defines it.\n\nDDD generates no typedef for it and knows neither its layout nor its meaning - which is\nthe point: a driver's status word or an operating system's handle already has one\nauthoritative definition, and a copy of it in the description would drift.  Only a\nstructure member may name one, as opaque storage that reaches the generated structure\nverbatim; such a member states no unit, conversion or limits, because DDD does not check\nmeaning it cannot see.",
+      "properties": {
+        "type": {
+          "const": "external",
+          "description": "Says this entry names an external type rather than declaring one of DDD's own.",
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "The type's c identifier, as the defining header spells it.\n\nEvery type of a project needs a distinct name, and the rules are those of the declared\ntypes: it cannot read as a base datatype, and it shares the project wide namespace with\nthe structures and the scalars.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text describing what the type is, offered to the c templates.",
+          "title": "Description",
+          "type": "string"
+        },
+        "header": {
+          "description": "The header that defines the type, spelled the way the generated inclusion writes it.\n\n``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form; a subdirectory\npath such as ``drivers/status.h`` is allowed in either.",
+          "minLength": 1,
+          "title": "Header",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "header"
+      ],
+      "title": "ExternalType",
       "type": "object"
     },
     "IdentityConversion": {
@@ -1145,7 +1188,7 @@
             }
           ],
           "default": null,
-          "description": "Name of a declared type, stated instead of ``datatype``.\n\nA ``value`` member may name a structure, which nests it, or a scalar type, which fixes what\nits number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no\nroom for a structure, and a scalar type would carry limits the width contradicts.",
+          "description": "Name of a declared type, stated instead of ``datatype``.\n\nA ``value`` member may name a structure, which nests it, a scalar type, which fixes what\nits number means, or an external type, which makes it opaque storage a hand written header\ndefines.  A ``bits`` member states a base integer ``datatype``: a bitfield has no room for\na structure, and a scalar type would carry limits the width contradicts.",
           "title": "Typename"
         },
         "dimensions": {

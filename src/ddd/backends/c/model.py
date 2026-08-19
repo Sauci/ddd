@@ -18,6 +18,7 @@ from ddd.ir import (
     DataDictionary,
     ResolvedComponent,
     ResolvedInstance,
+    ResolvedMember,
     ResolvedObject,
     ResolvedStruct,
 )
@@ -222,6 +223,16 @@ class CodeModel:
     headers: tuple[ComponentHeaderView, ...]
     needs_stdint: bool
     needs_stdbool: bool
+    external_includes: tuple[str, ...] = ()
+    """The headers of the external types in use, deduplicated and ready to emit.
+
+    One entry per distinct header named by an external member of any structure of the
+    project, spelled the way the ``#include`` line wants it: ``"my_driver.h"`` with the
+    quotes for the quoted form, ``<os_types.h>`` as written for the angle form. Sorted by
+    the authored spelling, so the output is deterministic; empty when no structure has an
+    external member. The example templates emit them in the types header, after the
+    standard includes and before the first structure that needs them.
+    """
 
     def guard(self, *parts: str) -> str:
         """An include guard built out of ``parts``, e.g. ``model.guard('ddd', 'globals')``.
@@ -260,9 +271,11 @@ def _section_groups(
         for member in entry.members:
             if member.datatype is not None:
                 strictest = max(strictest, member.datatype.size)
-            else:
-                assert member.type is not None
+            elif member.type is not None:
                 strictest = max(strictest, alignment(member.type))
+            # An external member's alignment is unknown, so it contributes nothing to this
+            # ordering; the order stays deterministic, which is all the packing heuristic
+            # promises - the compiler's word on the real layout is final either way.
         return strictest
 
     def needed(entry: ResolvedObject | ResolvedInstance) -> int:
@@ -337,6 +350,28 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         headers=tuple(_header(component, views, options) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
         needs_stdbool=needs_stdbool(dictionary.datatypes),
+        external_includes=_external_includes(dictionary),
+    )
+
+
+def _external_includes(dictionary: DataDictionary) -> tuple[str, ...]:
+    """The distinct external-type headers of the project, in the emitted spelling.
+
+    Deduplicated by the authored spelling and sorted by it, so that two external types
+    sharing one header cost one include line and the order never depends on which structure
+    happened to name one first. The quoted form gains its quotes here - the description
+    spells the name bare - and the angle form passes through as written.
+    """
+    spellings = sorted(
+        {
+            member.header
+            for structure in dictionary.types
+            for member in structure.members
+            if member.header is not None
+        }
+    )
+    return tuple(
+        spelling if spelling.startswith("<") else f'"{spelling}"' for spelling in spellings
     )
 
 
@@ -364,9 +399,7 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
         members=tuple(
             MemberView(
                 name=member.name,
-                # One of the two is always set: a member is spelled with a base datatype or it
-                # is another structure, and the analysis has already worked out which.
-                c_type=C_TYPE[member.datatype] if member.datatype is not None else str(member.type),
+                c_type=_member_type(member),
                 array_suffix=declarator_suffix(member.dimensions),
                 bits=member.bits,
                 comment=sanitize_comment(member.description) or None,
@@ -374,6 +407,21 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
             for member in entry.members
         ),
     )
+
+
+def _member_type(member: ResolvedMember) -> str:
+    """The c spelling of a member's type: a base datatype, a structure, or an external name.
+
+    An external one is spelled verbatim - the header the types header includes is what
+    defines it. The fallback through ``str`` is for a forced generation only: a member whose
+    type resolved to nothing has been reported already, and ``--force`` writes artefacts
+    around it rather than crashing over it.
+    """
+    if member.datatype is not None:
+        return C_TYPE[member.datatype]
+    if member.external is not None:
+        return member.external
+    return str(member.type)
 
 
 def _group(

@@ -146,7 +146,7 @@ run.
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
 | **producer** | the component that owns a data object; its declaration is the authoritative one |
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
-| **declared type** | a scalar or structure declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where storage is stated |
+| **declared type** | a scalar, structure or external type declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where storage is stated |
 | **constant** | a named integer declared by a constants file ([section 3.9](#39-constant-vocabulary)); a shape names it where it would state a number |
 | **access path** | the C expression that reads a member of a structured object, for example `Inlet.cell[2].raw`; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
@@ -605,7 +605,9 @@ defaults, which is what makes the vocabulary adoptable gradually.
 Two checks tie placement to what the description already says. A measurement is written by
 the software, so placing one in a `read-only` section is `section-access`. An object whose
 datatype needs stricter alignment than its section guarantees is `section-alignment`; for a
-structured object the need is estimated as the strictest of its members' datatypes, and the
+structured object the need is estimated as the strictest of its members' datatypes, a
+structure containing a member of an external type getting no estimate, because that
+member's alignment is unknown, and the
 compiler's word is final, because reading the real layout back is what the address
 information of [section 6](#6-address-information) is for.
 
@@ -669,7 +671,7 @@ project ([section 3.1](#31-project-description)) like a component file, and only
 handed to the tool as the root of a run, it is refused, with a hint that it belongs in a
 project's `includes`. It is recognised by its top level key: `types`, a non-empty list of
 entries (`schema`),
-each stating its `type`, either `scalar` or `struct`.
+each stating its `type`: `scalar`, `struct` or `external`.
 
 ```json
 {
@@ -682,11 +684,17 @@ each stating its `type`, either `scalar` or `struct`.
       "conversion": { "kind": "linear", "factor": 0.1, "offset": -40.0 }
     },
     {
+      "type": "external",
+      "name": "DriverStatus_t",
+      "header": "my_driver.h"
+    },
+    {
       "type": "struct",
       "name": "Inlet_t",
       "members": [
         { "name": "raw", "member": "value", "datatype": "uint16", "conversion": {}, "dimensions": [4] },
         { "name": "latest", "member": "value", "typename": "Temperature_t" },
+        { "name": "status", "member": "value", "typename": "DriverStatus_t" },
         { "name": "ready", "member": "bits", "datatype": "uint8", "conversion": {}, "bits": 2 }
       ]
     }
@@ -709,9 +717,21 @@ each stating its `type`, either `scalar` or `struct`.
   base integer `datatype` (a declared type carries no bitfield) and a width (`bits`,
   required there) of at least one bit and at most what that datatype holds; a `bits`
   member takes no `dimensions`.
+- An **external** type names a C type that DDD does not declare: `name` (required) is the
+  type's C identifier, and `header` (required) is the header that defines it, spelled as
+  the generated `#include` writes it, `"my_driver.h"` for the quoted form and
+  `"<os_types.h>"` for the angle form; `description` is optional. DDD generates no typedef
+  for an external type and knows neither its layout nor its meaning: only a structure
+  member **may** name it, and a definition naming one is `type-kind`.
 
 Two entries of one file **must not** share a name (`schema`); the same name declared by
 two files is `duplicate-type` ([section 4](#4-consistency-checks)).
+
+A member naming an external type is opaque storage: it **must not** state `unit`,
+`conversion`, `limits` or an `a2l` block (`schema`), because DDD does not check meaning it
+cannot see, and no A2L record exists for the block to shape. It **may** carry
+`dimensions`. The member reaches the generated structure verbatim, through the header the
+type names.
 
 A member says what its bytes mean as well as where they are: it carries `unit`,
 `conversion` and `limits` of its own, or it names a scalar type that fixes them, never
@@ -1056,7 +1076,11 @@ compiles, and re-types the helper; the cast that would silence it is itself refu
 warning set containing `-Wcast-qual`. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
-every declaration; the example templates emit each constant as a `#define`.
+every declaration; the example templates emit each constant as a `#define`. The headers
+of the external types in use ([section 3.7](#37-type-description)) are offered too,
+deduplicated and in a fixed order, and the example templates emit them as `#include`
+lines in the types header, so that a structure whose member comes from a hand written
+header compiles without the template being edited.
 
 The example templates generate the definitions into one file per project and the
 declarations into one header per component, and the build integration of
@@ -1173,7 +1197,9 @@ object per value-holding member, named by its C access path, for example
 structures is expanded element by element instead, one set of members per `[index]`.
 Members use the ordinary per-datatype `RECORD_LAYOUT`, the structure itself getting no
 record of its own, and the
-component's `GROUP` references the member paths. A `bits` member reaches no A2L at all:
+component's `GROUP` references the member paths. A member of an external type
+([section 3.7](#37-type-description)) reaches no A2L: the format cannot describe storage
+whose layout DDD does not know. A `bits` member reaches no A2L at all:
 `SYMBOL_LINK` can carry a byte offset but not a bit position, so a bitfield waits for a
 build to report both the word and the bits *(planned)*.
 
@@ -1287,6 +1313,12 @@ The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for
 extra generation dependencies, and `NO_PROPAGATE_HEADERS` to stop the generated headers
 being linked into every registered component.
+
+In the collected mode the generated definition sources are compiled with the interface
+include directories of every registered target, include paths and not link edges, so that
+a header an external type names ([section 3.7](#37-type-description)) is found without
+further wiring; `LINK_LIBRARIES` remains for the hand written project mode and for
+headers the link graph does not carry.
 
 ### 7.2 Editor integration
 

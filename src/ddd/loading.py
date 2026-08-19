@@ -20,6 +20,7 @@ from ddd.models import (
     ConstantDeclaration,
     ConstantsFile,
     Conversion,
+    ExternalType,
     Project,
     ProjectFile,
     SectionDeclaration,
@@ -156,8 +157,13 @@ class LoadedType:
 
     @property
     def structure(self) -> StructType | None:
-        """The entry as a structure, or nothing if it names a scalar."""
+        """The entry as a structure, or nothing if it names a scalar or an external type."""
         return self.declared if isinstance(self.declared, StructType) else None
+
+    @property
+    def external(self) -> ExternalType | None:
+        """The entry as an external type, or nothing if DDD declares this type itself."""
+        return self.declared if isinstance(self.declared, ExternalType) else None
 
     def location(self, suffix: str = "") -> Location:
         pointer = f"{self.container}[{self.index}]"

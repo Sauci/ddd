@@ -477,6 +477,20 @@ function(ddd_generate image)
     # image: a static library would drop the members whose symbols nobody references, and a measurement written only
     # by the calibration tool has no referencing code at all.
     add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
+    # In the collected mode the definition file is compiled with the interface include directories of every
+    # registered component - include paths only, never link edges - so that a header an external type names is
+    # found without further wiring: the component that publishes the type already publishes the directory its
+    # header lives in. The plain $<TARGET_PROPERTY:...> is exactly right here, because a component without
+    # interface include directories expands to an empty entry, which INCLUDE_DIRECTORIES drops at generate time.
+    # LINK_LIBRARIES remains for the hand written PROJECT mode and for headers the link graph does not carry.
+    if(NOT arg_PROJECT)
+        get_property(ddd_registered_components GLOBAL PROPERTY DDD_COMPONENT_TARGETS)
+        list(REMOVE_DUPLICATES ddd_registered_components)
+        foreach(component IN LISTS ddd_registered_components)
+            target_include_directories(${image_stem}_ddd_globals PRIVATE
+                                       "$<TARGET_PROPERTY:${component},INTERFACE_INCLUDE_DIRECTORIES>")
+        endforeach()
+    endif()
     if(arg_LINK_LIBRARIES)
         target_link_libraries(${image_stem}_ddd_globals PRIVATE ${arg_LINK_LIBRARIES})
     endif()

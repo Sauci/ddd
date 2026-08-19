@@ -31,7 +31,7 @@ from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
-from ddd.lsp.hover import describe, describe_constant, resolve
+from ddd.lsp.hover import describe, describe_constant, describe_external, resolve
 from ddd.lsp.navigation import (
     Site,
     constant_at,
@@ -42,6 +42,7 @@ from ddd.lsp.navigation import (
     rename_edits,
     rename_problem,
     subject_at,
+    type_at,
     variable_at,
     workspaces,
 )
@@ -235,18 +236,25 @@ class Server:
         pointer = document.pointer_at(params["position"])
         # A dimension spelled as a constant name is about the constant, not about the
         # object dimensioned by it - the reference wins over the declaration holding it,
-        # exactly as an axis reference does for navigation.
+        # exactly as an axis reference does for navigation. A type name answers as an
+        # external type where it is one: such a type resolves to nothing on purpose, so the
+        # dictionary cannot say what the workspace states outright - the name and the header.
         constant = constant_at(document, pointer)
+        named_type = type_at(document, pointer)
         name = subject_at(document, pointer)
-        if constant is None and name is None:
+        if constant is None and named_type is None and name is None:
             return None
-        dictionary = resolve(discover(self.root, self.build_directories), path, self.root)
+        builds = discover(self.root, self.build_directories)
         described = None
-        if dictionary is not None:
-            if constant is not None:
-                described = describe_constant(dictionary, constant)
-            if described is None and name is not None:
-                described = describe(dictionary, name)
+        if named_type is not None:
+            described = describe_external(builds, path, named_type, self.root)
+        if described is None and (constant is not None or name is not None):
+            dictionary = resolve(builds, path, self.root)
+            if dictionary is not None:
+                if constant is not None:
+                    described = describe_constant(dictionary, constant)
+                if described is None and name is not None:
+                    described = describe(dictionary, name)
         if described is None:
             return None
         return {

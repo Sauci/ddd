@@ -1,11 +1,11 @@
 """Contract for the type description file.
 
-A ``types`` file declares the types a project names: structures, and scalars that fix what a
-number means.  It is the home of the shared ones, because a type with no single owner has no
-component to live inside: the point of declaring ``Engine_t`` once is that two components can
-agree on it without either owning it.  A component may instead declare the types it publishes
-in its own description, with entries of exactly this form; either home puts the name in the
-same project wide namespace.
+A ``types`` file declares the types a project names: structures, scalars that fix what a
+number means, and external types that a hand written header defines.  It is the home of the
+shared ones, because a type with no single owner has no component to live inside: the point
+of declaring ``Engine_t`` once is that two components can agree on it without either owning
+it.  A component may instead declare the types it publishes in its own description, with
+entries of exactly this form; either home puts the name in the same project wide namespace.
 
 **Two keys name the storage, everywhere.**  ``datatype`` is one of the base datatypes and
 nothing else; ``typename`` is the name of a type declared here.  Exactly one of the two is
@@ -46,7 +46,15 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StringConstraints,
+    model_validator,
+)
 
 from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
 from ddd.models.conversion import Conversion, physical_range
@@ -122,9 +130,10 @@ class Member(BaseModel):
     typename: TypeName | None = None
     """Name of a declared type, stated instead of ``datatype``.
 
-    A ``value`` member may name a structure, which nests it, or a scalar type, which fixes what
-    its number means.  A ``bits`` member states a base integer ``datatype``: a bitfield has no
-    room for a structure, and a scalar type would carry limits the width contradicts.
+    A ``value`` member may name a structure, which nests it, a scalar type, which fixes what
+    its number means, or an external type, which makes it opaque storage a hand written header
+    defines.  A ``bits`` member states a base integer ``datatype``: a bitfield has no room for
+    a structure, and a scalar type would carry limits the width contradicts.
     """
 
     dimensions: tuple[Dimension, ...] = ()
@@ -349,7 +358,88 @@ class ScalarType(BaseModel):
         return self
 
 
-AnyType = Annotated[StructType | ScalarType, Field(discriminator="type")]
+def _valid_include_spelling(value: str) -> str:
+    """Refuse a header spelling that cannot survive the trip into the generated inclusion.
+
+    The value is written out exactly as stated - ``my_driver.h`` in the quoted form,
+    ``<os_types.h>`` in the angle form, a subdirectory path in either - so a spelling that
+    would unbalance the line is refused where it is written rather than handed to a compiler
+    as somebody else's problem: whitespace, a quote of its own, an angle form that never
+    closes, or angle brackets in the middle of a quoted name.
+    """
+    if any(character.isspace() for character in value):
+        msg = "a header spelling cannot contain whitespace"
+        raise ValueError(msg)
+    if '"' in value:
+        msg = (
+            "a header spelling carries no quotes of its own; write the name bare for the "
+            "quoted form, or wrap it in '<' and '>' for the angle form"
+        )
+        raise ValueError(msg)
+    if value.startswith("<"):
+        inner = value[1:-1] if value.endswith(">") else ""
+        if not inner or "<" in inner or ">" in inner:
+            msg = (
+                f"'{value}' is not a valid angle form header; it is spelled '<name>' with "
+                f"the name between exactly one pair of angle brackets"
+            )
+            raise ValueError(msg)
+        return value
+    if "<" in value or ">" in value:
+        msg = f"'{value}' mixes the quoted and the angle form; angle brackets wrap the whole name"
+        raise ValueError(msg)
+    return value
+
+
+IncludeSpelling = Annotated[
+    str,
+    StringConstraints(min_length=1),
+    AfterValidator(_valid_include_spelling),
+]
+"""A header name spelled the way the generated inclusion writes it.
+
+``my_driver.h`` for the quoted form and ``<os_types.h>`` for the angle form, subdirectory
+paths allowed in both.  The spelling is data about the project's own headers, carried through
+verbatim; which form to use is the project's convention, exactly as it is in hand written c.
+"""
+
+
+class ExternalType(BaseModel):
+    """A name for a c type that DDD does not declare: a hand written header defines it.
+
+    DDD generates no typedef for it and knows neither its layout nor its meaning - which is
+    the point: a driver's status word or an operating system's handle already has one
+    authoritative definition, and a copy of it in the description would drift.  Only a
+    structure member may name one, as opaque storage that reaches the generated structure
+    verbatim; such a member states no unit, conversion or limits, because DDD does not check
+    meaning it cannot see.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+
+    type: Literal["external"]
+    """Says this entry names an external type rather than declaring one of DDD's own."""
+
+    name: TypeName
+    """The type's c identifier, as the defining header spells it.
+
+    Every type of a project needs a distinct name, and the rules are those of the declared
+    types: it cannot read as a base datatype, and it shares the project wide namespace with
+    the structures and the scalars.
+    """
+
+    description: str = ""
+    """Free text describing what the type is, offered to the c templates."""
+
+    header: IncludeSpelling
+    """The header that defines the type, spelled the way the generated inclusion writes it.
+
+    ``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form; a subdirectory
+    path such as ``drivers/status.h`` is allowed in either.
+    """
+
+
+AnyType = Annotated[StructType | ScalarType | ExternalType, Field(discriminator="type")]
 """Any entry of a types file, told apart by its required ``type``.
 
 Discriminated on a stated key rather than inferred from which other keys are present, for the
@@ -358,7 +448,7 @@ shape it failed to describe, not silently become another one.
 """
 
 
-def check_distinct_type_names(entries: tuple[StructType | ScalarType, ...]) -> None:
+def check_distinct_type_names(entries: tuple[StructType | ScalarType | ExternalType, ...]) -> None:
     """Two entries of one list must not share a name.
 
     One rule for the two places a list of type entries can be written - a types file, and the

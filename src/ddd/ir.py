@@ -199,10 +199,24 @@ class ResolvedMember(_Frozen):
     """What the member is, for a comment beside its declaration."""
 
     datatype: Datatype | None = None
-    """Storage of the member when it is a base one; ``None`` when it names a structure."""
+    """Storage of the member when it is a base one; ``None`` when it names a declared type."""
 
     type: str | None = None
     """Name of the structure this member is, when it is one; ``None`` when it is a datatype."""
+
+    external: str | None = None
+    """Name of the external type this member is, when it is one; ``None`` otherwise.
+
+    An external type is one DDD does not declare - a hand written header defines it - so the
+    member is opaque storage: it appears in the generated structure verbatim, spelled with
+    this name, and contributes no leaf, because DDD knows neither its layout nor its meaning.
+    """
+
+    header: str | None = None
+    """The header defining the external type, spelled the way the generated inclusion writes
+    it: ``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form.  Stated
+    exactly when ``external`` is, and carried on the member so a consumer of the dictionary
+    never has to resolve the type name a second time."""
 
     dimensions: tuple[Dimension, ...] = ()
     """Array dimensions, empty for a scalar, each spelled the way the member spells it.
@@ -216,6 +230,22 @@ class ResolvedMember(_Frozen):
 
     bits: int | None = None
     """Width in bits when the member is a c bitfield; ``None`` when it is not."""
+
+    @model_validator(mode="after")
+    def _an_external_member_carries_its_header(self) -> ResolvedMember:
+        """``external`` and ``header`` travel together, and beside no other storage.
+
+        A member is spelled exactly one way - a base datatype, a structure, or an external
+        type - so an external name next to either of the others, or a header without the
+        name it defines, is a document contradicting itself.
+        """
+        if (self.external is None) != (self.header is None):
+            msg = "'external' and 'header' are stated together: the header defines the type"
+            raise ValueError(msg)
+        if self.external is not None and (self.datatype is not None or self.type is not None):
+            msg = "an external member names no 'datatype' and no 'type'; it is opaque storage"
+            raise ValueError(msg)
+        return self
 
 
 class ResolvedStruct(_Frozen):

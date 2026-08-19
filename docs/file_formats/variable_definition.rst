@@ -58,7 +58,9 @@ rather than ignored.
    * - ``typename``
      - one of the two
      - The name of a :doc:`declared type <types>`, stated instead of ``datatype``: a scalar
-       type fixes what the value means, a structure makes this a structured variable.
+       type fixes what the value means, a structure makes this a structured variable. An
+       external type cannot be named here (``type-kind``): only a structure member may name
+       one, because DDD knows neither its layout nor its meaning.
    * - ``volatile``
      - required
      - Whether the generated declaration carries the c qualifier of the same name, which

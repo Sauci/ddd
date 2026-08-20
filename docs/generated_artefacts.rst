@@ -27,7 +27,7 @@ produce, which is what every transcript below hands to ``--template-dir``:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -501,7 +501,7 @@ exit code is unaffected:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h
@@ -520,7 +520,7 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (updated)
    wrote       build/gen/ddd_globals.h (updated)
    unchanged   build/gen/ddd_types.h
@@ -546,7 +546,7 @@ than the status. Here the output directory did not exist yet, which is why every
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
    would write build/gen/ddd_globals.c (created)
    would write build/gen/ddd_globals.h (created)
    would write build/gen/ddd_types.h (created)
@@ -592,8 +592,8 @@ granularity here: a module is what a calibration tool connects to, and the compo
 image are one target, not several. ``BYTE_ORDER`` follows ``--byte-order``, which writes
 ``MSB_LAST`` for ``little`` (the default) and ``MSB_FIRST`` for ``big``; the alignment values
 are the natural alignment of each width, which is what a compiler targeting a modern core
-does unless it is told to pack. The a2l is written unless ``--no-a2l`` says otherwise, and it
-is named after the project, so ``DemoDevice`` produces ``DemoDevice.a2l``.
+does unless it is told to pack. The a2l is written by the ``a2l`` and ``all`` artefacts, and
+it is named after the project, so ``DemoDevice`` produces ``DemoDevice.a2l``.
 
 A project that declares a :doc:`constant vocabulary <file_formats/constants>` gets a
 ``MOD_PAR`` after the ``MOD_COMMON``, stating one ``SYSTEM_CONSTANT`` per declared constant
@@ -855,7 +855,7 @@ the situation rather than silently truncating:
 
 .. code-block:: text
 
-   $ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
+   $ ddd generate all cube.ddd.json -o build/gen -t templates -W unused-output=ignore
    cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
    wrote       build/gen/ddd_globals.c (created)
@@ -1060,11 +1060,11 @@ filled in:
          SYMBOL_LINK "ParameterA" 0
        /end CHARACTERISTIC
 
-This is why DDD is normally run twice per build: once before compiling, to produce the c code
-and an a2l with zero addresses, and once after linking, with the map extracted from the
-linker output, to produce the a2l that ships. The second run regenerates the c code too, and
-because that code has not changed it is not rewritten, so the second run does not invalidate
-the build it was produced from.
+This is why DDD is normally run twice per build: ``ddd generate all`` before compiling, to
+produce the c code and an a2l with zero addresses, and ``ddd generate a2l`` after linking,
+with the map extracted from the linker output, to produce the a2l that ships. The artefact
+name says what the second run is there for: it renders no c - it takes no template directory
+either - so it cannot invalidate the build it was produced from.
 
 A symbol the map does not mention keeps address 0 rather than being an error, since a map
 produced from a linker output legitimately contains only the objects that ended up in the
@@ -1073,7 +1073,7 @@ outside the range an a2l can hold, on the other hand, is refused before anything
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
    ddd: bad.json: address of 'ValueE' is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
    $ echo $?
    2

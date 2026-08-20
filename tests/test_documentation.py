@@ -62,7 +62,6 @@ class TestChecks:
         # file names contain other characters.
         unknown = {name for name in claimed if name not in CHECKS and "-" in name}
         assert unknown <= {
-            "no-a2l",
             "const-inputs",
             "dry-run",
             "address-map",

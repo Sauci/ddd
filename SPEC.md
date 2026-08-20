@@ -1069,7 +1069,7 @@ variables and calibration objects are `const`, each of them additionally `volati
 its declaration states so; a declaration that carries a condition is offered with that
 condition, so that it can be wrapped in `#if` / `#endif`; and input objects are marked
 `const` for the consumer header when the project asks for it
-(`ddd generate --const-inputs`), so that a write access does not compile. The qualifier
+(`ddd generate c --const-inputs`), so that a write access does not compile. The qualifier
 reaches the hand written code that reads the object, so a project that turns `volatile` on
 for an array finds that passing it to a helper typed for a plain `const` one no longer
 compiles, and re-types the helper; the cast that would silence it is itself refused by a
@@ -1158,7 +1158,7 @@ constants ([section 3.9](#39-constant-vocabulary)), a `MOD_PAR` stating one
 `SYSTEM_CONSTANT` per declared constant in name order. Every record spells its sizes as
 resolved numbers, because the format accepts no symbol where a `MATRIX_DIM` expects a
 count. The byte order is the build's to
-state (`ddd generate --byte-order little|big`, default little, emitted as
+state (`ddd generate a2l --byte-order little|big`, default little, emitted as
 `MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
 and a tool reading multi byte values under the wrong one misreads every value.
 
@@ -1209,7 +1209,7 @@ XCP/CCP with measurement rasters, and A2L *import* for migration and merging are
 ## 6 Address information
 
 The addresses of the generated objects are only known after linking. DDD accepts a symbol
-to address map in JSON form (`ddd generate --address-map`): one flat JSON object mapping
+to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
 each symbol to its address. The key is the C identifier of an object or, for the member of
 a structured object, its access path, for example `Inlet.cell[2].raw`, exactly as the A2L
 names it ([section 5.2](#52-a2l)). The address is a JSON number, or a string read as
@@ -1217,9 +1217,11 @@ hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit a
 32 bit `ECU_ADDRESS`. A key the project does not know is ignored, and an object the map
 does not cover keeps address `0x00000000` rather than failing the run: a map extracted from
 a linker output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK`
-lets a downstream tool resolve those it cares about. Reading the linker output directly
-(ELF/DWARF, IEEE-695) and cross-checking the linked symbols against the declarations is
-*planned*.
+lets a downstream tool resolve those it cares about. `ddd generate a2l` writes the A2L
+alone - no C is rendered and no template directory is accepted - so the post-link run
+regenerates the A2L without touching the sources the image was built from. Reading the
+linker output directly (ELF/DWARF, IEEE-695) and cross-checking the linked symbols against
+the declarations is *planned*.
 
 ## 7 Tool interface
 
@@ -1228,7 +1230,8 @@ offers at least: checking a project (`ddd check`, [section 4](#4-consistency-che
 comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 `ddd check --baseline` for both questions in one exit code;
 [section 4.1](#41-comparing-two-deliveries)); generating the artefacts (`ddd generate`,
-[section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
+the artefact named on the command line: `c`, `a2l` or `all`, each carrying only the
+options of what it produces; [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);

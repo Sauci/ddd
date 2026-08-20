@@ -132,57 +132,29 @@ def _build_parser() -> argparse.ArgumentParser:
     compare_parser.set_defaults(handler=_command_compare)
 
     generate = subparsers.add_parser(
-        "generate", help="generate the c sources and the a2l file of a project"
-    )
-    _add_common_arguments(generate)
-    generate.add_argument(
-        "-o",
-        "--output-dir",
-        type=Path,
-        required=True,
-        help="directory the generated files are written to",
-    )
-    generate.add_argument(
-        "-t",
-        "--template-dir",
-        type=Path,
-        required=True,
-        # No reStructuredText inline markup in this text: the documentation inserts every
-        # help string into a page as markup, where a lone asterisk opens an emphasis that
-        # never closes. See test_no_help_string_carries_markup_characters.
-        help=(
-            "directory holding the jinja2 templates of the c sources. Every file in it "
-            "ending in .jinja2 is rendered to a file named like the template without that "
-            "extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting with "
-            "an underscore is a helper that renders nothing on its own, and a name "
-            "containing {component} is rendered once per component. 'ddd templates-dir' "
-            "prints a set of example templates to copy from"
+        "generate",
+        help="generate the c sources and the a2l file of a project",
+        description=(
+            "Generates the artefacts of a project, each out of the same resolved data "
+            "dictionary. The artefact is part of the command, so every run states what it "
+            "produces and carries only the options of that artefact: only a run that "
+            "renders c takes a template directory, only one that writes the a2l takes an "
+            "address map. 'all' produces both in one run; 'a2l' is the run a build repeats "
+            "after linking, when the addresses are known but the c must not change."
         ),
     )
-    generate.add_argument(
-        "--const-inputs",
-        action="store_true",
-        help="declare input variables const in the consumer headers",
-    )
-    generate.add_argument("--no-a2l", action="store_true", help="do not write an a2l file")
-    generate.add_argument(
-        "--byte-order",
-        choices=[order.value for order in ByteOrder],
-        default=ByteOrder.LITTLE.value,
-        help="byte order reported in the a2l file, default: %(default)s",
-    )
-    generate.add_argument(
-        "--address-map",
-        type=Path,
-        help="json file mapping variable names to their address in the target, for the a2l file",
-    )
-    generate.add_argument(
-        "--dry-run", action="store_true", help="report what would be written, write nothing"
-    )
-    generate.add_argument(
-        "--force", action="store_true", help="generate even if the consistency check fails"
-    )
-    generate.set_defaults(handler=_command_generate)
+    # One subparser per artefact rather than steering flags on a single command: the two
+    # backends do not want the same options, and a flag pair like --no-a2l/--a2l-only would
+    # leave every run carrying the other backend's options as noise it must not use.
+    artefacts = generate.add_subparsers(dest="artefact", required=True, metavar="{c,a2l,all}")
+    for name, description, with_c, with_a2l in (
+        ("c", "render the c sources from the project's jinja2 templates", True, False),
+        ("a2l", "write the a2l file, with the addresses --address-map carries", False, True),
+        ("all", "render the c sources and write the a2l file in one run", True, True),
+    ):
+        _add_generate_arguments(
+            artefacts.add_parser(name, help=description), with_c=with_c, with_a2l=with_a2l
+        )
 
     listing = subparsers.add_parser("list", help="list the global variables of a project")
     _add_common_arguments(listing)
@@ -313,6 +285,62 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     _add_policy_arguments(parser)
 
 
+def _add_generate_arguments(
+    parser: argparse.ArgumentParser, *, with_c: bool, with_a2l: bool
+) -> None:
+    """The options of one ``generate`` artefact; only the selected backends contribute any."""
+    _add_common_arguments(parser)
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="directory the generated files are written to",
+    )
+    if with_c:
+        parser.add_argument(
+            "-t",
+            "--template-dir",
+            type=Path,
+            required=True,
+            # No reStructuredText inline markup in this text: the documentation inserts every
+            # help string into a page as markup, where a lone asterisk opens an emphasis that
+            # never closes. See test_no_help_string_carries_markup_characters.
+            help=(
+                "directory holding the jinja2 templates of the c sources. Every file in it "
+                "ending in .jinja2 is rendered to a file named like the template without that "
+                "extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting "
+                "with an underscore is a helper that renders nothing on its own, and a name "
+                "containing {component} is rendered once per component. 'ddd templates-dir' "
+                "prints a set of example templates to copy from"
+            ),
+        )
+        parser.add_argument(
+            "--const-inputs",
+            action="store_true",
+            help="declare input variables const in the consumer headers",
+        )
+    if with_a2l:
+        parser.add_argument(
+            "--byte-order",
+            choices=[order.value for order in ByteOrder],
+            default=ByteOrder.LITTLE.value,
+            help="byte order reported in the a2l file, default: %(default)s",
+        )
+        parser.add_argument(
+            "--address-map",
+            type=Path,
+            help="json file mapping variable names to their address in the target",
+        )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="report what would be written, write nothing"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="generate even if the consistency check fails"
+    )
+    parser.set_defaults(handler=_command_generate, render_c=with_c, render_a2l=with_a2l)
+
+
 def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-W",
@@ -378,10 +406,12 @@ def _command_generate(args: argparse.Namespace) -> int:
         _report(bag, args.format)
         return EXIT_FINDINGS
 
-    backends: list[Backend] = [
-        CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
-    ]
-    if not args.no_a2l:
+    backends: list[Backend] = []
+    if args.render_c:
+        backends.append(
+            CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
+        )
+    if args.render_a2l:
         backends.append(
             A2lBackend(
                 A2lOptions(

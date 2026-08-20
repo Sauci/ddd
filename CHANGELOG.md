@@ -8,6 +8,19 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
+## Unreleased
+
+* **`ddd generate` names its artefact: `c`, `a2l` or `all`.**  The artefact is part of the
+  command and each carries only the options of what it produces: `-t/--template-dir`
+  (required) and `--const-inputs` exist on `c` and `all`, `--byte-order` and
+  `--address-map` on `a2l` and `all`.  `ddd generate a2l` is the second run of a build
+  stated as such: the first run generates the c the image is built from, the linker decides
+  the addresses, and the second writes only the a2l with `--address-map` carrying them -
+  instead of re-rendering every source and reporting each unchanged.
+  **Migration:** `ddd generate PROJECT ...` becomes `ddd generate all PROJECT ...`, and
+  `--no-a2l` becomes the `c` artefact.  `ddd_generate()` in the CMake integration emits the
+  new form itself; a build calling the tool directly changes its command lines.
+
 ## 0.5.0
 
 Initial release.

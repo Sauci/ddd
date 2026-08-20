@@ -25,7 +25,7 @@ log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 log "generate  $PROJECT -> $OUTPUT ${GENFLAGS}"
 read -r -a generate_flags <<<"$GENFLAGS"
-ddd generate "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" "${generate_flags[@]}"
+ddd generate all "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" "${generate_flags[@]}"
 # The severity overrides in GENFLAGS apply here too: pointed at a single component file,
 # 'ddd list' would otherwise exit 1 on the missing producers that the generate step was
 # explicitly told to tolerate, and take the whole run down with it.

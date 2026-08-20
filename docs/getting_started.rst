@@ -264,13 +264,13 @@ not choose.
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen
-   usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
-                       -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
-                       [--byte-order {little,big}] [--address-map ADDRESS_MAP]
-                       [--dry-run] [--force]
-                       project
-   ddd generate: error: the following arguments are required: -t/--template-dir
+   $ ddd generate all thermostat.ddd.json -o gen
+   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                           [--const-inputs] [--byte-order {little,big}]
+                           [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                           project
+   ddd generate all: error: the following arguments are required: -t/--template-dir
 
 A project that has no templates yet starts from the set DDD ships as an example.
 ``ddd templates-dir`` prints where that set is installed - inside the package in a normal
@@ -307,7 +307,7 @@ given with ``-o``, which is normally somewhere in the build tree rather than in 
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen -t templates
+   $ ddd generate all thermostat.ddd.json -o gen -t templates
    wrote       gen/ddd_globals.c (created)
    wrote       gen/ddd_globals.h (created)
    wrote       gen/ddd_types.h (created)
@@ -319,7 +319,7 @@ Run it a second time without touching the description files and nothing is writt
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen -t templates
+   $ ddd generate all thermostat.ddd.json -o gen -t templates
    unchanged   gen/ddd_globals.c
    unchanged   gen/ddd_globals.h
    unchanged   gen/ddd_types.h
@@ -466,7 +466,7 @@ description files. The local parameter appears in its own section, and only here
    #endif /* DDD_COMPONENT_CONTROLLER_H */
 
 Controller can read ``CabinTemperature`` and can also write it, since the declaration in its
-header is not ``const``; ``ddd generate --const-inputs`` declares inputs ``extern const`` in the
+header is not ``const``; ``ddd generate c --const-inputs`` declares inputs ``extern const`` in the
 consumer headers instead, so that writing to a variable owned by somebody else stops compiling
 rather than being caught in review. It is opt-in because the definition in ``ddd_globals.c``
 stays non-const, which strict c calls a constraint violation even though the usual embedded
@@ -498,7 +498,7 @@ tool sees the physical values the description promised rather than raw counts:
 
 The address is ``0x00000000`` because it is not known before the link step. The ``SYMBOL_LINK``
 entry is always written, so that an address patcher can fill the addresses in after linking;
-alternatively, ``ddd generate --address-map addresses.json`` takes a symbol to address map
+alternatively, ``ddd generate a2l --address-map addresses.json`` takes a symbol to address map
 produced from the linker output and writes the real addresses straight away.
 
 When the components disagree
@@ -544,14 +544,14 @@ agreed on are worse than no sources:
 
 .. code-block:: text
 
-   $ ddd generate thermostat.ddd.json -o gen2 -t templates
+   $ ddd generate all thermostat.ddd.json -o gen2 -t templates
    components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
    1 error, 1 warning
 
 .. warning::
-   ``ddd generate --force`` generates in spite of the errors, using the producer's definition
+   ``--force`` generates in spite of the errors, using the producer's definition
    wherever the components disagree, and still exits with 1. It exists for the case where a
    developer needs the headers to keep working while a disagreement is being sorted out
    between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely

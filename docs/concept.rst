@@ -207,9 +207,10 @@ comment style, the banner, the include guards, the section headings and the name
 themselves are house style, they differ between projects, and nothing in a description file
 decides them. A generator that imposed its own would either be argued with or be worked around
 with a post-processing script, so DDD does not: the c sources are rendered from jinja2
-templates the project provides. ``ddd generate`` requires ``--template-dir`` and falls back to
-nothing, ``ddd templates-dir`` prints a working set of examples to copy into a project and
-change, and a project renames a generated file by renaming the template that produces it. Even
+templates the project provides. ``ddd generate`` requires ``--template-dir`` on every run that
+renders c and falls back to nothing, ``ddd templates-dir`` prints a working set of examples to
+copy into a project and change, and a project renames a generated file by renaming the
+template that produces it. Even
 the file names above are the example templates': ``ddd_globals.h`` is called that because a
 template is called ``ddd_globals.h.jinja2``. :doc:`templates` describes the rules in full.
 
@@ -380,7 +381,7 @@ and one header per component:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -404,23 +405,16 @@ with the addresses written in decimal or hexadecimal:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map build/addresses.json
-   unchanged   build/gen/ddd_globals.c
-   unchanged   build/gen/ddd_globals.h
-   unchanged   build/gen/ddd_types.h
-   unchanged   build/gen/Controller.h
-   unchanged   build/gen/SensorHub.h
-   unchanged   build/gen/UserInterface.h
-   unchanged   build/gen/EventLogger.h
+   $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
    wrote       build/gen/DemoDevice.a2l (updated)
 
-The second run regenerates everything but writes only what actually changed - which, since the
-declarations did not move, is the a2l alone. That property is not a convenience for the console
-output. A generated file whose content is identical is left untouched on disk, so its time
-stamp does not move and the build system does not rebuild the whole project after the address
-import. For the same reason the generated files carry no time stamp of their own, and
-regenerating from unchanged inputs produces a byte identical result, which is what makes a
-delivery reproducible.
+The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it
+renders none, so it needs no template directory, and the build the image came out of stays
+valid by construction. Rewriting a file whose content did not change is avoided in general -
+a generated file with identical content is left untouched on disk, so its time stamp does not
+move - and the generated files carry no time stamp of their own, so regenerating from
+unchanged inputs produces a byte identical result, which is what makes a delivery
+reproducible.
 
 Before the address map is applied every address in the a2l is ``0x00000000``; afterwards the
 objects named in the map carry their real address, and the ones that are not named keep zero.
@@ -445,8 +439,8 @@ have the symbol names in the file:
        collections "hand written\nc sources" as c_sources
    }
 
-   component "ddd generate" as ddd_first
-   component "ddd generate\n--address-map" as ddd_second
+   component "ddd generate all" as ddd_first
+   component "ddd generate a2l\n--address-map" as ddd_second
    component "compiler / linker" as toolchain
 
    artifact "ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component" as generated_c
@@ -481,9 +475,10 @@ reduces the whole sequence above to two calls in a CMake project.
 
 .. note::
 
-   A project that has no use for an a2l at all can pass ``--no-a2l`` and use DDD purely as the
-   owner of its global variables; a project that only wants the verdict, for instance in a
-   merge request pipeline, runs ``ddd check`` and generates nothing.
+   A project that has no use for an a2l at all runs ``ddd generate c`` and uses DDD purely as
+   the owner of its global variables; a build refreshing the a2l with the linker's addresses
+   runs ``ddd generate a2l`` and renders no c; a project that only wants the verdict, for
+   instance in a merge request pipeline, runs ``ddd check`` and generates nothing.
 
 
 How the tool is put together

@@ -76,7 +76,7 @@ PYTHONPATH=src python -m ddd --help
 ddd check    examples/demo/demo.ddd.json
 ddd list     examples/demo/demo.ddd.json
 cp -r "$(ddd templates-dir)" templates    # the c templates belong to the project: copy, then adapt
-ddd generate examples/demo/demo.ddd.json -o build/gen -t templates
+ddd generate all examples/demo/demo.ddd.json -o build/gen -t templates
 ```
 
 `ddd check` on a project with problems prints one line per finding and exits with 1:
@@ -546,7 +546,7 @@ option: every `*.jinja2` in the directory renders to a file named like it withou
 extension, a name starting with `_` is a helper that renders nothing on its own, and a name
 containing `{component}` renders once per component.  Renaming a template renames its output.
 
-With the example templates, `ddd generate -o DIR -t DIR` writes - and rewrites only what
+With the example templates, `ddd generate all -o DIR -t DIR` writes - and rewrites only what
 actually changed, so unchanged output does not trigger a rebuild:
 
 | file | from | content |
@@ -595,7 +595,10 @@ compile.  The definition in `ddd_globals.c` stays non-const, which is a constrai
 in strict c but is accepted by the usual embedded toolchains; that is why the option is
 opt-in.
 
-Useful options: `--no-a2l`, `--dry-run`
+The artefact is part of the command: `ddd generate c` renders the c sources alone,
+`ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
+build, once the linker has decided the addresses - and `ddd generate all` produces both in
+one run.  Each artefact takes only its own options.  Useful ones: `--dry-run`
 (reports what would be written and exits `0` either way, so it is not a staleness gate on
 its own), `--force` (generate despite errors - the files are written using the producing
 component's definition, but the command still reports every finding and still exits `1`),
@@ -639,7 +642,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another |
-| `ddd generate FILE -o DIR` | check and generate |
+| `ddd generate all FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |

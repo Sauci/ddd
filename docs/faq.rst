@@ -467,7 +467,7 @@ from the linker output by whatever already parses it in your build:
 
 .. code-block:: text
 
-   $ ddd generate demo.ddd.json -o gen -t templates --address-map addresses.json
+   $ ddd generate all demo.ddd.json -o gen -t templates --address-map addresses.json
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
          UWORD CM_LIN_HZ 0 0 0 8000
@@ -482,7 +482,7 @@ wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:
 
 .. code-block:: text
 
-   $ ddd generate demo.ddd.json -o gen -t templates --address-map bad.json
+   $ ddd generate all demo.ddd.json -o gen -t templates --address-map bad.json
    ddd: bad.json: address of 'ValueE' is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 
 The other route needs no map at all: ``SYMBOL_LINK`` is written for every object, always, so
@@ -538,7 +538,7 @@ only a 1.7 reader understands, and says so:
 
 .. code-block:: text
 
-   $ ddd generate buffers.ddd.json -o gen -t templates
+   $ ddd generate all buffers.ddd.json -o gen -t templates
    buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
    1 warning
    wrote       gen/ddd_globals.c (created)
@@ -578,14 +578,14 @@ shipping a calibration description for variables the software does not contain.
 
 .. code-block:: text
 
-   $ ddd generate sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
+   $ ddd generate all sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
    wrote       build/sensor/ddd_globals.c (created)
    wrote       build/sensor/ddd_globals.h (created)
    wrote       build/sensor/ddd_types.h (created)
    wrote       build/sensor/SensorHub.h (created)
    wrote       build/sensor/SensorOnly.a2l (created)
 
-   $ ddd generate full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
+   $ ddd generate all full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
    wrote       build/full/ddd_globals.c (created)
    wrote       build/full/ddd_globals.h (created)
    wrote       build/full/ddd_types.h (created)
@@ -625,7 +625,7 @@ on it needs rebuilding:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
    wrote       build/docs-check/ddd_globals.c (created)
    wrote       build/docs-check/ddd_globals.h (created)
    wrote       build/docs-check/ddd_types.h (created)
@@ -635,7 +635,7 @@ on it needs rebuilding:
    wrote       build/docs-check/EventLogger.h (created)
    wrote       build/docs-check/DemoDevice.a2l (created)
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
    unchanged   build/docs-check/ddd_globals.c
    unchanged   build/docs-check/ddd_globals.h
    unchanged   build/docs-check/ddd_types.h

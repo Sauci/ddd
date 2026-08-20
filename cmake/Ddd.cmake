@@ -394,12 +394,14 @@ function(ddd_generate image)
 
     _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
 
+    # NO_A2L selects the artefact of the run: the c sources alone, or everything.
+    set(artefact all)
+    if(arg_NO_A2L)
+        set(artefact c)
+    endif()
     set(generate_options ${common_options})
     if(arg_CONST_INPUTS)
         list(APPEND generate_options --const-inputs)
-    endif()
-    if(arg_NO_A2L)
-        list(APPEND generate_options --no-a2l)
     endif()
     if(arg_BYTE_ORDER)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
@@ -454,7 +456,7 @@ function(ddd_generate image)
     endif()
 
     add_custom_command(OUTPUT ${generated_outputs}
-                       COMMAND ${DDD_EXECUTABLE} generate "${project_file}"
+                       COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                                --output-dir "${arg_OUTPUT_DIRECTORY}"
                                --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
                        DEPENDS "${project_file}" ${descriptions} ${arg_ADDRESS_MAP} ${arg_DEPENDS}

@@ -1,20 +1,21 @@
 Templates
 =========
 
-The c code DDD generates is rendered from templates the *project* provides. ``ddd generate``
-therefore takes a required ``-t/--template-dir``: there is no built-in default and there is
-no fallback, so a run that leaves the option out is a usage mistake rather than a run that
-silently produces somebody else's idea of c code.
+The c code DDD generates is rendered from templates the *project* provides. ``ddd generate
+c`` and ``ddd generate all`` therefore take a required ``-t/--template-dir``: there is no
+built-in default and there is no fallback, so a run that leaves the option out is a usage
+mistake rather than a run that silently produces somebody else's idea of c code. Only ``ddd
+generate a2l`` goes without, because it renders no c at all.
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
-                       -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
-                       [--byte-order {little,big}] [--address-map ADDRESS_MAP]
-                       [--dry-run] [--force]
-                       project
-   ddd generate: error: the following arguments are required: -t/--template-dir
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen
+   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                           [--const-inputs] [--byte-order {little,big}]
+                           [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                           project
+   ddd generate all: error: the following arguments are required: -t/--template-dir
 
 Why the templates belong to the project
 ---------------------------------------
@@ -126,7 +127,7 @@ templates produce the following:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -383,7 +384,7 @@ again. Regenerating a project that has not changed therefore reports:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h
@@ -412,7 +413,7 @@ project now:
 .. code-block:: bash
 
    cp -r "$(ddd templates-dir)" tools/ddd_templates
-   ddd generate project.ddd.json -o build/gen -t tools/ddd_templates
+   ddd generate all project.ddd.json -o build/gen -t tools/ddd_templates
 
 Then adapt. Rename a template to rename the file it produces, edit the banner, change the
 comment markers, replace ``model.guard(...)`` with whatever your standard asks for, delete a

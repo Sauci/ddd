@@ -113,17 +113,18 @@
              
   <section id="templates">
 <h1>Templates<a class="headerlink" href="#templates" title="Link to this heading"></a></h1>
-<p>The c code DDD generates is rendered from templates the <em>project</em> provides. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>
-therefore takes a required <code class="docutils literal notranslate"><span class="pre">-t/--template-dir</span></code>: there is no built-in default and there is
-no fallback, so a run that leaves the option out is a usage mistake rather than a run that
-silently produces somebody else’s idea of c code.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen
-usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
-                    -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
-                    [--byte-order {little,big}] [--address-map ADDRESS_MAP]
-                    [--dry-run] [--force]
-                    project
-ddd generate: error: the following arguments are required: -t/--template-dir
+<p>The c code DDD generates is rendered from templates the <em>project</em> provides. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span>
+<span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">all</span></code> therefore take a required <code class="docutils literal notranslate"><span class="pre">-t/--template-dir</span></code>: there is no
+built-in default and there is no fallback, so a run that leaves the option out is a usage
+mistake rather than a run that silently produces somebody else’s idea of c code. Only <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">generate</span> <span class="pre">a2l</span></code> goes without, because it renders no c at all.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
+usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                        [--const-inputs] [--byte-order {little,big}]
+                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        project
+ddd generate all: error: the following arguments are required: -t/--template-dir
 </pre></div>
 </div>
 <section id="why-the-templates-belong-to-the-project">
@@ -235,7 +236,7 @@ templates produce the following:</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
 wrote       build/gen/ddd_globals.c (created)
 wrote       build/gen/ddd_globals.h (created)
 wrote       build/gen/ddd_types.h (created)
@@ -512,7 +513,7 @@ across machines or checked in.</p>
 <p>A file whose content has not changed is left untouched rather than rewritten, so its
 timestamp does not move and the compilation of everything that includes it is not triggered
 again. Regenerating a project that has not changed therefore reports:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
 unchanged   build/gen/ddd_globals.c
 unchanged   build/gen/ddd_globals.h
 unchanged   build/gen/ddd_types.h
@@ -537,7 +538,7 @@ project may be built against several installations:</p>
 standard says generated-code templates live, and check it in - it is source code of the
 project now:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp<span class="w"> </span>-r<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>ddd<span class="w"> </span>templates-dir<span class="k">)</span><span class="s2">"</span><span class="w"> </span>tools/ddd_templates
-ddd<span class="w"> </span>generate<span class="w"> </span>project.ddd.json<span class="w"> </span>-o<span class="w"> </span>build/gen<span class="w"> </span>-t<span class="w"> </span>tools/ddd_templates
+ddd<span class="w"> </span>generate<span class="w"> </span>all<span class="w"> </span>project.ddd.json<span class="w"> </span>-o<span class="w"> </span>build/gen<span class="w"> </span>-t<span class="w"> </span>tools/ddd_templates
 </pre></div>
 </div>
 <p>Then adapt. Rename a template to rename the file it produces, edit the banner, change the

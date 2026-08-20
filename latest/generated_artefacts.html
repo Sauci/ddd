@@ -142,7 +142,7 @@ everybody.</p>
 <p>Everything on this page is the output of the demonstration project shipped in
 <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>. Its c files are the ones the example templates in <code class="docutils literal notranslate"><span class="pre">examples/templates</span></code>
 produce, which is what every transcript below hands to <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
 wrote       build/gen/ddd_globals.c (created)
 wrote       build/gen/ddd_globals.h (created)
 wrote       build/gen/ddd_types.h (created)
@@ -599,7 +599,7 @@ every file they render:</p>
 use of that fact: it renders every artefact in memory, compares it with what is already on
 disk and only writes the ones that actually differ. The report says which is which, and the
 exit code is unaffected:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
 unchanged   build/gen/ddd_globals.c
 unchanged   build/gen/ddd_globals.h
 unchanged   build/gen/ddd_types.h
@@ -616,7 +616,7 @@ which is included by every component - so a generator that rewrites its output o
 invalidates the whole tree on every run, and an incremental build of a large image
 degenerates into a full rebuild. With the comparison in place, only what genuinely changed is
 touched. Changing the description of one variable in <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> shows the granularity:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
 wrote       build/gen/ddd_globals.c (updated)
 wrote       build/gen/ddd_globals.h (updated)
 unchanged   build/gen/ddd_types.h
@@ -639,7 +639,7 @@ still what the descriptions produce? Note that the exit code continues to report
 consistency checks and nothing else, so a job using it this way has to read the report rather
 than the status. Here the output directory did not exist yet, which is why every line says
 <code class="docutils literal notranslate"><span class="pre">created</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
 would write build/gen/ddd_globals.c (created)
 would write build/gen/ddd_globals.h (created)
 would write build/gen/ddd_types.h (created)
@@ -685,8 +685,8 @@ granularity here: a module is what a calibration tool connects to, and the compo
 image are one target, not several. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> follows <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code>, which writes
 <code class="docutils literal notranslate"><span class="pre">MSB_LAST</span></code> for <code class="docutils literal notranslate"><span class="pre">little</span></code> (the default) and <code class="docutils literal notranslate"><span class="pre">MSB_FIRST</span></code> for <code class="docutils literal notranslate"><span class="pre">big</span></code>; the alignment values
 are the natural alignment of each width, which is what a compiler targeting a modern core
-does unless it is told to pack. The a2l is written unless <code class="docutils literal notranslate"><span class="pre">--no-a2l</span></code> says otherwise, and it
-is named after the project, so <code class="docutils literal notranslate"><span class="pre">DemoDevice</span></code> produces <code class="docutils literal notranslate"><span class="pre">DemoDevice.a2l</span></code>.</p>
+does unless it is told to pack. The a2l is written by the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> and <code class="docutils literal notranslate"><span class="pre">all</span></code> artefacts, and
+it is named after the project, so <code class="docutils literal notranslate"><span class="pre">DemoDevice</span></code> produces <code class="docutils literal notranslate"><span class="pre">DemoDevice.a2l</span></code>.</p>
 <p>A project that declares a <a class="reference internal" href="file_formats/constants.html"><span class="doc">constant vocabulary</span></a> gets a
 <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> after the <code class="docutils literal notranslate"><span class="pre">MOD_COMMON</span></code>, stating one <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code> per declared constant
 in name order, both halves quoted as the format wants them; a project that declares none
@@ -929,7 +929,7 @@ with ones - the demo’s <code class="docutils literal notranslate"><span class=
 three dimensions cannot be expressed at all in this version. DDD writes all of its dimensions
 anyway, which is what ASAP2 1.7 expects and what a 1.7 reader will understand, and reports
 the situation rather than silently truncating:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate cube.ddd.json -o build/gen -t templates -W unused-output=ignore
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all cube.ddd.json -o build/gen -t templates -W unused-output=ignore
 cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       build/gen/ddd_globals.c (created)
@@ -1114,16 +1114,16 @@ filled in:</p>
 /end CHARACTERISTIC
 </pre></div>
 </div>
-<p>This is why DDD is normally run twice per build: once before compiling, to produce the c code
-and an a2l with zero addresses, and once after linking, with the map extracted from the
-linker output, to produce the a2l that ships. The second run regenerates the c code too, and
-because that code has not changed it is not rewritten, so the second run does not invalidate
-the build it was produced from.</p>
+<p>This is why DDD is normally run twice per build: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">all</span></code> before compiling, to
+produce the c code and an a2l with zero addresses, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span></code> after linking,
+with the map extracted from the linker output, to produce the a2l that ships. The artefact
+name says what the second run is there for: it renders no c - it takes no template directory
+either - so it cannot invalidate the build it was produced from.</p>
 <p>A symbol the map does not mention keeps address 0 rather than being an error, since a map
 produced from a linker output legitimately contains only the objects that ended up in the
 image - a conditional object absent from this build has no address to report. An address
 outside the range an a2l can hold, on the other hand, is refused before anything is written:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
 ddd: bad.json: address of 'ValueE' is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 $ echo $?
 2

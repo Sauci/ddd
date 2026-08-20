@@ -454,7 +454,7 @@ word - a measurement becomes ``volatile uint16_t Speed;`` and a parameter
 ``const volatile uint16_t Gain = 3U;``.
 
 Every example below is taken from ``examples/demo/``, and every generated fragment is what
-``ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates`` actually
+``ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates`` actually
 writes - the c ones as the example templates render them, the a2l ones as DDD writes them.
 
 measurement

@@ -341,7 +341,7 @@ also <code class="docutils literal notranslate"><span class="pre">volatile</span
 way of naming a variable that belongs to <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> and was not declared as one of its own
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
 input is possible by construction, since that is what an input is; <em>writing</em> one still
-compiles here, because the declaration is not <code class="docutils literal notranslate"><span class="pre">const</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--const-inputs</span></code>
+compiles here, because the declaration is not <code class="docutils literal notranslate"><span class="pre">const</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code>
 declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> instead, which stops that too, at the cost of a definition
 that stays non-const - strictly a constraint violation, accepted by the usual embedded
 toolchains, and therefore opt-in. An input that is volatile becomes <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span> <span class="pre">volatile</span></code>,

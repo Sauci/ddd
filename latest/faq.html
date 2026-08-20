@@ -518,7 +518,7 @@ from the linker output by whatever already parses it in your build:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate demo.ddd.json -o gen -t templates --address-map addresses.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all demo.ddd.json -o gen -t templates --address-map addresses.json
 $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
     /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
       UWORD CM_LIN_HZ 0 0 0 8000
@@ -531,7 +531,7 @@ $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
 negative value would otherwise render as <code class="docutils literal notranslate"><span class="pre">0x-0000010</span></code> and a wider one as a 33 bit literal,
 and either makes the whole file unreadable - from a file that a linker script or a patch tool
 wrote, where a wrong entry is exactly the kind of thing that goes unnoticed:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate demo.ddd.json -o gen -t templates --address-map bad.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all demo.ddd.json -o gen -t templates --address-map bad.json
 ddd: bad.json: address of 'ValueE' is 4294967296, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 </pre></div>
 </div>
@@ -580,7 +580,7 @@ than the data model. <code class="docutils literal notranslate"><span class="pre
 written padded - <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span> <span class="pre">8</span> <span class="pre">1</span> <span class="pre">1</span></code> for eight elements - and an object with more than three
 dimensions cannot be described at all. DDD writes all of its dimensions out anyway, which
 only a 1.7 reader understands, and says so:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate buffers.ddd.json -o gen -t templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all buffers.ddd.json -o gen -t templates
 buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
 1 warning
 wrote       gen/ddd_globals.c (created)
@@ -617,14 +617,14 @@ generate each into its own output directory. The generated artefacts belong to a
 to a component: the definition file allocates exactly the variables of that image, and the
 a2l describes exactly its memory. Two images are two dictionaries, and mixing them would mean
 shipping a calibration description for variables the software does not contain.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
 wrote       build/sensor/ddd_globals.c (created)
 wrote       build/sensor/ddd_globals.h (created)
 wrote       build/sensor/ddd_types.h (created)
 wrote       build/sensor/SensorHub.h (created)
 wrote       build/sensor/SensorOnly.a2l (created)
 
-$ ddd generate full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
+$ ddd generate all full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
 wrote       build/full/ddd_globals.c (created)
 wrote       build/full/ddd_globals.h (created)
 wrote       build/full/ddd_types.h (created)
@@ -659,7 +659,7 @@ identical output; and every rendered file is compared against what is already on
 written only when the bytes differ. An unchanged file therefore keeps its modification time,
 and make, ninja or any other timestamp driven tool correctly concludes that nothing depending
 on it needs rebuilding:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
 wrote       build/docs-check/ddd_globals.c (created)
 wrote       build/docs-check/ddd_globals.h (created)
 wrote       build/docs-check/ddd_types.h (created)
@@ -669,7 +669,7 @@ wrote       build/docs-check/UserInterface.h (created)
 wrote       build/docs-check/EventLogger.h (created)
 wrote       build/docs-check/DemoDevice.a2l (created)
 
-$ ddd generate examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+$ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
 unchanged   build/docs-check/ddd_globals.c
 unchanged   build/docs-check/ddd_globals.h
 unchanged   build/docs-check/ddd_types.h

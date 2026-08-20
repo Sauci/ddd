@@ -346,13 +346,13 @@ house style, and it differs from one project to the next. DDD therefore renders 
 from jinja2 templates the project provides, and asks for them with <code class="docutils literal notranslate"><span class="pre">-t</span></code>: a required option,
 with no default and no fallback, so nothing is ever generated from templates the project did
 not choose.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen
-usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
-                    -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
-                    [--byte-order {little,big}] [--address-map ADDRESS_MAP]
-                    [--dry-run] [--force]
-                    project
-ddd generate: error: the following arguments are required: -t/--template-dir
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen
+usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                        [--const-inputs] [--byte-order {little,big}]
+                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        project
+ddd generate all: error: the following arguments are required: -t/--template-dir
 </pre></div>
 </div>
 <p>A project that has no templates yet starts from the set DDD ships as an example.
@@ -383,7 +383,7 @@ internal and takes no templates at all.</p>
 <h3>Generating the code<a class="headerlink" href="#generating-the-code" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs exactly the same checks and then writes the artefacts into the directory
 given with <code class="docutils literal notranslate"><span class="pre">-o</span></code>, which is normally somewhere in the build tree rather than in the source tree:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen -t templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
 wrote       gen/ddd_globals.c (created)
 wrote       gen/ddd_globals.h (created)
 wrote       gen/ddd_types.h (created)
@@ -393,7 +393,7 @@ wrote       gen/Thermostat.a2l (created)
 </pre></div>
 </div>
 <p>Run it a second time without touching the description files and nothing is written at all:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen -t templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
 unchanged   gen/ddd_globals.c
 unchanged   gen/ddd_globals.h
 unchanged   gen/ddd_types.h
@@ -544,7 +544,7 @@ description files. The local parameter appears in its own section, and only here
 </pre></div>
 </div>
 <p>Controller can read <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> and can also write it, since the declaration in its
-header is not <code class="docutils literal notranslate"><span class="pre">const</span></code>; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--const-inputs</span></code> declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> in the
+header is not <code class="docutils literal notranslate"><span class="pre">const</span></code>; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code> declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> in the
 consumer headers instead, so that writing to a variable owned by somebody else stops compiling
 rather than being caught in review. It is opt-in because the definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>
 stays non-const, which strict c calls a constraint violation even though the usual embedded
@@ -572,7 +572,7 @@ tool sees the physical values the description promised rather than raw counts:</
 </div>
 <p>The address is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> because it is not known before the link step. The <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>
 entry is always written, so that an address patcher can fill the addresses in after linking;
-alternatively, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--address-map</span> <span class="pre">addresses.json</span></code> takes a symbol to address map
+alternatively, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--address-map</span> <span class="pre">addresses.json</span></code> takes a symbol to address map
 produced from the linker output and writes the real addresses straight away.</p>
 </section>
 </section>
@@ -610,7 +610,7 @@ rather than something the c compiler will ever see.</p>
 <p>Nothing was generated during that run. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs the checks first and writes no file
 at all when one of them fails, because half-generated sources that describe a project nobody
 agreed on are worse than no sources:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate thermostat.ddd.json -o gen2 -t templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen2 -t templates
 components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
@@ -619,7 +619,7 @@ components/controller.ddd.json#component.interface[0].definition.limits: warning
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--force</span></code> generates in spite of the errors, using the producer’s definition
+<p><code class="docutils literal notranslate"><span class="pre">--force</span></code> generates in spite of the errors, using the producer’s definition
 wherever the components disagree, and still exits with 1. It exists for the case where a
 developer needs the headers to keep working while a disagreement is being sorted out
 between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely

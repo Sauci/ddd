@@ -131,7 +131,7 @@ at link time or in the calibration lab.</p>
 and <code class="docutils literal notranslate"><span class="pre">dump</span></code> - so the artefacts can never be generated from inputs that were not checked.
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> refuses to write anything while an error is outstanding, unless it is told to
 with <code class="docutils literal notranslate"><span class="pre">--force</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
 ...
 4 errors, 1 warning
 $ echo $?

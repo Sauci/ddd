@@ -23,7 +23,7 @@ command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
    {
      "diagnostics": [],
      "summary": {
@@ -87,12 +87,15 @@ The commands
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
        an archived dictionary or a project description.
-   * - ``ddd generate FILE -o DIR -t TEMPLATES``
-     - check the project and, if it is consistent, write the c sources and the a2l file into
-       ``DIR``. ``-t`` names the directory of jinja2 templates the c sources are rendered
-       from; it is required and has no default, because which files the project wants and
-       what they look like is not something DDD can guess. ``--dry-run`` reports what would be
-       written without writing anything, ``--force`` generates in spite of errors.
+   * - ``ddd generate c|a2l|all FILE -o DIR``
+     - check the project and, if it is consistent, write the named artefact into ``DIR``:
+       ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both in one
+       run. Each artefact takes only its own options - ``-t`` names the directory of jinja2
+       templates the c sources are rendered from, required wherever c is rendered and with no
+       default, because which files the project wants and what they look like is not
+       something DDD can guess; ``--address-map`` and ``--byte-order`` belong to the a2l.
+       ``--dry-run`` reports what would be written without writing anything, ``--force``
+       generates in spite of errors.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
@@ -131,23 +134,25 @@ The commands
 takes one. A component checks, lists, dumps and generates on its own, which is what lets a
 supplier verify a component long before an integrator ever sees it.
 
-The ``-t`` of ``generate`` has no default at all: an invocation that leaves it out is refused
-rather than falling back to templates of DDD's own.
+The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
+without it is refused rather than falling back to templates of DDD's own.
 
 .. code-block:: text
 
-   $ ddd generate examples/demo/demo.ddd.json -o build/gen
-   usage: ddd generate [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]
-                       -o OUTPUT_DIR -t TEMPLATE_DIR [--const-inputs] [--no-a2l]
-                       [--byte-order {little,big}] [--address-map ADDRESS_MAP]
-                       [--dry-run] [--force]
-                       project
-   ddd generate: error: the following arguments are required: -t/--template-dir
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen
+   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                           [--const-inputs] [--byte-order {little,big}]
+                           [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                           project
+   ddd generate all: error: the following arguments are required: -t/--template-dir
 
 A default would have to be somebody's house style, and a project that inherited one without
 choosing it would find out which one only by reading the generated code; :doc:`templates`
-makes that case at length. The a2l is unaffected, since its structure is ASAM's rather than
-the project's: the a2l backend is internal and there is no template directory to give it.
+makes that case at length. The a2l is the opposite case, since its structure is ASAM's rather
+than the project's: the a2l backend is internal and there is no template directory to give
+it - which is why ``ddd generate a2l``, the run a build repeats after linking to fill the
+addresses in, does not even accept one.
 
 ``cmake-dir`` and ``templates-dir`` exist for a related reason. Neither the cmake module nor
 the example templates have a fixed path once DDD is installed - a wheel, an editable install

@@ -333,6 +333,12 @@ point of derived limits:
 | `float32` | `float` | ±3.4028234663852886e38 | `FLOAT32_IEEE` |
 | `float64` | `double` | ±1.7976931348623157e308 | `FLOAT64_IEEE` |
 
+The C column is the ISO spelling the tool offers to the templates as `c_type`; the
+datatype's own name is offered beside it as `datatype`, so a platform whose header already
+provides these names - AUTOSAR's `Platform_Types.h` spells them exactly like the first
+column - renders them without any mapping. A `boolean` initial value is emitted as `1`/`0`,
+which is a valid initialiser for either spelling and requires no header in any C dialect.
+
 Derived limits are the raw range pushed through the conversion: under the identity they are
 the raw ends themselves, and under a linear conversion each end is converted, the pair
 being swapped into order when `factor` is negative. A pairing of datatype and conversion

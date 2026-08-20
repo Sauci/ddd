@@ -56,7 +56,9 @@ class TestGlobalDefinitionFile:
         assert "int16_t A = -400;" in source
         assert "float B = 1.5F;" in source
         assert "double C = 2.0;" in source
-        assert "bool D = true;" in source
+        # 1 rather than true: the word would need <stdbool.h> before C23, and a project on
+        # AUTOSAR's Platform_Types has TRUE instead; the numeral needs no header anywhere.
+        assert "bool D = 1;" in source
         assert "uint64_t E = 5ULL;" in source
         assert "int64_t F = -5LL;" in source
 

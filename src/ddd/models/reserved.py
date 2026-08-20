@@ -9,8 +9,9 @@ the rest of the contract stays free of any output format, and the layering test 
 Three families are covered:
 
 * the keywords of C11 and C23, plus what ``<stdbool.h>`` defines,
-* everything ``<stdint.h>`` declares, because the generated types header includes it - a
-  variable named ``uint16_t`` would produce the definition ``uint16_t uint16_t;``,
+* everything ``<stdint.h>`` declares, because a project's types header may include it - the
+  example templates' one does - and a variable named ``uint16_t`` would then produce the
+  definition ``uint16_t uint16_t;``,
 * the identifiers C11 7.1.3 reserves for the implementation.
 """
 

@@ -1,8 +1,11 @@
 """How the datatypes of the dictionary are spelled in c.
 
 This table used to sit on :class:`~ddd.models.common.Datatype` itself, next to the a2l one.
-It belongs here: the core has no reason to know that a ``uint16`` is written ``uint16_t``,
-and a project targeting a toolchain with different type names only has to change this file.
+It belongs here: the core has no reason to know that a ``uint16`` is written ``uint16_t``.
+The table is only the ISO spelling the *example* templates render as ``c_type``; a project
+whose platform header spells the types itself - AUTOSAR's ``Platform_Types.h`` uses the
+dictionary's own names - renders the ``datatype`` field of the views instead and never
+meets this table at all.
 """
 
 from __future__ import annotations

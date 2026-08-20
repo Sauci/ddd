@@ -261,10 +261,13 @@ usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers`
        object library on purpose: a static library would drop the members whose symbols
        nobody references, and a measurement that only the calibration tool ever reads has no
        referencing code at all. In the collected mode it is compiled with the *interface
-       include directories* of every registered component - include paths only, never link
-       edges - so that a header an :doc:`external type <file_formats/types>` names is found
-       without further wiring: the component that publishes the type already publishes the
-       directory its header lives in, and the generated ``ddd_types.h`` includes that header.
+       compile usage* of every registered component - include directories, compile
+       definitions and compile options, but never link edges - so that a header an
+       :doc:`external type <file_formats/types>` names is found *and read the way the
+       component reads it* without further wiring. The flags matter as much as the paths: a
+       hand written header may change its layout under the component's interface defines,
+       and a definition file compiled without them finds every header, compiles cleanly,
+       and lays the variables out differently than the image using them.
    * - ``<image>_ddd_check``
      - runs ``ddd check`` on the collected project on its own, for a ci job that wants the
        verdict without producing artefacts. Checking is part of generating anyway - the
@@ -329,9 +332,10 @@ Options
    * - ``LINK_LIBRARIES <target>...``
      - usage requirements for compiling the generated definition file, stated by hand. The
        manual fallback: in the collected mode the definition file already gets the interface
-       include directories of every registered component, so this remains for the hand
-       written ``PROJECT`` mode, for headers the link graph does not carry, and for a
-       project whose compiler flags come from an interface library.
+       compile usage of every registered component - include directories, compile
+       definitions and compile options, resolved through each component's public link
+       closure - so this remains for the hand written ``PROJECT`` mode and for what no
+       description implies, such as a header the project's own c templates include.
    * - ``DEPENDS <file>...``
      - additional files that retrigger the generation.
    * - ``CONST_INPUTS``

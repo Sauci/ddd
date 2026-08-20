@@ -20,6 +20,26 @@ not, and the templates a project provides are its own.
   **Migration:** `ddd generate PROJECT ...` becomes `ddd generate all PROJECT ...`, and
   `--no-a2l` becomes the `c` artefact.  `ddd_generate()` in the CMake integration emits the
   new form itself; a build calling the tool directly changes its command lines.
+* **The generated definition file is compiled with the full interface compile usage of the
+  registered components.**  In the collected mode, `ddd_generate()` used to hand
+  `<image>_ddd_globals` only the *include directories* of the registered components; it now
+  forwards their interface compile definitions and compile options as well, resolved through
+  each component's public link closure, still without creating any link edge.  Includes
+  alone were a trap: a hand written header named by an external type may change its layout
+  under the component's interface defines, and the definition file then found every header,
+  compiled cleanly, and laid the variables out differently than the image using them.
+  A `LINK_LIBRARIES` entry that only re-stated a registered component's own usage can be
+  dropped; the option remains for the hand written `PROJECT` mode and for what no
+  description implies, such as a header the project's own c templates include.
+* **The c views spell types in the description's vocabulary too, and boolean initialisers
+  need no header.**  Every view offering `c_type` (the ISO spelling, `uint16_t`) now offers
+  `datatype` beside it - the type as the description spells it: `uint16`, `boolean`, or the
+  declared name of a structure or external type.  A platform whose header already provides
+  those names (AUTOSAR's `Platform_Types.h` spells them exactly) renders `datatype` and
+  drops the per-template mapping tables.  A `boolean` initial value is now emitted as `1`/`0`
+  rather than `true`/`false`: the words need `<stdbool.h>` before C23 and do not exist on
+  AUTOSAR platforms at all, while the numerals mean the same thing everywhere - and the
+  initialiser is the one c fragment a template cannot respell.
 
 ## 0.5.0
 

@@ -847,6 +847,52 @@ class TestAnUnownedStructure:
         assert 'SYMBOL_LINK "Inlet.raw" 0' in files["Device.a2l"]
 
 
+class TestTheDescriptionsOwnSpelling:
+    """The views carry the type in the dictionary's vocabulary next to the ISO one.
+
+    A platform whose header already spells the types - AUTOSAR's ``Platform_Types.h`` uses
+    exactly the datatype names - renders ``datatype`` where the example templates render
+    ``c_type``, and needs no mapping in its templates at all.
+    """
+
+    def test_every_view_offers_both_spellings(self, tree: Path) -> None:
+        from ddd.backends import COptions
+        from ddd.backends.c.model import build_code_model
+
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(
+                    {"type": "external", "name": "Drv_t", "header": "drv.h"},
+                    struct(
+                        "S_t",
+                        val("raw", "uint16"),
+                        val("on", "boolean"),
+                        val("drv", typename="Drv_t"),
+                    ),
+                ),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Speed", "uint16"),
+                    declare("local", "Inlet", typename="S_t"),
+                ),
+            },
+        )
+        assert dictionary is not None and not bag.has_errors, [d.render() for d in bag]
+
+        model = build_code_model(dictionary, COptions(), "test")
+        variables = {v.name: v for group in model.groups for v in group.variables}
+        assert (variables["Speed"].c_type, variables["Speed"].datatype) == ("uint16_t", "uint16")
+        # A structured variable and the non-base members spell both fields the same way,
+        # because their spelling was the project's own to begin with.
+        assert (variables["Inlet"].c_type, variables["Inlet"].datatype) == ("S_t", "S_t")
+        members = {m.name: m for s in model.structures for m in s.members}
+        assert (members["raw"].c_type, members["raw"].datatype) == ("uint16_t", "uint16")
+        assert (members["on"].c_type, members["on"].datatype) == ("bool", "boolean")
+        assert (members["drv"].c_type, members["drv"].datatype) == ("Drv_t", "Drv_t")
+
+
 class TestGeneratingAStructure:
     """What a structured declaration turns into: one c object, an a2l object per member."""
 

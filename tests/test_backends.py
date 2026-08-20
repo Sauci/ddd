@@ -282,6 +282,7 @@ class TestObjectViewComposition:
             "name": "Gain",
             "kind": ObjectKind.PARAMETER,
             "c_type": "uint16_t",
+            "datatype": "uint16",
             "array_suffix": "[4]",
             "constant": True,
             "volatile": False,

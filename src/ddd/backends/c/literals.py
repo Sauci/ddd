@@ -16,7 +16,12 @@ _INT64_MIN = -(2**63)
 def c_literal(value: bool | int | float, datatype: Datatype) -> str:
     """Render one raw value as a c literal of ``datatype``."""
     if datatype is Datatype.BOOLEAN:
-        return "true" if value else "false"
+        # "1"/"0" rather than "true"/"false": the words need <stdbool.h> before C23, a
+        # project on AUTOSAR's Platform_Types has TRUE/FALSE instead, and the initialiser
+        # is the one c fragment the tool writes that no template can respell - it sits
+        # inside the braces of a nested initialiser. The numerals mean the same thing in
+        # every one of these worlds and need no header in any of them.
+        return "1" if value else "0"
     if datatype.is_float:
         # repr of a float always carries a '.' or an exponent, so the literal is never
         # mistaken for an integer one.

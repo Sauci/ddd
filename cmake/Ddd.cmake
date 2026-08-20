@@ -479,18 +479,25 @@ function(ddd_generate image)
     # image: a static library would drop the members whose symbols nobody references, and a measurement written only
     # by the calibration tool has no referencing code at all.
     add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
-    # In the collected mode the definition file is compiled with the interface include directories of every
-    # registered component - include paths only, never link edges - so that a header an external type names is
-    # found without further wiring: the component that publishes the type already publishes the directory its
-    # header lives in. The plain $<TARGET_PROPERTY:...> is exactly right here, because a component without
-    # interface include directories expands to an empty entry, which INCLUDE_DIRECTORIES drops at generate time.
-    # LINK_LIBRARIES remains for the hand written PROJECT mode and for headers the link graph does not carry.
+    # In the collected mode the definition file is compiled with the interface compile usage of every registered
+    # component - include directories, compile definitions and compile options, but never link edges - so that a
+    # header an external type names is found *and read the way the component reads it* without further wiring. The
+    # includes alone would not be safe: a hand written header may change its layout under the component's interface
+    # flags, and a definition file compiled without them finds every header, compiles cleanly, and lays the variables
+    # out differently than the image using them - the failure that compiles. Each $<TARGET_PROPERTY:...> resolves
+    # transitively over the component's own interface link closure, and a component publishing nothing expands to an
+    # empty entry, which every one of these properties drops at generate time. LINK_LIBRARIES remains for the hand
+    # written PROJECT mode and for what no description implies, such as a header the project's own templates include.
     if(NOT arg_PROJECT)
         get_property(ddd_registered_components GLOBAL PROPERTY DDD_COMPONENT_TARGETS)
         list(REMOVE_DUPLICATES ddd_registered_components)
         foreach(component IN LISTS ddd_registered_components)
             target_include_directories(${image_stem}_ddd_globals PRIVATE
                                        "$<TARGET_PROPERTY:${component},INTERFACE_INCLUDE_DIRECTORIES>")
+            target_compile_definitions(${image_stem}_ddd_globals PRIVATE
+                                       "$<TARGET_PROPERTY:${component},INTERFACE_COMPILE_DEFINITIONS>")
+            target_compile_options(${image_stem}_ddd_globals PRIVATE
+                                   "$<TARGET_PROPERTY:${component},INTERFACE_COMPILE_OPTIONS>")
         endforeach()
     endif()
     if(arg_LINK_LIBRARIES)

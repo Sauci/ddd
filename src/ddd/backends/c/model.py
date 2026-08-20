@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ddd.backends.c.literals import (
@@ -22,7 +23,7 @@ from ddd.ir import (
     ResolvedObject,
     ResolvedStruct,
 )
-from ddd.models import EnumConversion, ObjectKind, Scope
+from ddd.models import Datatype, EnumConversion, ObjectKind, Scope
 
 UNRESOLVED_GROUP = "<unresolved>"
 
@@ -34,6 +35,15 @@ class ObjectView:
     name: str
     kind: ObjectKind
     c_type: str
+    """The ISO spelling of the object's type: ``uint16_t``, or the declared type of a
+    structured variable. The example templates render this one."""
+
+    datatype: str
+    """The type as the description spells it: ``uint16``, ``boolean``, or the declared type
+    of a structured variable. A project whose platform header already provides these names -
+    AUTOSAR's ``Platform_Types.h`` spells them exactly like the dictionary - renders this
+    field where the example templates render ``c_type``, and needs no mapping at all."""
+
     array_suffix: str
     constant: bool
     """Whether the object is calibration data, which is generated ``const``."""
@@ -87,7 +97,13 @@ class MemberView:
 
     name: str
     c_type: str
-    """The spelling of the member's type: ``uint16_t``, or the name of another structure."""
+    """The ISO spelling of the member's type: ``uint16_t``, or the name of another structure
+    or external type."""
+
+    datatype: str
+    """The member's type as the description spells it: a base datatype name like ``uint16``,
+    or - identically to ``c_type`` - the name of another structure or external type, whose
+    spelling was the project's own to begin with."""
 
     array_suffix: str
     bits: int | None
@@ -399,7 +415,8 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
         members=tuple(
             MemberView(
                 name=member.name,
-                c_type=_member_type(member),
+                c_type=_member_type(member, C_TYPE.__getitem__),
+                datatype=_member_type(member, lambda datatype: datatype.value),
                 array_suffix=declarator_suffix(member.dimensions),
                 bits=member.bits,
                 comment=sanitize_comment(member.description) or None,
@@ -409,16 +426,17 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
     )
 
 
-def _member_type(member: ResolvedMember) -> str:
-    """The c spelling of a member's type: a base datatype, a structure, or an external name.
+def _member_type(member: ResolvedMember, spell: Callable[[Datatype], str]) -> str:
+    """The spelling of a member's type: a base datatype, a structure, or an external name.
 
-    An external one is spelled verbatim - the header the types header includes is what
-    defines it. The fallback through ``str`` is for a forced generation only: a member whose
-    type resolved to nothing has been reported already, and ``--force`` writes artefacts
-    around it rather than crashing over it.
+    ``spell`` decides how a base datatype is written - the ISO table for ``c_type``, the
+    datatype's own name for ``datatype``. An external one is spelled verbatim either way -
+    the header the types header includes is what defines it. The fallback through ``str`` is
+    for a forced generation only: a member whose type resolved to nothing has been reported
+    already, and ``--force`` writes artefacts around it rather than crashing over it.
     """
     if member.datatype is not None:
-        return C_TYPE[member.datatype]
+        return spell(member.datatype)
     if member.external is not None:
         return member.external
     return str(member.type)
@@ -453,6 +471,7 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
         name=entry.name,
         kind=entry.kind,
         c_type=entry.type,
+        datatype=entry.type,
         # The spelled shape, so an array dimensioned by a constant is declared by its name.
         array_suffix=declarator_suffix(entry.spelled_shape),
         constant=entry.is_calibration,
@@ -471,6 +490,7 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         name=entry.name,
         kind=entry.kind,
         c_type=c_type(entry),
+        datatype=entry.datatype.value,
         # The spelled shape, so an array dimensioned by a constant is declared by its name;
         # the initialiser below still lays its braces out over the numeric shape.
         array_suffix=declarator_suffix(entry.spelled_shape),

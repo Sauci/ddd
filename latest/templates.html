@@ -409,9 +409,16 @@ that says where a value comes from.</p></td>
 </tr>
 </tbody>
 </table>
-<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> and <code class="docutils literal notranslate"><span class="pre">.initializer</span></code> are there as
+<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> and
+<code class="docutils literal notranslate"><span class="pre">.initializer</span></code> are there as
 well, for a template that would rather lay the declaration out itself than take
-<code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole. <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> spells each dimension as the project spells it - a
+<code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the same type in two vocabularies:
+the ISO spelling (<code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>) that <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and the example templates use, and the
+description’s own (<code class="docutils literal notranslate"><span class="pre">uint16</span></code>). A project whose platform header already provides the
+description’s names - AUTOSAR’s <code class="docutils literal notranslate"><span class="pre">Platform_Types.h</span></code> spells them exactly - renders
+<code class="docutils literal notranslate"><span class="pre">.datatype</span></code> and needs no mapping in its templates; for a structured variable, and for a
+structure member of another structure or of an external type, the two fields agree, because
+that spelling was the project’s own to begin with. <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> spells each dimension as the project spells it - a
 dimension stated as a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> renders as that
 name, <code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code>, in <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration(...)</span></code> alike - while
 <code class="docutils literal notranslate"><span class="pre">.initializer</span></code> lays its braces out over the resolved numeric shape. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a

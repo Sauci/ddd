@@ -276,9 +276,16 @@ themselves:
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.
 
-``.kind``, ``.c_type``, ``.array_suffix``, ``.qualifier`` and ``.initializer`` are there as
+``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier`` and
+``.initializer`` are there as
 well, for a template that would rather lay the declaration out itself than take
-``.definition`` whole. ``.array_suffix`` spells each dimension as the project spells it - a
+``.definition`` whole. ``.c_type`` and ``.datatype`` are the same type in two vocabularies:
+the ISO spelling (``uint16_t``) that ``.definition`` and the example templates use, and the
+description's own (``uint16``). A project whose platform header already provides the
+description's names - AUTOSAR's ``Platform_Types.h`` spells them exactly - renders
+``.datatype`` and needs no mapping in its templates; for a structured variable, and for a
+structure member of another structure or of an external type, the two fields agree, because
+that spelling was the project's own to begin with. ``.array_suffix`` spells each dimension as the project spells it - a
 dimension stated as a :doc:`declared constant <file_formats/constants>` renders as that
 name, ``[PRESSURE_CELLS]``, in ``.definition`` and ``.declaration(...)`` alike - while
 ``.initializer`` lays its braces out over the resolved numeric shape. ``.qualifier`` is derived rather than stored, from the two answers a

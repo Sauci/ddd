@@ -86,10 +86,24 @@ jobs:
     steps:
       # A release is written under its own tag and frozen there; master is the moving one and
       # always lands in the same place.
+      #
+      # The tag has to start with `v`, because the version index below lists only the
+      # directories that do. Publishing under any other name would succeed, and produce a
+      # complete copy of the documentation at a url that nothing on the site links to and the
+      # menu never offers - so this refuses instead, which is the failure that can be seen.
       - name: Choose the directory this build is published under
         id: slot
         run: |
           if [ "$GITHUB_EVENT_NAME" = release ]; then
+            case "$GITHUB_REF_NAME" in
+              v[0-9]*) ;;
+              *)
+                echo "::error::release tag $GITHUB_REF_NAME does not start with a v, so the"
+                echo "::error::version menu would never list it. Re-create the release with a"
+                echo "::error::tag of the form v<version>."
+                exit 1
+                ;;
+            esac
             echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           else
             echo "name=latest" >> "$GITHUB_OUTPUT"

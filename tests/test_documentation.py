@@ -746,6 +746,38 @@ class TestPublishedDocumentation:
             f"a release does not deploy its own documentation: {condition.strip()}"
         )
 
+    def test_a_release_tag_has_to_carry_its_prefix(self) -> None:
+        """The ``v`` is load bearing, and both workflows have to insist on it.
+
+        A release is published under a directory named after its tag, and the version menu
+        lists only the directories starting with ``v``. So a tag of ``0.5.0`` deploys a
+        complete copy of the documentation to a url nothing links to, leaves the root
+        redirecting at ``latest``, and reports success. It happened once, because the
+        version check stripped an optional ``v`` before comparing and so accepted both
+        spellings; what caught it was an unrelated environment rule.
+        """
+        assert '"$GITHUB_REF_NAME" != "v$version"' in PUBLISH_WORKFLOW, (
+            "the release tag is compared without its prefix, which accepts a tag the "
+            "documentation site cannot publish under"
+        )
+        assert "v[0-9]*)" in DOCS_WORKFLOW, (
+            "the deployment no longer refuses a tag the version menu would never list"
+        )
+
+    def test_nothing_is_published_under_an_unchecked_tag(self) -> None:
+        """The tag check lives in one job, so every job that publishes has to be behind it.
+
+        The extension job names the .vsix it uploads after the tag. Left needing only the
+        test job it ran beside the check rather than after it, which for a marketplace
+        upload - not withdrawable, and not repeatable under the same version - is the
+        wrong side to be on.
+        """
+        extension = PUBLISH_WORKFLOW.split("\n  extension:\n", 1)[1]
+        needs = next(line for line in extension.splitlines() if line.strip().startswith("needs:"))
+        assert "build" in needs, (
+            f"the extension is published without waiting for the tag check: {needs.strip()}"
+        )
+
     def test_the_archive_history_is_not_published(self) -> None:
         """The site is assembled in a git working tree, and only the tree gets uploaded.
 

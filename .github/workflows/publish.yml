@@ -42,13 +42,20 @@ jobs:
 
       # The version lives in pyproject.toml, so a release tag can drift from what was built.
       # Catch that here rather than after an immutable upload.
+      #
+      # The whole tag has to match, `v` included, rather than the version it carries. The
+      # prefix is not decoration: docs.yml names the directory it publishes a release under
+      # after the tag, and lists only the directories starting with `v` in the version menu.
+      # A tag of `0.5.0` therefore passed a check that stripped an optional `v`, and then
+      # published documentation into a directory nothing linked to.
       - name: Check tag matches package version
         if: github.event_name == 'release'
         run: |
           version=$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$version" != "$tag" ]; then
-            echo "::error::release tag $GITHUB_REF_NAME does not match pyproject version $version"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::release tag $GITHUB_REF_NAME is not v$version, the version in"
+            echo "::error::pyproject.toml. Delete the release and its tag, then re-create it"
+            echo "::error::as v$version; nothing has been uploaded yet."
             exit 1
           fi
 
@@ -65,7 +72,9 @@ jobs:
   # tag, so the version inside the package is the version being released; a test asserts it
   # matches the python one.
   extension:
-    needs: test
+    # `build` rather than `test`, for the tag check it carries: this job names the .vsix it
+    # publishes after the tag, so nothing here may run under a tag that check would reject.
+    needs: build
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:

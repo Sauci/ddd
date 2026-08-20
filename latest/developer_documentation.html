@@ -484,11 +484,19 @@ runner: there is no prepared image to keep in step with the sources. Only html i
 would want a LaTeX distribution, roughly a gigabyte of packages, and nothing asks for one -
 <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> still carries the LaTeX settings, so <code class="docutils literal notranslate"><span class="pre">sphinx-build</span> <span class="pre">-M</span> <span class="pre">latexpdf</span> <span class="pre">docs</span> <span class="pre">output</span></code>
 produces one for whoever does.</p>
-<p>Two things are worth knowing before the first run.</p>
+<p>Three things are worth knowing before the first run.</p>
 <p><strong>Pages has to be switched on by hand, once.</strong> In <em>Settings</em> → <em>Pages</em>, set <em>Source</em> to
 <em>GitHub Actions</em>. The workflow’s token may deploy to a site but may not create one, so until
 that setting is made the deployment step fails with a message about a missing Pages site.
 There is nothing to change in the repository to fix it: correct the setting and re-run.</p>
+<p><strong>The ``github-pages`` environment has to allow tags.</strong> GitHub creates that environment with
+its deployments restricted to the default branch, which is the whole of what a release
+deployment is not: the run is triggered by a tag. It fails with <em>not allowed to deploy to
+github-pages due to environment protection rules</em>, after a green build, on the release. In
+<em>Settings</em> → <em>Environments</em> → <em>github-pages</em> → <em>Deployment branches and tags</em>, choose
+<em>Selected branches and tags</em> and add a branch rule for <code class="docutils literal notranslate"><span class="pre">master</span></code> and a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>.
+This is a setting rather than a file, so it survives nothing in the repository and has to be
+made once per repository.</p>
 <p><strong>A pull request builds but never deploys.</strong> The deploy job names the branch and the release
 event it publishes, rather than resting on the event alone, because a pull request from a
 fork proposes arbitrary content: without that condition, opening one would be enough to
@@ -548,7 +556,15 @@ publisher configured <em>on the project</em> rather than as a pending one.</p>
 there is nothing to change in the repository and no new commit to push.</p>
 <p>A <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> run with <code class="docutils literal notranslate"><span class="pre">target:</span> <span class="pre">testpypi</span></code> is the dry run; publishing to PyPI
 happens on a published GitHub release tagged <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code>, and the build refuses to go on
-if that tag disagrees with the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>.</p>
+unless that tag is exactly <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. The prefix is
+checked rather than stripped, because the documentation site publishes a release under a
+directory named after its tag and lists only the ones beginning with <code class="docutils literal notranslate"><span class="pre">v</span></code>.</p>
+<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and so is
+subject to the same trap as <code class="docutils literal notranslate"><span class="pre">github-pages</span></code> above: an environment whose <em>Deployment branches
+and tags</em> is left at the default rejects a release, because a release is triggered by a tag
+and the default permits only the default branch. It fails after a green build, with
+<em>not allowed to deploy … due to environment protection rules</em>, and is fixed in the settings
+rather than in the repository.</p>
 </section>
 <section id="publishing-the-editor-extension">
 <h2>Publishing the editor extension<a class="headerlink" href="#publishing-the-editor-extension" title="Link to this heading"></a></h2>

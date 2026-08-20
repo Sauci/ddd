@@ -396,12 +396,21 @@ would want a LaTeX distribution, roughly a gigabyte of packages, and nothing ask
 ``docs/conf.py`` still carries the LaTeX settings, so ``sphinx-build -M latexpdf docs output``
 produces one for whoever does.
 
-Two things are worth knowing before the first run.
+Three things are worth knowing before the first run.
 
 **Pages has to be switched on by hand, once.** In *Settings* → *Pages*, set *Source* to
 *GitHub Actions*. The workflow's token may deploy to a site but may not create one, so until
 that setting is made the deployment step fails with a message about a missing Pages site.
 There is nothing to change in the repository to fix it: correct the setting and re-run.
+
+**The ``github-pages`` environment has to allow tags.** GitHub creates that environment with
+its deployments restricted to the default branch, which is the whole of what a release
+deployment is not: the run is triggered by a tag. It fails with *not allowed to deploy to
+github-pages due to environment protection rules*, after a green build, on the release. In
+*Settings* → *Environments* → *github-pages* → *Deployment branches and tags*, choose
+*Selected branches and tags* and add a branch rule for ``master`` and a tag rule for ``v*``.
+This is a setting rather than a file, so it survives nothing in the repository and has to be
+made once per repository.
 
 **A pull request builds but never deploys.** The deploy job names the branch and the release
 event it publishes, rather than resting on the event alone, because a pull request from a
@@ -462,7 +471,16 @@ there is nothing to change in the repository and no new commit to push.
 
 A ``workflow_dispatch`` run with ``target: testpypi`` is the dry run; publishing to PyPI
 happens on a published GitHub release tagged ``v<version>``, and the build refuses to go on
-if that tag disagrees with the version in ``pyproject.toml``.
+unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. The prefix is
+checked rather than stripped, because the documentation site publishes a release under a
+directory named after its tag and lists only the ones beginning with ``v``.
+
+The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and so is
+subject to the same trap as ``github-pages`` above: an environment whose *Deployment branches
+and tags* is left at the default rejects a release, because a release is triggered by a tag
+and the default permits only the default branch. It fails after a green build, with
+*not allowed to deploy ... due to environment protection rules*, and is fixed in the settings
+rather than in the repository.
 
 Publishing the editor extension
 -------------------------------

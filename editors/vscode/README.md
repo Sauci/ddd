@@ -15,17 +15,21 @@ server instead.
 
 ## Installing it
 
-It is **not on the marketplace**. Every release attaches a `ddd-<version>.vsix` to its
+Search for **DDD** in the Extensions view, or install it from the
+[marketplace](https://marketplace.visualstudio.com/items?itemName=sauci.ddd). Installed that
+way it updates itself, which is the reason to prefer it.
+
+Every release also attaches a `ddd-<version>.vsix` to its
 [GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link that needs
-no account. Download that file, then either:
+no account and reaches a site the marketplace does not. Download that file, then either:
 
 ```bash
 code --install-extension ddd-<version>.vsix
 ```
 
 or, in VS Code, open the Extensions view, use the `...` menu at the top of it and pick
-**Install from VSIX…**. Reinstalling the same way is how you update it; there is no automatic
-update for an extension that did not come from the marketplace, so it is worth reinstalling
+**Install from VSIX…**. Reinstalling the same way is how you update that one: a `.vsix` is a
+file like any other, so nothing goes looking for a newer one, and it is worth reinstalling
 when you upgrade the python package.
 
 For a build that has not been released yet, the CI run of any commit uploads the same file as
@@ -101,8 +105,9 @@ the same severities the build applies. A file no build claims is still checked, 
 
 ## Building it
 
-CI builds and tests this on every push and packages it on every release, so nobody has to
-build one to use it. To work on it you need node 20 and DDD installed:
+CI builds and tests this on every push, and on every release packages it, attaches it and
+publishes it to the marketplace, so nobody has to build one to use it. To work on it you need
+node 20 and DDD installed:
 
 ```bash
 npm ci

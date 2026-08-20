@@ -2,7 +2,7 @@
   "name": "ddd",
   "displayName": "DDD",
   "description": "Reports the DDD consistency checks while a description file is being written, and navigates between the components that share a variable.",
-  "version": "0.0.1",
+  "version": "0.5.0",
   "publisher": "sauci",
   "license": "MIT",
   "icon": "icon.png",
@@ -11,12 +11,24 @@
     "url": "https://github.com/Sauci/ddd.git",
     "directory": "editors/vscode"
   },
+  "homepage": "https://sauci.github.io/ddd/",
+  "bugs": {
+    "url": "https://github.com/Sauci/ddd/issues"
+  },
+  "qna": "https://github.com/Sauci/ddd/issues",
   "engines": {
     "vscode": "^1.82.0"
   },
   "categories": [
     "Linters",
     "Programming Languages"
+  ],
+  "keywords": [
+    "embedded",
+    "a2l",
+    "data dictionary",
+    "calibration",
+    "autosar"
   ],
   "activationEvents": [
     "workspaceContains:**/*.ddd.json",
@@ -53,7 +65,8 @@
   "scripts": {
     "build": "tsc --project .",
     "test": "npm run build && node --test out/",
-    "package": "npx --yes @vscode/vsce package"
+    "package": "npx --yes @vscode/vsce package",
+    "publish:marketplace": "npx --yes @vscode/vsce publish --packagePath"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

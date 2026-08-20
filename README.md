@@ -49,7 +49,7 @@ Requires Python 3.12 or newer; the only runtime dependencies are pydantic and ji
 
 ```bash
 pip install ddd-tool                 # from the index
-pip install ./ddd_tool-0.0.1-py3-none-any.whl   # from a delivered wheel, no network
+pip install ./ddd_tool-0.5.0-py3-none-any.whl   # from a delivered wheel, no network
 ddd --version
 ```
 
@@ -142,10 +142,13 @@ ddd lsp                      # speaks the Language Server Protocol on stdin and 
 Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
 VS Code cannot start one without an extension, so there is one in
 [editors/vscode](editors/vscode); it is a launcher and nothing more, which is why everything
-below works the same either way.  It is not on the marketplace: every release attaches a
-`ddd-<version>.vsix` to its [GitHub release](https://github.com/Sauci/ddd/releases), which
-installs with `code --install-extension ddd-<version>.vsix` or through **Install from VSIX…**
-in the Extensions view.
+below works the same either way.  Search for **DDD** in the Extensions view, or install it
+from the
+[marketplace](https://marketplace.visualstudio.com/items?itemName=sauci.ddd).  Every release
+also attaches a `ddd-<version>.vsix` to its
+[GitHub release](https://github.com/Sauci/ddd/releases), for a site whose network policy does
+not reach the marketplace: that installs with `code --install-extension ddd-<version>.vsix`
+or through **Install from VSIX…** in the Extensions view.
 
 The server reports on open and on save, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a

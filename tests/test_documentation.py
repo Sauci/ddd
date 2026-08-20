@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
+PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
 DOCS_URL = "https://sauci.github.io/ddd/"
 
 
@@ -229,6 +230,51 @@ class TestPackaging:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         license_file = metadata["project"]["license"]["file"]
         assert (ROOT / license_file).is_file(), "the declared license file is not in the tree"
+
+    def test_the_extension_is_installed_from_where_the_documentation_says(self) -> None:
+        """The marketplace identifies an extension as ``publisher.name``, and four pages
+        now send a customer to that address. Renaming either field turns every install
+        instruction in the product into a 404, which nothing inside this repository would
+        otherwise notice."""
+        manifest = json.loads(
+            (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
+        )
+        item = f"{manifest['publisher']}.{manifest['name']}"
+        url = f"https://marketplace.visualstudio.com/items?itemName={item}"
+        pages = [
+            ROOT / "README.md",
+            ROOT / "editors" / "vscode" / "README.md",
+            ROOT / "docs" / "editor_integration.rst",
+            ROOT / "docs" / "developer_documentation.rst",
+        ]
+        for page in pages:
+            assert url in page.read_text(encoding="utf-8"), (
+                f"{page.name} does not link to {url}, which is where the extension is"
+            )
+
+    def test_a_release_publishes_the_extension_to_the_marketplace(self) -> None:
+        """What makes those four pages true is one step of one workflow, and losing it
+        would fail nothing: the release would still build, the index upload would still
+        happen and the .vsix would still be attached. Only the Extensions view would go
+        on showing the previous version, which is not a thing anybody here can see."""
+        assert "vsce publish" in PUBLISH_WORKFLOW, (
+            "the release no longer publishes the extension, but the documentation says it does"
+        )
+        assert "secrets.VSCE_PAT" in PUBLISH_WORKFLOW, (
+            "the marketplace has no trusted publishing; the publish step needs VSCE_PAT"
+        )
+
+    def test_the_extension_carries_the_license_it_declares(self) -> None:
+        """``vsce`` packages nothing from outside the extension directory, so the root
+        LICENSE never reaches the .vsix and the marketplace would offer a licence tab with
+        nothing behind it. The copy beside the manifest has to stay a copy."""
+        extension = ROOT / "editors" / "vscode"
+        manifest = json.loads((extension / "package.json").read_text(encoding="utf-8"))
+        assert manifest["license"] == "MIT"
+        shipped = (extension / "LICENSE").read_text(encoding="utf-8").splitlines()
+        assert shipped == (ROOT / "LICENSE").read_text(encoding="utf-8").splitlines(), (
+            "editors/vscode/LICENSE has drifted from the licence the project is under"
+        )
 
     def test_everything_the_readme_tells_the_user_to_install_is_shipped(self) -> None:
         """`ddd cmake-dir` is documented, so the module has to travel in the wheel rather

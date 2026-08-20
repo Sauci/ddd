@@ -1,0 +1,680 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concept &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="File formats" href="file_formats/index.html" />
+    <link rel="prev" title="Getting started" href="getting_started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Concept</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#principles">Principles</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#every-component-declares-its-data-interface-explicitly">Every component declares its data interface explicitly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#exactly-one-component-owns-each-variable">Exactly one component owns each variable</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#access-rules-are-enforced-by-what-is-generated">Access rules are enforced by what is generated</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ddd-owns-the-data-the-project-owns-the-presentation">DDD owns the data, the project owns the presentation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#vocabulary">Vocabulary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scope">scope</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#position-in-the-build-process">Position in the build process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-tool-is-put-together">How the tool is put together</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Concept</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/concept.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="concept">
+<h1>Concept<a class="headerlink" href="#concept" title="Link to this heading"></a></h1>
+<p>In a component based embedded software project, the components talk to each other by reading
+and writing global variables. That is a perfectly reasonable design for a target with a few
+kilobytes of ram and no operating system worth the name: a write costs one store instruction,
+a read costs one load, there is no message queue to size and no serialisation to get wrong.
+What it costs instead is that the interface between two components exists only by convention.
+Nothing in the c code says that <code class="docutils literal notranslate"><span class="pre">ValueE</span></code> is written by the controller and read by the user
+interface; the compiler sees one <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">uint16_t</span></code> and is perfectly happy to let anybody
+assign to it.</p>
+<p>A convention holds for as long as the people who agreed on it remember it, and it stops
+holding at exactly the point where the project gets large enough for that to matter. Three
+failure modes recur.</p>
+<p>An <strong>interface that exists only by convention is not reviewable.</strong> When a component is
+delivered by another team or another company, the only description of what it produces and
+what it consumes is a header file somebody wrote by hand, a spreadsheet, and eventually a
+conversation. There is no artefact an integrator can check before the first build, and no
+artefact a supplier can be held to.</p>
+<p>A variable with <strong>no single owner is written from two places.</strong> This is the failure that
+survives compilation and linking: two components both decide that they are the ones computing
+<code class="docutils literal notranslate"><span class="pre">SharedValue</span></code>, the linker resolves both writes to the same address, and the value the
+consumers observe depends on the order in which the two producers happen to run. Nothing in
+the build reports it, and the symptom appears months later as an intermittent fault.</p>
+<p><strong>Silent drift</strong> is the slowest of the three. A component declares <code class="docutils literal notranslate"><span class="pre">ValueF</span></code> as an <code class="docutils literal notranslate"><span class="pre">sint16</span></code>
+scaled by 0.1 degC per bit; six months later its author rescales it to 0.01, and the consumer
+- which declared its own <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">int16_t</span> <span class="pre">ValueF</span></code> in its own header, because that is how c
+works - keeps multiplying by 0.1. The software compiles, links, runs, and reports every
+temperature wrong by a factor of ten. The same drift reaches the calibration engineer, because
+the a2l file that describes the scaling to the measurement and calibration tool is maintained
+by hand somewhere else again.</p>
+<p>DDD removes all three by turning the interface into an artefact rather than an agreement.
+Every component describes the variables it produces and consumes in a small json file, DDD
+checks that all components agree, and then DDD - not the component authors - writes the c code
+that declares and defines those variables, and the a2l file that describes them to the
+measurement and calibration tools.</p>
+<section id="principles">
+<h2>Principles<a class="headerlink" href="#principles" title="Link to this heading"></a></h2>
+<p>Four principles decide everything else in the tool. They are worth reading before the file
+formats, because most of the questions that come up later - “why can I not just declare it in
+my own header?”, “why does DDD refuse two writers?”, “why is the producer’s definition the one
+that wins?”, “why does DDD not decide what my generated header is called?” - are answered by
+one of them.</p>
+<section id="every-component-declares-its-data-interface-explicitly">
+<h3>Every component declares its data interface explicitly<a class="headerlink" href="#every-component-declares-its-data-interface-explicitly" title="Link to this heading"></a></h3>
+<p>A component ships a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file listing every global variable it takes part in,
+together with what the value <em>is</em>: its datatype, its physical unit, the conversion from the
+raw stored value to the physical one, its limits, its initial value, whether the software has
+to re-read it at every access, and, for calibration data, the axes it is defined over. Nothing
+about a shared variable stays implicit, and in particular nothing about it lives in a hand
+written header that only one team ever reads.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueF"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Signed measurement with a fixed point conversion"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">-400</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Writing the unit and the conversion down next to the datatype is not decoration: they are part
+of the interface in exactly the same way the datatype is. A consumer that reads <code class="docutils literal notranslate"><span class="pre">ValueF</span></code> as
+raw counts and multiplies by 0.01 is as broken as one that reads it as a <code class="docutils literal notranslate"><span class="pre">uint8_t</span></code>, and both
+are equally invisible to a compiler. Because the declaration is a data file rather than c code,
+DDD can compare it against the declaration made by every other component, which is the second
+half of the job and the subject of <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a>.</p>
+<p>The description is also the only place the information is written down. The same declaration
+produces the c definition, the comment above it, the <code class="docutils literal notranslate"><span class="pre">extern</span></code> declaration in each consumer’s
+header and the <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code> entry of the a2l, so those four cannot disagree with each other.
+Changing the scaling is one edit in one file, and everything that depends on it follows on the
+next build.</p>
+</section>
+<section id="exactly-one-component-owns-each-variable">
+<h3>Exactly one component owns each variable<a class="headerlink" href="#exactly-one-component-owns-each-variable" title="Link to this heading"></a></h3>
+<p>Each declaration carries a scope, and a variable may be declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by exactly one
+component. That component is the <strong>producer</strong> of the variable, and two consequences follow.</p>
+<p>The first is that a second writer becomes a build error rather than a race nobody notices, and
+that the error names both declarations before anything is compiled. The second is that when
+two components describe the same variable differently, the disagreement has a resolution
+rather than a discussion: <strong>the producer’s declaration is the authoritative one.</strong> It is the
+definition that gets generated, and the diagnostic points at the consumer that deviates from
+it, which is also the component that has to change. Both appear in the <code class="docutils literal notranslate"><span class="pre">inconsistent</span></code>
+example, whose whole point is to fail:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+    note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+4 errors, 1 warning
+</pre></div>
+</div>
+<p>Every finding names the file, the path inside it and the check that produced it, and the
+findings are collected rather than raised one at a time, so a single run tells an integrator
+everything that does not fit. The remaining three findings above belong to the scopes and are
+discussed below; <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a> covers the full list and how a project changes the
+severity of any of them.</p>
+<p>Ownership is what makes a project reviewable rather than merely consistent. For every variable
+there is one component, one file and one team answerable for what the value means.
+<a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a> builds directly on that, because a variable that changed owner
+between two deliveries is a fact somebody needs to be told about even when both deliveries are
+internally consistent.</p>
+</section>
+<section id="access-rules-are-enforced-by-what-is-generated">
+<h3>Access rules are enforced by what is generated<a class="headerlink" href="#access-rules-are-enforced-by-what-is-generated" title="Link to this heading"></a></h3>
+<p>A rule that depends on everybody remembering it is not a rule, so DDD does not ask components
+to respect the declared scopes. It generates the code so that respecting them is the path of
+least resistance and, optionally, the only path that compiles at all.</p>
+<p>Every component gets one header containing the declarations of that component and nothing
+else, and that header is the only one a component is expected to include. There is deliberately
+no project wide header offering everything: <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code> declares every object of the
+project, but it exists so that the single definition file can be compiled with full prototype
+checking, and it says so in its own text rather than leaving the reader to guess. Provided a
+component includes its own header, a name it never declared - say <code class="docutils literal notranslate"><span class="pre">BlockA</span></code>, which belongs to
+the user interface - has no declaration on its include path at all, so a reference to it fails
+with an ordinary undeclared identifier error, at the point of the mistake, in the component
+that made it.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* Controller.h, shortened - the whole file has the same three sections */</span>
+
+<span class="cm">/* outputs - written by Controller, read by other components */</span>
+<span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="p">;</span>
+<span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="p">;</span>
+
+<span class="cm">/* inputs - produced elsewhere, Controller may only read them */</span>
+<span class="cm">/** Scalar measurement with a linear conversion [%] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">ValueA</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cm">/** Array measurement with four elements [V] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueB</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+
+<span class="cm">/* locals - owned exclusively by Controller */</span>
+<span class="cm">/** Component local measurement of the controller [%] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueH</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>Visibility alone cannot stop a component from writing to a variable it legitimately reads,
+since a consumer needs the declaration in order to read it at all. <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> closes
+that gap by qualifying inputs <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers, which turns a write to a
+foreign variable from a convention into a constraint violation the compiler has to diagnose:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* UserInterface.h, generated with --const-inputs */</span>
+
+<span class="cm">/* inputs - produced elsewhere, UserInterface may only read them */</span>
+<span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> stays non-const, because the producer has to be able to
+write it. Declaring the same object <code class="docutils literal notranslate"><span class="pre">const</span></code> in one translation unit and non-const in
+another is a constraint violation in strict c, even though the usual embedded toolchains
+accept it and generate exactly the code one expects. That is why the stronger enforcement
+is opt-in rather than the default: a project decides for itself whether its toolchain and
+its coding standard allow it.</p>
+</div>
+<p>The same principle runs through the rest of the tool. A component local variable is defined in
+<code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> like any other, so that the project still has exactly one definition per
+object, but its declaration appears in the header of its owner and nowhere else. An axis that
+a curve refers to is written to the a2l even when the axis itself was marked as not exported,
+because an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS_REF</span></code> without the <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code> it points at would not be a valid a2l file
+and the calibration tool would reject the whole thing. In both cases the rule is carried by
+what comes out of the generator, not by a sentence in a document that somebody has to have
+read.</p>
+</section>
+<section id="ddd-owns-the-data-the-project-owns-the-presentation">
+<h3>DDD owns the data, the project owns the presentation<a class="headerlink" href="#ddd-owns-the-data-the-project-owns-the-presentation" title="Link to this heading"></a></h3>
+<p>What the generated c <em>says</em> follows from the declarations. What it <em>looks like</em> does not: the
+comment style, the banner, the include guards, the section headings and the names of the files
+themselves are house style, they differ between projects, and nothing in a description file
+decides them. A generator that imposed its own would either be argued with or be worked around
+with a post-processing script, so DDD does not: the c sources are rendered from jinja2
+templates the project provides. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> requires <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code> and falls back to
+nothing, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code> prints a working set of examples to copy into a project and
+change, and a project renames a generated file by renaming the template that produces it. Even
+the file names above are the example templates’: <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code> is called that because a
+template is called <code class="docutils literal notranslate"><span class="pre">ddd_globals.h.jinja2</span></code>. <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> describes the rules in full.</p>
+<p>Owning the presentation is not owning the rules. A component template is handed the
+declarations of its own component - already grouped by scope, already spelled in c, already
+qualified <code class="docutils literal notranslate"><span class="pre">const</span></code> where <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> says so - and the ownership, the visibility and
+the datatypes are settled before any template runs. The example templates write plain c
+comments because a comment convention is exactly the kind of decision this principle leaves to
+the project; one that documents its generated code differently, or not at all, changes the
+comment in the template and nothing else.</p>
+<p>The a2l file is the exception that proves the point. Its structure is dictated by ASAM rather
+than by a house style: a measurement and calibration tool rejects a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> in the
+wrong place no matter whose coding standard produced it. There is nothing for a project to
+decide there, so there is no template option for the a2l either - that backend carries its own
+templates and stays internal.</p>
+</section>
+</section>
+<section id="vocabulary">
+<h2>Vocabulary<a class="headerlink" href="#vocabulary" title="Link to this heading"></a></h2>
+<p>The terms below are used with these meanings throughout the documentation, the diagnostics and
+the json schemas. They describe the roles the data plays, not the kind of device the software
+runs on: DDD is not tied to any industry, and “measurement” or “calibration parameter” say
+what a value is <em>for</em>, not what it controls.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 78.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>term</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>project</p></td>
+<td><p>a named set of components and/or sub-projects, described by a file whose top level key
+is <code class="docutils literal notranslate"><span class="pre">project</span></code>. The project name becomes the a2l project and module name, so it is the
+name the calibration engineer sees.</p></td>
+</tr>
+<tr class="row-odd"><td><p>component</p></td>
+<td><p>a software unit with an explicitly declared data interface, described by a file whose
+top level key is <code class="docutils literal notranslate"><span class="pre">component</span></code>. One component corresponds to one generated header and
+to one a2l <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>declaration</p></td>
+<td><p>one entry of a component interface: a scope, an optional c preprocessor condition and a
+definition. A component takes part in a variable by declaring it, and only by
+declaring it.</p></td>
+</tr>
+<tr class="row-odd"><td><p>data object</p></td>
+<td><p>the thing being declared: a measurement, a parameter, a value block, a curve, a map or
+an axis. “Variable” and “data object” are used interchangeably; the second is the more
+precise word once calibration data is involved.</p></td>
+</tr>
+<tr class="row-even"><td><p>scope</p></td>
+<td><p>ownership and visibility of a data object with respect to the declaring component, one
+of <code class="docutils literal notranslate"><span class="pre">input</span></code>, <code class="docutils literal notranslate"><span class="pre">output</span></code> and <code class="docutils literal notranslate"><span class="pre">local</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>conversion</p></td>
+<td><p>the rule that maps the raw value stored in the target to the physical value a human
+reads: the identity, a linear factor and offset, or an enumeration.</p></td>
+</tr>
+<tr class="row-even"><td><p>producer</p></td>
+<td><p>the component that owns a data object, that is the one which declared it <code class="docutils literal notranslate"><span class="pre">output</span></code> or
+<code class="docutils literal notranslate"><span class="pre">local</span></code>. Its declaration is the authoritative one when components disagree.</p></td>
+</tr>
+<tr class="row-odd"><td><p>data dictionary</p></td>
+<td><p>the resolved result: every object with its owner, its consumers, its shape and its
+limits worked out. It is the contract between the checking front end and the output
+backends, and DDD publishes it - see <a class="reference internal" href="data_dictionary.html"><span class="doc">Data dictionary</span></a>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="scope">
+<h2>scope<a class="headerlink" href="#scope" title="Link to this heading"></a></h2>
+<p>A declaration states what the declaring component does with the object, and that single word
+is all DDD needs in order to work out ownership, visibility and the direction of every
+interface in the project.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 14.0%" />
+<col style="width: 86.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>scope</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">input</span></code></p></td>
+<td><p>the component reads the object, and some other component has to produce it. An input
+that nobody produces is reported as <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, because such a project would
+link only if some hand written translation unit happened to define the symbol, and
+that definition would be outside DDD’s control.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">output</span></code></p></td>
+<td><p>the component owns the object, and exactly one component may do so. Its declaration is
+the authoritative one, and the object appears in the headers of the consumers annotated
+with the name of its producer.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local</span></code></p></td>
+<td><p>the component owns the object exclusively and no other component may use it. A second
+component declaring the same name is reported as <code class="docutils literal notranslate"><span class="pre">local-conflict</span></code> rather than
+quietly becoming a consumer.</p></td>
+</tr>
+</tbody>
+</table>
+<p>For a measurement, <code class="docutils literal notranslate"><span class="pre">output</span></code> has the obvious reading: the component writes the variable at
+run time and everybody else reads it. For calibration data - parameters, value blocks, curves,
+maps and axes - the software never writes anything at all, since those objects are generated
+<code class="docutils literal notranslate"><span class="pre">const</span></code>. <code class="docutils literal notranslate"><span class="pre">output</span></code> there means that the component <em>provides</em> the data and that other
+components may read it; the writing is done by the calibration tool, from outside the
+software.</p>
+<p>Whether the software has to <em>notice</em> that writing is the other half of the answer, and it is
+what every definition states as <code class="docutils literal notranslate"><span class="pre">volatile</span></code>. An object a calibration tool tunes while the
+software runs is generated <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code>, because <code class="docutils literal notranslate"><span class="pre">const</span></code> alone lets the compiler use
+the initial value in place of a read wherever it can see it - within one translation unit at
+every optimisation level, <code class="docutils literal notranslate"><span class="pre">-O0</span></code> included, and across them under <code class="docutils literal notranslate"><span class="pre">-flto</span></code> - and, where the
+load does survive, still lets it serve two reads from one of them. Either way the tool writes
+a value the software does not pick up. The qualifier
+costs the read only section: gcc moves a <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> object out of <code class="docutils literal notranslate"><span class="pre">.rodata</span></code> into
+<code class="docutils literal notranslate"><span class="pre">.data</span></code>, which on a flash target is a question the linker script has to answer. An object
+that is never tuned online states <code class="docutils literal notranslate"><span class="pre">false</span></code>, is generated plain <code class="docutils literal notranslate"><span class="pre">const</span></code> and stays in read
+only memory. DDD states no preference between the two and reports nothing about the choice;
+it renders what the description says.</p>
+<p>The demo project uses both readings. <code class="docutils literal notranslate"><span class="pre">AxisA</span></code> is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by the controller and
+<code class="docutils literal notranslate"><span class="pre">input</span></code> by the user interface, which defines its own curve <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> over the controller’s
+break points - the axis is stored once and shared, which is what the a2l calls <code class="docutils literal notranslate"><span class="pre">COM_AXIS</span></code>.
+The controller’s <code class="docutils literal notranslate"><span class="pre">ParameterA</span></code>, on the other hand, is <code class="docutils literal notranslate"><span class="pre">local</span></code>, because it parametrises the
+controller and nothing else:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd list examples/demo/demo.ddd.json
+VARIABLE    KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+AxisA       axis         uint16    Hz    [6]     [...]              Controller             UserInterface
+AxisB       axis         uint8     %     [4]     [...]              Controller (local)     -
+BlockA      value_block  uint8     -     [8]     [...]              UserInterface (local)  -
+CurveA      curve        uint16    ms    [6]     [...]              Controller (local)     -
+CurveB      curve        uint8     %     [6]     200 (= 100 %)      UserInterface (local)  -
+FlagA       measurement  boolean   -     -       0                  SensorHub              EventLogger
+MapA        map          sint8     %     [4][6]  [...]              Controller (local)     -
+ParameterA  parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+StateA      measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+ValueA      measurement  uint8     %     -       0 (= 0 %)          SensorHub              Controller
+ValueB      measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
+ValueC      measurement  float32   degC  -       -                  SensorHub              UserInterface
+ValueD      measurement  uint16    -     [8]     -                  SensorHub (local)      -
+ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             UserInterface, EventLogger
+ValueF      measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
+ValueG      measurement  uint16    V     -       1000 (= 1 V)       Controller             UserInterface
+ValueH      measurement  sint16    %     -       0 (= 0 %)          Controller (local)     -
+ValueI      measurement  uint32    -     -       0                  UserInterface          EventLogger
+ValueJ      measurement  uint8     -     -       0                  EventLogger            UserInterface
+ValueK      measurement  sint8     -     [3][4]  [...]              EventLogger (local)    -
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">local</span></code> is the normal choice for calibration data that only tunes its owning component, and
+it is worth preferring over <code class="docutils literal notranslate"><span class="pre">output</span></code> whenever it applies: it keeps the object out of every
+other component’s header, and it lets the tool report a new user as a mistake instead of
+silently accepting it.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Scope is a property of a <em>declaration</em>, not of an object. The same object is <code class="docutils literal notranslate"><span class="pre">output</span></code> in
+the file of its producer and <code class="docutils literal notranslate"><span class="pre">input</span></code> in the file of every consumer, and each side states
+the full definition. That redundancy is deliberate: it is precisely what allows DDD to
+notice that the two sides have drifted apart, which a single shared declaration could never
+do.</p>
+</div>
+</section>
+<section id="position-in-the-build-process">
+<h2>Position in the build process<a class="headerlink" href="#position-in-the-build-process" title="Link to this heading"></a></h2>
+<p>DDD is a command line tool, so that it can be driven from make, from CMake, from a batch file
+or from a ci job, and it runs <strong>twice per build</strong>. Understanding why there are two runs
+explains most of what the build system integration does.</p>
+<p>The first run happens before anything is compiled. It reads the project description, follows
+the includes, resolves the declarations of all components into one data dictionary, runs the
+consistency checks and - only if they pass - renders the project’s c templates and writes a
+first a2l file. From then on the compiler has both the definitions of every global variable
+and one header per component:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates
+wrote       build/gen/ddd_globals.c (created)
+wrote       build/gen/ddd_globals.h (created)
+wrote       build/gen/ddd_types.h (created)
+wrote       build/gen/Controller.h (created)
+wrote       build/gen/SensorHub.h (created)
+wrote       build/gen/UserInterface.h (created)
+wrote       build/gen/EventLogger.h (created)
+wrote       build/gen/DemoDevice.a2l (created)
+</pre></div>
+</div>
+<p>The second run happens after linking, and it exists because of one piece of information that
+does not exist before then: the address of every object in the target. A measurement and
+calibration tool reaches a variable over the debug or xcp interface by address, so an a2l
+without addresses describes the software correctly but cannot be used to measure it. The
+addresses are decided by the linker, so DDD is handed a symbol to address map extracted from
+the linker output and rewrites the a2l with the real values. The map is a flat json object,
+with the addresses written in decimal or hexadecimal:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"CurveA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map build/addresses.json
+unchanged   build/gen/ddd_globals.c
+unchanged   build/gen/ddd_globals.h
+unchanged   build/gen/ddd_types.h
+unchanged   build/gen/Controller.h
+unchanged   build/gen/SensorHub.h
+unchanged   build/gen/UserInterface.h
+unchanged   build/gen/EventLogger.h
+wrote       build/gen/DemoDevice.a2l (updated)
+</pre></div>
+</div>
+<p>The second run regenerates everything but writes only what actually changed - which, since the
+declarations did not move, is the a2l alone. That property is not a convenience for the console
+output. A generated file whose content is identical is left untouched on disk, so its time
+stamp does not move and the build system does not rebuild the whole project after the address
+import. For the same reason the generated files carry no time stamp of their own, and
+regenerating from unchanged inputs produces a byte identical result, which is what makes a
+delivery reproducible.</p>
+<p>Before the address map is applied every address in the a2l is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code>; afterwards the
+objects named in the map carry their real address, and the ones that are not named keep zero.
+<code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is emitted in both cases, so a project that would rather patch the addresses
+into the a2l with a separate tool after linking can skip the second run entirely and still
+have the symbol names in the file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
+  UWORD CM_LIN_HZ 0 0 0 8000
+  ECU_ADDRESS 0x20000100
+  SYMBOL_LINK "ValueE" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+<p class="plantuml">
+<img src="_images/plantuml-9191e2f65b02b69791eb864d701513345f2a2fd8.svg" alt="folder &quot;software repository&quot; as repository {
+    collections &quot;component descriptions\n(*.ddd.json)&quot; as component_files
+    file &quot;project description\n(demo.ddd.json)&quot; as project_file
+    collections &quot;c templates\n(*.jinja2)&quot; as templates
+    collections &quot;hand written\nc sources&quot; as c_sources
+}
+
+component &quot;ddd generate&quot; as ddd_first
+component &quot;ddd generate\n--address-map&quot; as ddd_second
+component &quot;compiler / linker&quot; as toolchain
+
+artifact &quot;ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component&quot; as generated_c
+artifact &quot;project a2l\n(addresses 0x00000000)&quot; as provisional_a2l
+artifact &quot;firmware image&quot; as image
+file &quot;addresses.json\n(symbol to address)&quot; as address_map
+artifact &quot;project a2l\n(linker addresses)&quot; as final_a2l
+
+component &quot;measurement and\ncalibration tool&quot; as mc_tool
+
+component_files --&gt; project_file: collected through\nthe includes key
+project_file --&gt; ddd_first: the consistency\nchecks run here
+templates --&gt; ddd_first: --template-dir: the c files\nand their names come from here
+ddd_first --&gt; generated_c
+ddd_first --&gt; provisional_a2l
+
+generated_c --&gt; toolchain
+c_sources --&gt; toolchain: each component includes\nits own header only
+toolchain --&gt; image
+image --&gt; address_map: symbol addresses taken\nfrom the linker output
+
+project_file --&gt; ddd_second
+templates --&gt; ddd_second
+address_map --&gt; ddd_second
+ddd_second --&gt; final_a2l: the c sources are\nregenerated unchanged
+final_a2l --&gt; mc_tool: measure and calibrate\nthe built software"/></p>
+<p>Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
+the tool usable from a pipeline that only checks: <a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a> describes the
+exit codes and the machine readable output a ci job consumes, and <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>
+reduces the whole sequence above to two calls in a CMake project.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>A project that has no use for an a2l at all can pass <code class="docutils literal notranslate"><span class="pre">--no-a2l</span></code> and use DDD purely as the
+owner of its global variables; a project that only wants the verdict, for instance in a
+merge request pipeline, runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and generates nothing.</p>
+</div>
+</section>
+<section id="how-the-tool-is-put-together">
+<h2>How the tool is put together<a class="headerlink" href="#how-the-tool-is-put-together" title="Link to this heading"></a></h2>
+<p>The internal structure of DDD deserves a paragraph in a conceptual page because it is visible
+from the outside. It is the reason the tool can be relied on to say the same thing about a
+project in c as it says in a2l, and the reason a project can generate an output format DDD
+does not ship.</p>
+<p>Everything DDD knows about a project passes through a single artefact, the <strong>data dictionary</strong>.
+The front end - the file formats, the loader that follows the includes and the analysis that
+works out ownership, agreement and references - produces it, and mentions neither c nor a2l
+anywhere. The backends consume it, and never touch a description file, a glob or a check. The
+c backend knows what a <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code> is and has never heard of a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>; the a2l
+backend knows what a <code class="docutils literal notranslate"><span class="pre">UWORD</span></code> is and has never heard of an include guard.</p>
+<p>The two differ in where their templates come from, and that difference is the fourth principle
+in code. The c backend is handed a template directory and renders whatever it finds there, so
+the shape of the generated c is outside the tool; the a2l backend is self-contained, because
+the shape of an a2l file is outside the <em>project</em>.</p>
+<p class="plantuml">
+<img src="_images/plantuml-49a62fd3423c46c09f02d957daa666916478b438.svg" alt="package &quot;front end - knows no output format&quot; as front_end {
+    component &quot;ddd.models\nthe json file formats,\nstorage sizes, value ranges&quot; as models
+    component &quot;ddd.loading\nfiles, includes, globs&quot; as loading
+    component &quot;ddd.analysis\nownership, agreement,\nreferences&quot; as analysis
+}
+
+component &quot;ddd.ir.DataDictionary\nthe contract: every object with\nits owner, consumers,\nshape and limits&quot; as dictionary
+
+package &quot;backends - one output format each&quot; as backends {
+    component &quot;ddd.backends.c\nuint16_t, literals, include\nguards; renders the\nproject's templates&quot; as c_backend
+    component &quot;ddd.backends.a2l\nUWORD, compu methods,\nrecord layouts; carries\nits own templates&quot; as a2l_backend
+}
+
+folder &quot;c templates of the project\n(*.jinja2, --template-dir)&quot; as c_templates
+artifact &quot;ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component&quot; as c_files
+artifact &quot;project a2l&quot; as a2l_file
+
+loading --&gt; models: parses the description\nfiles into
+models --&gt; analysis
+analysis --&gt; dictionary: resolves ownership\nand agreement into
+dictionary --&gt; c_backend
+dictionary --&gt; a2l_backend
+c_templates --&gt; c_backend: name and render\nthe c files
+c_backend --&gt; c_files
+a2l_backend --&gt; a2l_file"/></p>
+<p>Two things follow from that split. The dictionary is <strong>published</strong>: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes it out
+as json and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">dictionary</span></code> prints its schema, so a generator DDD does not ship - a
+header for another language, a csv for a test bench, an ARXML - can consume the resolved data
+of a project without depending on anything inside the tool. And a backend is nothing more than
+an object with a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a <code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> method
+(the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol of <code class="docutils literal notranslate"><span class="pre">ddd.backends.base</span></code>), so adding an output format means adding a
+package next
+to the two existing ones and listing it where the generate command assembles its backends,
+and changing nothing else.</p>
+<p>The boundary is not a matter of intent. The test suite walks the import graph and fails the
+build if the front end imports a backend, if a backend reaches into the loader or the analysis,
+or if one backend imports the other; it also fails if a spelling that belongs to a single
+output format - <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, <code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code> - appears anywhere in the file formats.
+The layering therefore cannot rot silently, and <a class="reference internal" href="developer_documentation.html"><span class="doc">Developer documentation</span></a> describes those
+guards in detail.</p>
+<p>One last property of the front end is easier to appreciate here than in a reference page: the
+loader and the analysis never raise on a bad project. They collect as many findings as they
+can in one run and report them together, because an integrator assembling a dozen components
+wants the list of everything that does not fit, not the first thing that did not.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="Getting started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="file_formats/index.html" class="btn btn-neutral float-right" title="File formats" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

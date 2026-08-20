@@ -1,0 +1,83 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="1777,133,2043,245"/>
+<area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="2187,219,2304,331"/>
+<area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="1825,293,1995,349"/>
+<area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="1827,397,1993,509"/>
+<area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="1791,691,2029,803"/>
+<area shape="rect" id="node6" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="1825,558,1995,642"/>
+<area shape="rect" id="node7" title="ddd.models.types.ExternalType
+
+A name for a c type that DDD does not declare: a hand written header defines it.
+
+DDD generates no typedef for it and knows neither its layout nor its meaning &#45; which is
+the point: a driver&#39;s status word or an operating system&#39;s handle already has one
+authoritative definition, and a copy of it in the description would drift. &#160;Only a
+structure member may name one, as opaque storage that reaches the generated structure
+verbatim; such a member states no unit, conversion or limits, because DDD does not check
+meaning it cannot see.
+" alt="" coords="661,317,884,457"/>
+<area shape="rect" id="node8" title="ddd.models.types.Member
+
+One member of a structure, in the order the structure declares it.
+
+Order is significant: it is the order the c struct is generated in, and therefore the order
+the compiler lays out. &#160;Reordering members of a released structure moves every address after
+the change, which is why a comparison against a baseline reports it.
+" alt="" coords="1033,277,1633,613"/>
+<area shape="rect" id="node9" title="ddd.models.types.ScalarType
+
+A name for what a number means, so components agree by naming rather than by copying.
+
+Three components consuming an engine speed each used to write out the datatype, the unit,
+the scaling and the limits, leaving DDD to notice when one of them was wrong. &#160;If all three
+say ``Speed_t`` instead, there is nothing left to disagree about &#45; which is checking turned
+into construction.
+
+It fixes exactly the four things that make two declarations interchangeable, and nothing
+else. &#160;``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:
+they are properties of one object rather than of the type, and two measurements of the same
+type may well differ in whether an interrupt writes one of them.
+" alt="" coords="1072,5,1595,229"/>
+<area shape="rect" id="node10" title="ddd.models.types.StructType
+
+One structured datatype: a name and the members it lays out, in order.
+" alt="" coords="656,129,889,269"/>
+<area shape="rect" id="node11" title="ddd.models.types.TypesFile
+
+Root object of a ``*.ddd.json`` type description.
+
+``types`` is the top level key that makes this a types file rather than a project or a
+component file; DDD decides what a file is from that key alone, so exactly one of them
+appears here.
+" alt="" coords="5,71,512,155"/>
+</map>

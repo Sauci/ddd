@@ -1,0 +1,348 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File formats &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Project description" href="project.html" />
+    <link rel="prev" title="Concept" href="../concept.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">File formats</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-schema-is-published">The schema is published</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">File formats</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="file-formats">
+<h1>File formats<a class="headerlink" href="#file-formats" title="Link to this heading"></a></h1>
+<p>Everything DDD reads is json, and every file it reads has to be named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>. Plain
+json says nothing about who owns a file: a repository of any size already contains
+<code class="docutils literal notranslate"><span class="pre">package.json</span></code>, <code class="docutils literal notranslate"><span class="pre">compile_commands.json</span></code>, launch configurations and test fixtures, and a
+description that hides among them is a description nobody finds. The double extension makes a
+DDD file recognisable at a glance to a human, and matchable with a single pattern by a build
+script, an editor or a linter - which is also how a project collects its components in the
+first place, since <code class="docutils literal notranslate"><span class="pre">&quot;includes&quot;:</span> <span class="pre">[&quot;components/*.ddd.json&quot;]</span></code> only works if the naming is a
+rule rather than a habit. A file with any other name is reported under the <code class="docutils literal notranslate"><span class="pre">file-extension</span></code>
+check:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check plain.json
+plain.json: error[file-extension]: 'plain.json' is a DDD description file and has to be named '*.ddd.json'
+1 error
+</pre></div>
+</div>
+<p>It is an error rather than a hard failure, so a project migrating an existing set of files can
+relax it for as long as the rename is under way, and lower it back afterwards:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check plain.json -W file-extension=warning
+plain.json: warning[file-extension]: 'plain.json' is a DDD description file and has to be named '*.ddd.json'
+plain.json#component: info[empty-component]: component 'Plain' declares no variable
+1 warning, 1 info
+</pre></div>
+</div>
+<p>The second run says more than the first, and the reason is worth knowing early: reading the
+files and analysing them are two phases, and the analysis does not start while the reading
+phase has reported an error. There is no point resolving references between components that
+could not all be read, and a hundred consequential findings would bury the one that has to be
+fixed first. So a run that fails to read something reports exactly what stopped it, and the
+rest of the checks appear once it is out of the way.</p>
+<section id="what-kind-of-file-this-is">
+<h2>What kind of file this is<a class="headerlink" href="#what-kind-of-file-this-is" title="Link to this heading"></a></h2>
+<p>DDD does not ask the file name what a file contains; the <strong>top level key</strong> decides. There are
+six kinds: a file whose top level key is <code class="docutils literal notranslate"><span class="pre">project</span></code> is a
+<a class="reference internal" href="project.html"><span class="doc">project description</span></a>, one whose top level key is <code class="docutils literal notranslate"><span class="pre">component</span></code> is a
+<a class="reference internal" href="component.html"><span class="doc">component description</span></a>, <code class="docutils literal notranslate"><span class="pre">types</span></code> is a
+<a class="reference internal" href="types.html"><span class="doc">structured datatype description</span></a>, <code class="docutils literal notranslate"><span class="pre">units</span></code> is the project’s
+<a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a>, <code class="docutils literal notranslate"><span class="pre">sections</span></code> declares its
+<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and <code class="docutils literal notranslate"><span class="pre">constants</span></code> its
+<a class="reference internal" href="constants.html"><span class="doc">constant vocabulary</span></a>. Nothing else appears at that level, and a file has
+to carry exactly one of them.</p>
+<p>Detecting the kind from the content rather than from the path is what lets <code class="docutils literal notranslate"><span class="pre">includes</span></code> name
+components and sub-projects in the same list, and what lets <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> be pointed at either
+a whole project or a single component file without being told which of the two it is getting.
+The price is that a file with two top level keys is ambiguous, so it is refused rather than
+guessed at, and a file with none of them is refused with the keys it does have printed next to
+the message, because the usual cause is a file that was never meant for DDD at all:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check both.ddd.json
+both.ddd.json: error[file-kind]: file has 'project' and 'component' at the top level; it must have exactly one
+1 error
+
+$ ddd check neither.ddd.json
+neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections', 'constants' (found: components, version)
+1 error
+</pre></div>
+</div>
+</section>
+<section id="unknown-keys-are-rejected">
+<h2>Unknown keys are rejected<a class="headerlink" href="#unknown-keys-are-rejected" title="Link to this heading"></a></h2>
+<p>Every object in every description file is closed: a key DDD does not know is an error, not
+something quietly ignored. The reason is that the alternative fails silently and in the worst
+possible way. A misspelled <code class="docutils literal notranslate"><span class="pre">definiton</span></code> leaves a declaration without the definition it was
+meant to carry, and a misspelled <code class="docutils literal notranslate"><span class="pre">limits</span></code> puts the full range of the datatype into the a2l
+and lets a calibration engineer enter a value the software cannot handle - both from a file
+that looked perfectly correct in review. Closing the objects turns every one of those into a
+finding that names the offending key and points at it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check typo.ddd.json
+typo.ddd.json#component.interface[0].definition: error[schema]: Field required
+typo.ddd.json#component.interface[0].definiton: error[schema]: Extra inputs are not permitted (got: {'name': 'ValueA', 'datatype': 'uint8'})
+2 errors
+</pre></div>
+</div>
+<p>The location after the <code class="docutils literal notranslate"><span class="pre">#</span></code> is a path into the json document rather than a line number,
+because a line number in a file that is often generated or reformatted means very little,
+whereas <code class="docutils literal notranslate"><span class="pre">component.interface[0].definiton</span></code> is exactly where the key sits whatever the
+formatting. Both halves of the mistake are reported: the key that should not be there, and the
+key that is now missing because of it.</p>
+<p>Those two halves are also why a key like <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is required and has no default. A
+misspelled <code class="docutils literal notranslate"><span class="pre">volatille</span></code> is caught twice over - the key that was written is not one DDD knows,
+and the key that had to be there is missing - but only the second half catches the definition
+where it was never typed at all. A default would have answered that one silently, and for this
+key the silent answer decides whether the compiler may keep a variable in a register and
+whether it may fold a calibration constant into the code that reads it.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">schema</span></code> is one of the five checks whose severity cannot be changed, along with
+<code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code> and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>. A file that
+cannot be interpreted has nothing further to say, and a component whose description failed
+to validate is not added to the project at all - so the remaining checks are never handed a
+half-read file to draw conclusions from. The full list is on the
+<a class="reference internal" href="../consistency_checks.html"><span class="doc">consistency checks</span></a> page.</p>
+</div>
+<p>The json itself is read strictly as well. <code class="docutils literal notranslate"><span class="pre">NaN</span></code>, <code class="docutils literal notranslate"><span class="pre">Infinity</span></code> and <code class="docutils literal notranslate"><span class="pre">-Infinity</span></code>, which
+python’s json reader would otherwise accept, are refused: none of them is json, and none of
+them survives the trip to an output, since there is no c literal and no a2l number for either.
+NaN is worse than merely unrepresentable, because every comparison against it is false, so a
+NaN limit would pass every range check in silence instead of failing one. A byte order mark in
+front of the file is accepted, on the other hand, since it is what several Windows editors and
+PowerShell redirection put there and the file is otherwise perfectly good json.</p>
+</section>
+<section id="the-schema-is-published">
+<h2>The schema is published<a class="headerlink" href="#the-schema-is-published" title="Link to this heading"></a></h2>
+<p>The pages that follow are the prose form of a contract the tool publishes in machine readable
+form as well. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code> prints the json schema of each file format, so an editor can
+offer completion and validation while a description is being written, and a ci job can
+validate the files without running DDD at all:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>schema<span class="w"> </span>project<span class="w">      </span><span class="c1"># the project description</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>component<span class="w">    </span><span class="c1"># the component description, and every kind of data object in it</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>types<span class="w">        </span><span class="c1"># the structured datatype description</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>units<span class="w">        </span><span class="c1"># the unit vocabulary</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>sections<span class="w">     </span><span class="c1"># the memory section description</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>constants<span class="w">    </span><span class="c1"># the constant vocabulary</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="w">   </span><span class="c1"># the resolved data dictionary, the contract the backends consume</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>all<span class="w"> </span>-o<span class="w"> </span>DIR<span class="w">   </span><span class="c1"># every schema at once, one file each, into a directory</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">FILE</span></code> writes to a file instead of to stdout, which is the form a build script uses:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd schema project -o project.schema.json
+wrote project.schema.json
+</pre></div>
+</div>
+<p>The first six describe the files you write; <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> describes what DDD makes of them and
+is documented with the <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a>. The closed objects described
+above appear in all of them as <code class="docutils literal notranslate"><span class="pre">&quot;additionalProperties&quot;:</span> <span class="pre">false</span></code>, so a validating editor
+rejects a misspelled key at the moment it is typed rather than at the next build.</p>
+<section id="what-the-schema-carries">
+<h3>What the schema carries<a class="headerlink" href="#what-the-schema-carries" title="Link to this heading"></a></h3>
+<p>A schema that only states which files are valid would do half the job. These carry the
+documentation as well, because the moment somebody wants it is the moment they are typing the
+key, not the moment they go looking for this page:</p>
+<ul class="simple">
+<li><p>every key has a <code class="docutils literal notranslate"><span class="pre">description</span></code>, so nothing hovers blank;</p></li>
+<li><p>every value of a closed set has one of its own. Hovering <code class="docutils literal notranslate"><span class="pre">uint16</span></code> says how much storage it
+costs and which values fit in it, and hovering <code class="docutils literal notranslate"><span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;curve&quot;</span></code> says what a curve is as
+against a value block. The per-value text is published twice - spelled out in the
+<code class="docutils literal notranslate"><span class="pre">description</span></code> of the key, which every editor shows, and repeated in <code class="docutils literal notranslate"><span class="pre">enumDescriptions</span></code>,
+the parallel array VS Code reads to document each entry of the completion dropdown;</p></li>
+<li><p>the dialect is stated. Each file opens with
+<code class="docutils literal notranslate"><span class="pre">&quot;$schema&quot;:</span> <span class="pre">&quot;https://json-schema.org/draft/2020-12/schema&quot;</span></code>, so no validator has to guess
+which version of json schema it is reading.</p></li>
+</ul>
+<p>Some rules cannot be expressed as a constraint and are written into the description of the key
+they hang off instead: that a <code class="docutils literal notranslate"><span class="pre">bits</span></code> member needs a width and refuses <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, that a
+bitfield has to fit the datatype carrying it, that <code class="docutils literal notranslate"><span class="pre">min</span></code> cannot exceed <code class="docutils literal notranslate"><span class="pre">max</span></code>. An editor
+therefore accepts a few files DDD will still reject. That is the deliberate trade: the schema
+is there to help a file get written, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> remains what decides whether it is
+right.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="project.html">Project description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="project.html#the-keys">The keys</a></li>
+<li class="toctree-l2"><a class="reference internal" href="project.html#includes">includes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="project.html#what-the-project-is-built-out-of">What the project is built out of</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="component.html">Component description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="component.html#interface">interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="component.html#scope">scope</a></li>
+<li class="toctree-l2"><a class="reference internal" href="component.html#condition">condition</a></li>
+<li class="toctree-l2"><a class="reference internal" href="component.html#types-and-constants-of-the-component">Types and constants of the component</a></li>
+<li class="toctree-l2"><a class="reference internal" href="component.html#checking-a-component-on-its-own">Checking a component on its own</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="variable_definition.html">Variable definition</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="variable_definition.html#the-common-attributes">The common attributes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="variable_definition.html#kinds-of-data-object">Kinds of data object</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#identity">identity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#linear">linear</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#enum">enum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#limits-and-where-they-come-from-when-nobody-writes-them">Limits, and where they come from when nobody writes them</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#one-compu-method-per-conversion-and-unit">One compu method per conversion and unit</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="types.html">Type description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="types.html#three-kinds-of-entry">Three kinds of entry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#two-keys-name-the-storage">Two keys name the storage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#scalar-types">Scalar types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#structures">Structures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#external-types">External types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#a-variable-of-a-declared-type">A variable of a declared type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="types.html#checks-over-the-types">Checks over the types</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Unit vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sections.html">Memory sections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="constants.html">Constant vocabulary</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="constants.html#what-the-outputs-make-of-it">What the outputs make of it</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../concept.html" class="btn btn-neutral float-left" title="Concept" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="project.html" class="btn btn-neutral float-right" title="Project description" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,599 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Build integration &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Editor integration" href="editor_integration.html" />
+    <link rel="prev" title="Command line interface" href="command_line_interface.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Build integration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#cmake">cmake</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#registering-a-component">Registering a component</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#generating-an-image">Generating an image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-template-directory-decides">What the template directory decides</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#collection-follows-the-link-graph">Collection follows the link graph</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-hand-written-project-description">A hand written project description</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-build-tells-an-editor">What the build tells an editor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-targets-it-creates">The targets it creates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#options">Options</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#docker">docker</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-compile-service-proves">What the compile service proves</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Build integration</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/build_integration.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="build-integration">
+<h1>Build integration<a class="headerlink" href="#build-integration" title="Link to this heading"></a></h1>
+<p>DDD is not a tool somebody runs by hand before a release; it is a step of the build, in the
+same way the compiler is. The generated globals have to be regenerated whenever a component
+changes its declarations, the check has to fail the build rather than a review, and the a2l
+that goes out with an image has to be the one generated from the components that image
+actually links. Two integrations are shipped for that: a cmake module that turns the whole
+workflow into two calls, and a docker image that proves the generated c really compiles.</p>
+<section id="cmake">
+<h2>cmake<a class="headerlink" href="#cmake" title="Link to this heading"></a></h2>
+<p>Which components an image is made of is already written down in the build system - it is the
+link graph. A project description that repeats that list by hand is a second source of truth,
+and it drifts the day somebody links a new component without remembering the json file. The
+cmake module therefore reads the list out of the link graph: a component registers its own
+description on its own target, and an image collects the descriptions of everything it links.</p>
+<p>The module lives in <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> and is found through <code class="docutils literal notranslate"><span class="pre">CMAKE_MODULE_PATH</span></code>. Because a
+project may be built against several installations of the tool, the directory is printed by
+the tool itself rather than guessed:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd cmake-dir
+/home/you/ddd/cmake
+</pre></div>
+</div>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">list</span><span class="p">(</span><span class="s">APPEND</span><span class="w"> </span><span class="s">CMAKE_MODULE_PATH</span><span class="w"> </span><span class="s2">"/path/to/ddd/cmake"</span><span class="p">)</span><span class="w">   </span><span class="c"># what `ddd cmake-dir` printed</span>
+<span class="nb">include</span><span class="p">(</span><span class="s">Ddd</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Including the module looks for the <code class="docutils literal notranslate"><span class="pre">ddd</span></code> executable and remembers it in the cache variable
+<code class="docutils literal notranslate"><span class="pre">DDD_EXECUTABLE</span></code>. Configure with <code class="docutils literal notranslate"><span class="pre">-DDDD_EXECUTABLE=&lt;path&gt;</span></code> to pin a particular
+installation - the one of a virtual environment, or a small wrapper script running
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code>. The module needs CMake 3.20 and says so at include time; collecting the
+components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
+that sets <code class="docutils literal notranslate"><span class="pre">CMAKE_FIND_ROOT_PATH_MODE_PROGRAM</span> <span class="pre">ONLY</span></code> keeps <code class="docutils literal notranslate"><span class="pre">find_program</span></code> from seeing host
+tools, so such a project either allows host programs (<code class="docutils literal notranslate"><span class="pre">BOTH</span></code>) or passes
+<code class="docutils literal notranslate"><span class="pre">-DDDD_EXECUTABLE=&lt;path&gt;</span></code> explicitly.</p>
+<section id="registering-a-component">
+<h3>Registering a component<a class="headerlink" href="#registering-a-component" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">ddd_add_component(&lt;target&gt;</span> <span class="pre">JSON</span> <span class="pre">&lt;file&gt;...)</span></code> attaches one or more description files to the
+target of a component. The files must be named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> and, unless they live in the
+build tree and are generated later, must exist at configure time; a violation of either is a
+fatal error, because the alternative is an image whose data dictionary is quietly incomplete.</p>
+<p>Registering a component also creates the on-demand target <code class="docutils literal notranslate"><span class="pre">&lt;target&gt;.ddd</span></code>, which checks that
+component on its own - useful long before it is integrated, and useful to a supplier who does
+not have the rest of the project at all. That check runs with <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> and
+<code class="docutils literal notranslate"><span class="pre">unused-output</span></code> switched off, because a component in isolation has nobody on the other side
+of its interface; everything else, from datatypes and conversions to initial values and axis
+references, is verified as usual.</p>
+</section>
+<section id="generating-an-image">
+<h3>Generating an image<a class="headerlink" href="#generating-an-image" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">ddd_generate(&lt;image&gt;</span> <span class="pre">...)</span></code> collects the descriptions of every component in the link closure
+of the image, writes the project description tying them together, runs the generator, and
+links the result back into the image. It has to be called in the <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that
+defines the image, and after the components have been added, because it hands the generated
+headers to the components registered up to that point.</p>
+<p>Besides the image it needs one thing: <code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>, the directory of jinja2 templates
+the generated c code is rendered from. It is required and has no default, because the
+alternative would be a build whose generated sources change the day the tool is upgraded. What
+that code looks like belongs to the project, so the project says where the templates are.</p>
+<p>The example below is <code class="docutils literal notranslate"><span class="pre">examples/cmake/CMakeLists.txt</span></code> from the source distribution, with its
+comments removed; it is what the <code class="docutils literal notranslate"><span class="pre">cmake</span></code> compose service configures and builds:</p>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">cmake_minimum_required</span><span class="p">(</span><span class="s">VERSION</span><span class="w"> </span><span class="s">3.30</span><span class="p">)</span>
+<span class="nb">project</span><span class="p">(</span><span class="s">DddCMakeExample</span><span class="w"> </span><span class="s">LANGUAGES</span><span class="w"> </span><span class="s">C</span><span class="p">)</span>
+
+<span class="nb">list</span><span class="p">(</span><span class="s">APPEND</span><span class="w"> </span><span class="s">CMAKE_MODULE_PATH</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/../../cmake"</span><span class="p">)</span>
+<span class="nb">include</span><span class="p">(</span><span class="s">Ddd</span><span class="p">)</span>
+
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD</span><span class="w"> </span><span class="s">11</span><span class="p">)</span>
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD_REQUIRED</span><span class="w"> </span><span class="s">ON</span><span class="p">)</span>
+<span class="nb">add_compile_options</span><span class="p">(</span><span class="s">-Wall</span><span class="w"> </span><span class="s">-Wextra</span><span class="w"> </span><span class="s">-Wpedantic</span><span class="w"> </span><span class="s">-Werror</span><span class="p">)</span>
+
+<span class="nb">set</span><span class="p">(</span><span class="s">descriptions</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/../demo"</span><span class="p">)</span>
+
+<span class="nb">set</span><span class="p">(</span><span class="s">templates</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/../templates"</span><span class="p">)</span>
+
+<span class="nb">add_library</span><span class="p">(</span><span class="s">sensor_hub</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/sensor_hub.c</span><span class="p">)</span>
+<span class="nb">ddd_add_component</span><span class="p">(</span><span class="s">sensor_hub</span><span class="w"> </span><span class="s">JSON</span><span class="w"> </span><span class="s2">"${descriptions}/components/sensor_hub.ddd.json"</span><span class="p">)</span>
+
+<span class="nb">add_library</span><span class="p">(</span><span class="s">controller</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/controller.c</span><span class="p">)</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">controller</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">sensor_hub</span><span class="p">)</span>
+<span class="nb">ddd_add_component</span><span class="p">(</span><span class="s">controller</span><span class="w"> </span><span class="s">JSON</span><span class="w"> </span><span class="s2">"${descriptions}/components/controller.ddd.json"</span><span class="p">)</span>
+
+<span class="nb">add_library</span><span class="p">(</span><span class="s">user_interface</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/user_interface.c</span><span class="p">)</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">user_interface</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">controller</span><span class="p">)</span>
+<span class="nb">ddd_add_component</span><span class="p">(</span><span class="s">user_interface</span><span class="w"> </span><span class="s">JSON</span><span class="w"> </span><span class="s2">"${descriptions}/components/user_interface.ddd.json"</span><span class="p">)</span>
+
+<span class="nb">add_library</span><span class="p">(</span><span class="s">event_logger</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/event_logger.c</span><span class="p">)</span>
+<span class="nb">ddd_add_component</span><span class="p">(</span><span class="s">event_logger</span><span class="w"> </span><span class="s">JSON</span><span class="w"> </span><span class="s2">"${descriptions}/subsystems/logging/event_logger.ddd.json"</span><span class="p">)</span>
+
+<span class="nb">add_executable</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">main.c</span><span class="p">)</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">user_interface</span><span class="w"> </span><span class="s">event_logger</span><span class="p">)</span>
+
+<span class="nb">ddd_generate</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">NAME</span><span class="w"> </span><span class="s">DemoDevice</span><span class="w"> </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">"${templates}"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sensor_hub.c</span></code> then writes <code class="docutils literal notranslate"><span class="pre">#include</span> <span class="pre">&quot;SensorHub.h&quot;</span></code> and nothing else: the header DDD
+generated for that component is the only one on its include path, so a component cannot reach
+a variable it never declared. The include directory travels to the components automatically,
+which is what keeps the integration down to two lines per component.</p>
+<p>The templates this example points at are the ones DDD ships as examples, since it sits next to
+them in the source tree. A real project keeps its own under version control, next to its
+sources, and starts them off as a copy of that set.</p>
+<p>The project description that ties the collected components together is written into the output
+directory as <code class="docutils literal notranslate"><span class="pre">&lt;NAME&gt;.ddd.json</span></code>. It is an ordinary project file, so what an image was
+generated from can be read afterwards, and checked, dumped or compared like any other.</p>
+</section>
+<section id="what-the-template-directory-decides">
+<h3>What the template directory decides<a class="headerlink" href="#what-the-template-directory-decides" title="Link to this heading"></a></h3>
+<p>A build system has to know which files a step produces before it runs it, and now that the
+templates come from the project, that list is written down in the project as well. The module
+reads the template directory at configure time and derives everything it declares from the
+names it finds there. The directory has to exist by then; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code> prints a
+working set to copy into a project that has none yet, and <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> describes what the
+templates receive. There is no equivalent option for the a2l, and that asymmetry is deliberate:
+the structure of an a2l is dictated by ASAM rather than by a house style, so that generator
+stays internal.</p>
+<p>The templates are collected with <code class="docutils literal notranslate"><span class="pre">file(GLOB</span> <span class="pre">...</span> <span class="pre">CONFIGURE_DEPENDS</span> <span class="pre">&quot;&lt;dir&gt;/*.jinja2&quot;)</span></code>, so a
+template added or removed is noticed by the build itself instead of by whoever remembers to
+re-run cmake. The same files are dependencies of the generation step, which makes a template
+behave like any other source: change the banner of <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> and the next build
+regenerates the file and recompiles it.</p>
+<p>The names of the templates are then turned into the declared outputs, minus the two kinds that
+cannot be named at configure time. A helper - a name starting with an underscore, such as
+<code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code> - renders nothing of its own, and a <code class="docutils literal notranslate"><span class="pre">{component}</span></code> template renders once
+per component, under names that only exist once the description files have been read. That
+second case is exactly why the per-component headers reach their consumers through the
+interface library rather than as declared outputs. Everything else contributes one output
+named like its template without the <code class="docutils literal notranslate"><span class="pre">.jinja2</span></code> extension, and every output ending in <code class="docutils literal notranslate"><span class="pre">.c</span></code>
+is compiled into the object library that ends up in the image - so a project splitting its
+definitions over two source templates gets both of them compiled, without saying so anywhere.</p>
+<p>Three arrangements are refused with a message rather than with a confusing failure later on: a
+directory holding no <code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> file at all, a directory holding nothing but helpers and
+<code class="docutils literal notranslate"><span class="pre">{component}</span></code> templates, from which no output could be declared, and a directory in which no
+template produces a <code class="docutils literal notranslate"><span class="pre">.c</span></code> file - the definitions of the global variables have to be compiled
+into the image, so one template must produce a source file.</p>
+</section>
+<section id="collection-follows-the-link-graph">
+<h3>Collection follows the link graph<a class="headerlink" href="#collection-follows-the-link-graph" title="Link to this heading"></a></h3>
+<p>The description files are attached to a component target as a <em>transitive usage requirement</em>:
+they travel through the link graph the same way an include directory or a compile definition
+does. An image therefore collects exactly the components it links - no more, and, more
+importantly, no less. An image linking only <code class="docutils literal notranslate"><span class="pre">sensor_hub</span></code> gets <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code> and an a2l
+holding SensorHub’s variables, and <code class="docutils literal notranslate"><span class="pre">controller</span></code> does not appear in it at all.</p>
+<p>That mechanism is the custom transitive property <code class="docutils literal notranslate"><span class="pre">DDD_JSON</span></code>, built on the
+<code class="docutils literal notranslate"><span class="pre">TRANSITIVE_LINK_PROPERTIES</span></code> feature introduced in <strong>CMake 3.30</strong> - the floor of the
+collected mode, on top of the CMake 3.20 the module itself needs. The module checks it and
+stops with a fatal error on an older cmake instead of
+carrying on, because an older cmake would silently collect an incomplete set of components,
+and an incomplete data dictionary is exactly the failure DDD exists to prevent.</p>
+<p>The property is resolved at generate time, when the link graph is known but nothing has been
+compiled yet, so the generation never waits for an object file. There is no dependency cycle
+either, even though the components depend on the headers generated out of their own
+descriptions: unlike a tool that reads compiled objects, DDD only ever reads the json files.</p>
+</section>
+<section id="a-hand-written-project-description">
+<h3>A hand written project description<a class="headerlink" href="#a-hand-written-project-description" title="Link to this heading"></a></h3>
+<p>A project that already maintains its own project description - because it is also built with
+another build system, or because it deliberately lists more than the image links - passes it
+with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
+is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
+a2l is then named after the project name inside the description, so a <code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well
+is ignored with a status message.</p>
+<p>A hand written project pulls its components in through <code class="docutils literal notranslate"><span class="pre">includes</span></code>, possibly with wildcards,
+so the project file alone would be a wholly insufficient dependency. The module therefore asks
+the tool which files the project is really built out of, with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> (see
+<a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), and uses the answer twice: as the dependencies of the
+generation step, so that editing a component regenerates the globals and the a2l, and as
+<code class="docutils literal notranslate"><span class="pre">CMAKE_CONFIGURE_DEPENDS</span></code>, so that adding a file matching an <code class="docutils literal notranslate"><span class="pre">includes</span></code> wildcard re-runs
+configure and picks the new component up. If the tool cannot resolve the project yet, the
+module says so and falls back to depending on the project file alone rather than refusing to
+configure at all.</p>
+</section>
+<section id="what-the-build-tells-an-editor">
+<h3>What the build tells an editor<a class="headerlink" href="#what-the-build-tells-an-editor" title="Link to this heading"></a></h3>
+<p>Each <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> writes a <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> into its output directory, at configure
+time, with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/home/me/firmware/build/ddd/firmware.elf/firmware.ddd.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"firmware.elf"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"strict"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"unused-output=info"</span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Nothing in the build reads it. It is written for the same reason <code class="docutils literal notranslate"><span class="pre">SCHEMA_DIRECTORY</span></code> writes
+the json schemas at configure time - so that a tool outside the build can see what the build
+sees - and it carries the two things no description file can state.</p>
+<p>The first is <strong>which project description this image is generated from</strong>. In the collected mode
+that file is written into the build tree out of the link graph, so the source tree does not
+name it anywhere: a tool that reads only <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> cannot find out which components belong
+together, because the answer is a property of the build rather than of any file somebody wrote.
+A component linked into both a firmware and a test binary is in two projects, and the <code class="docutils literal notranslate"><span class="pre">image</span></code>
+key is what tells the two records apart.</p>
+<p>The second is <strong>the severity policy</strong>, from <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> and <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code>. A tool that ignores it
+reports a different set of findings than the build does, which is worse than reporting none:
+the same working tree would be clean in one place and failing in the other. The options handed
+to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code> are the very list handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>, so the
+three cannot drift apart.</p>
+<p>The project description is named rather than read, because in the collected mode it does not
+exist yet at that point - <code class="docutils literal notranslate"><span class="pre">file(GENERATE)</span></code> produces it at the end of the configure run, after
+this file is written. A severity that names no known check is refused here, which is a
+deliberate choice to fail the configure step where the typo is rather than the build step
+where it would land.</p>
+<p>The file is not named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>: that extension means “a DDD description file”, the
+<code class="docutils literal notranslate"><span class="pre">file-extension</span></code> check enforces it, and this is a document <em>about</em> a project rather than one.</p>
+</section>
+<section id="the-targets-it-creates">
+<h3>The targets it creates<a class="headerlink" href="#the-targets-it-creates" title="Link to this heading"></a></h3>
+<p>The helper targets are named after the image without its file extension, because an image is
+usually named like its artefact: <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> yields <code class="docutils literal notranslate"><span class="pre">firmware_ddd_headers</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>target</p></th>
+<th class="head"><p>what it is</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_generation</span></code></p></td>
+<td><p>custom target running the generator. Depends on the collected description files, so it
+re-runs when a component changes its declarations and not otherwise.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code></p></td>
+<td><p>interface library carrying the include directory of the generated headers, and
+depending on the generation. Every registered component links it, so a component
+includes its interface header without knowing where the image put it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_globals</span></code></p></td>
+<td><p>object library compiling every generated <code class="docutils literal notranslate"><span class="pre">.c</span></code> file, linked into the image. It is an
+object library on purpose: a static library would drop the members whose symbols
+nobody references, and a measurement that only the calibration tool ever reads has no
+referencing code at all. In the collected mode it is compiled with the <em>interface
+include directories</em> of every registered component - include paths only, never link
+edges - so that a header an <a class="reference internal" href="file_formats/types.html"><span class="doc">external type</span></a> names is found
+without further wiring: the component that publishes the type already publishes the
+directory its header lives in, and the generated <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> includes that header.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_check</span></code></p></td>
+<td><p>runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> on the collected project on its own, for a ci job that wants the
+verdict without producing artefacts. Checking is part of generating anyway - the
+generator refuses to write anything when the interfaces disagree.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
+<td><p>one per registered component, checking that component alone (see above).</p></td>
+</tr>
+</tbody>
+</table>
+<p>The outputs declared for the generator are the files the template names already give away, plus
+the a2l. The per-component headers are written next to them, but their names come from inside
+the description files and are therefore unknown at configure time - which is precisely why a
+consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> rather than on an individual header path.</p>
+<p>The path of the generated a2l is published as the <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property of the image, so that a
+post-build step can pick it up without rebuilding the path by hand:</p>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">get_target_property</span><span class="p">(</span><span class="s">a2l</span><span class="w"> </span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">DDD_A2L</span><span class="p">)</span>
+<span class="nb">install</span><span class="p">(</span><span class="s">FILES</span><span class="w"> </span><span class="s2">"${a2l}"</span><span class="w"> </span><span class="s">DESTINATION</span><span class="w"> </span><span class="s">delivery</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Multi-config generators are refused with a fatal error: the project description and the
+generated sources are written to configuration-agnostic paths, which the configurations
+would fight over. Use a single-config generator such as Ninja.</p>
+</div>
+</section>
+<section id="options">
+<h3>Options<a class="headerlink" href="#options" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>option</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<td><p>use this project description instead of collecting the link closure.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NAME</span> <span class="pre">&lt;name&gt;</span></code></p></td>
+<td><p>project name, and therefore the name of the a2l file. Defaults to the image name
+without its extension, with anything that is not a c identifier replaced, because the
+name ends up as the a2l project and module name. Ignored together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<td><p>where the generated files go; defaults to <code class="docutils literal notranslate"><span class="pre">${CMAKE_CURRENT_BINARY_DIR}/ddd/&lt;image&gt;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<td><p><strong>required</strong>: the jinja2 templates the c sources are rendered from. Their names decide
+which files are generated, and renaming a template is how a project renames a generated
+file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SCHEMA_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<td><p>write the json schemas of the file formats into this directory at configure time, for
+editor validation; they are rewritten on every configure, so they cannot describe a
+version of DDD that is no longer installed.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<td><p>the symbol to address map filling the addresses into the a2l. A map inside the build
+tree that does not exist at configure time is seeded with an empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), so
+the first build of the two-run flow succeeds with every address 0 and the second,
+once the extractor has written the real map, fills the addresses in; a missing map in
+the source tree stays an error.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
+<td><p>byte order reported in the a2l.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
+<td><p>severity overrides, exactly like <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the command line. They apply to both the
+generation and the check target.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
+<td><p>usage requirements for compiling the generated definition file, stated by hand. The
+manual fallback: in the collected mode the definition file already gets the interface
+include directories of every registered component, so this remains for the hand
+written <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> mode, for headers the link graph does not carry, and for a
+project whose compiler flags come from an interface library.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
+<td><p>additional files that retrigger the generation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
+<td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
+<td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
+<td><p>treat DDD warnings as errors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
+<td><p>do not hand the generated headers to the registered components.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> is the option a project building <strong>several</strong> images from the same
+components cannot avoid. A component’s interface header is generated for one link closure, so
+two images produce two different sets of headers for the same component, and whichever include
+directory reached it first would silently decide which set it compiles against. Rather than
+letting an include order settle that, the second <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> stops the configure step
+with a fatal error. Such a project gives <code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> to <strong>both</strong> calls and links
+the wanted <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> into each component explicitly - opting out of only one of
+the two would leave the same ambiguity in place, because the automatic set still reaches every
+registered component rather than only the ones that image links.</p>
+</section>
+</section>
+<section id="docker">
+<h2>docker<a class="headerlink" href="#docker" title="Link to this heading"></a></h2>
+<p>Generated c code is only worth something if a compiler accepts it, and “it compiled on my
+machine” is not a statement anybody can act on. The repository therefore ships a small linux
+image whose whole purpose is to generate, compile, link and inspect the result on a defined
+toolchain, and a compose file that gives every routine job a name.</p>
+<p>The image (<code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code>) is <code class="docutils literal notranslate"><span class="pre">python:3.12-slim-bookworm</span></code> with gcc and libc6-dev to
+compile the generated sources, binutils for the <code class="docutils literal notranslate"><span class="pre">nm</span></code> that inspects them afterwards, and
+ninja plus a cmake from pypi to build the cmake example - debian bookworm still ships cmake
+3.25, which is older than the 3.30 the module needs. DDD itself is installed with its
+development extra, and <code class="docutils literal notranslate"><span class="pre">docker/compile.sh</span></code> is installed as the command <code class="docutils literal notranslate"><span class="pre">ddd-compile</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The image is a linux image, so on a Windows host run docker from a WSL shell, where docker
+speaks linux containers:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>wsl<span class="w"> </span>-d<span class="w"> </span>Ubuntu
+<span class="nb">cd</span><span class="w"> </span>/mnt/c/path/to/ddd<span class="w">        </span><span class="c1"># the working tree, seen from inside WSL</span>
+docker<span class="w"> </span>compose<span class="w"> </span>build
+</pre></div>
+</div>
+</div>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>check<span class="w">           </span><span class="c1"># ddd check on the demo project</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>generate<span class="w">        </span><span class="c1"># ddd generate into build/gen</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile<span class="w">         </span><span class="c1"># generate + compile + link + verify</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile-const<span class="w">   </span><span class="c1"># the same, with --const-inputs</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>cmake<span class="w">           </span><span class="c1"># configure and build examples/cmake</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="nb">test</span><span class="w">            </span><span class="c1"># pytest with the coverage gate</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>coverage<span class="w">        </span><span class="c1"># the same, plus build/htmlcov/index.html</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>lint<span class="w">            </span><span class="c1"># ruff check, ruff format --check, mypy</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>docs<span class="w">            </span><span class="c1"># this documentation, into build/docs/html</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>ddd<span class="w"> </span>ddd<span class="w"> </span>list<span class="w"> </span>examples/demo/demo.ddd.json
+</pre></div>
+</div>
+<p>The working tree is bind mounted at <code class="docutils literal notranslate"><span class="pre">/work</span></code> and <code class="docutils literal notranslate"><span class="pre">PYTHONPATH=/work/src</span></code> makes it shadow the
+copy installed into the image, so a change to the sources takes effect without rebuilding
+anything. The <code class="docutils literal notranslate"><span class="pre">docs</span></code> service installs the documentation extra into that mount and runs
+<code class="docutils literal notranslate"><span class="pre">sphinx-build</span></code> with <code class="docutils literal notranslate"><span class="pre">-W</span></code>, so a warning - a broken cross reference, a directive that does
+not render - fails the build rather than producing a page nobody looks at twice. There is also
+a <code class="docutils literal notranslate"><span class="pre">shell</span></code> service, which is the same container with an interactive bash in it.</p>
+<section id="what-the-compile-service-proves">
+<h3>What the compile service proves<a class="headerlink" href="#what-the-compile-service-proves" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">compile</span></code> runs <code class="docutils literal notranslate"><span class="pre">docker/compile.sh</span></code>, which is deliberately more suspicious than a plain
+build:</p>
+<ol class="arabic simple">
+<li><p>it generates the demo project into <code class="docutils literal notranslate"><span class="pre">build/gen</span></code> with the templates named by <code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code>,
+the examples shipped with the tool unless the caller says otherwise, and writes the variable
+list next to it with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code>;</p></li>
+<li><p>it writes one translation unit per generated header which includes that header <strong>twice</strong>,
+which proves both that every header is self contained - it compiles with nothing included
+before it - and that its include guard works;</p></li>
+<li><p>it compiles everything with
+<code class="docutils literal notranslate"><span class="pre">-std=c11</span> <span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span> <span class="pre">-Wshadow</span> <span class="pre">-Wcast-qual</span>
+<span class="pre">-Wstrict-prototypes</span></code>, so a conversion the generator got wrong is a compile error and not a
+silent truncation on the target;</p></li>
+<li><p>it links all the objects into one binary and runs it, which is where a duplicated
+definition or a declaration without a definition behind it would show up - the link step is
+what actually tests the promise that every variable is defined exactly once;</p></li>
+<li><p>it compares the output of <code class="docutils literal notranslate"><span class="pre">nm</span></code> on the generated definition file against the variable list
+from step 1 (<code class="docutils literal notranslate"><span class="pre">docker/verify_symbols.py</span></code>): every declared variable must be defined exactly
+once, nothing that DDD never declared may be defined, and a variable behind a preprocessor
+condition is allowed to be absent and is reported as such.</p></li>
+</ol>
+<p>Steps 2 to 5 run twice, once plain and once with the extra defines from the <code class="docutils literal notranslate"><span class="pre">CDEFS</span></code>
+environment variable - <code class="docutils literal notranslate"><span class="pre">-DFEATURE_X</span></code> in the shipped compose file - so that conditional
+declarations are covered in both of their states.</p>
+<p>The script takes the project and the output directory as arguments, so it also runs on a real
+project rather than only on the demo, and the environment variables <code class="docutils literal notranslate"><span class="pre">CDEFS</span></code>, <code class="docutils literal notranslate"><span class="pre">GENFLAGS</span></code>,
+<code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code>, <code class="docutils literal notranslate"><span class="pre">CFLAGS</span></code> and <code class="docutils literal notranslate"><span class="pre">CC</span></code> change the defines, the <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> flags, the
+templates, the warning set and the compiler:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile<span class="w"> </span>ddd-compile<span class="w"> </span>path/to/project.ddd.json<span class="w"> </span>build/mine
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-e<span class="w"> </span><span class="nv">TEMPLATES</span><span class="o">=</span>path/to/templates<span class="w"> </span>compile<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>ddd-compile<span class="w"> </span>path/to/project.ddd.json<span class="w"> </span>build/mine
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code> defaults to the output of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code>, which is what makes the plain
+invocation work at all - the generator itself has no templates to fall back on. The second form
+is the interesting one for a real project: it answers whether the code that project is about to
+ship compiles, links and defines every symbol it promised, and that is a question the example
+templates cannot answer on its behalf.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The container runs as root, so files it writes under <code class="docutils literal notranslate"><span class="pre">build/</span></code> belong to root when the
+mount is a real linux filesystem. The base image is also still referenced by tag: pin it to
+a digest before a result from it is used to release something, as the comment at the top of
+<code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code> describes.</p>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="command_line_interface.html" class="btn btn-neutral float-left" title="Command line interface" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="editor_integration.html" class="btn btn-neutral float-right" title="Editor integration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

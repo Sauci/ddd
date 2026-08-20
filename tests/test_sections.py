@@ -87,15 +87,11 @@ class TestTheChecks:
         }
 
     def test_a_declared_section_passes(self, tree: Path) -> None:
-        _, bag = run_analysis(
-            tree, self.files(declare("local", "X", section=".fast_ram"))
-        )
+        _, bag = run_analysis(tree, self.files(declare("local", "X", section=".fast_ram")))
         assert checks(bag) == []
 
     def test_an_undeclared_section_is_reported_with_the_nearest_name(self, tree: Path) -> None:
-        _, bag = run_analysis(
-            tree, self.files(declare("local", "X", section=".fast_rams"))
-        )
+        _, bag = run_analysis(tree, self.files(declare("local", "X", section=".fast_rams")))
         assert checks(bag) == ["unknown-section"]
         rendered = messages(bag)
         assert "a.ddd.json#component.interface[0].definition.section" in rendered
@@ -113,9 +109,7 @@ class TestTheChecks:
         assert checks(bag) == ["unknown-section"]
 
     def test_a_measurement_cannot_live_in_a_read_only_section(self, tree: Path) -> None:
-        _, bag = run_analysis(
-            tree, self.files(declare("local", "X", section=".calib"))
-        )
+        _, bag = run_analysis(tree, self.files(declare("local", "X", section=".calib")))
         assert checks(bag) == ["section-access"]
         assert "the software writes" in messages(bag)
 
@@ -135,9 +129,7 @@ class TestTheChecks:
         _, bag = run_analysis(
             tree,
             self.files(
-                declare(
-                    "local", "X", kind="parameter", init=0, section=".calib", datatype="uint32"
-                )
+                declare("local", "X", kind="parameter", init=0, section=".calib", datatype="uint32")
             ),
         )
         assert checks(bag) == ["section-alignment"]
@@ -222,9 +214,7 @@ class TestTheChecks:
         assert checks(bag) == ["schema"]
         assert "sections[0]" in messages(bag)
 
-    def test_a_placed_object_of_an_unknown_type_gets_no_second_finding(
-        self, tree: Path
-    ) -> None:
+    def test_a_placed_object_of_an_unknown_type_gets_no_second_finding(self, tree: Path) -> None:
         """The unknown type is the finding; an alignment guess on top would be noise."""
         _, bag = run_analysis(
             tree,
@@ -246,16 +236,12 @@ class TestTheChecks:
                         {
                             "type": "struct",
                             "name": "A_t",
-                            "members": [
-                                {"name": "b", "member": "value", "typename": "B_t"}
-                            ],
+                            "members": [{"name": "b", "member": "value", "typename": "B_t"}],
                         },
                         {
                             "type": "struct",
                             "name": "B_t",
-                            "members": [
-                                {"name": "a", "member": "value", "typename": "A_t"}
-                            ],
+                            "members": [{"name": "a", "member": "value", "typename": "A_t"}],
                         },
                     ]
                 },
@@ -266,15 +252,11 @@ class TestTheChecks:
         )
         assert checks(bag) == ["type-cycle"]
 
-    def test_a_consumer_stating_a_section_claims_storage_it_does_not_own(
-        self, tree: Path
-    ) -> None:
+    def test_a_consumer_stating_a_section_claims_storage_it_does_not_own(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,
             {
-                "project.ddd.json": project(
-                    "P", "sections.ddd.json", "a.ddd.json", "b.ddd.json"
-                ),
+                "project.ddd.json": project("P", "sections.ddd.json", "a.ddd.json", "b.ddd.json"),
                 "sections.ddd.json": sections(section(".fast_ram")),
                 "a.ddd.json": component("A", declare("output", "X", section=".fast_ram")),
                 "b.ddd.json": component("B", declare("input", "X", section=".fast_ram")),
@@ -306,13 +288,10 @@ class TestPlacementReachesTheOutputs:
     def test_the_generated_definition_carries_the_attribute(self, tree: Path) -> None:
         dictionary, _ = run_analysis(tree, self.project_files())
         assert dictionary is not None
-        files = {
-            file.path.name: file.content
-            for file in render_files(dictionary, tree / "gen")
-        }
+        files = {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
         source = files["ddd_globals.c"]
         assert 'uint64_t Wide __attribute__((section(".fast_ram")));' in source
-        assert 'uint8_t Unplaced;' in source
+        assert "uint8_t Unplaced;" in source
 
     def test_the_template_model_groups_per_section_strictest_first(self, tree: Path) -> None:
         from ddd.backends import COptions

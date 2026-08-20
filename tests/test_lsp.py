@@ -360,8 +360,12 @@ class TestDiagnostics:
                             "type": "struct",
                             "name": "S_t",
                             "members": [
-                                {"name": "v", "member": "value", "datatype": "uint8",
-                                 "conversion": {}}
+                                {
+                                    "name": "v",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                }
                             ],
                         }
                     ]
@@ -535,9 +539,7 @@ class TestNavigation:
         root = self.workspace(tmp_path)
         consumer = tmp_path / "b.ddd.json"
         document = read(consumer, {})
-        found = references(
-            self.index_of(root), document, "component.interface[0].definition.name"
-        )
+        found = references(self.index_of(root), document, "component.interface[0].definition.name")
         assert {site.path.name for site in found} == {"a.ddd.json", "b.ddd.json"}
 
     def test_a_reference_key_jumps_as_a_name_does(self, tmp_path: Path) -> None:
@@ -573,9 +575,8 @@ class TestNavigation:
                     "type": "struct",
                     "name": "Inner_t",
                     "members": [
-                                {"name": "v", "member": "value", "datatype": "uint8",
-                                 "conversion": {}}
-                            ],
+                        {"name": "v", "member": "value", "datatype": "uint8", "conversion": {}}
+                    ],
                 },
                 {
                     "type": "struct",
@@ -605,8 +606,13 @@ class TestNavigation:
                 "p.ddd.json": project("P", "t.ddd.json"),
                 "t.ddd.json": {
                     "types": [
-                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm",
-                         "conversion": {}},
+                        {
+                            "type": "scalar",
+                            "name": "Speed_t",
+                            "datatype": "uint16",
+                            "unit": "rpm",
+                            "conversion": {},
+                        },
                         {
                             "type": "struct",
                             "name": "S_t",
@@ -636,8 +642,13 @@ class TestNavigation:
                 "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
                 "t.ddd.json": {
                     "types": [
-                        {"type": "scalar", "name": "Speed_t", "datatype": "uint16", "unit": "rpm",
-                         "conversion": {}}
+                        {
+                            "type": "scalar",
+                            "name": "Speed_t",
+                            "datatype": "uint16",
+                            "unit": "rpm",
+                            "conversion": {},
+                        }
                     ]
                 },
                 "a.ddd.json": component("A", declare("output", "S", typename="Speed_t")),
@@ -717,8 +728,7 @@ class TestNavigation:
         # An input nobody writes: the jump has nowhere to go, which is the same thing the
         # missing-producer check reports about it.
         assert (
-            definition(built, read(path, {}), path, "component.interface[0].definition.name")
-            == []
+            definition(built, read(path, {}), path, "component.interface[0].definition.name") == []
         )
         types = tmp_path / "t.ddd.json"
         document = read(types, {})
@@ -1057,8 +1067,12 @@ class TestHover:
                             "type": "struct",
                             "name": "Cell_t",
                             "members": [
-                                {"name": "raw", "member": "value", "datatype": "uint16",
-                                 "conversion": {}}
+                                {
+                                    "name": "raw",
+                                    "member": "value",
+                                    "datatype": "uint16",
+                                    "conversion": {},
+                                }
                             ],
                         }
                     ]
@@ -1088,8 +1102,12 @@ class TestHover:
                             "type": "struct",
                             "name": "S_t",
                             "members": [
-                                {"name": "v", "member": "value", "datatype": "uint8",
-                                 "conversion": {}}
+                                {
+                                    "name": "v",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                }
                             ],
                         }
                     ]
@@ -2175,9 +2193,7 @@ class TestPropagating:
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "S", unit="rpm"))})
         path = tmp_path / "a.ddd.json"
         document = Document('{"component": {"interface": [{"definition": {"unit": "rpm"}}]}}')
-        assert (
-            actions(Index(), path, document, "component.interface[0].definition.unit", {}) == []
-        )
+        assert actions(Index(), path, document, "component.interface[0].definition.unit", {}) == []
 
     def test_something_that_is_not_an_object_states_no_keys(self) -> None:
         """These are read from disk a moment after the loader saw them; a file rewritten in
@@ -2603,9 +2619,7 @@ class TestServer:
         writer = io.BytesIO()
         Server(
             framed(
-                self.rename_request(
-                    consumer, "component.interface[0].definition.name", "Renamed"
-                )
+                self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
             ),
             writer,
             root=tmp_path,
@@ -2620,9 +2634,7 @@ class TestServer:
         consumer = self.shared_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(
-                self.rename_request(consumer, "component.interface[0].definition.name", "int")
-            ),
+            framed(self.rename_request(consumer, "component.interface[0].definition.name", "int")),
             writer,
             root=tmp_path,
         ).run()

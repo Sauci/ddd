@@ -1731,7 +1731,7 @@ class _Analysis:
                         bits=member.bits,
                         volatile=instance.volatile,
                         section=instance.section,
-                condition=instance.condition,
+                        condition=instance.condition,
                         owner=instance.owner,
                         consumers=instance.consumers,
                         local=instance.local,

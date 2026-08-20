@@ -25,9 +25,7 @@ DEFINITION = TypeAdapter(AnyDataObject)
 
 def payload(**extra: Any) -> dict[str, Any]:
     """A definition with the keys every kind requires, plus whatever the test is about."""
-    storage: dict[str, Any] = (
-        {} if "typename" in extra else {"datatype": "uint8", "conversion": {}}
-    )
+    storage: dict[str, Any] = {} if "typename" in extra else {"datatype": "uint8", "conversion": {}}
     return {"name": "X", **storage, "volatile": False, **extra}
 
 

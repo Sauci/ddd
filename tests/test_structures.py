@@ -873,8 +873,13 @@ class TestGeneratingAStructure:
                 "S_t",
                 val("plain", "uint16"),
                 val("table", "uint8", dimensions=[4]),
-                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1,
-                 "conversion": {}},
+                {
+                    "name": "flag",
+                    "member": "bits",
+                    "datatype": "uint16",
+                    "bits": 1,
+                    "conversion": {},
+                },
             ),
         )
         header = files["ddd_types.h"]
@@ -949,8 +954,13 @@ class TestGeneratingAStructure:
             struct(
                 "S_t",
                 val("plain", "uint16"),
-                {"name": "flag", "member": "bits", "datatype": "uint16", "bits": 1,
-                 "conversion": {}},
+                {
+                    "name": "flag",
+                    "member": "bits",
+                    "datatype": "uint16",
+                    "bits": 1,
+                    "conversion": {},
+                },
             ),
         )
         content = files["Device.a2l"]

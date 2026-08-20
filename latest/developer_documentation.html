@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -80,6 +80,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#building-this-documentation">Building this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-this-documentation">Publishing this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#publishing-the-editor-extension">Publishing the editor extension</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
@@ -454,7 +455,7 @@ switches between them:</p>
 <td><p>a push to <code class="docutils literal notranslate"><span class="pre">master</span></code></p></td>
 <td><p>every push</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">v0.0.1</span></code>, <code class="docutils literal notranslate"><span class="pre">v0.1.0</span></code>, …</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">v0.5.0</span></code>, <code class="docutils literal notranslate"><span class="pre">v0.6.0</span></code>, …</p></td>
 <td><p>publishing that release</p></td>
 <td><p>never</p></td>
 </tr>
@@ -548,6 +549,32 @@ there is nothing to change in the repository and no new commit to push.</p>
 <p>A <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> run with <code class="docutils literal notranslate"><span class="pre">target:</span> <span class="pre">testpypi</span></code> is the dry run; publishing to PyPI
 happens on a published GitHub release tagged <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code>, and the build refuses to go on
 if that tag disagrees with the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>.</p>
+</section>
+<section id="publishing-the-editor-extension">
+<h2>Publishing the editor extension<a class="headerlink" href="#publishing-the-editor-extension" title="Link to this heading"></a></h2>
+<p>The same workflow publishes <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code> to the <a class="reference external" href="https://marketplace.visualstudio.com/items?itemName=sauci.ddd">Visual Studio Marketplace</a> and attaches the
+<code class="docutils literal notranslate"><span class="pre">.vsix</span></code> to the release. Both come from one <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code>: the marketplace step
+publishes that file with <code class="docutils literal notranslate"><span class="pre">--packagePath</span></code> rather than packaging a second time, so what the
+marketplace serves and what the release carries are the same bytes.</p>
+<p>The marketplace has <strong>no equivalent of trusted publishing</strong>, so unlike the index upload this
+one holds a credential. Three facts about it are worth having written down before it is
+needed.</p>
+<p><strong>The publisher lives in Azure DevOps, not on GitHub.</strong> A marketplace publisher is created
+once, at <a class="reference external" href="https://marketplace.visualstudio.com/manage">https://marketplace.visualstudio.com/manage</a>, against an Azure DevOps organisation.
+Its id has to be the <code class="docutils literal notranslate"><span class="pre">publisher</span></code> field of <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code> - <code class="docutils literal notranslate"><span class="pre">sauci</span></code> - and
+the extension is then identified everywhere as <code class="docutils literal notranslate"><span class="pre">sauci.ddd</span></code>.</p>
+<p><strong>The token is a personal access token with one scope.</strong> From that organisation, a token
+with <em>Marketplace</em> → <em>Manage</em>, issued against <em>All accessible organizations</em> rather than a
+single one: a token scoped to one organisation authenticates and is then refused when it
+publishes, which reads as a wrong password rather than a wrong scope. It is stored as the
+repository secret <code class="docutils literal notranslate"><span class="pre">VSCE_PAT</span></code>.</p>
+<p><strong>It expires, and the failure lands on a release.</strong> Azure DevOps allows a year at most. When
+it lapses, the extension job fails on a release that has already uploaded to PyPI, which
+cannot be taken back and does not need to be: only the marketplace step failed. Issue a new
+token, update the secret, and re-run the job. The step checks the secret is present before
+it does anything and says all of this in the error, rather than failing inside <code class="docutils literal notranslate"><span class="pre">vsce</span></code>.</p>
+<p>The name is claimed at the first publish. Until then the marketplace link above is a 404,
+and the release still attaches its <code class="docutils literal notranslate"><span class="pre">.vsix</span></code>.</p>
 </section>
 </section>
 

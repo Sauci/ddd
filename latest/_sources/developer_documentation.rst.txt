@@ -364,7 +364,7 @@ switches between them:
    * - ``latest``
      - a push to ``master``
      - every push
-   * - ``v0.0.1``, ``v0.1.0``, ...
+   * - ``v0.5.0``, ``v0.6.0``, ...
      - publishing that release
      - never
 
@@ -463,3 +463,36 @@ there is nothing to change in the repository and no new commit to push.
 A ``workflow_dispatch`` run with ``target: testpypi`` is the dry run; publishing to PyPI
 happens on a published GitHub release tagged ``v<version>``, and the build refuses to go on
 if that tag disagrees with the version in ``pyproject.toml``.
+
+Publishing the editor extension
+-------------------------------
+
+The same workflow publishes ``editors/vscode`` to the `Visual Studio Marketplace
+<https://marketplace.visualstudio.com/items?itemName=sauci.ddd>`_ and attaches the
+``.vsix`` to the release. Both come from one ``npm run package``: the marketplace step
+publishes that file with ``--packagePath`` rather than packaging a second time, so what the
+marketplace serves and what the release carries are the same bytes.
+
+The marketplace has **no equivalent of trusted publishing**, so unlike the index upload this
+one holds a credential. Three facts about it are worth having written down before it is
+needed.
+
+**The publisher lives in Azure DevOps, not on GitHub.** A marketplace publisher is created
+once, at https://marketplace.visualstudio.com/manage, against an Azure DevOps organisation.
+Its id has to be the ``publisher`` field of ``editors/vscode/package.json`` - ``sauci`` - and
+the extension is then identified everywhere as ``sauci.ddd``.
+
+**The token is a personal access token with one scope.** From that organisation, a token
+with *Marketplace* → *Manage*, issued against *All accessible organizations* rather than a
+single one: a token scoped to one organisation authenticates and is then refused when it
+publishes, which reads as a wrong password rather than a wrong scope. It is stored as the
+repository secret ``VSCE_PAT``.
+
+**It expires, and the failure lands on a release.** Azure DevOps allows a year at most. When
+it lapses, the extension job fails on a release that has already uploaded to PyPI, which
+cannot be taken back and does not need to be: only the marketplace step failed. Issue a new
+token, update the secret, and re-run the job. The step checks the secret is present before
+it does anything and says all of this in the error, rather than failing inside ``vsce``.
+
+The name is claimed at the first publish. Until then the marketplace link above is a 404,
+and the release still attaches its ``.vsix``.

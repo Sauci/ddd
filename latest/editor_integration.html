@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -227,11 +227,14 @@ workspace are searched.</p></td>
 </table>
 <p>The command is <strong>DDD: Restart Language Server</strong>, for picking up a newly installed tool
 without reloading the window.</p>
-<p>The extension is not published to the marketplace. Every release attaches a
-<code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to its <a class="reference external" href="https://github.com/Sauci/ddd/releases">GitHub release</a>,
-which installs with <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">--install-extension</span> <span class="pre">ddd-&lt;version&gt;.vsix</span></code> or through <strong>Install
-from VSIX…</strong> in the Extensions view; there is no automatic update for an extension that
-did not come from the marketplace, so reinstall it when the python package is upgraded.</p>
+<p>The extension is published to the <a class="reference external" href="https://marketplace.visualstudio.com/items?itemName=sauci.ddd">Visual Studio Marketplace</a>: search for <strong>DDD</strong> in the
+Extensions view. Installed that way it updates itself, which is the reason to prefer it -
+the extension and the python package share a version number, and an update to one is worth
+the other.</p>
+<p>Every release also attaches a <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to its <a class="reference external" href="https://github.com/Sauci/ddd/releases">GitHub release</a>, for a site whose network policy does not reach
+the marketplace. That installs with <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">--install-extension</span> <span class="pre">ddd-&lt;version&gt;.vsix</span></code> or
+through <strong>Install from VSIX…</strong> in the Extensions view, and updates no more automatically
+than any other file, so reinstall it when the python package is upgraded.</p>
 </section>
 </section>
 

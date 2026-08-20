@@ -130,8 +130,14 @@ It contributes two settings and one command:
 The command is **DDD: Restart Language Server**, for picking up a newly installed tool
 without reloading the window.
 
-The extension is not published to the marketplace. Every release attaches a
-``ddd-<version>.vsix`` to its `GitHub release <https://github.com/Sauci/ddd/releases>`_,
-which installs with ``code --install-extension ddd-<version>.vsix`` or through **Install
-from VSIX...** in the Extensions view; there is no automatic update for an extension that
-did not come from the marketplace, so reinstall it when the python package is upgraded.
+The extension is published to the `Visual Studio Marketplace
+<https://marketplace.visualstudio.com/items?itemName=sauci.ddd>`_: search for **DDD** in the
+Extensions view. Installed that way it updates itself, which is the reason to prefer it -
+the extension and the python package share a version number, and an update to one is worth
+the other.
+
+Every release also attaches a ``ddd-<version>.vsix`` to its `GitHub release
+<https://github.com/Sauci/ddd/releases>`_, for a site whose network policy does not reach
+the marketplace. That installs with ``code --install-extension ddd-<version>.vsix`` or
+through **Install from VSIX...** in the Extensions view, and updates no more automatically
+than any other file, so reinstall it when the python package is upgraded.

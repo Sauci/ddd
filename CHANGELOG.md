@@ -8,6 +8,26 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
+## Unreleased
+
+* **The documentation deployment reads back what it published.**  The archive branch is a git
+  push and the site is an artifact handed to Pages, and nothing made the two agree: 0.6.0
+  reached `gh-pages` with a version index naming it while the site went on serving a build
+  assembled before the release existed - a complete set of documentation at a url that
+  answered 404, offered by no menu, with every step of every job reporting success.  The
+  deploy job now ends by fetching the published `versions.json` and the directory it just
+  wrote, and fails if the site is not serving them.  Re-running the workflow republishes the
+  archive branch as it stands, which is the fix when it does fail.
+* **The editor extension is no longer published to the Visual Studio Marketplace.**  It never
+  was: the step needed a personal access token from an Azure DevOps organisation owning a
+  `sauci` publisher, neither was ever created, and it failed on every release it ran on while
+  the rest of the pipeline reported success around it - with four pages meanwhile telling a
+  customer to search the Extensions view for an item that answers 404.
+  **Migration:** install the `ddd-<version>.vsix` attached to the
+  [GitHub release](https://github.com/Sauci/ddd/releases), which is what every page now says
+  and what the release has always carried.  Building, testing, packaging and attaching the
+  extension are unchanged; only the marketplace upload is gone.
+
 ## 0.6.0
 
 * **The docker development image builds and its services run again.**  `docker/Dockerfile`

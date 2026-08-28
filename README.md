@@ -142,13 +142,12 @@ ddd lsp                      # speaks the Language Server Protocol on stdin and 
 Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
 VS Code cannot start one without an extension, so there is one in
 [editors/vscode](editors/vscode); it is a launcher and nothing more, which is why everything
-below works the same either way.  Search for **DDD** in the Extensions view, or install it
-from the
-[marketplace](https://marketplace.visualstudio.com/items?itemName=sauci.ddd).  Every release
-also attaches a `ddd-<version>.vsix` to its
-[GitHub release](https://github.com/Sauci/ddd/releases), for a site whose network policy does
-not reach the marketplace: that installs with `code --install-extension ddd-<version>.vsix`
-or through **Install from VSIX…** in the Extensions view.
+below works the same either way.  Every release attaches a `ddd-<version>.vsix` to its
+[GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link needing no
+account and no network policy exception: that installs with
+`code --install-extension ddd-<version>.vsix` or through **Install from VSIX…** in the
+Extensions view.  It updates no more automatically than any other file, so reinstall it when
+the python package is upgraded - the two share a version number.
 
 The server reports on open and on save, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a

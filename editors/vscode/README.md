@@ -15,13 +15,9 @@ server instead.
 
 ## Installing it
 
-Search for **DDD** in the Extensions view, or install it from the
-[marketplace](https://marketplace.visualstudio.com/items?itemName=sauci.ddd). Installed that
-way it updates itself, which is the reason to prefer it.
-
-Every release also attaches a `ddd-<version>.vsix` to its
+Every release attaches a `ddd-<version>.vsix` to its
 [GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link that needs
-no account and reaches a site the marketplace does not. Download that file, then either:
+no account and reaches a site an extension gallery may not. Download that file, then either:
 
 ```bash
 code --install-extension ddd-<version>.vsix
@@ -105,9 +101,9 @@ the same severities the build applies. A file no build claims is still checked, 
 
 ## Building it
 
-CI builds and tests this on every push, and on every release packages it, attaches it and
-publishes it to the marketplace, so nobody has to build one to use it. To work on it you need
-node 20 and DDD installed:
+CI builds and tests this on every push, and on every release packages it and attaches it to
+the release, so nobody has to build one to use it. To work on it you need node 20 and DDD
+installed:
 
 ```bash
 npm ci

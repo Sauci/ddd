@@ -231,15 +231,22 @@ class TestPackaging:
         assert (ROOT / license_file).is_file(), "the declared license file is not in the tree"
 
     def test_the_extension_is_installed_from_where_the_documentation_says(self) -> None:
-        """The marketplace identifies an extension as ``publisher.name``, and four pages
-        now send a customer to that address. Renaming either field turns every install
-        instruction in the product into a 404, which nothing inside this repository would
-        otherwise notice."""
+        """The ``.vsix`` on the release is the only way in, so every page has to say so.
+
+        The extension was never published to the Visual Studio Marketplace: the step that
+        would have done it failed on both releases that ran it, and the publisher it needs
+        lives in an Azure DevOps organisation nobody set up. Four pages nonetheless told a
+        customer to search the Extensions view and linked an item page that answers 404.
+        The release asset is what actually exists, and it is what they now name.
+        """
         manifest = json.loads(
             (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
         )
-        item = f"{manifest['publisher']}.{manifest['name']}"
-        url = f"https://marketplace.visualstudio.com/items?itemName={item}"
+        # The item page, derived the way the marketplace addresses an extension. The *manage*
+        # url is a different thing and stays: the developer documentation cites it as the
+        # prerequisite of publishing there, which is guidance for a maintainer rather than an
+        # install instruction pointed at a customer.
+        item = f"items?itemName={manifest['publisher']}.{manifest['name']}"
         pages = [
             ROOT / "README.md",
             ROOT / "editors" / "vscode" / "README.md",
@@ -247,26 +254,50 @@ class TestPackaging:
             ROOT / "docs" / "developer_documentation.rst",
         ]
         for page in pages:
-            assert url in page.read_text(encoding="utf-8"), (
-                f"{page.name} does not link to {url}, which is where the extension is"
+            text = page.read_text(encoding="utf-8")
+            assert item not in text, (
+                f"{page.name} still sends a customer to the marketplace item page, which "
+                f"has no extension on it and no workflow putting one there"
+            )
+            assert "ddd-<version>.vsix" in text, (
+                f"{page.name} does not name the .vsix on the release, which is the only "
+                f"way the extension can be installed"
             )
 
-    def test_a_release_publishes_the_extension_to_the_marketplace(self) -> None:
-        """What makes those four pages true is one step of one workflow, and losing it
-        would fail nothing: the release would still build, the index upload would still
-        happen and the .vsix would still be attached. Only the Extensions view would go
-        on showing the previous version, which is not a thing anybody here can see."""
-        assert "vsce publish" in PUBLISH_WORKFLOW, (
-            "the release no longer publishes the extension, but the documentation says it does"
+    def test_a_release_does_not_publish_the_extension_to_the_marketplace(self) -> None:
+        """The decision, pinned where re-adding it would have to argue with something.
+
+        The step existed, needed a ``VSCE_PAT`` nobody had, and failed on every release it
+        ran on while the rest of the pipeline reported success around it. Restoring it means
+        creating the publisher first - and, before that, putting the four pages above back.
+        """
+        assert "vsce" not in PUBLISH_WORKFLOW, (
+            "the release publishes the extension to the marketplace again, but nothing "
+            "installs it from there and no page tells anybody to"
         )
-        assert "secrets.VSCE_PAT" in PUBLISH_WORKFLOW, (
-            "the marketplace has no trusted publishing; the publish step needs VSCE_PAT"
+        assert "VSCE_PAT" not in PUBLISH_WORKFLOW, (
+            "the marketplace token is back in the workflow with nothing to authenticate"
+        )
+
+    def test_the_release_carries_the_built_extension(self) -> None:
+        """What replaced the marketplace: the ``.vsix`` still has to reach somebody.
+
+        Removing the publish step must not take the packaging and the upload with it - a
+        permanent url needing no account and no network policy exception is the whole of how
+        the extension is installed now.
+        """
+        body = PUBLISH_WORKFLOW.split("\n  extension:\n", 1)[1]
+        # Up to the next job, which is the next key at the indentation a job name sits at.
+        extension = re.split(r"\n  [a-z][\w-]*:\n", body, maxsplit=1)[0]
+        assert "npm run package" in extension, "the release no longer builds the .vsix"
+        assert "gh release upload" in extension, (
+            "the release no longer attaches the .vsix, so nothing ships the extension"
         )
 
     def test_the_extension_carries_the_license_it_declares(self) -> None:
         """``vsce`` packages nothing from outside the extension directory, so the root
-        LICENSE never reaches the .vsix and the marketplace would offer a licence tab with
-        nothing behind it. The copy beside the manifest has to stay a copy."""
+        LICENSE never reaches the .vsix, and whoever unpacks one would find a licence it
+        names and does not carry. The copy beside the manifest has to stay a copy."""
         extension = ROOT / "editors" / "vscode"
         manifest = json.loads((extension / "package.json").read_text(encoding="utf-8"))
         assert manifest["license"] == "MIT"
@@ -745,6 +776,30 @@ class TestPublishedDocumentation:
             f"a release does not deploy its own documentation: {condition.strip()}"
         )
 
+    def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
+        """The archive branch and the served site are two publishes, and they can disagree.
+
+        The branch is a git push and the site is an artifact handed to Pages, so nothing
+        makes them agree by construction. When they parted, every step of every job still
+        reported success: ``v0.6.0`` sat in the archive, named in the version index beside
+        it, while the site went on serving a build assembled before the release existed -
+        a complete set of documentation at a url that answered 404, with nothing red
+        anywhere to say so, and the version menu never offering it.
+
+        So the run ends by reading back what it just published, which is the only statement
+        about the site that is made from outside the machinery that writes it.
+        """
+        deploy = DOCS_WORKFLOW.split("actions/deploy-pages", 1)
+        assert len(deploy) == 2, "the workflow no longer deploys exactly once"
+        after = deploy[1]
+        assert "versions.json" in after and "${SLOT}" in after, (
+            "nothing after the deployment checks that the site serves the version just "
+            "published, so a site one build behind reports success"
+        )
+        assert "cb=" in after, (
+            "the read back is cacheable, so an edge answering for the previous build passes"
+        )
+
     def test_a_release_tag_has_to_carry_its_prefix(self) -> None:
         """The ``v`` is load bearing, and both workflows have to insist on it.
 
@@ -767,9 +822,8 @@ class TestPublishedDocumentation:
         """The tag check lives in one job, so every job that publishes has to be behind it.
 
         The extension job names the .vsix it uploads after the tag. Left needing only the
-        test job it ran beside the check rather than after it, which for a marketplace
-        upload - not withdrawable, and not repeatable under the same version - is the
-        wrong side to be on.
+        test job it ran beside the check rather than after it, which for an upload onto a
+        published release is the wrong side to be on.
         """
         extension = PUBLISH_WORKFLOW.split("\n  extension:\n", 1)[1]
         needs = next(line for line in extension.splitlines() if line.strip().startswith("needs:"))

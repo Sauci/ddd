@@ -65,12 +65,17 @@ jobs:
           name: dist
           path: dist/
 
-  # The VS Code extension goes to the marketplace, which is where somebody looking for it in
-  # the Extensions view will find it, and where it updates itself afterwards. The same .vsix
-  # is also attached to the release: that is a permanent url needing no account and no
-  # network policy exception, which is how an air gapped site installs one. Built from the
-  # tag, so the version inside the package is the version being released; a test asserts it
-  # matches the python one.
+  # The VS Code extension is delivered as the .vsix attached to the release: a permanent url
+  # needing no account and no network policy exception, which is how an air gapped site
+  # installs one. Built from the tag, so the version inside the package is the version being
+  # released; a test asserts it matches the python one.
+  #
+  # It is deliberately not published to the Visual Studio Marketplace. That step existed,
+  # needed a personal access token from an Azure DevOps organisation owning a `sauci`
+  # publisher, and failed on every release it ran on because neither was ever created - while
+  # the rest of the pipeline reported success around it. Four pages told a customer to search
+  # the Extensions view for an item that answers 404. Publishing there again means creating
+  # the publisher first, and putting those pages back with it.
   extension:
     # `build` rather than `test`, for the tag check it carries: this job names the .vsix it
     # publishes after the tag, so nothing here may run under a tag that check would reject.
@@ -102,28 +107,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" editors/vscode/*.vsix --clobber
-
-      # Published from the .vsix that was just built and attached rather than packaged a
-      # second time, so the marketplace serves the same bytes the release does.
-      #
-      # Unlike the index upload below, this one cannot use a short lived OIDC token: the
-      # marketplace has no equivalent of trusted publishing, so it needs a personal access
-      # token from the Azure DevOps organisation owning the `sauci` publisher, stored as the
-      # VSCE_PAT secret. Those tokens expire - a year at most - and the failure that produces
-      # is this step, on a release, which is why it says so rather than only exiting.
-      - name: Publish the extension to the marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo "::error::VSCE_PAT is not set. The marketplace needs a personal access token"
-            echo "::error::with the Marketplace > Manage scope, from the Azure DevOps"
-            echo "::error::organisation that owns the 'sauci' publisher. Add it as a repository"
-            echo "::error::secret named VSCE_PAT and re-run this job; the release, the index"
-            echo "::error::upload and the attached .vsix are unaffected."
-            exit 1
-          fi
-          npx --yes @vscode/vsce publish --packagePath editors/vscode/ddd-"${GITHUB_REF_NAME#v}".vsix
 
   publish-testpypi:
     needs: build

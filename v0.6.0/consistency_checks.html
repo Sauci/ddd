@@ -1,0 +1,980 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consistency checks &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Comparing deliveries" href="comparing_deliveries.html" />
+    <link rel="prev" title="Constant vocabulary" href="file_formats/constants.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Consistency checks</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-check-is">What a check is</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#anatomy-of-a-finding">Anatomy of a finding</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#severity-policy">Severity policy</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-five-checks-whose-severity-is-fixed">The five checks whose severity is fixed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-checks">The checks</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#errors">Errors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#warnings">Warnings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#information">Information</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#checks-of-the-delivery-comparison">Checks of the delivery comparison</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-producing-component-wins">The producing component wins</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-project-that-does-not-check-out">A project that does not check out</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#exit-codes-and-ci">Exit codes and ci</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Consistency checks</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/consistency_checks.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="consistency-checks">
+<h1>Consistency checks<a class="headerlink" href="#consistency-checks" title="Link to this heading"></a></h1>
+<p>The global variables of a component based project are declared in as many files as there are
+components, and nothing in the c language ties those declarations together: a component that
+reads <code class="docutils literal notranslate"><span class="pre">SharedValue</span></code> as an unscaled <code class="docutils literal notranslate"><span class="pre">uint16</span></code> and a component that writes it as an <code class="docutils literal notranslate"><span class="pre">sint16</span></code>
+in percent with a factor of 0.5 compile perfectly well, link without a word, and produce a
+value that is wrong by a factor of two - or by 65536, once the sign bit travels. The
+disagreement is invisible to the compiler because each translation unit only ever sees its own
+opinion of the variable. DDD sees all of them, because every declaration passes through it
+before a single line of c is written, and that is what the consistency checks are for: they
+are the only place in the tool chain where “these two components do not mean the same thing by
+this name” can still be said cheaply, on a source file, with a location, instead of expensively,
+at link time or in the calibration lab.</p>
+<p>The same checks run on every command that resolves a project - <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>
+and <code class="docutils literal notranslate"><span class="pre">dump</span></code> - so the artefacts can never be generated from inputs that were not checked.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> refuses to write anything while an error is outstanding, unless it is told to
+with <code class="docutils literal notranslate"><span class="pre">--force</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
+...
+4 errors, 1 warning
+$ echo $?
+1
+</pre></div>
+</div>
+<section id="what-a-check-is">
+<h2>What a check is<a class="headerlink" href="#what-a-check-is" title="Link to this heading"></a></h2>
+<p>A check is a rule with a <strong>stable identifier</strong> and a <strong>default severity</strong>. The identifier is
+the kebab-case name that appears in every finding - <code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code>,
+<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>, <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and it is part of the tool interface rather than
+an implementation detail: a build script pins it in a severity override, a ci job greps for it,
+a code review discusses it. Identifiers therefore do not change once they have been published.
+A check may be added in a later release, and the wording of a message may improve, but a name
+a project has written into its build files keeps meaning what it meant.</p>
+<p>The authoritative list is the one the tool prints itself, which is also how the tables further
+down should be read after a DDD upgrade:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd checks
+file-not-found         error    a referenced file does not exist (fixed)
+json-syntax            error    a file is not valid json (fixed)
+file-kind              error    the top level key of a file names no description kind, or several (fixed)
+file-extension         error    a description file is not named '*.ddd.json'
+schema                 error    a file does not match the DDD contract (fixed)
+include-cycle          error    projects include each other recursively (fixed)
+include-empty          error    an include pattern matches no file
+duplicate-component    error    two different files declare the same component name
+duplicate-type         error    two different files declare the same type name
+duplicate-unit         error    a unit is declared more than once, in one file or across files
+duplicate-section      error    a memory section is declared more than once, in one file or across files
+duplicate-constant     error    a constant is declared more than once, in one file or across files
+...
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker means the severity of that check cannot be changed; the reason is in
+<a class="reference internal" href="#severity-policy">Severity policy</a> below.</p>
+<section id="anatomy-of-a-finding">
+<h3>Anatomy of a finding<a class="headerlink" href="#anatomy-of-a-finding" title="Link to this heading"></a></h3>
+<p>Every finding is one line, in a shape an editor or a log parser can pick apart, followed by
+zero or more indented notes:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+...
+</pre></div>
+</div>
+<p>The part before the first colon is the location: the path of the description file, relative to
+the working directory when it lies below it, followed by <code class="docutils literal notranslate"><span class="pre">#</span></code> and a dotted json pointer into
+the document. The pointer is what makes a finding actionable in a project of a hundred
+components - <code class="docutils literal notranslate"><span class="pre">component.interface[0]</span></code> is the first entry of the <code class="docutils literal notranslate"><span class="pre">interface</span></code> array,
+and <code class="docutils literal notranslate"><span class="pre">component.interface[0].definition</span></code> narrows it further to the definition object inside
+it. A finding about the file as a whole rather than about a place inside it carries a line and
+a column instead, because for a file that does not parse there is no pointer to give:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check broken.ddd.json
+broken.ddd.json:4:22: error[json-syntax]: Expecting value
+1 error
+</pre></div>
+</div>
+<p>Then comes <code class="docutils literal notranslate"><span class="pre">severity[check]</span></code>, and then the message. The notes are the second half of the
+story: almost every disagreement is a disagreement <em>between two places</em>, and a finding that
+pointed at only one of them would send its reader hunting for the other. The note therefore
+names the declaration the finding was measured against - “also written here”, “reference
+declaration”, “declared local here” - with a location of its own.</p>
+<p>Findings are printed errors first, then warnings, then information, and within one severity by
+file and by position in the file, so that fixing one finding does not shuffle the others around
+in the next run. The run ends with a one line summary (<code class="docutils literal notranslate"><span class="pre">4</span> <span class="pre">errors,</span> <span class="pre">1</span> <span class="pre">warning</span></code>) or, when a
+project is entirely clean, with a statement of what was checked:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json
+ok: 20 variables in 4 components are consistent
+</pre></div>
+</div>
+<p>All of this goes to <strong>stderr</strong> - every finding, every note and the closing summary or <code class="docutils literal notranslate"><span class="pre">ok:</span></code>
+line. Stdout is reserved for whatever the command was asked to produce: the dictionary of
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code>, the table of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code>, the schema of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code>. The two streams never
+carry each other’s content, which is what makes
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span> <span class="pre">baseline.json</span></code> safe - the findings cannot end up inside the
+artefact.</p>
+</section>
+</section>
+<section id="severity-policy">
+<h2>Severity policy<a class="headerlink" href="#severity-policy" title="Link to this heading"></a></h2>
+<p>Not every project is at the same point in its life. A project being migrated onto DDD starts
+with descriptions that are incomplete on purpose; a component being developed on its own cannot
+see the components that produce its inputs; a project approaching a release wants the build to
+fail on what was merely a warning last month. Each check therefore carries a default severity
+which the project can change, per run, with <code class="docutils literal notranslate"><span class="pre">-W</span></code> (long form <code class="docutils literal notranslate"><span class="pre">--severity</span></code>), repeatable:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>check<span class="w"> </span>project.ddd.json<span class="w"> </span>-W<span class="w"> </span>unused-output<span class="o">=</span>info
+ddd<span class="w"> </span>check<span class="w"> </span>project.ddd.json<span class="w"> </span>-W<span class="w"> </span>missing-producer<span class="o">=</span>ignore<span class="w"> </span>-W<span class="w"> </span>unused-output<span class="o">=</span>ignore
+ddd<span class="w"> </span>check<span class="w"> </span>project.ddd.json<span class="w"> </span>--strict
+</pre></div>
+</div>
+<p>The four levels are:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">error</span></code></dt><dd><p>The finding fails the run: the exit code becomes 1, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> writes nothing.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">warning</span></code></dt><dd><p>The finding is printed and counted, but the run still succeeds. Something is suspect and a
+human should look at it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">info</span></code></dt><dd><p>The finding is printed and counted, and nothing else happens. Useful to keep a rule visible
+without letting it interrupt anybody.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ignore</span></code></dt><dd><p>The finding is not produced at all. It appears neither in the text output, nor in the json
+output, nor in the summary counts.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">--strict</span></code> reports as an error everything that would be reported as a warning. It is applied
+<em>after</em> the <code class="docutils literal notranslate"><span class="pre">-W</span></code> overrides, on the effective severity, and that order is what makes the two
+options composable: a project can turn its warnings into errors and still exempt the one check
+it has consciously decided to live with.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json --strict -W unused-output=info
+...
+examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+4 errors, 1 info
+</pre></div>
+</div>
+<p>The policy belongs to the project rather than to the engineer who happens to be typing: whoever
+checks the project should get the same verdict as the build server, so the overrides are best
+written once into the build system - the CMake integration takes them as <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and
+<code class="docutils literal notranslate"><span class="pre">STRICT</span></code> arguments, see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> - instead of being remembered by hand.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Checking a single component before it is integrated is the one case where a relaxed policy
+is the normal thing to do, because the components producing its inputs and consuming its
+outputs are by definition not part of the file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+...
+2 errors, 5 warnings
+
+$ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
+ok: 12 variables in 1 component are consistent
+</pre></div>
+</div>
+</div>
+<section id="the-five-checks-whose-severity-is-fixed">
+<h3>The five checks whose severity is fixed<a class="headerlink" href="#the-five-checks-whose-severity-is-fixed" title="Link to this heading"></a></h3>
+<p>Five checks cannot be relaxed: <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code>
+and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>. They are the ones that report that a description could not be <em>read</em>,
+and a file that cannot be read has nothing further to say. Downgrading them would not make the
+project more permissive, it would make the rest of the run meaningless: a file that is not
+valid json contributes no declarations, so every variable it produces would be reported as
+having no producer and every name it defines would look free. The tool would bury the one real
+finding - “this file has a comma too many on line 4” - under a page of consequences.</p>
+<p>The same reasoning explains why the two other load time checks <em>are</em> relaxable.
+<code class="docutils literal notranslate"><span class="pre">file-extension</span></code> and <code class="docutils literal notranslate"><span class="pre">include-empty</span></code> complain about a file tree DDD can read perfectly
+well, it just does not like the shape of it: a description named <code class="docutils literal notranslate"><span class="pre">foo.json</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">foo.ddd.json</span></code> is fully understood, and an include pattern that is legitimately empty in one
+variant of a project is a normal thing to allow.</p>
+<p>Trying to change a fixed check is a usage error rather than a silently ignored request, as is
+naming a check or a severity that does not exist - the value of stable identifiers would be
+lost if a typo in a build script quietly disabled a rule:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json -W schema=warning
+ddd: the severity of check 'schema' cannot be changed
+$ echo $?
+2
+
+$ ddd check examples/inconsistent/project.ddd.json -W typo=warning
+ddd: unknown check 'typo'
+
+$ ddd check examples/inconsistent/project.ddd.json -W unused-output=fatal
+ddd: unknown severity 'fatal' for check 'unused-output', expected one of error, warning, info, ignore
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>As long as a load time check reports an error, the interface checks do not run at all: the
+project has not been assembled, so there is nothing to compare. On a project that is broken
+in both ways the findings therefore arrive in two waves - repair the file tree, and the
+interface findings appear on the next run. Where the offending check is one of the two
+relaxable ones, <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">file-extension=warning</span></code> is enough to let the second wave through
+immediately.</p>
+</div>
+</section>
+</section>
+<section id="the-checks">
+<h2>The checks<a class="headerlink" href="#the-checks" title="Link to this heading"></a></h2>
+<p>The tables below list the checks as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> reports them, grouped by their default
+severity. The identifier and the default severity are the two things a project pins; the third
+column says what the tool is actually looking at when the check fires.</p>
+<section id="errors">
+<h3>Errors<a class="headerlink" href="#errors" title="Link to this heading"></a></h3>
+<p>An error means the project is wrong, in the sense that generating from it would produce c code
+or an a2l file that does not do what the description says - or that does not compile at all.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 14.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Check</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Fires when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file-not-found</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>a file named on the command line or reached through an <code class="docutils literal notranslate"><span class="pre">includes</span></code> pattern does not
+exist, is a directory, or cannot be read.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">json-syntax</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>a description file is not valid json, is nested too deeply to read, or is not valid
+utf-8. The finding carries the line and the column the parser stopped at.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file-kind</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>the top level of the document is not a json object, or names none of the description
+kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
+<code class="docutils literal notranslate"><span class="pre">constants</span></code>), or several of them at once.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a description file is not named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>. Relaxable with
+<code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">file-extension=warning</span></code> while a project is being migrated.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schema</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>the document does not match the DDD contract: a missing or unknown key, a value of the
+wrong type, a datatype that does not exist. One finding per violated constraint, each
+pointing at the offending key. It also fires on an archived dictionary written by a
+newer DDD than the one reading it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">include-cycle</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>a project includes a file which, directly or indirectly, includes it again. A diamond -
+the same component reached through two paths - is not a cycle and is quietly used once.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">include-empty</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an <code class="docutils literal notranslate"><span class="pre">includes</span></code> pattern matches no file, which usually means a renamed directory or a
+typo rather than a component that genuinely has no description.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-component</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two different files declare a component of the same name. Component names have to be
+unique: each component gets a generated header named after it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two different files declare a type of the same name. Which of two answers the generated
+c would get is not something an include order should decide, so the second is refused
+rather than allowed to win.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a <code class="docutils literal notranslate"><span class="pre">typename</span></code> names no type any file of the project declares - on a component
+declaration or on a structure member alike. It is refused rather than skipped, because
+an object of unknown storage has no limits, no size and nothing later to check
+against. The nearest known name is suggested, which is what answers a transposition
+like <code class="docutils literal notranslate"><span class="pre">unit16</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a unit is declared more than once, in one file or across files. The vocabulary is a set of spellings, so a
+second entry is either a copy that will drift or a disagreement about the description,
+and neither is worth keeping quiet.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a memory section is declared more than once, in one file or across files: either a copy that will drift or
+a disagreement about its properties, and neither is worth keeping quiet.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a constant is declared more than once, in one file or across files (see the
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>): either a copy that will drift or a
+disagreement about the value, and a size that depends on which file loads first is
+exactly what the vocabulary exists to prevent.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a definition names a memory section no file declares (see the
+<a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a>). Unlike a unit there is no free text
+fallback: a section without declared properties is a name the placement checks can
+say nothing about. The nearest declared name is suggested.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a measurement, which the software writes, is placed in a <code class="docutils literal notranslate"><span class="pre">read-only</span></code> section. A
+calibration object may live in either direction: <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored
+calibration.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a shape - a <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> entry, or the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis - names a constant no
+file of the project declares (see the
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>). Like a section there is no free
+text fallback, because a name without a value is a dimension nothing can resolve.
+The nearest declared name is suggested.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a unit is not in the vocabulary the project declares (see the
+<a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Declared nowhere, units stay free text and
+the check never fires; declared anywhere, every stated unit is checked where it is
+written, with the nearest declared spelling suggested. The empty unit is always
+allowed - a dimensionless value states no unit rather than a spelling of one.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a declared type is used where its shape does not fit: a declaration naming a structure
+while being a curve, a map, an axis or a value block, all of which refer to other
+objects or are arrays of one datatype, or one stating an <code class="docutils literal notranslate"><span class="pre">init</span></code>, which for a
+structure is written by the code that starts it rather than by the description.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
+<td><p>error</p></td>
+<td><p>structures nest each other, directly or through others. The finding names the chain,
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">-&gt;</span> <span class="pre">B</span> <span class="pre">-&gt;</span> <span class="pre">C</span> <span class="pre">-&gt;</span> <span class="pre">A</span></code>, because that says which member to remove; a structure that
+contains itself has no size at all.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a project, component, variable, type, structure member, enum, enumerator or constant
+name is a c keyword, or is declared by one of the headers the generated code includes
+(everything <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code>
+bring in, so <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code> is out), or is reserved for the implementation by C11 7.1.3 -
+any name containing a double underscore, or starting with an underscore followed by a
+capital letter.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two names that are distinct in the description files would become the same c identifier
+or the same generated file: an enumerator and a variable, a variable and the name of an
+enum or of a declared type (both of which the types header makes typedef names, in the
+same file scope namespace as the variables), an enumerator claimed by two enums (all
+enumerators share one c namespace), a declared constant and a variable, an enum, an
+enumerator or a declared type (the constant reaches the generated code as an identifier
+of its own, in that same namespace), or two component names differing only in case,
+which ask for the same header on a case insensitive filesystem.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
+<td><p>error</p></td>
+<td><p>one component declares the same variable twice, for instance once as <code class="docutils literal notranslate"><span class="pre">input</span></code> and once
+as <code class="docutils literal notranslate"><span class="pre">output</span></code>. The second declaration is ignored for the rest of the run.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code> or <code class="docutils literal notranslate"><span class="pre">section</span></code>. What a variable starts out
+as, and which memory it lives in, is decided by the component that produces it, so a
+component that only reads it is claiming storage it does not own - which is a
+different thing from the disagreements above, and is reported where the claim is
+written rather than where it is overruled. Relaxable, so a project migrating existing
+descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> keys are removed.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a variable is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by more than one component. Exactly one component owns
+the storage of a variable; two definitions would not even link.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a variable is read as <code class="docutils literal notranslate"><span class="pre">input</span></code> but no component declares it as an output. The generated
+consumer header would declare a symbol nobody defines.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a variable declared <code class="docutils literal notranslate"><span class="pre">local</span></code> by one component is also declared by another. <code class="docutils literal notranslate"><span class="pre">local</span></code> is
+a promise that the variable is nobody else’s business, and DDD keeps it out of the
+shared headers accordingly.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two components describe the same variable differently in a property that changes what
+the value <em>means</em>: kind, datatype, unit, declared shape, conversion, volatility,
+physical limits, or the axis references of a curve or a map. A consumer that simply
+omits <code class="docutils literal notranslate"><span class="pre">limits</span></code> is not disagreeing and is not reported, because they are derived from
+the datatype and the conversion when nobody states them. <code class="docutils literal notranslate"><span class="pre">volatile</span></code> cannot be left
+out that way: every definition of every kind has to state it, so a difference there is
+always two components saying two different things rather than one of them saying
+nothing at all.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
+<td><p>error</p></td>
+<td><p>the same enum type name is defined with different enumerators. One c enum is generated
+per name, so only one set of enumerators could survive.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a curve, a map or an axis refers by name to an object no component declares.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a reference points at an object of the wrong kind, for example the <code class="docutils literal notranslate"><span class="pre">axis</span></code> of a curve
+naming a measurement instead of an axis.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an initial value does not fit its datatype - out of range, written as a fraction for an
+integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
+not have (for a curve or a map, the shape given by its axes), or an enumerator does not
+fit the datatype of the variable, or does not fit into a c <code class="docutils literal notranslate"><span class="pre">int</span></code>, which every
+enumerator has to (C11 6.7.2.2).</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="warnings">
+<h3>Warnings<a class="headerlink" href="#warnings" title="Link to this heading"></a></h3>
+<p>A warning means the project generates, and what it generates is well defined, but something in
+it is either a smell or a decision somebody should have taken consciously.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 14.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Check</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Fires when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">storage-mismatch</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>two components describe the same variable differently in a property that shapes how
+the a2l presents it - a <code class="docutils literal notranslate"><span class="pre">format</span></code> string, a <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> - rather than the
+meaning of the value. This is a warning and not an error because the outcome is
+defined: the producer’s value is the one that is generated, and the message says so.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">condition-mismatch</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the declarations of one variable carry different preprocessor conditions, so the
+components do not agree on when the variable exists at all. The producer’s condition is
+the one that guards the generated definition.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unused-output</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a variable is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by its producer and read by no component. Either a
+consumer forgot to declare it, or the variable exists for measurement only, in which
+case <code class="docutils literal notranslate"><span class="pre">local</span></code> says so more honestly.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-duplicate-value</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>two enumerators of one enum share the same numeric value. Legal c, and occasionally
+intended as an alias, but a calibration tool can no longer display the raw value
+unambiguously.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">limits-out-of-range</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the declared physical limits are wider than what the datatype can represent through the
+conversion, so part of the declared range is unreachable.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section-alignment</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object needs stricter alignment than its section guarantees. A warning rather than
+an error because for a structure the need is an estimate - the strictest of its
+members’ datatypes - and the compiler’s word on the real layout is final.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-similar</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>two variables differ only in upper and lower case. They are distinct in c, and confusing
+everywhere else.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an exported object cannot be fully described by the a2l version DDD writes: today that is
+an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1 cannot
+carry. The extra dimensions are written out and only a 1.7 reader understands them.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="information">
+<h3>Information<a class="headerlink" href="#information" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 14.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Check</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Fires when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">empty-component</span></code></p></td>
+<td><p>info</p></td>
+<td><p>a component declares no variable at all. Perfectly legal - a component may have no global
+interface - but worth saying out loud, because the usual cause is a description file that
+was registered before it was written.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="checks-of-the-delivery-comparison">
+<h3>Checks of the delivery comparison<a class="headerlink" href="#checks-of-the-delivery-comparison" title="Link to this heading"></a></h3>
+<p>The remaining checks of the registry answer a different question - whether one delivery can
+replace another - and fire only for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> and for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span></code>. They obey
+exactly the same policy: same identifiers, same <code class="docutils literal notranslate"><span class="pre">-W</span></code> and <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, same exit codes.
+<a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a> explains the grading; the identifiers are listed here so that the
+registry can be read in one place.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 14.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Check</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Fires when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">removed-object</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an object of the baseline is gone and a component read it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
+<td><p>error</p></td>
+<td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object of the baseline is gone that no component read - a calibration dataset or an
+external tool still might.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the initial value, the volatility or the memory section of an object changed. A
+calibration object whose <code class="docutils literal notranslate"><span class="pre">volatile</span></code> went from <code class="docutils literal notranslate"><span class="pre">true</span></code> to <code class="docutils literal notranslate"><span class="pre">false</span></code> is the case worth
+reading twice: it keeps its address and a tool can still write to it, but the compiler
+is now entitled to fold the initial value into the code that reads it, so tuning it
+while the software runs stops working. The section says literally which memory the
+object ends up in.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the physical limits of an object got tighter, so calibrated data may no longer fit.
+Widening is silent, because every value the baseline allowed still fits.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-owner</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>another component produces the object now.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">changed-condition</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the preprocessor condition of an object changed.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the a2l entry of an object changed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">project-mismatch</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the two sides of the comparison describe differently named projects, so the baseline is
+probably not the predecessor of this candidate.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">added-object</span></code></p></td>
+<td><p>info</p></td>
+<td><p>the candidate declares an object the baseline did not.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="the-producing-component-wins">
+<h2>The producing component wins<a class="headerlink" href="#the-producing-component-wins" title="Link to this heading"></a></h2>
+<p>Two components can describe the same variable, and one of the two descriptions has to be the
+one that is generated. DDD does not average them and does not simply take the first one it
+read: the declaration of the <strong>producing</strong> component is the reference. The rule is not
+arbitrary. The producer is the component that owns the storage - its declaration is where the
+definition is emitted, its initial value is the one the linker puts into the image, its
+condition is the one that decides whether the variable exists at all. A consumer only ever
+describes what it expects to find, and when expectation and reality differ, reality is what the
+hardware will do.</p>
+<p>Two things follow. The first is that the diagnostic points at the <strong>deviating consumer</strong>, with
+a note referring back to the producer, so that the finding lands on the file that has to
+change:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+</pre></div>
+</div>
+<p>The second is that a property which merely shapes how the a2l <em>presents</em> the object does not
+have to stop the build, precisely because the outcome is defined. Given a producer and a
+consumer that ask for different display formats,</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueA"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"%5.0"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span><span class="w"> </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValueA"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"%8.3"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>the check names the value that is going to be used:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>consumer.ddd.json#component.interface[0].definition: warning[storage-mismatch]: 'ValueA': component 'Consumer' specifies a different a2l format than 'Producer' (a2l format: '%8.3' != '%5.0'); the value of 'Producer' is used
+    note: producer.ddd.json#component.interface[0].definition: reference declaration
+</pre></div>
+</div>
+<p>A consumer that merely leaves the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block or one of its keys out is not asking for
+anything and is not reported; only two stated values can disagree.</p>
+<p>Two other properties used to be settled this way, and left in opposite directions.</p>
+<p><code class="docutils literal notranslate"><span class="pre">init</span></code> is not a losing opinion but a claim over storage the component does not own: reading
+a variable gives it no say in what the variable starts as. A consumer stating one is refused
+outright, as <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, where the claim is written rather than where it is
+overruled.</p>
+<p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> went the other way and became interface. It reaches every consumer’s own header
+as a type qualifier - <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">volatile</span> <span class="pre">uint16_t</span> <span class="pre">ValueA</span></code> - and that is what tells that
+component’s code not to cache the value and not to expect two reads to agree. Every
+declaration of the variable therefore has to say the same thing, and a disagreement is a
+<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> error. There is no leaving it out, either: unlike <code class="docutils literal notranslate"><span class="pre">limits</span></code>, which
+DDD derives when a declaration omits them, there is nothing here to derive, so the key is
+required on every definition of every kind and a definition without it does not load at all.
+That is reported as <code class="docutils literal notranslate"><span class="pre">schema</span></code>, one of the five checks whose severity cannot be relaxed, which
+is why a project adopting this version of DDD adds the key everywhere in one go rather than
+phasing it in.</p>
+<p><code class="docutils literal notranslate"><span class="pre">export</span></code> is not compared at all. Which signals a calibration engineer needs to see is not the
+producer’s to decide alone, so any component may ask for an object to reach the a2l and asking
+wins over declining - see <a class="reference internal" href="file_formats/component.html"><span class="doc">the component file format</span></a>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When <em>no</em> component produces a variable - which is reported on its own as
+<code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> - the first declaration the tool read stands in as the reference, so
+that the remaining checks still have something to compare the others against. This is why a
+project with a missing producer reports both the missing producer and any disagreement
+between its consumers, instead of hiding the second finding behind the first.</p>
+</div>
+</section>
+<section id="a-project-that-does-not-check-out">
+<h2>A project that does not check out<a class="headerlink" href="#a-project-that-does-not-check-out" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">examples/inconsistent</span></code> is a deliberately broken project of three components, kept in the
+repository so that the checks can be seen firing on something small. The project file only
+collects them:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"BrokenProject"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Deliberately inconsistent project, used to demonstrate the checks"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"component_a.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"component_b.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"component_c.ddd.json"</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> writes <code class="docutils literal notranslate"><span class="pre">SharedValue</span></code> as an <code class="docutils literal notranslate"><span class="pre">sint16</span></code> in percent with a factor of 0.5, writes
+<code class="docutils literal notranslate"><span class="pre">UnusedSignal</span></code>, and keeps a <code class="docutils literal notranslate"><span class="pre">local</span></code> variable <code class="docutils literal notranslate"><span class="pre">Scratch</span></code>. <code class="docutils literal notranslate"><span class="pre">ComponentB</span></code> writes
+<code class="docutils literal notranslate"><span class="pre">SharedValue</span></code> as well. <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> reads <code class="docutils literal notranslate"><span class="pre">SharedValue</span></code> as an unscaled <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, reads
+a <code class="docutils literal notranslate"><span class="pre">MissingValue</span></code> nobody writes, and reads <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>’s <code class="docutils literal notranslate"><span class="pre">Scratch</span></code>. Checking the project
+gives:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+    note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+4 errors, 1 warning
+</pre></div>
+</div>
+<p>Five findings, and each one is a different kind of mistake.</p>
+<p><strong>multiple-producers.</strong> Two components claim to write <code class="docutils literal notranslate"><span class="pre">SharedValue</span></code>. In c that is two
+definitions of one symbol, which the linker rejects outright or, under a permissive setting,
+silently merges; in the project it means that nobody is responsible for the value. The finding
+lands on <code class="docutils literal notranslate"><span class="pre">ComponentB</span></code> because <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> was seen first, and the note points at the other
+writer. The fix is an organisational decision rather than a textual one: exactly one component
+owns the value and the other declares it as <code class="docutils literal notranslate"><span class="pre">input</span></code> - which is also what makes the data flow
+of the project visible in the first place.</p>
+<p><strong>definition-mismatch.</strong> <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> reads the same name as an unscaled <code class="docutils literal notranslate"><span class="pre">uint16</span></code>. Both
+halves of the disagreement matter: the datatype changes how many bytes are read and how the
+sign bit is interpreted, and the missing conversion means the consumer would understand a raw
+200 as 200 percent where the producer meant 100. The finding points at the consumer and the
+note at the producer, because the producer’s declaration is the reference. The fix is to copy
+the producer’s datatype and conversion into the consumer - or, if the consumer is right and the
+producer is wrong, to change the producer and let the check point at the next component that
+has not followed.</p>
+<p><strong>missing-producer.</strong> <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> reads <code class="docutils literal notranslate"><span class="pre">MissingValue</span></code> and no component writes it. The
+generated consumer header would declare a symbol that has no definition anywhere, and the
+mistake would surface at link time as an undefined reference, several minutes and one full
+build later. Either a component declares it as <code class="docutils literal notranslate"><span class="pre">output</span></code>, or the read is stale and the
+declaration goes.</p>
+<p><strong>local-conflict.</strong> <code class="docutils literal notranslate"><span class="pre">Scratch</span></code> is <code class="docutils literal notranslate"><span class="pre">local</span></code> to <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>, which is a promise that no
+other component depends on it: DDD keeps it out of the shared headers and out of the interface
+of the project, so <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> may rename or delete it freely. <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> reading it
+breaks that promise. Either the variable is genuinely shared, in which case <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>
+declares it as <code class="docutils literal notranslate"><span class="pre">output</span></code>, or it is not, in which case <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> has to do without.</p>
+<p><strong>unused-output.</strong> <code class="docutils literal notranslate"><span class="pre">UnusedSignal</span></code> is written and read by nobody. Only a warning, because a
+value may legitimately exist for measurement alone, and because the consumer may be a component
+that is not integrated yet. If it is measurement only, declaring it <code class="docutils literal notranslate"><span class="pre">local</span></code> says so and
+removes the warning; if a consumer was forgotten, this is the reminder.</p>
+<p>With all five addressed - <code class="docutils literal notranslate"><span class="pre">ComponentB</span></code> reading <code class="docutils literal notranslate"><span class="pre">SharedValue</span></code> instead of writing it,
+<code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> adopting the producer’s datatype and conversion, dropping its read of <code class="docutils literal notranslate"><span class="pre">Scratch</span></code>
+and reading <code class="docutils literal notranslate"><span class="pre">UnusedSignal</span></code> instead of the <code class="docutils literal notranslate"><span class="pre">MissingValue</span></code> nobody produces - the same command
+says:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+ok: 3 variables in 3 components are consistent
+</pre></div>
+</div>
+</section>
+<section id="exit-codes-and-ci">
+<h2>Exit codes and ci<a class="headerlink" href="#exit-codes-and-ci" title="Link to this heading"></a></h2>
+<p>DDD is meant to be a build step, so the verdict is in the exit code and not only in the text:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 10.0%" />
+<col style="width: 90.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>The run succeeded. There may still have been warnings or information findings - they are
+printed and counted, but they do not fail the run. <code class="docutils literal notranslate"><span class="pre">--strict</span></code> is how a project changes
+that.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>At least one finding was reported with the severity <code class="docutils literal notranslate"><span class="pre">error</span></code>, whatever its default
+severity was. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> additionally wrote nothing, unless <code class="docutils literal notranslate"><span class="pre">--force</span></code> was given.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>The command was used wrongly: an unknown check identifier or severity in <code class="docutils literal notranslate"><span class="pre">-W</span></code>, an
+attempt to change one of the fixed checks, a missing or unrecognized argument, an output
+directory that cannot be written to. Nothing was checked, which is why this case is
+deliberately distinguishable from “checked, and found wanting”.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A ci job therefore needs no output parsing at all to decide whether it passes:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>check<span class="w"> </span>project.ddd.json<span class="w"> </span>--strict<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> is for the other half of the job - annotating a merge request, feeding a
+dashboard, turning findings into editor markers. It replaces the human readable rendering
+rather than accompanying it: the findings become one document on <strong>stdout</strong> and stderr stays
+empty, so a job can consume the whole of stdout without having to recognise where the
+document begins:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json --format json
+{
+  "diagnostics": [
+    {
+      "check": "multiple-producers",
+      "severity": "error",
+      "message": "'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed",
+      "location": {
+        "path": "C:/work/project/component_b.ddd.json",
+        "pointer": "component.interface[0]",
+        "line": null,
+        "column": null
+      },
+      "notes": [
+        {
+          "message": "also written here",
+          "location": {
+            "path": "C:/work/project/component_a.ddd.json",
+            "pointer": "component.interface[0]",
+            "line": null,
+            "column": null
+          }
+        }
+      ]
+    },
+    ...
+  ],
+  "summary": {
+    "error": 4,
+    "warning": 1,
+    "info": 0
+  }
+}
+</pre></div>
+</div>
+<p>Every finding carries the information the text form carries, in fields that are stable:
+<code class="docutils literal notranslate"><span class="pre">check</span></code> is the identifier, <code class="docutils literal notranslate"><span class="pre">severity</span></code> is the severity the finding was <em>reported with</em> once
+the policy had been applied, and <code class="docutils literal notranslate"><span class="pre">location</span></code> is an absolute, forward-slashed path together
+with the json pointer and, where the finding has one, a line and a column. The notes of a
+finding have the same shape as the finding itself. The <code class="docutils literal notranslate"><span class="pre">summary</span></code> object closes the document
+with the counts a dashboard usually wants; a check set to <code class="docutils literal notranslate"><span class="pre">ignore</span></code> contributes to none of
+them. The exit code is unaffected by <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>, so a job can consume the document and
+still let the code decide the verdict.</p>
+<p>Finally, the registry itself is machine readable, which is how a build script can confirm that
+the identifiers it pins still exist after a DDD upgrade, instead of discovering it through a
+usage error:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd checks --format json
+[
+  {
+    "check": "file-not-found",
+    "default_severity": "error",
+    "description": "a referenced file does not exist",
+    "overridable": false
+  },
+  ...
+]
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the five
+load time checks whose severity cannot be changed, <code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="file_formats/constants.html" class="btn btn-neutral float-left" title="Constant vocabulary" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="comparing_deliveries.html" class="btn btn-neutral float-right" title="Comparing deliveries" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

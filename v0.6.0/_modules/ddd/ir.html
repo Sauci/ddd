@@ -1,0 +1,756 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.ir &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../_static/ddd-favicon.svg"/>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.ir</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.ir</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""The data dictionary: the contract between the front end and the backends.</span>
+
+<span class="sd">Everything before this module - loading, resolving, checking - produces a</span>
+<span class="sd">:class:`DataDictionary`. Everything after it - the c backend, the a2l backend, whatever</span>
+<span class="sd">comes next - consumes one and nothing else. A backend therefore never reaches into the</span>
+<span class="sd">loader or the analysis; if it needs to know something, that something is a field here.</span>
+
+<span class="sd">The contract is a pydantic model rather than a plain dataclass on purpose:</span>
+
+<span class="sd">* it can be written out and read back (``ddd dump``), so a third party can generate from a</span>
+<span class="sd">  data dictionary without importing python at all,</span>
+<span class="sd">* it publishes a json schema (``ddd schema dictionary``), which is what makes "interface"</span>
+<span class="sd">  more than a word,</span>
+<span class="sd">* and it validates what a producer hands over, so a bug in the analysis surfaces here</span>
+<span class="sd">  instead of halfway through a jinja template.</span>
+
+<span class="sd">Everything in here is resolved: limits are filled in, the shape of a curve is the size of</span>
+<span class="sd">its axis, and the definition is the one of the producing component. A backend never has to</span>
+<span class="sd">repeat that work, and two backends can never disagree about it.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">PositiveInt</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">Identifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.component</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">A2lObjectOptions</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">Limits</span><span class="p">,</span> <span class="n">ObjectKind</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_dimensions_match</span><span class="p">(</span><span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse a spelled shape that does not describe the numeric one beside it.</span>
+
+<span class="sd">    ``dimensions`` is ``shape`` again, spelling by spelling, so the two agree dimension for</span>
+<span class="sd">    dimension or the document contradicts itself. Empty is allowed whatever the shape: a</span>
+<span class="sd">    dictionary from format 3 or older spelled every dimension as its number and carries no</span>
+<span class="sd">    ``dimensions`` at all.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">dimensions</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"'dimensions' spells </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimension(s) but 'shape' has "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2">; the two describe the same shape and must agree"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Frozen</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="ComponentDeclaration">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ComponentDeclaration">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ComponentDeclaration</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One entry of a component interface, in the order the component declared it.</span>
+
+<span class="sd">    A reference to an object rather than the object itself: the definition lives once, under</span>
+<span class="sd">    ``objects``, and is the one the producing component gave. Two components declaring the</span>
+<span class="sd">    same name appear here twice and in ``objects`` once.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the declared object; a key into the ``objects`` list of the dictionary."""</span>
+
+    <span class="n">scope</span><span class="p">:</span> <span class="n">Scope</span>
+<span class="w">    </span><span class="sd">"""How this component uses the object: ``input``, ``output`` or ``local``."""</span>
+
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Preprocessor expression this component guarded the declaration with, if any."""</span></div>
+
+
+
+<div class="viewcode-block" id="ResolvedComponent">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedComponent">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedComponent</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A component and the objects it declares."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the component, unique within the project."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text from the component description, offered to the templates."""</span>
+
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Path of the description file, for reference in generated comments."""</span>
+
+    <span class="n">declarations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ComponentDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The interface of the component, in the order it declared it."""</span></div>
+
+
+
+<div class="viewcode-block" id="ResolvedObject">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedObject">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedObject</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One data object, with every derived property already worked out."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the object, unique across the whole project; its c and a2l identifier."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
+<span class="w">    </span><span class="sd">"""Which sort of object this is, taken from the definition that produced it."""</span>
+
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span>
+<span class="w">    </span><span class="sd">"""Storage type of one element."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the object is; the a2l long identifier and the comment in the generated c."""</span>
+
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Physical unit, as the declaring components agreed on it."""</span>
+
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span>
+<span class="w">    </span><span class="sd">"""Always present: the declared conversion, or the identity when none was given."""</span>
+
+    <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span>
+<span class="w">    </span><span class="sd">"""Always present: the explicit limits, or the range the datatype and conversion imply."""</span>
+
+    <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Storage shape, empty for a scalar; for a curve or a map it comes from its axes.</span>
+
+<span class="sd">    Every dimension is at least one, like the ``dimensions`` and ``size`` it derives from,</span>
+<span class="sd">    and every dimension is a resolved number: a dimension stated as the name of a declared</span>
+<span class="sd">    constant carries its value here and its name in ``dimensions``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The shape again, each dimension spelled the way the project spells it.</span>
+
+<span class="sd">    Parallel to ``shape``: the same dimensions in the same order, each the number itself or</span>
+<span class="sd">    the name of the declared constant that states it - the name under which the generated</span>
+<span class="sd">    code declares the array. Empty in a dictionary from format 3 or older, which recorded</span>
+<span class="sd">    no spellings.</span>
+<span class="sd">    """</span>
+
+    <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""</span>
+
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Linker section the producing declaration placed the object in; ``null`` for the</span>
+<span class="sd">    toolchain's defaults."""</span>
+
+    <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""Generate the object ``volatile``: stated by every declaration, on every kind.</span>
+
+<span class="sd">    Calibration data carries it as ``const volatile``, which is what a value the calibration</span>
+<span class="sd">    tool changes in a running ecu needs - see the field of the same name on the authored</span>
+<span class="sd">    definition. The default is kept although a definition may no longer omit it, so that a</span>
+<span class="sd">    dictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``</span>
+<span class="sd">    exists to make safe.</span>
+<span class="sd">    """</span>
+
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
+
+    <span class="n">references</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""Other objects this one refers to, keyed by field name (``axis``, ``x_axis``, ...)."""</span>
+
+    <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Component owning the object; ``None`` only when the project is inconsistent."""</span>
+
+    <span class="n">consumers</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Components declaring the object as an input, sorted; empty when nothing reads it."""</span>
+
+    <span class="n">local</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""Owned exclusively by ``owner``; no other component may declare it."""</span>
+
+    <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">"""What the author asked for in the ``a2l`` block. Only the a2l backend interprets it."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">is_calibration</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spelled_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">written_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Each dimension as its (spelling, value) pair.</span>
+
+<span class="sd">        What two deliveries compare: a name and its value are different spellings of one</span>
+<span class="sd">        size, so a dimension that changes either half is a changed interface.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spelled_shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedObject</span><span class="p">:</span>
+        <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedMember</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One member of a structure, as the c templates need it to declare the member.</span>
+
+<span class="sd">    Only what a declaration takes. The meaning of the member - its unit, its conversion, its</span>
+<span class="sd">    limits - travels with the *leaf* instead, because that is the form the a2l consumes and</span>
+<span class="sd">    there is no second place a reader should have to look.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the member, as it is written in the c struct."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the member is, for a comment beside its declaration."""</span>
+
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Storage of the member when it is a base one; ``None`` when it names a declared type."""</span>
+
+    <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Name of the structure this member is, when it is one; ``None`` when it is a datatype."""</span>
+
+    <span class="n">external</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Name of the external type this member is, when it is one; ``None`` otherwise.</span>
+
+<span class="sd">    An external type is one DDD does not declare - a hand written header defines it - so the</span>
+<span class="sd">    member is opaque storage: it appears in the generated structure verbatim, spelled with</span>
+<span class="sd">    this name, and contributes no leaf, because DDD knows neither its layout nor its meaning.</span>
+<span class="sd">    """</span>
+
+    <span class="n">header</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The header defining the external type, spelled the way the generated inclusion writes</span>
+<span class="sd">    it: ``my_driver.h`` for the quoted form, ``&lt;os_types.h&gt;`` for the angle form.  Stated</span>
+<span class="sd">    exactly when ``external`` is, and carried on the member so a consumer of the dictionary</span>
+<span class="sd">    never has to resolve the type name a second time."""</span>
+
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Array dimensions, empty for a scalar, each spelled the way the member spells it.</span>
+
+<span class="sd">    A number, or the name of a declared constant, exactly as ``dimensions`` is spelled on</span>
+<span class="sd">    an object or an instance. A member carries no numeric ``shape`` beside it: it is the</span>
+<span class="sd">    declaration side of the answer, and the resolved numbers live on the leaves of every</span>
+<span class="sd">    instantiated structure, with the value of a named dimension in the dictionary's</span>
+<span class="sd">    ``constants``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield; ``None`` when it is not."""</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_an_external_member_carries_its_header</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedMember</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""``external`` and ``header`` travel together, and beside no other storage.</span>
+
+<span class="sd">        A member is spelled exactly one way - a base datatype, a structure, or an external</span>
+<span class="sd">        type - so an external name next to either of the others, or a header without the</span>
+<span class="sd">        name it defines, is a document contradicting itself.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">header</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"'external' and 'header' are stated together: the header defines the type"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"an external member names no 'datatype' and no 'type'; it is opaque storage"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedStruct</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One structure, in an order a c file can be written out in.</span>
+
+<span class="sd">    The order of :attr:`DataDictionary.types` matters and is not alphabetical: a structure</span>
+<span class="sd">    appears after every structure it nests, because a c compiler needs the nested one to be</span>
+<span class="sd">    complete first. The members keep the order the author wrote them in, which is the order the</span>
+<span class="sd">    compiler lays them out.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the structure, which is the name of the generated typedef."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the structure is, for a comment above it."""</span>
+
+    <span class="n">members</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedMember</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The members, in declaration order."""</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedInstance</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One variable whose datatype is a structure.</span>
+
+<span class="sd">    Kept apart from :class:`ResolvedObject` rather than widening it: an object with no datatype</span>
+<span class="sd">    and no limits would turn every reader of those two fields into a branch, and they are read</span>
+<span class="sd">    unconditionally in a dozen places on the strength of always being there.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the variable; its c identifier and the root of every leaf path."""</span>
+
+    <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">"""Name of the structure it is, which is the c type of the declaration."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
+<span class="w">    </span><span class="sd">"""``measurement`` or ``parameter``: what the whole object is, and so how it is qualified."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the object is; the comment in the generated c."""</span>
+
+    <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Array dimensions of the variable itself, empty for a single structure.</span>
+
+<span class="sd">    An array of structures reaches the a2l as its elements: there is no one address that</span>
+<span class="sd">    describes ``cell[0].raw`` and ``cell[1].raw`` at once, so each element contributes its own</span>
+<span class="sd">    leaves at its own path. Every dimension is a resolved number; the spelling is in</span>
+<span class="sd">    ``dimensions``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The shape again, each dimension spelled the way the declaration spells it.</span>
+
+<span class="sd">    Parallel to ``shape`` exactly as on a plain object: the number, or the name of the</span>
+<span class="sd">    declared constant the generated code declares the array by. Empty in a dictionary from</span>
+<span class="sd">    format 3 or older.</span>
+<span class="sd">    """</span>
+
+    <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""Whether the declaration carries ``volatile``, which qualifies the whole object."""</span>
+
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Linker section the whole structure is placed in; its members have no placement</span>
+<span class="sd">    of their own."""</span>
+
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
+
+    <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Component owning the object; ``None`` only when the project is inconsistent."""</span>
+
+    <span class="n">consumers</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Components declaring the object as an input, sorted."""</span>
+
+    <span class="n">local</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""Owned exclusively by ``owner``; no other component may declare it."""</span>
+
+    <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">"""What the whole object asks of the a2l; a member may ask for more of its own."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">is_calibration</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spelled_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedInstance</span><span class="p">:</span>
+        <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedLeaf</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One member of one structured variable, at the end of one access path.</span>
+
+<span class="sd">    The flattening. A structure reaches the a2l as an object per member rather than as an a2l</span>
+<span class="sd">    structure, so this is the form that backend consumes - an ordinary object in every respect</span>
+<span class="sd">    but its name, which is a path rather than an identifier.</span>
+<span class="sd">    """</span>
+
+    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">"""The c expression that reads this member: ``Inlet.latest.value``, ``Inlet.cell[2].raw``.</span>
+
+<span class="sd">    Both the name the a2l gives the object and the symbol it links it to. Written the way it</span>
+<span class="sd">    would be written in c, so that a reader of the a2l, of the generated c and of a map file is</span>
+<span class="sd">    looking at one string rather than at three spellings of one thing.</span>
+<span class="sd">    """</span>
+
+    <span class="n">instance</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the variable this leaf belongs to, which is the root of :attr:`path`."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
+<span class="w">    </span><span class="sd">"""Taken from the variable: every leaf of one object has the storage class of the whole."""</span>
+
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span>
+<span class="w">    </span><span class="sd">"""Storage of one element."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What this member is; the a2l long identifier."""</span>
+
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Physical unit, from the member or from the type it names."""</span>
+
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span>
+<span class="w">    </span><span class="sd">"""Always present: the member's conversion, or the identity when none was given."""</span>
+
+    <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span>
+<span class="w">    </span><span class="sd">"""Always present: stated, or derived from the storage - a bitfield's from its width."""</span>
+
+    <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Array dimensions of this member; empty for a scalar.</span>
+
+<span class="sd">    Every dimension is a resolved number, because this is the form the a2l consumes; a</span>
+<span class="sd">    dimension the member spells as a constant name carries that name in ``dimensions``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The shape again, each dimension spelled the way the member spells it.</span>
+
+<span class="sd">    Parallel to ``shape`` exactly as on a plain object. Empty in a dictionary from format 3</span>
+<span class="sd">    or older.</span>
+<span class="sd">    """</span>
+
+    <span class="n">bits</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Width in bits when the member is a c bitfield.</span>
+
+<span class="sd">    Such a leaf has no address of its own - ``&amp;s.ready`` does not compile - so it reaches no</span>
+<span class="sd">    a2l until a build tells DDD both where the word is and which bits inside it to read.</span>
+<span class="sd">    """</span>
+
+    <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""From the variable, which carries the qualifier for all of its members at once."""</span>
+
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Linker section of the structure this member belongs to; a member has no placement</span>
+<span class="sd">    of its own."""</span>
+
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
+
+    <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Component owning the variable this leaf belongs to."""</span>
+
+    <span class="n">consumers</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Components declaring the variable as an input, sorted."""</span>
+
+    <span class="n">local</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">    </span><span class="sd">"""Owned exclusively by ``owner``."""</span>
+
+    <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The member's own a2l options; a member may be kept out of the file on its own."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The name this member is published under, which is its path.</span>
+
+<span class="sd">        A leaf is an object to everything downstream - it is compared, counted and listed like</span>
+<span class="sd">        one - and the path is what it is called in the a2l. Having it answer to ``name`` is</span>
+<span class="sd">        what lets one comparison serve both without a second spelling of every rule.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Never stated: what a structure starts as is written by the code that starts it."""</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">references</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""None: a structure member cannot name an axis, so it refers to no other object."""</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">is_calibration</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spelled_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""The shape as the project spells it: ``dimensions`` where recorded, else the numbers."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">written_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Each dimension as its (spelling, value) pair, exactly as on a plain object."""</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spelled_shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dimensions_spell_the_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedLeaf</span><span class="p">:</span>
+        <span class="n">_check_dimensions_match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+
+<span class="n">Comparable</span> <span class="o">=</span> <span class="n">ResolvedObject</span> <span class="o">|</span> <span class="n">ResolvedLeaf</span>
+<span class="sd">"""What one delivery offers another: a plain object, or a member of a structured one.</span>
+
+<span class="sd">The two are compared, counted and listed identically, because to a consumer they are the same</span>
+<span class="sd">kind of thing - a place with a datatype, a unit and limits, which can be removed, retyped or</span>
+<span class="sd">rescaled. They differ only in what they are called, and a leaf answers to its path.</span>
+<span class="sd">"""</span>
+
+
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="sd">"""Version of the dictionary format itself.</span>
+
+<span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>
+<span class="sd">version of DDD, possibly years on. Stamping the format is what lets that later version say</span>
+<span class="sd">"this file is newer than I understand" instead of misreading it or rejecting it for a</span>
+<span class="sd">missing field. It changes only when the shape of the document changes, not with the tool.</span>
+<span class="sd">"""</span>
+
+
+<div class="viewcode-block" id="DataDictionary">
+<a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.DataDictionary">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DataDictionary</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""The resolved data of one project.</span>
+
+<span class="sd">    What ``ddd dump`` writes and every backend reads. Unlike the description files, this one</span>
+<span class="sd">    is produced rather than authored: every derived property is already worked out, so a</span>
+<span class="sd">    consumer never has to repeat the resolution and two consumers can never disagree about it.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD data dictionary"</span><span class="p">)</span>
+
+    <span class="nb">format</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DICTIONARY_FORMAT</span>
+<span class="w">    </span><span class="sd">"""Version of this document format, raised only when the shape of the document changes.</span>
+
+<span class="sd">    Stamped so that a dictionary archived next to a delivery can be read back years later by</span>
+<span class="sd">    a version of DDD that can say "this file is newer than I understand" rather than misread</span>
+<span class="sd">    it. It does not follow the version of the tool.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the project, from the root project description."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text from the root project description."""</span>
+
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Name of the root description file, for reference in generated comments."""</span>
+
+    <span class="n">components</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedComponent</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Every component of the project, including those of its sub-projects."""</span>
+
+    <span class="n">objects</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedObject</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Sorted by name, so that every backend produces a stable output."""</span>
+
+    <span class="n">enums</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">EnumConversion</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Distinct enumerations used by the objects, sorted by name."""</span>
+
+    <span class="n">constants</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstantDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The named constants the project declares, sorted by name.</span>
+
+<span class="sd">    Recorded whole - name, value and description - so that a generator consuming the</span>
+<span class="sd">    dictionary can emit them the way the shipped templates do, and so that a dimension</span>
+<span class="sd">    spelled by name stays resolvable after the description files have moved on.</span>
+<span class="sd">    """</span>
+
+    <span class="n">types</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedStruct</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The structures the project declares, each after every structure it nests.</span>
+
+<span class="sd">    Dependency order rather than alphabetical, because a template that simply loops over them</span>
+<span class="sd">    has to be able to write them out as they come: c needs a nested structure to be complete</span>
+<span class="sd">    before the one that contains it.</span>
+<span class="sd">    """</span>
+
+    <span class="n">instances</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedInstance</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Variables whose datatype is a structure, sorted by name."""</span>
+
+    <span class="n">leaves</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedLeaf</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Every member of every structured variable, flattened, sorted by path.</span>
+
+<span class="sd">    Written out rather than worked out on demand, because the dictionary is a produced</span>
+<span class="sd">    document: a generator DDD does not ship reads it without importing python, and no backend</span>
+<span class="sd">    should repeat resolution the analysis has already done.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">by_name</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ResolvedObject</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">objects</span><span class="p">}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">comparable</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Comparable</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Every object one delivery offers another, keyed by the name it offers it under.</span>
+
+<span class="sd">        The members of a structured variable are in here as ordinary objects under their access</span>
+<span class="sd">        paths, because that is what they are to a consumer: ``Inlet.latest.value`` is a place</span>
+<span class="sd">        with a datatype and a unit, and it can be removed, retyped or rescaled exactly as any</span>
+<span class="sd">        other can. Leaving them out made a delivery that dropped every structure look identical</span>
+<span class="sd">        to the one before it.</span>
+<span class="sd">        """</span>
+        <span class="n">entries</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Comparable</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">objects</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">leaves</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datatypes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="n">Datatype</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Every base datatype the generated c has to be able to spell.</span>
+
+<span class="sd">        The members of the structures count. A project whose only ``uint8`` sits inside one</span>
+<span class="sd">        would otherwise get a header spelling ``uint8_t`` that never includes ``&lt;stdint.h&gt;``.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="p">{</span><span class="n">entry</span><span class="o">.</span><span class="n">datatype</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">objects</span><span class="p">}</span>
+            <span class="o">|</span> <span class="p">{</span><span class="n">leaf</span><span class="o">.</span><span class="n">datatype</span> <span class="k">for</span> <span class="n">leaf</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">leaves</span><span class="p">}</span>
+            <span class="o">|</span> <span class="p">{</span>
+                <span class="n">member</span><span class="o">.</span><span class="n">datatype</span>
+                <span class="k">for</span> <span class="n">structure</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">types</span>
+                <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">structure</span><span class="o">.</span><span class="n">members</span>
+                <span class="k">if</span> <span class="n">member</span><span class="o">.</span><span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">listed</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Comparable</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""What the tool counts and lists: the plain objects and the structured members.</span>
+
+<span class="sd">        A summary that counted only the plain ones told a project with four objects that it</span>
+<span class="sd">        had two, which is the sort of quiet wrongness that costs somebody an afternoon.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">comparable</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">entry</span><span class="p">:</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">instances_owned_by</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">component</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedInstance</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""The structured variables one component owns, in the order they are published."""</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">instances</span> <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">owner</span> <span class="o">==</span> <span class="n">component</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">owned_by</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">component</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedObject</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">objects</span> <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">owner</span> <span class="o">==</span> <span class="n">component</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">unowned</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedObject</span> <span class="o">|</span> <span class="n">ResolvedInstance</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Every variable no component declares as output; only possible when</span>
+<span class="sd">        ``missing-producer`` is relaxed or the generation forced.</span>
+
+<span class="sd">        The structured variables belong here as much as the plain ones: the project wide file</span>
+<span class="sd">        defines an object no component owns like any other, and leaving an instance out</span>
+<span class="sd">        generated headers that declared it ``extern`` over storage that nowhere existed.</span>
+<span class="sd">        """</span>
+        <span class="n">entries</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedObject</span> <span class="o">|</span> <span class="n">ResolvedInstance</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">objects</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">instances</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">entries</span> <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">owner</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,367 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project description &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Component description" href="component.html" />
+    <link rel="prev" title="File formats" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Project description</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/project.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="project-description">
+<h1>Project description<a class="headerlink" href="#project-description" title="Link to this heading"></a></h1>
+<p>A project is a named set of components and sub-projects. It carries no data of its own,
+because the data belongs to the components that produce and consume it; what it carries is the
+answer to the only question a component cannot answer alone - <em>which components are supposed
+to fit together</em>. That question has no single answer in a code base where several images are
+built out of an overlapping set of components, which is why the membership lives in a file of
+its own rather than in the components, and why a component never names the project it belongs
+to.</p>
+<p>The project file is what a build script points DDD at, and it is the file whose name ends up
+on the generated a2l. <code class="docutils literal notranslate"><span class="pre">examples/demo/demo.ddd.json</span></code> is a complete one:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DemoDevice"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Demonstration project showing every DDD feature"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"components/*.ddd.json"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"subsystems/logging/logging.ddd.json"</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check demo.ddd.json
+ok: 20 variables in 4 components are consistent
+</pre></div>
+</div>
+<section id="the-keys">
+<h2>The keys<a class="headerlink" href="#the-keys" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 15.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>required</p></td>
+<td><p>Identifier of the project. It is not decoration: the generated a2l file is called
+<code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.a2l</span></code> and the <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> and <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> inside it are called <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;</span></code> too,
+so this is the name the calibration engineer sees in the measurement tool. It has to be
+usable as an identifier - letters, digits and underscore, not starting with a digit,
+at most 128 characters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Free text. It becomes the long identifier of the a2l <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, its <code class="docutils literal notranslate"><span class="pre">HEADER</span></code> and
+its <code class="docutils literal notranslate"><span class="pre">MODULE</span></code>, so it is worth writing one sentence that means something to whoever
+opens the file in a calibration tool.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">includes</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Paths to the component, types, units, sections, constants and sub-project files that
+make up the project, relative to this file. Wildcards are expanded.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The identifier rule is tighter than what a c compiler would accept, and deliberately so:
+ASAP2 1.6.1 limits an identifier to 128 characters, and a name DDD cannot write into the a2l
+is of no use in a project that generates one. The tighter of the two rules is the one that is
+enforced everywhere, so a name that passes the check cannot fail later in a backend.</p>
+<p>An <code class="docutils literal notranslate"><span class="pre">includes</span></code> list may be left out entirely. <code class="docutils literal notranslate"><span class="pre">{&quot;project&quot;:</span> <span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;Bare&quot;}}</span></code> is a valid
+project with no members, and DDD says so rather than treating it as a mistake:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check bare.ddd.json
+ok: 0 variables in 0 components are consistent
+</pre></div>
+</div>
+</section>
+<section id="includes">
+<h2>includes<a class="headerlink" href="#includes" title="Link to this heading"></a></h2>
+<p>Each entry of <code class="docutils literal notranslate"><span class="pre">includes</span></code> is a path, and every path in a description file is relative to
+<strong>the file that contains it</strong> rather than to the current directory. That is what makes a
+project relocatable: a subsystem can be moved, vendored or included as a git submodule
+without a single path being rewritten, and two people running the tool from different
+directories read the same set of files. An absolute path is taken as it stands, for the case
+where a component genuinely lives outside the project tree.</p>
+<section id="wildcards">
+<h3>Wildcards<a class="headerlink" href="#wildcards" title="Link to this heading"></a></h3>
+<p>Shell style wildcards are expanded: <code class="docutils literal notranslate"><span class="pre">*</span></code> for any part of a name, <code class="docutils literal notranslate"><span class="pre">?</span></code> for a single
+character, and <code class="docutils literal notranslate"><span class="pre">**</span></code> for any number of directory levels. With <code class="docutils literal notranslate"><span class="pre">components/*.ddd.json</span></code>,
+adding a component to the project is a matter of adding its file - nobody has to remember to
+edit the project as well, and nobody can forget to.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Wildcards"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"**/*.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"c/comp?.ddd.json"</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check top.ddd.json
+ok: 2 variables in 2 components are consistent
+</pre></div>
+</div>
+<p>One file is deliberately left out of a pattern’s matches: the project file that contains the
+pattern. It sits exactly where a
+<code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> pattern next to the project would sweep it up, and it is not an include - a
+project including itself would be a cycle. Excluding it is what lets the shortest possible
+project file work at all.</p>
+<p>A pattern that matches nothing is reported, because the usual cause is a directory that was
+renamed or a component that never arrived:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check empty.ddd.json
+empty.ddd.json#project.includes[0]: error[include-empty]: pattern 'variants/*.ddd.json' matches no file
+1 error
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">include-empty</span></code> is an error by default but can be relaxed, because a pattern that is
+legitimately empty in one variant of a project is a normal thing to allow - a project built
+for several targets may have an <code class="docutils literal notranslate"><span class="pre">optional/*.ddd.json</span></code> that only some of them fill.</p>
+</section>
+<section id="components-and-sub-projects-in-the-same-list">
+<h3>Components and sub-projects in the same list<a class="headerlink" href="#components-and-sub-projects-in-the-same-list" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">includes</span></code> does not distinguish between components and other projects. The kind of every
+included file is detected from its top level key, so a subsystem developed by a separate team
+can be delivered as a project of its own and pulled in as a single entry. The demo does
+exactly that: <code class="docutils literal notranslate"><span class="pre">subsystems/logging/logging.ddd.json</span></code> is a project, and it brings its own
+component with it.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Logging"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sub project of its own, developed by a separate team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"event_logger.ddd.json"</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The nesting has no depth limit and no effect on the result: the components of a sub-project
+become components of the including project, and are checked against all the others exactly as
+if they had been listed directly. What the sub-project keeps is its own file layout and its
+own relative paths, which is the point - it can be checked and delivered on its own, and it
+does not need to know who includes it.</p>
+</section>
+<section id="a-file-reached-twice-is-loaded-once">
+<h3>A file reached twice is loaded once<a class="headerlink" href="#a-file-reached-twice-is-loaded-once" title="Link to this heading"></a></h3>
+<p>Include graphs in a real project are rarely trees. Two subsystems commonly share a component,
+and both list it; a wildcard in one project and an explicit path in another commonly land on
+the same file. DDD resolves every path to a canonical absolute form before using it, so the
+two spellings are recognised as the same file and it is loaded once:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Top"</span><span class="p">,</span><span class="w">   </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"left.ddd.json"</span><span class="p">,</span><span class="w"> </span><span class="s2">"right.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Left"</span><span class="p">,</span><span class="w">  </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"shared/*.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Right"</span><span class="p">,</span><span class="w"> </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"shared/common.ddd.json"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check top.ddd.json
+ok: 1 variable in 1 component are consistent
+</pre></div>
+</div>
+<p>Without that rule the component would be loaded twice under the same name and the run would
+fail with <code class="docutils literal notranslate"><span class="pre">duplicate-component</span></code> - a finding about the shape of the include graph rather than
+about anything wrong with the project. Diamond shaped graphs are therefore not merely
+tolerated but expected.</p>
+<p>The check that does fire is the one that matters: two <strong>different</strong> files declaring the same
+component name. That is a real collision, since a component name decides the name of the
+generated header, and the second file would silently overwrite the first:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+second.ddd.json#component: error[duplicate-component]: component 'Sensing' is already declared
+    note: first.ddd.json#component: first declared here
+1 error
+</pre></div>
+</div>
+</section>
+<section id="cycles-are-reported-not-followed">
+<h3>Cycles are reported, not followed<a class="headerlink" href="#cycles-are-reported-not-followed" title="Link to this heading"></a></h3>
+<p>A project that includes a project that includes the first one is a mistake that is easy to
+make when subsystems are refactored, and it is one a naive loader would answer with a hang or
+a stack overflow. DDD carries the chain of projects it is currently inside, and reports the
+cycle as an ordinary finding, naming the whole chain so that the entry to remove is obvious:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check a.ddd.json
+b.ddd.json#project.includes[0]: error[include-cycle]: include cycle: a.ddd.json -&gt; b.ddd.json -&gt; a.ddd.json
+1 error
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">include-cycle</span></code> is one of the checks whose severity cannot be relaxed. The others are
+relaxable because a project may reasonably decide it can live with the finding; there is no
+way to live with a cycle, since following it is the only alternative and it does not
+terminate.</p>
+</section>
+</section>
+<section id="what-the-project-is-built-out-of">
+<h2>What the project is built out of<a class="headerlink" href="#what-the-project-is-built-out-of" title="Link to this heading"></a></h2>
+<p>The set of files that were actually read is more than the project file, and a build system
+needs all of them to know when the generated artefacts are out of date. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> prints
+them, one absolute path per line, sorted and without duplicates - the root file, every
+sub-project and every component:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources demo.ddd.json
+/home/you/ddd/examples/demo/components/controller.ddd.json
+/home/you/ddd/examples/demo/components/sensor_hub.ddd.json
+/home/you/ddd/examples/demo/components/user_interface.ddd.json
+/home/you/ddd/examples/demo/demo.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/event_logger.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/logging.ddd.json
+</pre></div>
+</div>
+<p>This is the list that has to become the dependency list of the generation step. Depending on
+the project file alone would be wrong in the direction that hurts: editing a component would
+not regenerate anything, and the build would carry on with headers describing a project that
+no longer exists. The <a class="reference internal" href="../build_integration.html"><span class="doc">cmake integration</span></a> wires this up on its own.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> accept a <strong>component</strong> file wherever they accept a
+project file, which is what lets a component be checked before it is integrated. There is
+no project around it, so the inputs it declares have no producer; add
+<code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">missing-producer=ignore</span></code> for that run. The generated a2l is then named after the
+component instead of after a project.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="File formats" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="component.html" class="btn btn-neutral float-right" title="Component description" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

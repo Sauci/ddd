@@ -1,0 +1,699 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Getting started &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Concept" href="concept.html" />
+    <link rel="prev" title="DDD documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running-from-a-source-checkout">Running from a source checkout</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#your-first-project">Your first project</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-project-description">The project description</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-component-that-produces">The component that produces</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-component-that-consumes">The component that consumes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#checking-the-project">Checking the project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#getting-the-templates">Getting the templates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#generating-the-code">Generating the code</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-generated-files-are-for">What the generated files are for</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-components-disagree">When the components disagree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Getting started</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/getting_started.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="getting-started">
+<h1>Getting started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
+<p>DDD manages the <strong>global variables</strong> through which the components of an embedded software
+project talk to each other. Every component describes, in a small json file, the variables it
+produces, the variables it consumes and the variables it keeps to itself; DDD collects those
+descriptions, checks that all components agree about every shared variable, and generates the
+c code that allocates the data as well as the a2l file that measurement and calibration tools
+read. Because the definitions then come from a single place, the access rules stop being a
+matter of discipline: a component can only reach a variable that DDD put into the header
+generated for it.</p>
+<p>This page installs the tool and walks through a complete two-component project, from the
+first json file to the generated sources and to the diagnostic you get when the two components
+disagree. Everything shown here is the actual output of the tool; typing along takes about ten
+minutes and needs nothing but python.</p>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<p>DDD is a python package and needs <strong>python 3.12 or newer</strong>; its only runtime dependencies are
+pydantic, which parses and validates the description files, and jinja2, which renders the
+generated artefacts. Both are installed with it, and nothing else is required - in particular
+no compiler, since DDD writes c code but never builds it.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>ddd-tool<span class="w">                              </span><span class="c1"># from an index</span>
+pip<span class="w"> </span>install<span class="w"> </span>./ddd_tool-0.6.0-py3-none-any.whl<span class="w">     </span><span class="c1"># from a delivered wheel, no network</span>
+</pre></div>
+</div>
+<p>The second form is the one to use behind a firewall or in an air-gapped build environment: the
+wheel carries everything DDD needs apart from pydantic and jinja2, which have to be reachable
+in some form as well. Once the installation succeeded, the tool answers with the release it
+was built from, and that release is what the header of every generated file mentions:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd --version
+ddd 0.6.0
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The distribution is called <code class="docutils literal notranslate"><span class="pre">ddd-tool</span></code> because the name <code class="docutils literal notranslate"><span class="pre">ddd</span></code> was already taken on the
+index. Only the name of the distribution differs: the command is <code class="docutils literal notranslate"><span class="pre">ddd</span></code>, the importable
+package is <code class="docutils literal notranslate"><span class="pre">ddd</span></code>, and the description files are <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>. Nothing else in this
+documentation ever refers to <code class="docutils literal notranslate"><span class="pre">ddd-tool</span></code> again.</p>
+</div>
+<section id="running-from-a-source-checkout">
+<h3>Running from a source checkout<a class="headerlink" href="#running-from-a-source-checkout" title="Link to this heading"></a></h3>
+<p>The examples of this documentation live in the source distribution rather than in the wheel,
+and while evaluating the tool it is often convenient not to install anything at all. From a
+checkout or an unpacked sdist, the package runs directly out of <code class="docutils literal notranslate"><span class="pre">src</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ PYTHONPATH=src python -m ddd --version
+ddd 0.6.0
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span></code> are the same program invoked in two ways, and
+every command shown below works with either. The transcripts use the installed form for
+readability; if you follow along in a checkout, put <code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span></code> in front of
+each of them. A checkout also gives you a bigger project to look at than the one built on this
+page - <code class="docutils literal notranslate"><span class="pre">examples/demo/demo.ddd.json</span></code> exercises every kind of data object DDD knows:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json
+ok: 20 variables in 4 components are consistent
+</pre></div>
+</div>
+</section>
+</section>
+<section id="your-first-project">
+<h2>Your first project<a class="headerlink" href="#your-first-project" title="Link to this heading"></a></h2>
+<p>The project built here is a cabin thermostat made of two components. <strong>SensorHub</strong> reads the
+temperature sensor and publishes the conditioned value; <strong>Controller</strong> reads that value and
+decides when to heat. That is the smallest arrangement in which the interesting question
+arises at all - one component owns a variable, another one depends on it - and it is the
+arrangement DDD exists for.</p>
+<p>Create a directory for it, with a subdirectory for the components. Nothing about this layout is
+prescribed; it merely lets the project file collect its members with a single pattern:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>thermostat/
++- thermostat.ddd.json          the project
++- components/
+|  +- sensor_hub.ddd.json       the component that produces
+|  +- controller.ddd.json       the component that consumes
++- templates/                   the c templates, copied in a moment
+</pre></div>
+</div>
+<section id="the-project-description">
+<h3>The project description<a class="headerlink" href="#the-project-description" title="Link to this heading"></a></h3>
+<p>A project is a name and a list of members. It carries no data of its own, because the data
+belongs to the components, and it is the file a build script points DDD at.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Thermostat"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A cabin thermostat built out of two components"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"components/*.ddd.json"</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The paths in <code class="docutils literal notranslate"><span class="pre">includes</span></code> are relative to the file that contains them, so the project can be
+moved as a whole, and the shell wildcards <code class="docutils literal notranslate"><span class="pre">*</span></code>, <code class="docutils literal notranslate"><span class="pre">?</span></code> and <code class="docutils literal notranslate"><span class="pre">**</span></code> are expanded, so adding a
+component is a matter of adding its file. The name of the project is not decoration: it becomes
+the name of the generated a2l file and the <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> and <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> names inside it.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Every file DDD reads must be named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>. In a repository already full of json,
+that double extension says at a glance which files belong to DDD, and it lets a build
+script, an editor or a linter match them with one pattern. A description file with another
+name is reported under the <code class="docutils literal notranslate"><span class="pre">file-extension</span></code> check.</p>
+</div>
+</section>
+<section id="the-component-that-produces">
+<h3>The component that produces<a class="headerlink" href="#the-component-that-produces" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">components/sensor_hub.ddd.json</span></code> declares one variable with scope <code class="docutils literal notranslate"><span class="pre">output</span></code>, which means
+that SensorHub owns it and writes it, and that exactly one component in the whole project may
+say so:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"SensorHub"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Reads the sensors and publishes their conditioned values"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CabinTemperature"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature measured in the cabin"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The definition says more than a c declaration could. <code class="docutils literal notranslate"><span class="pre">datatype</span></code> is the storage the target
+uses, while <code class="docutils literal notranslate"><span class="pre">conversion</span></code> says what the stored number <em>means</em>: with a factor of 0.1 the raw
+value 235 is 23.5 degC, which is why the physical <code class="docutils literal notranslate"><span class="pre">limits</span></code> may be given as -40 and 85 rather
+than as raw counts. That pair of statements is what lets DDD generate an a2l in which the
+calibration tool shows degrees rather than counts, and it is also one of the things the other
+components have to agree with. <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is a property of the c definition, stated by every
+definition whatever its kind, and it says whether the compiler may assume it already knows the
+value: it is <code class="docutils literal notranslate"><span class="pre">true</span></code> here because the temperature is written by an interrupt while another task
+reads it, so the compiler must not cache it in a register. The key has no default and may not be
+left out, since nothing else in the description implies the answer; a definition without it is
+refused under the <code class="docutils literal notranslate"><span class="pre">schema</span></code> check.</p>
+</section>
+<section id="the-component-that-consumes">
+<h3>The component that consumes<a class="headerlink" href="#the-component-that-consumes" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">components/controller.ddd.json</span></code> declares the same variable with scope <code class="docutils literal notranslate"><span class="pre">input</span></code>, and adds a
+calibration parameter of its own with scope <code class="docutils literal notranslate"><span class="pre">local</span></code>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Controller"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Decides when to heat, from the cabin temperature"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CabinTemperature"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature measured in the cabin"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"HeaterOnThreshold"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Temperature below which the heater is switched on"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mf">85.0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Repeating the definition of <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> in the consumer looks redundant, and it is the
+point of the exercise: the consumer states what it <em>expects</em> to read, DDD compares that with
+what the producer promises to write, and a disagreement becomes a finding instead of a field
+report. Where the two sides differ, the declaration of the producing component is the
+authoritative one - its definition is what gets generated, and the diagnostic points at the
+consumer that deviates.</p>
+<p><code class="docutils literal notranslate"><span class="pre">HeaterOnThreshold</span></code> is a different animal. Its <code class="docutils literal notranslate"><span class="pre">kind</span></code> is <code class="docutils literal notranslate"><span class="pre">parameter</span></code>, so the software
+never writes it and the calibration tool does: DDD generates it <code class="docutils literal notranslate"><span class="pre">const</span></code> and describes it in the
+a2l as a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> the tool may change. That second half is what a calibration object’s
+<code class="docutils literal notranslate"><span class="pre">volatile</span></code> is about. The threshold here is meant to be tuned while the device runs, and
+<code class="docutils literal notranslate"><span class="pre">const</span></code> on its own would not allow that: the compiler is entitled to fold the 180 into the code
+that reads it, which it does even without optimisation wherever it can see the 180, so the tool
+would write a new value the software never picks up. The price is the read only memory: a value the
+compiler has to re-read is no longer constant data, so it leaves <code class="docutils literal notranslate"><span class="pre">.rodata</span></code> for <code class="docutils literal notranslate"><span class="pre">.data</span></code>, and
+on a flash target that is a ram address the project has to place deliberately in its linker
+script. A project whose parameters only ever change with a new build states <code class="docutils literal notranslate"><span class="pre">false</span></code> instead and
+keeps them in flash; DDD renders what the description says and reports nothing about the choice.
+Its scope is <code class="docutils literal notranslate"><span class="pre">local</span></code>, so it belongs to Controller alone and no other component will ever see
+it - the right choice for data that only parametrises the component that owns it. <code class="docutils literal notranslate"><span class="pre">init</span></code> is a
+raw value, so 180 means 18.0 degC.</p>
+</section>
+<section id="checking-the-project">
+<h3>Checking the project<a class="headerlink" href="#checking-the-project" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> answers one question: do these components fit together. It reads the project,
+follows the includes, resolves every reference and runs every consistency check, and it says
+nothing more than a single line when there is nothing to say:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
+ok: 2 variables in 2 components are consistent
+</pre></div>
+</div>
+<p>The exit code is 0 here and 1 as soon as there is an error, which is what makes the command a
+build gate rather than a report; 2 is reserved for a usage mistake, so a mistyped option can
+never be confused with a project that failed its checks.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> shows the same run from the other side - not whether the project is consistent, but
+what it actually contains, which is the view a newcomer to an existing project wants first:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd list thermostat.ddd.json
+VARIABLE           KIND         DATATYPE  UNIT  SHAPE  INIT             PRODUCER            CONSUMERS
+CabinTemperature   measurement  sint16    degC  -      0 (= 0 degC)     SensorHub           Controller
+HeaterOnThreshold  parameter    sint16    degC  -      180 (= 18 degC)  Controller (local)  -
+</pre></div>
+</div>
+</section>
+<section id="getting-the-templates">
+<h3>Getting the templates<a class="headerlink" href="#getting-the-templates" title="Link to this heading"></a></h3>
+<p>Before anything can be generated, the project has to say what the generated c should look
+like. Which comment style, which banner, how the include guards are spelled, whether a
+variable is commented at all - none of that follows from the data, all of it is a
+house style, and it differs from one project to the next. DDD therefore renders the c sources
+from jinja2 templates the project provides, and asks for them with <code class="docutils literal notranslate"><span class="pre">-t</span></code>: a required option,
+with no default and no fallback, so nothing is ever generated from templates the project did
+not choose.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen
+usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                        [--const-inputs] [--byte-order {little,big}]
+                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        project
+ddd generate all: error: the following arguments are required: -t/--template-dir
+</pre></div>
+</div>
+<p>A project that has no templates yet starts from the set DDD ships as an example.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code> prints where that set is installed - inside the package in a normal
+installation, <code class="docutils literal notranslate"><span class="pre">examples/templates</span></code> in a source checkout - so copying it needs no path
+written by hand:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ cp -r "$(ddd templates-dir)" templates
+$ ls templates
+_macros.jinja2
+ddd_globals.c.jinja2
+ddd_globals.h.jinja2
+ddd_types.h.jinja2
+{component}.h.jinja2
+</pre></div>
+</div>
+<p>Those five names are the whole configuration. Every <code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> file in the directory is
+rendered to a file named like it without that extension, so <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> produces
+<code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> and renaming a template is how a generated file gets renamed. A name
+starting with an underscore is a helper: <code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code> holds the banner the other
+templates import and produces no file of its own. A name containing <code class="docutils literal notranslate"><span class="pre">{component}</span></code> is
+rendered once per component, with the placeholder replaced by the component name, which is how
+one template produces both <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code> and <code class="docutils literal notranslate"><span class="pre">Controller.h</span></code>.</p>
+<p>None of this touches the a2l. Its structure is dictated by ASAM and read by tools that expect
+exactly that structure, so there is nothing in it for a project to style: the a2l generator is
+internal and takes no templates at all.</p>
+</section>
+<section id="generating-the-code">
+<h3>Generating the code<a class="headerlink" href="#generating-the-code" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs exactly the same checks and then writes the artefacts into the directory
+given with <code class="docutils literal notranslate"><span class="pre">-o</span></code>, which is normally somewhere in the build tree rather than in the source tree:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
+wrote       gen/ddd_globals.c (created)
+wrote       gen/ddd_globals.h (created)
+wrote       gen/ddd_types.h (created)
+wrote       gen/Controller.h (created)
+wrote       gen/SensorHub.h (created)
+wrote       gen/Thermostat.a2l (created)
+</pre></div>
+</div>
+<p>Run it a second time without touching the description files and nothing is written at all:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
+unchanged   gen/ddd_globals.c
+unchanged   gen/ddd_globals.h
+unchanged   gen/ddd_types.h
+unchanged   gen/Controller.h
+unchanged   gen/SensorHub.h
+unchanged   gen/Thermostat.a2l
+</pre></div>
+</div>
+<p>A generated file whose content did not change keeps its time stamp, and the generated files
+carry no time stamp of their own, so a regeneration that changes nothing does not make <code class="docutils literal notranslate"><span class="pre">make</span></code>
+or <code class="docutils literal notranslate"><span class="pre">ninja</span></code> recompile the components that include those headers. In a project where every
+component depends on the generated headers, that is the difference between an incremental build
+and a full one.</p>
+</section>
+<section id="what-the-generated-files-are-for">
+<h3>What the generated files are for<a class="headerlink" href="#what-the-generated-files-are-for" title="Link to this heading"></a></h3>
+<p>The names of the five c files come from the templates - three of them are a template name
+without its <code class="docutils literal notranslate"><span class="pre">.jinja2</span></code>, the two component headers come from the <code class="docutils literal notranslate"><span class="pre">{component}</span></code> one - and only
+the a2l is named by DDD itself, after the project:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>file</p></th>
+<th class="head"><p>what it is for</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code></p></td>
+<td><p>the single definition of every variable of the project. Compile and link it exactly
+once; it is the only place where the storage exists.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;Component&gt;.h</span></code></p></td>
+<td><p>the interface of one component, and nothing else. This is the file a component’s
+sources include.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code></p></td>
+<td><p>the declaration of every variable of the project. It exists so that <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>
+can be compiled with full prototype checking; components are not meant to include it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> and one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> per enum conversion, included
+by all of the above.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;Project&gt;.a2l</span></code></p></td>
+<td><p>the ASAP2 description of the same data for the measurement and calibration tool.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> is the whole point of the exercise: it is where the global variables of the
+project physically live, grouped by the component that owns them, and it is generated rather
+than written by hand so that no variable can be defined twice or defined by the wrong team.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
+<span class="cm"> * ddd_globals.c</span>
+<span class="cm"> *</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> *</span>
+<span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
+<span class="cm"> */</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_globals.h"</span>
+
+<span class="cm">/*</span>
+<span class="cm"> * Definition of every global variable of the project.  Compile and link this</span>
+<span class="cm"> * file exactly once; DDD is the only owner of these storage locations.</span>
+<span class="cm"> */</span>
+
+<span class="cm">/* ---------------------------------------------------------------------------</span>
+<span class="cm"> * Controller - Decides when to heat, from the cabin temperature</span>
+<span class="cm"> * ------------------------------------------------------------------------ */</span>
+<span class="cm">/** Temperature below which the heater is switched on [degC] (calibration parameter) */</span>
+<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">HeaterOnThreshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">;</span>
+
+<span class="cm">/* ---------------------------------------------------------------------------</span>
+<span class="cm"> * SensorHub - Reads the sensors and publishes their conditioned values</span>
+<span class="cm"> * ------------------------------------------------------------------------ */</span>
+<span class="cm">/** Temperature measured in the cabin [degC] */</span>
+<span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>The two component headers are where the access rules become physical. <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code> contains
+the variable SensorHub owns and nothing else - SensorHub’s sources include this one header and
+have no way of naming <code class="docutils literal notranslate"><span class="pre">HeaterOnThreshold</span></code>, because no declaration of it is on their include
+path:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
+<span class="cm"> * SensorHub.h</span>
+<span class="cm"> *</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> *</span>
+<span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
+<span class="cm"> */</span>
+<span class="cm">/*</span>
+<span class="cm"> * Interface of software component 'SensorHub'.</span>
+<span class="cm"> *</span>
+<span class="cm"> * Reads the sensors and publishes their conditioned values</span>
+<span class="cm"> *</span>
+<span class="cm"> * Only the variables declared in the DDD description of this component are</span>
+<span class="cm"> * visible here; everything else is intentionally out of reach.</span>
+<span class="cm"> */</span>
+<span class="cp">#ifndef DDD_COMPONENT_SENSORHUB_H</span>
+<span class="cp">#define DDD_COMPONENT_SENSORHUB_H</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_types.h"</span>
+
+<span class="cm">/* outputs - written by SensorHub, read by other components */</span>
+<span class="cm">/** Temperature measured in the cabin [degC] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="p">;</span>
+
+<span class="cp">#endif </span><span class="cm">/* DDD_COMPONENT_SENSORHUB_H */</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">Controller.h</span></code> describes the same variable from the consuming side, and says in a comment who
+produces it, so that a reader of the code knows where the value comes from without opening the
+description files. The local parameter appears in its own section, and only here:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
+<span class="cm"> * Controller.h</span>
+<span class="cm"> *</span>
+<span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> *</span>
+<span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
+<span class="cm"> */</span>
+<span class="cm">/*</span>
+<span class="cm"> * Interface of software component 'Controller'.</span>
+<span class="cm"> *</span>
+<span class="cm"> * Decides when to heat, from the cabin temperature</span>
+<span class="cm"> *</span>
+<span class="cm"> * Only the variables declared in the DDD description of this component are</span>
+<span class="cm"> * visible here; everything else is intentionally out of reach.</span>
+<span class="cm"> */</span>
+<span class="cp">#ifndef DDD_COMPONENT_CONTROLLER_H</span>
+<span class="cp">#define DDD_COMPONENT_CONTROLLER_H</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"ddd_types.h"</span>
+
+<span class="cm">/* inputs - produced elsewhere, Controller may only read them */</span>
+<span class="cm">/** Temperature measured in the cabin [degC] */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+
+<span class="cm">/* locals - owned exclusively by Controller */</span>
+<span class="cm">/** Temperature below which the heater is switched on [degC] (calibration parameter) */</span>
+<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">HeaterOnThreshold</span><span class="p">;</span>
+
+<span class="cp">#endif </span><span class="cm">/* DDD_COMPONENT_CONTROLLER_H */</span>
+</pre></div>
+</div>
+<p>Controller can read <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> and can also write it, since the declaration in its
+header is not <code class="docutils literal notranslate"><span class="pre">const</span></code>; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code> declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> in the
+consumer headers instead, so that writing to a variable owned by somebody else stops compiling
+rather than being caught in review. It is opt-in because the definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>
+stays non-const, which strict c calls a constraint violation even though the usual embedded
+toolchains accept it.</p>
+<p>Everything about the shape of those files - the banner, the plain c comments, the section
+headings, the note naming the producer - comes from the templates copied into the project a
+moment ago, and they are now the project’s to change. Renaming <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> renames
+the definition file; a project that wants its generated code documented differently writes
+that into its own templates rather than asking DDD for an option; and a
+project that wants one more generated file adds one more template. What the templates are given
+to work with is the subject of <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>.</p>
+<p>The last artefact is the a2l, generated from the very same declarations, so the calibration
+tool sees the physical values the description promised rather than raw counts:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.1 + 0"
+  RAT_FUNC "%8.3" "degC"
+  COEFFS 0 1 0 0 0 0.1
+/end COMPU_METHOD
+
+/begin MEASUREMENT CabinTemperature "Temperature measured in the cabin"
+  SWORD CM_LIN_DEGC 0 0 -40 85
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "CabinTemperature" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>The address is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> because it is not known before the link step. The <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>
+entry is always written, so that an address patcher can fill the addresses in after linking;
+alternatively, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--address-map</span> <span class="pre">addresses.json</span></code> takes a symbol to address map
+produced from the linker output and writes the real addresses straight away.</p>
+</section>
+</section>
+<section id="when-the-components-disagree">
+<h2>When the components disagree<a class="headerlink" href="#when-the-components-disagree" title="Link to this heading"></a></h2>
+<p>So far the two components agreed, which is the uninteresting case. Change the <code class="docutils literal notranslate"><span class="pre">datatype</span></code> of
+<code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> in <code class="docutils literal notranslate"><span class="pre">components/controller.ddd.json</span></code> from <code class="docutils literal notranslate"><span class="pre">sint16</span></code> to <code class="docutils literal notranslate"><span class="pre">uint16</span></code> - the
+kind of change that happens when a signal is reworked in one component and the other one is not
+told - and check the project again:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
+    note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+1 error, 1 warning
+</pre></div>
+</div>
+<p>Read the first finding from the left. The location is not just a file name but a path into the
+file - <code class="docutils literal notranslate"><span class="pre">#component.interface[0].definition</span></code> - because a description file has no line an
+editor could jump to that means anything on its own, whereas that path is exactly where the
+offending value sits. Then comes the severity and the identifier of the check,
+<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>: the identifier is part of the public interface of the tool and does
+not change within a major version, so a build script can raise or lower this particular check
+with <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">definition-mismatch=warning</span></code> without becoming sensitive to the wording. Then the
+message names both components and, in brackets, the single attribute that differs.</p>
+<p>The <strong>note</strong> on the second line is the other half of the diagnostic. A disagreement has two
+sides, and printing only one of them would leave the reader to guess where the other
+declaration is; the note points at the declaration of the <em>producing</em> component and calls it
+the reference declaration, which also states which of the two DDD would have believed. Without
+this line, the natural next step would be a repository-wide search for the variable name.</p>
+<p>The warning underneath is not a second problem but a consequence of the first, and it shows how
+much the tool actually understands about the data: the limits are physical, the conversion maps
+raw to physical, and an unsigned 16-bit variable scaled by 0.1 simply cannot represent -40 degC.
+It is a warning rather than an error because limits are a statement of intent about the data
+rather than something the c compiler will ever see.</p>
+<p>Nothing was generated during that run. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs the checks first and writes no file
+at all when one of them fails, because half-generated sources that describe a project nobody
+agreed on are worse than no sources:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen2 -t templates
+components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
+    note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
+components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
+1 error, 1 warning
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">--force</span></code> generates in spite of the errors, using the producer’s definition
+wherever the components disagree, and still exits with 1. It exists for the case where a
+developer needs the headers to keep working while a disagreement is being sorted out
+between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely
+so that a pipeline which ignores it has to say so explicitly.</p>
+</div>
+<p>Put <code class="docutils literal notranslate"><span class="pre">sint16</span></code> back and the project is clean again. That loop - describe, check, generate - is
+the whole daily workflow; everything else DDD offers is either a different question about the
+same descriptions or a way of hooking this loop into a build system.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading"></a></h2>
+<p><a class="reference internal" href="concept.html"><span class="doc">Concept</span></a> explains the model this page used without naming it: what a project, a
+component, a declaration and a scope are, what the data dictionary is and why the producer is
+the authority on a definition. It is the page to read before designing the description files
+of a real project.</p>
+<p><a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> is the reference for the templates this page copied without looking inside
+them: the data model they render, the naming rules that decide which file each of them
+produces, and what a project changes first when the generated code has to look like the rest of
+its sources.</p>
+<p><a class="reference internal" href="file_formats/index.html"><span class="doc">File formats</span></a> is the reference for everything a description file may contain. The
+thermostat used measurements and a parameter; the file formats also cover value blocks, curves,
+maps and their shared axes, enum conversions, preprocessor conditions and the per-object a2l
+settings.</p>
+<p><a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a> documents every command and every option, including the ones this
+page only mentioned in passing: <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, the <code class="docutils literal notranslate"><span class="pre">-W</span></code> severity
+overrides, the machine readable <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> output for a ci job, and the commands that
+answer questions <code class="docutils literal notranslate"><span class="pre">check</span></code> does not - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> for whether a delivery may replace its
+predecessor, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> for the resolved data dictionary itself.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="DDD documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="concept.html" class="btn btn-neutral float-right" title="Concept" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

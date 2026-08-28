@@ -1,7 +1,8 @@
 {
-  "stable": "v0.5.0",
+  "stable": "v0.6.0",
   "versions": [
     "latest",
+    "v0.6.0",
     "v0.5.0"
   ]
 }

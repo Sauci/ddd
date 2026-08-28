@@ -1,0 +1,46 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="749,5,1015,117"/>
+<area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="1159,91,1276,203"/>
+<area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="797,165,967,221"/>
+<area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="799,269,965,381"/>
+<area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="763,563,1001,675"/>
+<area shape="rect" id="node6" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="797,430,967,514"/>
+<area shape="rect" id="node7" title="ddd.models.types.Member
+
+One member of a structure, in the order the structure declares it.
+
+Order is significant: it is the order the c struct is generated in, and therefore the order
+the compiler lays out. &#160;Reordering members of a released structure moves every address after
+the change, which is why a comparison against a baseline reports it.
+" alt="" coords="5,16,605,352"/>
+</map>

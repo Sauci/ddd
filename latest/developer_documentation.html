@@ -80,7 +80,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#building-this-documentation">Building this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-this-documentation">Publishing this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#publishing-the-editor-extension">Publishing the editor extension</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#delivering-the-editor-extension">Delivering the editor extension</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
@@ -566,31 +566,31 @@ and the default permits only the default branch. It fails after a green build, w
 <em>not allowed to deploy … due to environment protection rules</em>, and is fixed in the settings
 rather than in the repository.</p>
 </section>
-<section id="publishing-the-editor-extension">
-<h2>Publishing the editor extension<a class="headerlink" href="#publishing-the-editor-extension" title="Link to this heading"></a></h2>
-<p>The same workflow publishes <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code> to the <a class="reference external" href="https://marketplace.visualstudio.com/items?itemName=sauci.ddd">Visual Studio Marketplace</a> and attaches the
-<code class="docutils literal notranslate"><span class="pre">.vsix</span></code> to the release. Both come from one <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code>: the marketplace step
-publishes that file with <code class="docutils literal notranslate"><span class="pre">--packagePath</span></code> rather than packaging a second time, so what the
-marketplace serves and what the release carries are the same bytes.</p>
-<p>The marketplace has <strong>no equivalent of trusted publishing</strong>, so unlike the index upload this
-one holds a credential. Three facts about it are worth having written down before it is
-needed.</p>
-<p><strong>The publisher lives in Azure DevOps, not on GitHub.</strong> A marketplace publisher is created
-once, at <a class="reference external" href="https://marketplace.visualstudio.com/manage">https://marketplace.visualstudio.com/manage</a>, against an Azure DevOps organisation.
-Its id has to be the <code class="docutils literal notranslate"><span class="pre">publisher</span></code> field of <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code> - <code class="docutils literal notranslate"><span class="pre">sauci</span></code> - and
-the extension is then identified everywhere as <code class="docutils literal notranslate"><span class="pre">sauci.ddd</span></code>.</p>
-<p><strong>The token is a personal access token with one scope.</strong> From that organisation, a token
-with <em>Marketplace</em> → <em>Manage</em>, issued against <em>All accessible organizations</em> rather than a
-single one: a token scoped to one organisation authenticates and is then refused when it
-publishes, which reads as a wrong password rather than a wrong scope. It is stored as the
-repository secret <code class="docutils literal notranslate"><span class="pre">VSCE_PAT</span></code>.</p>
-<p><strong>It expires, and the failure lands on a release.</strong> Azure DevOps allows a year at most. When
-it lapses, the extension job fails on a release that has already uploaded to PyPI, which
-cannot be taken back and does not need to be: only the marketplace step failed. Issue a new
-token, update the secret, and re-run the job. The step checks the secret is present before
-it does anything and says all of this in the error, rather than failing inside <code class="docutils literal notranslate"><span class="pre">vsce</span></code>.</p>
-<p>The name is claimed at the first publish. Until then the marketplace link above is a 404,
-and the release still attaches its <code class="docutils literal notranslate"><span class="pre">.vsix</span></code>.</p>
+<section id="delivering-the-editor-extension">
+<h2>Delivering the editor extension<a class="headerlink" href="#delivering-the-editor-extension" title="Link to this heading"></a></h2>
+<p>The same workflow packages <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code> and attaches the <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to the
+release. That asset is the whole of how the extension is delivered: a permanent url needing
+no account and no network policy exception, installed with <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">--install-extension</span>
+<span class="pre">ddd-&lt;version&gt;.vsix</span></code> or through <strong>Install from VSIX…</strong> in the Extensions view.</p>
+<p>The job runs after the tag check rather than beside it, because it names the file it uploads
+after the tag; a test pins that ordering.</p>
+<p><strong>It is deliberately not published to the Visual Studio Marketplace.</strong> A step that would have
+done so existed until 0.6.0 and never once worked: the marketplace has no equivalent of
+trusted publishing, so it needed a personal access token from an Azure DevOps organisation
+owning a <code class="docutils literal notranslate"><span class="pre">sauci</span></code> publisher, and neither the organisation nor the publisher was ever
+created. It failed on every release it ran on while the rest of the pipeline reported success
+around it, and four pages meanwhile told a customer to search the Extensions view for an item
+that answered 404.</p>
+<p>Publishing there again is a decision with a prerequisite, not a step to restore. The
+publisher is created once at <a class="reference external" href="https://marketplace.visualstudio.com/manage">https://marketplace.visualstudio.com/manage</a> against an Azure
+DevOps organisation; its id has to be the <code class="docutils literal notranslate"><span class="pre">publisher</span></code> field of
+<code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>, which is what makes the extension <code class="docutils literal notranslate"><span class="pre">sauci.ddd</span></code>. The token
+is a personal access token scoped <em>Marketplace</em> → <em>Manage</em>, issued against <em>All accessible
+organizations</em> rather than a single one - a token scoped to one authenticates and is then
+refused when it publishes, which reads as a wrong password rather than a wrong scope. It
+expires within a year, and the failure lands on a release that has already uploaded to PyPI.
+Whoever takes that on puts the install instructions back on the four pages at the same time;
+a test refuses the two halves separately.</p>
 </section>
 </section>
 

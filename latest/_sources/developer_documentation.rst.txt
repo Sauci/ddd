@@ -482,35 +482,32 @@ and the default permits only the default branch. It fails after a green build, w
 *not allowed to deploy ... due to environment protection rules*, and is fixed in the settings
 rather than in the repository.
 
-Publishing the editor extension
+Delivering the editor extension
 -------------------------------
 
-The same workflow publishes ``editors/vscode`` to the `Visual Studio Marketplace
-<https://marketplace.visualstudio.com/items?itemName=sauci.ddd>`_ and attaches the
-``.vsix`` to the release. Both come from one ``npm run package``: the marketplace step
-publishes that file with ``--packagePath`` rather than packaging a second time, so what the
-marketplace serves and what the release carries are the same bytes.
+The same workflow packages ``editors/vscode`` and attaches the ``ddd-<version>.vsix`` to the
+release. That asset is the whole of how the extension is delivered: a permanent url needing
+no account and no network policy exception, installed with ``code --install-extension
+ddd-<version>.vsix`` or through **Install from VSIX...** in the Extensions view.
 
-The marketplace has **no equivalent of trusted publishing**, so unlike the index upload this
-one holds a credential. Three facts about it are worth having written down before it is
-needed.
+The job runs after the tag check rather than beside it, because it names the file it uploads
+after the tag; a test pins that ordering.
 
-**The publisher lives in Azure DevOps, not on GitHub.** A marketplace publisher is created
-once, at https://marketplace.visualstudio.com/manage, against an Azure DevOps organisation.
-Its id has to be the ``publisher`` field of ``editors/vscode/package.json`` - ``sauci`` - and
-the extension is then identified everywhere as ``sauci.ddd``.
+**It is deliberately not published to the Visual Studio Marketplace.** A step that would have
+done so existed until 0.6.0 and never once worked: the marketplace has no equivalent of
+trusted publishing, so it needed a personal access token from an Azure DevOps organisation
+owning a ``sauci`` publisher, and neither the organisation nor the publisher was ever
+created. It failed on every release it ran on while the rest of the pipeline reported success
+around it, and four pages meanwhile told a customer to search the Extensions view for an item
+that answered 404.
 
-**The token is a personal access token with one scope.** From that organisation, a token
-with *Marketplace* → *Manage*, issued against *All accessible organizations* rather than a
-single one: a token scoped to one organisation authenticates and is then refused when it
-publishes, which reads as a wrong password rather than a wrong scope. It is stored as the
-repository secret ``VSCE_PAT``.
-
-**It expires, and the failure lands on a release.** Azure DevOps allows a year at most. When
-it lapses, the extension job fails on a release that has already uploaded to PyPI, which
-cannot be taken back and does not need to be: only the marketplace step failed. Issue a new
-token, update the secret, and re-run the job. The step checks the secret is present before
-it does anything and says all of this in the error, rather than failing inside ``vsce``.
-
-The name is claimed at the first publish. Until then the marketplace link above is a 404,
-and the release still attaches its ``.vsix``.
+Publishing there again is a decision with a prerequisite, not a step to restore. The
+publisher is created once at https://marketplace.visualstudio.com/manage against an Azure
+DevOps organisation; its id has to be the ``publisher`` field of
+``editors/vscode/package.json``, which is what makes the extension ``sauci.ddd``. The token
+is a personal access token scoped *Marketplace* → *Manage*, issued against *All accessible
+organizations* rather than a single one - a token scoped to one authenticates and is then
+refused when it publishes, which reads as a wrong password rather than a wrong scope. It
+expires within a year, and the failure lands on a release that has already uploaded to PyPI.
+Whoever takes that on puts the install instructions back on the four pages at the same time;
+a test refuses the two halves separately.

@@ -4,7 +4,13 @@ Every backend consumes a :class:`~ddd.ir.DataDictionary` and produces files. Non
 imports the loader, the analysis or another backend.
 """
 
-from ddd.backends.a2l import A2lBackend, A2lOptions, ByteOrder, load_address_map
+from ddd.backends.a2l import (
+    A2lBackend,
+    A2lOptions,
+    ByteOrder,
+    addressed_symbols,
+    load_address_map,
+)
 from ddd.backends.base import (
     Backend,
     GeneratedFile,
@@ -25,6 +31,7 @@ __all__ = [
     "GeneratedFile",
     "WriteResult",
     "WriteStatus",
+    "addressed_symbols",
     "example_template_directory",
     "load_address_map",
     "render",

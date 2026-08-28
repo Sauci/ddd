@@ -727,6 +727,33 @@ class TestDeclaringAStructure:
         (leaf,) = dictionary.leaves
         assert leaf.limits.as_tuple() == (0, 255)
 
+    def test_an_instance_kept_out_of_the_a2l_marks_every_leaf_so(self, tree: Path) -> None:
+        """The whole object's answer reaches its members, the way the storage class does.
+
+        A leaf that carried only the member's own opinion split the export decision across two
+        records, and only the a2l backend put the halves back together. Everything else read
+        one half and believed it: a delivery that stopped exporting a structure compared clean
+        against its predecessor while every one of its members left the file.
+        """
+        dictionary, bag = self.resolve(
+            tree, struct("S_t", val("a"), val("b")), a2l={"export": False}
+        )
+        assert findings(bag) == []
+        assert dictionary is not None
+        assert [leaf.a2l.export for leaf in dictionary.leaves] == [False, False]
+
+    def test_a_member_may_be_kept_out_of_an_exported_structure(self, tree: Path) -> None:
+        """The member's own no still counts; resolving the two is an and, not a replacement."""
+        dictionary, bag = self.resolve(
+            tree, struct("S_t", val("a", a2l={"export": False}), val("b"))
+        )
+        assert findings(bag) == []
+        assert dictionary is not None
+        assert [(leaf.path, leaf.a2l.export) for leaf in dictionary.leaves] == [
+            ("X.a", False),
+            ("X.b", True),
+        ]
+
     def test_a_leaf_knows_whether_it_is_calibration_data(self, tree: Path) -> None:
         """Taken from the variable: every member of one object has its storage class."""
         dictionary, bag = self.resolve(tree, struct("S_t", val("v")), kind="parameter")
@@ -1208,6 +1235,36 @@ class TestStructuresReachEverythingElse:
         compare(dictionary, stripped, bag)
         assert {finding.check for finding in bag} == {"removed-unused-object"}
         assert "X.plain" in messages(bag)
+
+    def test_a_delivery_that_drops_a_structure_from_the_a2l_is_reported(self, tree: Path) -> None:
+        """Turning ``export`` off on the whole object empties it out of the file.
+
+        The instance itself is not a record - it reaches the a2l as its members - so the
+        comparison never sees it, and the answer has to travel on the leaves or not at all.
+        """
+        from ddd.compare import compare
+        from ddd.diagnostics import DiagnosticBag
+
+        def delivery(where: Path, **definition: Any) -> Any:
+            resolved, _ = run_analysis(
+                where,
+                {
+                    "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                    "types.ddd.json": types(struct("S_t", val("plain", "uint16", unit="rpm"))),
+                    "a.ddd.json": component(
+                        "A", declare("local", "X", **{"typename": "S_t", **definition})
+                    ),
+                },
+            )
+            return resolved
+
+        before = delivery(tree / "before")
+        after = delivery(tree / "after", a2l={"export": False})
+        assert before is not None and after is not None
+        bag = DiagnosticBag()
+        compare(before, after, bag)
+        assert "changed-a2l" in {finding.check for finding in bag}
+        assert "export: true -> false" in messages(bag)
 
     def test_a_member_that_changes_datatype_is_an_interface_change(self, tree: Path) -> None:
         from ddd.compare import compare

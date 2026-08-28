@@ -19,8 +19,11 @@ from ddd.build_info import BUILD_INFO_FILENAME
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
+from ddd.lsp import navigation
+from ddd.lsp import server as server_module
 from ddd.lsp.discovery import build_files, discover, load_builds
 from ddd.lsp.protocol import (
+    INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     PARSE_ERROR,
@@ -145,6 +148,43 @@ class TestFraming:
 
 
 class TestRanges:
+    def test_a_uri_round_trips_a_path_that_needed_escaping(self, tmp_path: Path) -> None:
+        """The server publishes under ``Path.as_uri()`` and reads what a client sends back.
+
+        Those two have to be inverses or the editor cannot match a finding to the document it
+        is looking at. ``url2pathname`` already unescapes, so unescaping before calling it
+        decoded a percent sequence twice and named a different file: ``a%20b.ddd.json`` came
+        back as ``a b.ddd.json``.
+        """
+        path = tmp_path / "a%20b.ddd.json"
+        path.write_text("{}", encoding="utf-8")
+        assert uri_to_path(path.as_uri()) == path
+
+    def test_a_uri_still_decodes_the_escaping_a_client_applies(self, tmp_path: Path) -> None:
+        """The other direction of the same rule: a space really is sent as ``%20``."""
+        path = tmp_path / "a b.ddd.json"
+        path.write_text("{}", encoding="utf-8")
+        assert uri_to_path(path.as_uri()) == path
+
+    def test_a_byte_order_mark_is_read_the_way_the_loader_reads_one(self, tmp_path: Path) -> None:
+        """``ddd check`` accepts a BOM on purpose; the editor has to agree with it.
+
+        Several Windows editors and PowerShell redirection put one in front of a file, which
+        is why the loader reads ``utf-8-sig``. Read as plain utf-8 the document does not parse
+        at all, and every span table comes out empty: findings collapse onto the first
+        character and hover, go to definition, rename and the code actions all answer nothing -
+        on a file the command line calls perfectly good.
+        """
+        path = tmp_path / "a.ddd.json"
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "X"))})
+        path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8-sig")
+        document = read(path, {})
+        assert document.value_at("component.name") == "A"
+        assert document.range_of("component.name") != {
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 0, "character": 0},
+        }
+
     """A pointer is what DDD reports; a range is what an editor can draw."""
 
     DOCUMENT = (
@@ -887,7 +927,7 @@ class TestHover:
             },
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
-        return resolve([info], tmp_path / "a.ddd.json")
+        return resolve(navigation.workspaces([info], tmp_path / "a.ddd.json"))
 
     def structured(self, tmp_path: Path) -> Any:
         from ddd.build_info import BuildInfo
@@ -943,7 +983,7 @@ class TestHover:
             },
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
-        return resolve([info], tmp_path / "a.ddd.json")
+        return resolve(navigation.workspaces([info], tmp_path / "a.ddd.json"))
 
     def test_a_component_finds_the_project_above_it_when_no_build_claims_it(
         self, tmp_path: Path
@@ -962,7 +1002,7 @@ class TestHover:
         dictionary = self.structured(tmp_path)
         assert dictionary is not None
         # Same document, but resolved with no build record at all.
-        found = resolve([], tmp_path / "a.ddd.json", tmp_path)
+        found = resolve(navigation.workspaces([], tmp_path / "a.ddd.json", tmp_path))
         assert found is not None
         assert describe(found, "Inlet") is not None
 
@@ -979,7 +1019,7 @@ class TestHover:
                 "components/a.ddd.json": component("A", declare("local", "Deep")),
             },
         )
-        found = resolve([], tmp_path / "components" / "a.ddd.json", tmp_path)
+        found = resolve(navigation.workspaces([], tmp_path / "components" / "a.ddd.json", tmp_path))
         assert found is not None
         assert describe(found, "Deep") is not None
 
@@ -988,7 +1028,7 @@ class TestHover:
         from ddd.lsp.hover import describe, resolve
 
         write_tree(tmp_path, {"lonely.ddd.json": component("A", declare("local", "X"))})
-        found = resolve([], tmp_path / "lonely.ddd.json", tmp_path)
+        found = resolve(navigation.workspaces([], tmp_path / "lonely.ddd.json", tmp_path))
         assert found is not None
         assert describe(found, "X") is not None
 
@@ -1004,7 +1044,7 @@ class TestHover:
                 "mine.ddd.json": component("A", declare("local", "X")),
             },
         )
-        found = resolve([], tmp_path / "mine.ddd.json", tmp_path)
+        found = resolve(navigation.workspaces([], tmp_path / "mine.ddd.json", tmp_path))
         assert found is not None
         # Read on its own, so it knows X and has never heard of Y.
         assert describe(found, "X") is not None
@@ -1083,7 +1123,8 @@ class TestHover:
             },
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
-        described = describe(resolve([info], tmp_path / "a.ddd.json"), "Pack")
+        projects = navigation.workspaces([info], tmp_path / "a.ddd.json")
+        described = describe(resolve(projects), "Pack")
         assert described is not None
         assert "| shape | `[2]` |" in described
         assert "| `[0].raw` |" in described
@@ -1119,7 +1160,7 @@ class TestHover:
             },
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
-        described = describe(resolve([info], tmp_path / "a.ddd.json"), "X")
+        described = describe(resolve(navigation.workspaces([info], tmp_path / "a.ddd.json")), "X")
         assert described is not None
         assert "| condition | `defined(FEAT)` |" in described
         assert "Local to **A**." in described
@@ -1175,7 +1216,7 @@ class TestHover:
             },
         )
         info = BuildInfo(project=(tmp_path / "p.ddd.json").as_posix())
-        dictionary = resolve([info], tmp_path / "a.ddd.json")
+        dictionary = resolve(navigation.workspaces([info], tmp_path / "a.ddd.json"))
         assert "Written by **A**, read by **B**." in describe(dictionary, "Value")
 
     def test_an_object_nobody_produces_says_so(self, tmp_path: Path) -> None:
@@ -1491,7 +1532,7 @@ class TestHover:
     def test_a_document_in_no_project_resolves_to_nothing(self, tmp_path: Path) -> None:
         from ddd.lsp.hover import resolve
 
-        assert resolve([], tmp_path / "absent.ddd.json") is None
+        assert resolve(navigation.workspaces([], tmp_path / "absent.ddd.json")) is None
 
     def test_the_scale_is_the_one_it_is_given(self) -> None:
         """Passed in rather than taken from the row, so that rows can be compared."""
@@ -2364,6 +2405,133 @@ class TestServer:
             "method": "textDocument/didOpen",
             "params": {"textDocument": {"uri": path.as_uri()}},
         }
+
+    def test_a_request_without_params_is_refused_rather_than_fatal(self, tmp_path: Path) -> None:
+        """One badly shaped message is not the end of the conversation, framing or not.
+
+        The loop already survives a body that is not a request. A body that *is* one, framed
+        correctly, and simply missing the ``params`` an editor always sends used to raise a
+        KeyError straight out of the loop - so a client with one bug took every DDD finding
+        off the screen until somebody restarted the server.
+        """
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover"},
+            {"jsonrpc": "2.0", "id": 8, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[7]["error"]["code"] == INVALID_PARAMS
+        # And the conversation went on: the request after it was answered normally.
+        assert answers[8]["result"] is None
+
+    def test_a_notification_without_params_is_survived_too(self, tmp_path: Path) -> None:
+        """A notification gets no reply by definition, so the only thing to prove is the loop."""
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "method": "textDocument/didOpen"},
+            {"jsonrpc": "2.0", "id": 9, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert any(message.get("id") == 9 for message in sent(writer))
+
+    def test_repeating_a_request_does_no_more_reading_than_asking_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A hover is a keypress, and it used to rescan the build tree and reload every project.
+
+        Worse, it did so several times over: the external type lookup and the resolution each
+        walked the projects from scratch. Nothing on disk can have changed between two hovers -
+        the server reads files at open and at save and says so in its capabilities - so the
+        second one is entitled to the first one's answer.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed", "uint16")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        document = tmp_path / "a.ddd.json"
+        pointer = "component.interface[0].definition.name"
+        position = Document(document.read_text(encoding="utf-8")).range_of(pointer)["start"]
+        asked = self.navigation_request("textDocument/hover", document, position)
+
+        loads: list[Path] = []
+        original = navigation.load_workspace
+
+        def counted(path: Path, bag: Any) -> Any:
+            loads.append(path)
+            return original(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", counted)
+
+        def reads(*requests: dict[str, Any]) -> int:
+            loads.clear()
+            Server(framed(*requests), io.BytesIO(), root=tmp_path).run()
+            return len(loads)
+
+        once = reads(asked)
+        assert once > 0
+        assert reads(asked, asked) == once
+
+    def test_two_documents_share_one_walk_of_the_build_tree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The records are the project's, not the document's: found once, used for both files."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Shared", "uint16")),
+                "b.ddd.json": component("B", declare("input", "Shared", "uint16")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        walks: list[Path] = []
+        original = server_module.discover
+
+        def counted(root: Path, configured: Any = ()) -> Any:
+            walks.append(root)
+            return original(root, configured)
+
+        monkeypatch.setattr(server_module, "discover", counted)
+        asked = [
+            self.navigation_request(
+                "textDocument/hover",
+                tmp_path / name,
+                Document((tmp_path / name).read_text(encoding="utf-8")).range_of(
+                    "component.interface[0].definition.name"
+                )["start"],
+            )
+            for name in ("a.ddd.json", "b.ddd.json")
+        ]
+        Server(framed(*asked), io.BytesIO(), root=tmp_path).run()
+        assert len(walks) == 1
+
+    def test_a_save_picks_up_what_changed_on_disk(self, tmp_path: Path) -> None:
+        """The other half of caching an answer: the moment it has to be thrown away."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        server.refresh(tmp_path / "a.ddd.json")
+        assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
+
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Shared"))})
+        writer = io.BytesIO()
+        server.writer = writer
+        server.refresh(tmp_path / "a.ddd.json")
+        assert published(writer)["a.ddd.json"] == []
 
     def test_it_announces_what_it_can_do(self, tmp_path: Path) -> None:
         writer = io.BytesIO()

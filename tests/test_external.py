@@ -557,13 +557,15 @@ class TestTheEditor:
 
     def test_describe_external_without_a_description_stops_at_the_header(self, tree: Path) -> None:
         from ddd.lsp.hover import describe_external
+        from ddd.lsp.navigation import workspaces
 
         files = self.workspace_files()
         files["t.ddd.json"]["types"][0].pop("description")
         write_tree(tree, files)
-        described = describe_external([], tree / "t.ddd.json", "Drv_t", tree)
+        projects = workspaces([], tree / "t.ddd.json", tree)
+        described = describe_external(projects, "Drv_t")
         assert described == "**Drv_t** — external type, defined by `drv.h`"
-        assert describe_external([], tree / "t.ddd.json", "S_t", tree) is None
+        assert describe_external(projects, "S_t") is None
 
     def test_type_at_answers_from_the_entry_and_from_a_typename(self, tree: Path) -> None:
         from ddd.lsp.navigation import type_at

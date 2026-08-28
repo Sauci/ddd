@@ -48,7 +48,6 @@ WORKDIR /opt/ddd
 COPY pyproject.toml README.md LICENSE requirements*.txt ./
 COPY src ./src
 COPY cmake ./cmake
-COPY completion ./completion
 # Every path the wheel force-includes has to be here, or the install below cannot build it.
 # The templates are the one that is easy to forget: they live under examples/ rather than
 # beside the other two, and leaving them out fails the image build rather than the tests.

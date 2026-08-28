@@ -197,11 +197,18 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
 
     A file that cannot be read is not an error here: it still has findings against it - "does
     not exist" is one of them - and an empty document answers every question with nothing.
+
+    ``utf-8-sig`` for the reason the loader reads with it: several Windows editors and
+    PowerShell redirection put a byte order mark in front of a file, ``ddd check`` accepts one,
+    and the editor has to agree with the command line about a file both are looking at. Read as
+    plain utf-8 the mark stops the document parsing at all, and an unparsed document has no
+    spans - so every finding collapses onto the first character and hover, go to definition,
+    rename and the code actions all answer nothing, silently.
     """
     found = cache.get(path)
     if found is None:
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8-sig")
         except (OSError, UnicodeDecodeError):
             text = ""
         found = Document(text)

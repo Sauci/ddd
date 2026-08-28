@@ -49,7 +49,7 @@ Requires Python 3.12 or newer; the only runtime dependencies are pydantic and ji
 
 ```bash
 pip install ddd-tool                 # from the index
-pip install ./ddd_tool-0.5.0-py3-none-any.whl   # from a delivered wheel, no network
+pip install ./ddd_tool-0.6.0-py3-none-any.whl   # from a delivered wheel, no network
 ddd --version
 ```
 
@@ -487,7 +487,9 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
+| warning | `address-missing` | an object in the a2l has no entry in the address map the run was given |
 | info | `empty-component` | a component declares no variable |
+| info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
 
 When components disagree, the declaration of the **producing** component is the reference:
 its definition is the one that gets generated, and the diagnostics point at the deviating

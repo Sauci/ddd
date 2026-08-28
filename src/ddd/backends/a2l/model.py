@@ -181,6 +181,27 @@ def build_a2l_model(dictionary: DataDictionary, options: A2lOptions, generator: 
     return _A2lModelBuilder(dictionary, options).build(generator)
 
 
+def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
+    """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted.
+
+    Read off a built model rather than worked out again, because "which objects reach the
+    file" is a question with several parts - what asked to be exported, what an exported
+    record refers to, which members are bitfields - and a second answer to it would be a
+    second thing to keep in step. What a caller does with the list is check a build's address
+    map against it; the model itself is thrown away.
+    """
+    model = build_a2l_model(dictionary, A2lOptions(), "")
+    return tuple(
+        sorted(
+            {
+                *(entry.name for entry in model.measurements),
+                *(entry.name for entry in model.characteristics),
+                *(entry.name for entry in model.axis_pts),
+            }
+        )
+    )
+
+
 class _A2lModelBuilder:
     """Builds the whole a2l model of one dictionary.
 
@@ -195,9 +216,6 @@ class _A2lModelBuilder:
         self._options = options
         self._by_name = dictionary.by_name
         self._exported = self._resolve_exported()
-        self._instances_exported = {
-            entry.name: entry.a2l.exported for entry in dictionary.instances
-        }
         self._methods = _CompuMethodBuilder()
         self._layouts = _RecordLayoutBuilder()
 
@@ -281,10 +299,14 @@ class _A2lModelBuilder:
         leaving the mask out means the whole word and writing zero means nothing, so both are
         wrong answers dressed up as output. Such a member waits for a build that reports where
         its bits are; the analysis says so once per object it happens to.
+
+        The export question is already answered: the analysis resolves the variable's answer
+        and the member's into the one the leaf carries, so this backend and ``ddd compare``
+        cannot reach different conclusions about which members reach the file.
         """
         if leaf.bits is not None:
             return False
-        return leaf.a2l.exported and self._instances_exported.get(leaf.instance, True)
+        return leaf.a2l.exported
 
     def _leaf_characteristic(self, leaf: ResolvedLeaf) -> CharacteristicView:
         """A calibratable member, which is a ``VALUE`` or a ``VAL_BLK`` and never a curve.

@@ -2,7 +2,7 @@
   "name": "ddd",
   "displayName": "DDD",
   "description": "Reports the DDD consistency checks while a description file is being written, and navigates between the components that share a variable.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "sauci",
   "license": "MIT",
   "icon": "icon.png",

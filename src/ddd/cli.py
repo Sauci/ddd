@@ -22,6 +22,7 @@ from ddd.backends import (
     CBackend,
     COptions,
     WriteStatus,
+    addressed_symbols,
     example_template_directory,
     load_address_map,
     render,
@@ -400,9 +401,62 @@ def _command_compare(args: argparse.Namespace) -> int:
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
+def _check_address_coverage(
+    dictionary: DataDictionary, addresses: dict[str, int], path: Path, bag: DiagnosticBag
+) -> None:
+    """Report the objects a supplied address map does not cover, and the entries nobody wants.
+
+    Only when a map was given: without one every address is zero on purpose, because that is
+    the run a build makes before it has linked anything. With one, a symbol the map does not
+    carry silently became address zero - and the map is written by a linker script or a patch
+    tool against the names of one build, so a renamed variable or a stale file covers some of
+    the objects and not the rest. What comes out is an a2l pointing a calibration tool at
+    0x00000000, which reads and writes something, and nothing in the run said so.
+
+    The entries that match nothing are named in a note rather than as a finding of their own:
+    they are usually the other half of the same mistake - the old spelling of the symbol that
+    has just gone missing - and reading them together is what identifies a rename.
+    """
+    carried = addressed_symbols(dictionary)
+    missing = [symbol for symbol in carried if symbol not in addresses]
+    if not missing:
+        return
+    unused = sorted(set(addresses) - set(carried))
+    notes: list[tuple[str, Location | None]] = []
+    if unused:
+        notes.append((f"the map also carries {_listed(unused)}, which the a2l does not", None))
+    bag.add(
+        "address-missing",
+        f"the address map has no entry for {_listed(missing)}; "
+        f"{'it reaches' if len(missing) == 1 else 'they reach'} the a2l at address 0",
+        Location(path),
+        notes=notes,
+    )
+
+
+_LISTED_LIMIT = 5
+"""How many names a finding spells out before it starts counting instead."""
+
+
+def _listed(names: list[str]) -> str:
+    """``'A', 'B' and 3 others``: enough to recognise, never a screenful."""
+    spelled = ", ".join(f"'{name}'" for name in names[:_LISTED_LIMIT])
+    rest = len(names) - _LISTED_LIMIT
+    return f"{spelled} and {rest} other{'s' if rest != 1 else ''}" if rest > 0 else spelled
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     dictionary, bag = _analyze(args)
-    if dictionary is None or (bag.has_errors and not args.force):
+    if dictionary is None:
+        _report(bag, args.format)
+        return EXIT_FINDINGS
+
+    addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
+    if args.render_a2l and args.address_map is not None:
+        # Before the gate below, so that a --strict build stops rather than writing a file
+        # whose addresses it has just been told are incomplete.
+        _check_address_coverage(dictionary, addresses, args.address_map, bag)
+    if bag.has_errors and not args.force:
         _report(bag, args.format)
         return EXIT_FINDINGS
 
@@ -414,10 +468,7 @@ def _command_generate(args: argparse.Namespace) -> int:
     if args.render_a2l:
         backends.append(
             A2lBackend(
-                A2lOptions(
-                    byte_order=ByteOrder(args.byte_order),
-                    addresses=load_address_map(args.address_map) if args.address_map else {},
-                ),
+                A2lOptions(byte_order=ByteOrder(args.byte_order), addresses=addresses),
                 GENERATOR,
             )
         )

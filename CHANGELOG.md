@@ -8,8 +8,52 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
-## Unreleased
+## 0.6.0
 
+* **The docker development image builds and its services run again.**  `docker/Dockerfile`
+  still copied a `completion` directory that was removed before 0.5.0, so `docker compose
+  build` failed on the first `COPY` and every service with it; and the `generate` service
+  still used the pre-artefact command line, so it exited with a usage error.  Both are the
+  local equivalents of ci jobs, which is where the breakage stayed invisible: ci installs the
+  package itself and never builds this image.
+* **A structure kept out of the a2l is now a change `ddd compare` can see.**  The export
+  decision of a structured variable reaches its members: the resolved dictionary records on
+  each leaf what the variable's `a2l.export` and the member's own together come to, where it
+  used to record only the member's half and leave the a2l backend to put the two together at
+  render time.  Everything else read one half and believed it, so a delivery that stopped
+  exporting a structure compared clean against its predecessor while every one of its members
+  left the file.  The comparison now reports one `changed-a2l` per member.
+  **Migration:** none for the description files.  A dictionary dumped by 0.5.0 states the
+  member's half alone; compared against a new one, the leaves of a variable that was never
+  exported report `changed-a2l` once, on the delivery that re-dumps them.
+* **New check `address-missing` (warning).**  An object the a2l carries with no entry in the
+  `--address-map` the run was given is now reported instead of silently written at address
+  zero.  It fires only when a map is supplied - without one every address is zero by
+  construction, which is the run a build makes before it has linked anything.  The entries of
+  the map that match no object are named in a note, because a renamed object usually loses
+  its address and leaves its old spelling behind in the same file.  `--strict` makes it fatal,
+  which is what a post-link build wants.
+* **New check `incomplete-project` (info).**  Relaxing a check that *drops* a declaration -
+  `unknown-type`, `unknown-constant`, `type-kind` - never put the variable back; it only hid
+  why it went.  With the cause silenced, `ddd list` printed a table one row short and exited
+  zero and `ddd dump` archived a dictionary an object was missing from, with nothing said.
+  The consequence is now reported when its cause is not.  Like the other checks that need the
+  whole project to be right about anything, it stays quiet for a file the language server
+  reads on its own.
+* **The language server survives a badly shaped message, and reads a byte order mark.**  A
+  correctly framed request missing the `params` an editor always sends used to raise out of
+  the loop and end the session; it is now refused with json-rpc `InvalidParams` (-32602) and
+  the conversation goes on.  Description files are read as `utf-8-sig`, the encoding the
+  loader has always used: read as plain utf-8 a file carrying a byte order mark - what several
+  Windows editors and PowerShell redirection write - did not parse, so every finding collapsed
+  onto the first character and hover, go to definition, rename and the code actions all
+  answered nothing, on a file `ddd check` called perfectly good.  A `file://` uri is no longer
+  unescaped twice, which made `a%20b.ddd.json` name `a b.ddd.json`.
+* **The language server reads the project once per save rather than once per keypress.**  The
+  build records and the loaded projects are kept between requests and dropped at every open,
+  save and rename.  A hover used to walk every configured build directory looking for
+  `ddd-build.json` and then re-read and re-validate every description file of every image the
+  component is linked into, twice over.
 * **`ddd generate` names its artefact: `c`, `a2l` or `all`.**  The artefact is part of the
   command and each carries only the options of what it produces: `-t/--template-dir`
   (required) and `--const-inputs` exist on `c` and `all`, `--byte-order` and

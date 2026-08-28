@@ -113,6 +113,14 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 """The json-rpc code for a request naming a method the server does not implement."""
 
+INVALID_PARAMS = -32602
+"""The json-rpc code for a request whose parameters are not the shape the method takes.
+
+Its own code rather than a request failure, because the two say different things to whoever
+reads the log: this one is the client's message being wrong, and ``REQUEST_FAILED`` is the
+server declining a message it understood perfectly well.
+"""
+
 REQUEST_FAILED = -32803
 """A request the server understood and could not carry out; the message says why."""
 

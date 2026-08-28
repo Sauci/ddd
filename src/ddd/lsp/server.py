@@ -23,11 +23,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Any, Final
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from ddd import __version__
 from ddd.build_info import BuildInfo
+from ddd.loading import Workspace
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, actions
@@ -47,6 +48,7 @@ from ddd.lsp.navigation import (
     workspaces,
 )
 from ddd.lsp.protocol import (
+    INVALID_PARAMS,
     METHOD_NOT_FOUND,
     REQUEST_FAILED,
     MessageError,
@@ -71,8 +73,30 @@ _CODE_ACTION: Final = "textDocument/codeAction"
 
 
 def uri_to_path(uri: str) -> Path:
-    """The file a ``file://`` uri names, undoing the escaping a client applies to it."""
-    return Path(url2pathname(unquote(urlparse(uri).path)))
+    """The file a ``file://`` uri names, undoing the escaping a client applies to it.
+
+    ``url2pathname`` unescapes on its way, so nothing may unescape before it: doing both
+    decoded a percent sequence twice and named a different file, which made this the inverse
+    of ``Path.as_uri()`` for every path except the ones that actually needed escaping. A
+    document called ``a%20b.ddd.json`` came back as ``a b.ddd.json``, and the diagnostics
+    published for it went out under a uri the client could match to nothing on screen.
+    """
+    return Path(url2pathname(urlparse(uri).path))
+
+
+def _field[T](value: Any, wanted: type[T], named: str) -> T:
+    """One field of the client's message, or a refusal that names what was wrong with it.
+
+    Every field a handler reads goes through here rather than being indexed, because these
+    are somebody else's bytes and not this server's invariant. The analysis stays unguarded
+    on purpose - the module docstring says why - but a frame that arrives without the
+    ``params`` every editor sends is not a defect in the checks, and taking the conversation
+    down over one costs the reader every DDD finding on screen until they restart the server.
+    """
+    if not isinstance(value, wanted):
+        msg = f"'{named}' is missing or is not {wanted.__name__}"
+        raise MessageError(INVALID_PARAMS, msg)
+    return value
 
 
 class Server:
@@ -93,6 +117,28 @@ class Server:
         self._announced: tuple[tuple[str, str], ...] | None = None
         """What was last said about the configured projects, so it is not said every save."""
 
+        self._builds: list[BuildInfo] | None = None
+        """The build records, found once and kept until the next refresh.
+
+        Finding them means walking every configured build directory looking for the record,
+        and a build directory holds tens of thousands of object files. Doing that per hover -
+        which is what asking :func:`discover` in each handler amounted to - put a directory
+        walk behind a gesture that is supposed to feel like a tooltip.
+        """
+
+        self._projects: dict[Path, list[Workspace]] = {}
+        """The projects containing each document, loaded once and kept until the next refresh.
+
+        The same reasoning one level up: answering a hover used to read and validate every
+        description file of every image the component is linked into, twice over - the
+        external type lookup and the resolution each walked the projects from scratch.
+
+        Keeping them is sound precisely because of what this server already promises: it reads
+        from disk at open and at save and nowhere else, which is what its ``textDocumentSync``
+        tells the client. Between two saves the answer cannot have changed, so the second
+        question is entitled to the first one's answer; :meth:`_forget` is where that stops.
+        """
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
 
@@ -110,7 +156,18 @@ class Server:
             except ProtocolError as fault:
                 print(f"ddd: {fault}", file=sys.stderr)
                 return 1
-            if message is None or not self._handle(message):
+            if message is None:
+                return 0
+            try:
+                keep_going = self._handle(message)
+            except MessageError as fault:
+                # The frame was read and the method understood; what the client sent with it
+                # was not the shape the method takes. A request gets that as its answer and a
+                # notification gets nothing, which is what a notification always gets - and
+                # either way the next message is still read.
+                write_message(self.writer, error(message.get("id"), fault.code, str(fault)))
+                continue
+            if not keep_going:
                 return 0
 
     def _handle(self, message: dict[str, Any]) -> bool:
@@ -125,18 +182,18 @@ class Server:
         elif method == "exit":
             return False
         elif method in _REFRESHING:
-            self.refresh(uri_to_path(message["params"]["textDocument"]["uri"]))
+            self.refresh(self._document(message))
         elif method in _NAVIGATING:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
         elif method == _HOVER:
-            write_message(self.writer, response(request_id, self._hover(message["params"])))
+            write_message(self.writer, response(request_id, self._hover(message)))
         elif method == _PREPARE_RENAME:
-            prepared = self._prepare_rename(message["params"])
+            prepared = self._prepare_rename(message)
             write_message(self.writer, response(request_id, prepared))
         elif method == _RENAME:
-            self._answer_rename(request_id, message["params"])
+            self._answer_rename(request_id, message)
         elif method == _CODE_ACTION:
-            write_message(self.writer, response(request_id, self._actions(message["params"])))
+            write_message(self.writer, response(request_id, self._actions(message)))
         elif request_id is not None:
             # A request always gets an answer, even a refusal: a client that is still waiting
             # on one looks exactly like a server that has died.
@@ -145,6 +202,45 @@ class Server:
             )
         return True
 
+    def _document(self, message: dict[str, Any]) -> Path:
+        """The file a request is about."""
+        params = _field(message.get("params"), dict, "params")
+        target = _field(params.get("textDocument"), dict, "params.textDocument")
+        return uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri"))
+
+    def _at(self, message: dict[str, Any], key: str = "position") -> dict[str, int]:
+        """The position a request is about, which a code action sends as the start of a range."""
+        params = _field(message.get("params"), dict, "params")
+        where = _field(params.get(key), dict, f"params.{key}")
+        if key == "range":
+            where = _field(where.get("start"), dict, "params.range.start")
+        for axis in ("line", "character"):
+            _field(where.get(axis), int, f"params.{key}.{axis}")
+        return where
+
+    def _builds_now(self) -> list[BuildInfo]:
+        """The build records, found once per refresh rather than once per keypress."""
+        if self._builds is None:
+            self._builds = discover(self.root, self.build_directories)
+        return self._builds
+
+    def _projects_of(self, document: Path) -> list[Workspace]:
+        """The projects containing a document, loaded once per refresh."""
+        found = self._projects.get(document)
+        if found is None:
+            found = workspaces(self._builds_now(), document, self.root)
+            self._projects[document] = found
+        return found
+
+    def _forget(self) -> None:
+        """Drop what was read from disk, because it is about to be read again.
+
+        Called wherever the files may no longer be what they were: at every refresh, which is
+        a save or an open, and after a rename, which rewrites them from here.
+        """
+        self._builds = None
+        self._projects.clear()
+
     def refresh(self, document: Path) -> None:
         """Re-run the checks and publish what they say about every file involved.
 
@@ -152,7 +248,8 @@ class Server:
         linked into two images is in two projects and they need not agree, and the answer to
         which one the reader cares about is "both": whichever is broken is broken.
         """
-        builds = discover(self.root, self.build_directories)
+        self._forget()
+        builds = self._builds_now()
         self._announce(builds)
         # A record naming a project that is not there is dropped rather than analysed. Running
         # it produces one finding, "file does not exist", published against a file nobody can
@@ -211,13 +308,12 @@ class Server:
         answerable - a description, a number, whitespace - gives an empty list, which a client
         reads as "no jump from here" and shows as nothing happening.
         """
-        params = message["params"]
-        path = uri_to_path(params["textDocument"]["uri"])
+        path = self._document(message)
         cache: dict[Path, Document] = {}
         document = read(path, cache)
-        pointer = document.pointer_at(params["position"])
+        pointer = document.pointer_at(self._at(message))
         found: list[Site] = []
-        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
+        for workspace in self._projects_of(path):
             built = index(workspace)
             if method == _DEFINITION:
                 found.extend(definition(built, document, path, pointer))
@@ -225,15 +321,15 @@ class Server:
                 found.extend(references(built, document, pointer))
         return locations(found, cache)
 
-    def _hover(self, params: dict[str, Any]) -> dict[str, Any] | None:
+    def _hover(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """What the variable under the cursor turned out to be, once the project is resolved.
 
         ``None`` where there is nothing to say - a description, a number, whitespace, or a
         name no component declares - which a client shows by doing nothing at all.
         """
-        path = uri_to_path(params["textDocument"]["uri"])
+        path = self._document(message)
         document = read(path, {})
-        pointer = document.pointer_at(params["position"])
+        pointer = document.pointer_at(self._at(message))
         # A dimension spelled as a constant name is about the constant, not about the
         # object dimensioned by it - the reference wins over the declaration holding it,
         # exactly as an axis reference does for navigation. A type name answers as an
@@ -244,12 +340,12 @@ class Server:
         name = subject_at(document, pointer)
         if constant is None and named_type is None and name is None:
             return None
-        builds = discover(self.root, self.build_directories)
+        projects = self._projects_of(path)
         described = None
         if named_type is not None:
-            described = describe_external(builds, path, named_type, self.root)
+            described = describe_external(projects, named_type)
         if described is None and (constant is not None or name is not None):
-            dictionary = resolve(builds, path, self.root)
+            dictionary = resolve(projects)
             if dictionary is not None:
                 if constant is not None:
                     described = describe_constant(dictionary, constant)
@@ -262,7 +358,7 @@ class Server:
             "range": document.range_of(pointer),
         }
 
-    def _prepare_rename(self, params: dict[str, Any]) -> dict[str, Any] | None:
+    def _prepare_rename(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Whether a rename may start here, and over which characters.
 
         Narrow where hovering is wide, and for a reason rather than out of caution: the editor
@@ -270,32 +366,33 @@ class Server:
         range would be a name several lines away, and a box appearing somewhere the pointer is
         not is worse than no box at all.
         """
-        path = uri_to_path(params["textDocument"]["uri"])
+        path = self._document(message)
         document = read(path, {})
-        pointer = document.pointer_at(params["position"])
+        pointer = document.pointer_at(self._at(message))
         name = variable_at(document, pointer)
         if name is None:
             return None
         span = document.text_range_of(pointer)
         return None if span is None else {"range": span, "placeholder": name}
 
-    def _answer_rename(self, request_id: Any, params: dict[str, Any]) -> None:
+    def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
         """Rewrite a name everywhere the project writes it, or say why it cannot be.
 
         A refusal is an error rather than an empty edit: an editor shows the message, where an
         empty edit looks like a rename that quietly did nothing.
         """
-        path = uri_to_path(params["textDocument"]["uri"])
+        path = self._document(message)
         cache: dict[Path, Document] = {}
         document = read(path, cache)
-        pointer = document.pointer_at(params["position"])
-        wanted = params["newName"]
+        pointer = document.pointer_at(self._at(message))
+        params = _field(message.get("params"), dict, "params")
+        wanted = _field(params.get("newName"), str, "params.newName")
         changes: dict[str, list[dict[str, Any]]] = {}
         # A component linked into two images is in two projects, and both of them mention the
         # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
         # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
-        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
+        for workspace in self._projects_of(path):
             built = index(workspace)
             refused = rename_problem(built, wanted)
             if refused is not None:
@@ -308,21 +405,25 @@ class Server:
                     if where not in seen:
                         seen.add(where)
                         changes.setdefault(uri, []).append(edit)
+        # The edits rewrite the very files every answer above was read out of, so anything
+        # kept from before them now describes the past.
+        self._forget()
         write_message(self.writer, response(request_id, {"changes": changes}))
 
-    def _actions(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+    def _actions(self, message: dict[str, Any]) -> list[dict[str, Any]]:
         """What can be offered for the key under the cursor.
 
         The range a client sends covers a selection rather than a point, so the start of it is
         what decides: an author asking for a fix has put the caret on the thing they mean.
         """
-        path = uri_to_path(params["textDocument"]["uri"])
+        path = self._document(message)
         cache: dict[Path, Document] = {}
         document = read(path, cache)
-        pointer = document.pointer_at(params["range"]["start"])
+        pointer = document.pointer_at(self._at(message, "range"))
+        params = _field(message.get("params"), dict, "params")
         reported = params.get("context", {}).get("diagnostics", [])
         offered: list[dict[str, Any]] = []
-        for workspace in workspaces(discover(self.root, self.build_directories), path, self.root):
+        for workspace in self._projects_of(path):
             offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
         return offered
 

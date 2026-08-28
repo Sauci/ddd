@@ -1072,6 +1072,36 @@ class _Analysis:
         """
         return _did_you_mean(named, tuple(sorted(self._constants)), cutoff=0.6)
 
+    def _refuse(
+        self,
+        check: str,
+        message: str,
+        location: Location,
+        name: str,
+        notes: Sequence[tuple[str, Location | None]] = (),
+    ) -> None:
+        """Report why a declaration cannot resolve, and what the silence costs when it is not.
+
+        Every finding routed through here drops the declaration: an array of no known length,
+        a variable of a type nobody declares, a structure used where its shape does not fit -
+        none of them is something anything downstream can reason about. Dropping is right, and
+        it does not depend on the severity the finding is given, which is where relaxing one
+        turns into a hazard: with the cause silenced, ``ddd list`` prints a table one row short
+        and exits zero, and ``ddd dump`` archives a dictionary the variable is missing from.
+
+        So the consequence is reported even when the cause is not - and only then, because a
+        finding that already says the declaration could not resolve does not want it twice.
+        """
+        if self._bag.add(check, message, location, notes) is not None:
+            return
+        self._bag.add(
+            "incomplete-project",
+            f"'{name}' is not in the data dictionary: the {check} that says why is not "
+            f"reported, so nothing reading the dictionary - the listing, the dump, every "
+            f"backend - carries it either",
+            location,
+        )
+
     def _shape_resolves(self, ref: DeclarationRef) -> bool:
         """Whether every constant this declaration's shape names is declared.
 
@@ -1083,11 +1113,12 @@ class _Analysis:
         resolves = True
         for named, key in spelled_dimensions(ref.definition):
             if named not in self._constants:
-                self._bag.add(
+                self._refuse(
                     "unknown-constant",
                     f"'{ref.name}' is dimensioned by '{named}', which is not a constant any "
                     f"file of this project declares{self._nearest_constant(named)}",
                     ref.location(f"definition.{key}"),
+                    ref.name,
                 )
                 resolves = False
         return resolves
@@ -1120,11 +1151,12 @@ class _Analysis:
             return ref if self._limits_stay_finite(ref) else None
         declared = self._types.get(named)
         if declared is None:
-            self._bag.add(
+            self._refuse(
                 "unknown-type",
                 f"'{ref.name}' is declared as '{named}', which is neither a base datatype nor a "
                 f"type any file of this project declares{self._nearest_type(named)}",
                 ref.location("definition.typename"),
+                ref.name,
             )
             return None
         entry = declared.declared
@@ -1133,11 +1165,12 @@ class _Analysis:
             # type is perfectly good, and the use made of it is not. DDD knows neither the
             # layout nor the meaning of an external type, so a whole variable of one is a
             # definition the checks could say nothing about.
-            self._bag.add(
+            self._refuse(
                 "type-kind",
                 f"'{ref.name}' is declared as '{named}', but that is an external type, whose "
                 f"layout and meaning DDD does not know; only a structure member may name one",
                 ref.location("definition"),
+                ref.name,
                 notes=[("declared here", declared.location())],
             )
             return None
@@ -1195,10 +1228,11 @@ class _Analysis:
             problem = "the initial value of a structure is written by the code that starts it"
         if problem is None:
             return True
-        self._bag.add(
+        self._refuse(
             "type-kind",
             f"'{ref.name}' is declared as the structure '{named}', but {problem}",
             ref.location("definition"),
+            ref.name,
             notes=[("declared here", declared.location())],
         )
         return False
@@ -1735,7 +1769,16 @@ class _Analysis:
                         owner=instance.owner,
                         consumers=instance.consumers,
                         local=instance.local,
-                        a2l=member.a2l,
+                        # Both answers, resolved into the one the leaf is published under.
+                        # The whole object's export reaches its members the way its storage
+                        # class does: an instance kept out of the a2l takes every member
+                        # with it, and a leaf carrying only the member's own opinion left
+                        # the two halves for the a2l backend to put back together - so
+                        # everything else, ``ddd compare`` included, read one half and
+                        # believed it.
+                        a2l=member.a2l.model_copy(
+                            update={"export": instance.a2l.exported and member.a2l.exported}
+                        ),
                     )
                 )
                 continue

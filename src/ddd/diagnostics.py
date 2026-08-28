@@ -151,7 +151,13 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "two variables differ only in upper/lower case"),
         _check("a2l-unrepresentable", Severity.WARNING,
                "an object cannot be described by the a2l version that is generated"),
+        _check("address-missing", Severity.WARNING,
+               "an object reaching the a2l has no entry in the address map the run was given"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
+        _check("incomplete-project", Severity.INFO,
+               "a declaration is missing from the dictionary and the finding that explains "
+               "why is not reported",
+               needs_every_component=True),
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it"),
         _check("changed-interface", Severity.ERROR,

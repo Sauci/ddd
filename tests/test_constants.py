@@ -288,6 +288,29 @@ class TestTheCheck:
         assert checks(bag) == ["unknown-constant"]
         assert not bag.has_errors
 
+    def test_silencing_the_finding_says_what_the_silence_costs(self, tree: Path) -> None:
+        """Relaxing the check does not put the variable back; it only hides why it went.
+
+        The declaration is still dropped - a dimension without a value is an array of no
+        known length, whatever severity the finding is given - so with nothing said, ``ddd
+        list`` prints a table one row short and exits zero, and ``ddd dump`` archives a
+        dictionary a variable is missing from. That is the one way this tool can be wrong
+        without anybody being told, so the consequence is reported even when its cause is not.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(declare("local", "X", dimensions=["MISSING"])),
+            severities=["unknown-constant=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        assert "'X' is not in the data dictionary" in messages(bag)
+        assert dictionary is not None and dictionary.objects == ()
+
+    def test_a_reported_finding_needs_no_second_one(self, tree: Path) -> None:
+        """The error already says the variable could not resolve; saying it twice is noise."""
+        _, bag = run_analysis(tree, self.files(declare("local", "X", dimensions=["MISSING"])))
+        assert checks(bag) == ["unknown-constant"]
+
     def test_an_ignored_unknown_constant_keeps_the_shape_free_findings(self, tree: Path) -> None:
         """Silencing the shape finding must not silence what the shape never decided: the
         declaration stays out of the dictionary, but an init outside the datatype is wrong
@@ -297,7 +320,7 @@ class TestTheCheck:
             self.files(declare("local", "X", dimensions=["MISSING"], init=999)),
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["init-invalid"]
+        assert checks(bag) == ["incomplete-project", "init-invalid"]
         assert "does not fit into uint8" in messages(bag)
         assert dictionary is not None
         assert dictionary.objects == ()
@@ -1056,7 +1079,15 @@ class TestTheEditor:
             "init-invalid"
         }
 
-    def test_exactly_seven_checks_need_every_component(self) -> None:
+    def test_exactly_eight_checks_need_every_component(self) -> None:
+        """``incomplete-project`` is one of them, and has to be.
+
+        It reports that a declaration is missing from the dictionary, which is true of a file
+        read on its own for the same reason the other seven are wrong about one: the constant
+        or the type is declared, in a file only the project lists. In a run that was shown the
+        whole project it is the finding that stops a relaxed check from quietly shrinking the
+        dictionary.
+        """
         from ddd.diagnostics import CHECKS
 
         assert {name for name, check in CHECKS.items() if check.needs_every_component} == {
@@ -1067,4 +1098,5 @@ class TestTheEditor:
             "missing-producer",
             "unknown-reference",
             "unused-output",
+            "incomplete-project",
         }

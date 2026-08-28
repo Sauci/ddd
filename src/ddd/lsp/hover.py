@@ -20,14 +20,12 @@ knowing about it:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Final
 
 from ddd.analysis import analyze
-from ddd.build_info import BuildInfo
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.lsp.navigation import workspaces
+from ddd.loading import Workspace
 from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
@@ -76,20 +74,19 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
     return [values[start : start + width] for start in range(0, len(values), width)]
 
 
-def resolve(
-    builds: Sequence[BuildInfo], document: Path, root: Path | None = None
-) -> DataDictionary | None:
-    """The resolved project containing the document, or nothing if none resolves.
+def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
+    """The first of these projects, resolved, or nothing when there are none.
 
-    Resolved on the spot rather than kept, for the reason navigation is: a hover is something
-    a person asked for by putting the pointer somewhere and waiting, so the work lands on a
-    gesture they chose to make.
+    Takes the loaded projects rather than the build records that lead to them, because
+    finding them is the expensive half and the caller asks several questions of one answer:
+    this and :func:`describe_external` used to walk the file tree from scratch apiece, for
+    one hover.
 
     A project that did not read cleanly is still resolved here, unlike in a run of the checks.
     The findings will already be saying what is wrong with it; refusing to answer what a
     variable is on top of that helps nobody.
     """
-    for workspace in workspaces(builds, document, root):
+    for workspace in projects:
         return analyze(workspace, DiagnosticBag())
     return None
 
@@ -110,9 +107,7 @@ def describe_constant(dictionary: DataDictionary, name: str) -> str | None:
     return "\n".join(lines)
 
 
-def describe_external(
-    builds: Sequence[BuildInfo], document: Path, name: str, root: Path | None = None
-) -> str | None:
+def describe_external(projects: Sequence[Workspace], name: str) -> str | None:
     """The markdown for one external type, or nothing when no project declares that name so.
 
     Answered from the loaded workspace rather than from the resolved dictionary, because an
@@ -121,7 +116,7 @@ def describe_external(
     is exactly what the description states, and the header is the half that lives in another
     file from the member naming the type.
     """
-    for workspace in workspaces(builds, document, root):
+    for workspace in projects:
         for entry in workspace.types:
             declared = entry.declared
             if isinstance(declared, ExternalType) and declared.name == name:

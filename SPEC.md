@@ -975,10 +975,26 @@ Warnings:
   today that is an array of more than three dimensions, which the `MATRIX_DIM` of
   version 1.6.1 cannot carry. The check fires only for an object the A2L exports, and the
   emitted file writes every dimension out regardless, which a 1.7 reader accepts.
+- `address-missing`: an object the A2L carries has no entry in the address map the run was
+  given. It fires only when a map is supplied: without one every address is zero by
+  construction, which is the run a build makes before it has linked anything. With one, a
+  symbol the map omits is written at address zero, and a calibration tool reads and writes
+  there as readily as anywhere else. The entries of the map that match no object are named
+  in a note, because a renamed object usually loses its address and leaves its old spelling
+  behind in the same file.
 
 Information:
 
 - `empty-component`: a component declares no data object at all.
+- `incomplete-project`: a declaration was dropped and the finding that explains why is
+  set to `ignore`. Dropping is not a severity decision: a variable of an unknown type,
+  or one dimensioned by a constant nothing declares, has no storage anything downstream
+  can reason about, so it stays out of the dictionary whatever the cause is reported as.
+  Relaxing the cause therefore does not restore the variable, it only hides its absence -
+  and an absence nothing mentions reaches `ddd list` as a table one row short, `ddd dump`
+  as an archived dictionary missing an object, and every backend as generated files that
+  never declare it. This check fires only when the cause is silenced; a reported cause
+  already says the declaration could not resolve.
 
 ### 4.1 Comparing two deliveries
 

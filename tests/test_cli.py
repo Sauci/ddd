@@ -188,11 +188,20 @@ class TestGenerate:
     def test_the_artefact_is_not_optional(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A bare `ddd generate PROJECT` predates the artefacts; the error names them."""
+        """A bare `ddd generate PROJECT` predates the artefacts; the error names them.
+
+        Asserted as three names in the message rather than as one spelling of the list,
+        because the spelling is argparse's and it moves: 3.13 writes ``choose from 'c',
+        'a2l', 'all'`` and 3.12.14 writes ``choose from c, a2l, all``. Both name the three
+        artefacts, which is the whole of what this command promises the reader.
+        """
         with pytest.raises(SystemExit) as exit_code:
             main(["generate", str(DEMO), "-o", str(tmp_path / "gen"), "-t", str(TEMPLATES)])
         assert exit_code.value.code == EXIT_USAGE
-        assert "'c', 'a2l', 'all'" in capsys.readouterr().err
+        reported = capsys.readouterr().err
+        assert "invalid choice" in reported
+        offered = reported.split("choose from", 1)[1]
+        assert all(artefact in offered for artefact in ("c", "a2l", "all"))
 
     def test_refuses_an_inconsistent_project(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
@@ -460,6 +469,125 @@ class TestGenerate:
             ]
         )
         assert "ECU_ADDRESS 0x20001000" in (output / "DemoDevice.a2l").read_text(encoding="utf-8")
+
+    def test_a_symbol_the_address_map_leaves_out_is_reported(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Address zero is what a missing entry silently became, on every object at once.
+
+        The map is written by a linker script or a patch tool against the names of one build,
+        so a renamed variable or a stale file covers some of the objects and not the rest -
+        and the a2l that comes out points a calibration tool at 0x00000000 without anything
+        in the run saying so.
+        """
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK
+        assert "address-missing" in captured
+        assert "ValueE" not in captured.split("address-missing", 1)[1].splitlines()[0]
+
+    def a2l_symbols(self, written: str) -> list[str]:
+        """Every record of an emitted a2l, read back out of the file it was written to.
+
+        Read rather than asked for, so that what the check compares against is the file a
+        calibration tool would open and not a second opinion from the same function.
+        """
+        wanted = [["/begin", kind] for kind in ("MEASUREMENT", "CHARACTERISTIC", "AXIS_PTS")]
+        return [line.split()[2] for line in written.splitlines() if line.split()[:2] in wanted]
+
+    def test_a_complete_address_map_is_not_reported(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        addresses = tmp_path / "addresses.json"
+        output = tmp_path / "gen"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(output)]) == EXIT_OK
+        symbols = self.a2l_symbols((output / "DemoDevice.a2l").read_text(encoding="utf-8"))
+        assert symbols, "the demo project has records to address"
+        addresses.write_text(json.dumps(dict.fromkeys(symbols, "0x20001000")), encoding="utf-8")
+        capsys.readouterr()
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen2"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        assert code == EXIT_OK
+        assert "address-missing" not in capsys.readouterr().err
+
+    def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Usually the other half of one mistake: the old spelling of the renamed symbol."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueEE": "0x20001000"}', encoding="utf-8")
+        main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert "the map also carries 'ValueEE', which the a2l does not" in captured
+
+    def test_a_project_that_cannot_be_read_generates_nothing(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"broken.ddd.json": "{ not json"})
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(tmp_path / "broken.ddd.json"),
+                "-o",
+                str(tmp_path / "gen"),
+            ]
+        )
+        assert code == EXIT_FINDINGS
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_missing_address_fails_a_strict_run(self, tmp_path: Path) -> None:
+        """What a post-link build wants: the map covers the file, or the build stops."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        assert code == EXIT_FINDINGS
+
+    def test_no_address_map_reports_nothing(self, tmp_path: Path) -> None:
+        """Without a map every address is zero on purpose: this is the pre-link run."""
+        code = main(["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen"), "--strict"])
+        assert code == EXIT_OK
 
     def test_broken_address_map(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         addresses = tmp_path / "addresses.json"

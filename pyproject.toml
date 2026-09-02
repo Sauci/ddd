@@ -102,6 +102,12 @@ exclude_also = [
 line-length = 100
 src = ["src", "tests"]
 target-version = "py312"
+# docs/superpowers/ holds planning documents whose python fragments are deliberately partial -
+# a tuple entry, a dict entry, meant to be read alongside the prose rather than run on their
+# own. Ruff formats python code blocks inside markdown, and rewrites those fragments into
+# something that no longer matches the surrounding explanation; excluding the directory is
+# what keeps `ruff format --check .` a real gate on the code instead of on the planning notes.
+exclude = ["docs/superpowers"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "PTH", "C4"]

@@ -234,3 +234,83 @@ class TestStructuredVariables:
         dictionary, bag = run_analysis(tree, files)
         assert dictionary is not None, messages(bag)
         assert {leaf.raster for leaf in dictionary.leaves} == {"10ms"}
+
+    def test_a_component_default_reaches_a_structured_measurement_it_produces(
+        self, tree: Path
+    ) -> None:
+        """The component default resolves a structured variable exactly as it resolves a
+        plain one; _instance_raster carries the same rule Variable.raster does."""
+        files = {
+            "project.ddd.json": project("P", "r.ddd.json", "t.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters(raster("10ms", 1)),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "name": "Pair_t",
+                        "type": "struct",
+                        "members": [
+                            {
+                                "name": "a",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                            {
+                                "name": "b",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component("A", declare("local", "S", typename="Pair_t"), raster="10ms"),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, messages(bag)
+        (instance,) = dictionary.instances
+        assert instance.raster == "10ms"
+        assert {leaf.raster for leaf in dictionary.leaves} == {"10ms"}
+
+    def test_a_component_default_does_not_reach_a_structured_calibration_object(
+        self, tree: Path
+    ) -> None:
+        """No daq list carries a parameter, structured or not - the component default is a
+        blanket statement about measurements alone, exactly as it is for a plain object."""
+        files = {
+            "project.ddd.json": project("P", "r.ddd.json", "t.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters(raster("10ms", 1)),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "name": "Pair_t",
+                        "type": "struct",
+                        "members": [
+                            {
+                                "name": "a",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                            {
+                                "name": "b",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A",
+                declare("local", "S", typename="Pair_t", kind="parameter"),
+                raster="10ms",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, messages(bag)
+        (instance,) = dictionary.instances
+        assert instance.raster is None
+        assert {leaf.raster for leaf in dictionary.leaves} == {None}

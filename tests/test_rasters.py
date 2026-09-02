@@ -391,6 +391,24 @@ class TestTheAuthorityChecks:
         assert checks(bag) == ["raster-kind"]
         assert "no daq list carries" in messages(bag)
 
+    def test_the_message_names_the_kind_without_inflecting_it(self, tree: Path) -> None:
+        """'value_block' is not a singular noun, so the kind sits in parentheses rather than
+        after 'is a' - the shape 'added-object' already uses in compare.py, for the same
+        reason."""
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                component(
+                    "A",
+                    declare(
+                        "local", "V", "uint8", kind="value_block", dimensions=[2, 3], raster="1ms"
+                    ),
+                )
+            ),
+        )
+        assert checks(bag) == ["raster-kind"]
+        assert "'V' (value_block) states the raster '1ms'" in messages(bag)
+
     def test_a_producer_stating_a_raster_is_clean(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,

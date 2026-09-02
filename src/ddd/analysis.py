@@ -1428,7 +1428,7 @@ class _Analysis:
         if definition.raster is not None and definition.is_calibration:
             self._bag.add(
                 "raster-kind",
-                f"'{definition.name}' is a {definition.kind.value} and states the raster "
+                f"'{definition.name}' ({definition.kind.value}) states the raster "
                 f"'{definition.raster}', but no daq list carries a calibration object",
                 ref.location("definition.raster"),
             )

@@ -27,9 +27,74 @@ from ddd.models import Datatype, ObjectKind
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
+EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encoding="utf-8")
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
 PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
 DOCS_URL = "https://sauci.github.io/ddd/"
+
+PROJECT_WIDE_DOCUMENTS = {
+    "SPEC.md": (SPEC, "`"),
+    "docs/editor_integration.rst": (EDITOR_INTEGRATION, "``"),
+}
+"""The documents stating how many checks need every component, each with its own quoting.
+
+Markdown writes a check name in single backticks and reStructuredText in double ones, which
+is the only difference between reading the two.
+"""
+
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+"""Enough number words to spell how many checks need the whole project, in prose."""
+
+
+def flattened(text: str) -> str:
+    """One document with its line breaks flattened, so a claim can be matched across them.
+
+    The prose is wrapped by hand, so any sentence long enough to be worth checking is split
+    over lines at a position nothing in particular decides.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
+def project_wide_checks() -> list[str]:
+    """The checks that reach the wrong answer when a component of the project is missing."""
+    return [name for name, info in CHECKS.items() if info.needs_every_component]
+
+
+def project_wide_counts(text: str) -> list[str]:
+    """The number word of every "N checks ... need every component" claim of one document."""
+    return re.findall(r"(\w+) checks(?: that)? need every component of a project", flattened(text))
+
+
+def project_wide_enumerations(text: str, tick: str) -> list[list[str]]:
+    """The check names each such claim goes on to list, for the claims that list them.
+
+    The enumeration is read as the run of quoted identifiers that follows the claim, so a
+    name dropped from the list, or one invented for it, differs from ``CHECKS`` here instead
+    of waiting for a reader who happens to know the registry by heart.
+    """
+    marker = re.escape(tick)
+    item = f"{marker}[a-z][a-z0-9-]*{marker}"
+    claim = re.compile(
+        r"\w+ checks(?: that)? need every component of a project"
+        rf"[^`]{{0,40}}?({item}(?:(?:,| and) {item})+)"
+    )
+    return [
+        re.findall(f"{marker}([a-z][a-z0-9-]*){marker}", found)
+        for found in claim.findall(flattened(text))
+    ]
 
 
 def commands() -> list[str]:
@@ -74,6 +139,38 @@ class TestChecks:
             "ddd-compile",
             "ddd-tool",
         }, f"README mentions unknown checks: {sorted(unknown)}"
+
+    @pytest.mark.parametrize("name", sorted(PROJECT_WIDE_DOCUMENTS))
+    def test_the_checks_needing_every_component_are_counted_as_the_registry_counts_them(
+        self, name: str
+    ) -> None:
+        """A count spelled out in prose is the claim a reader cannot check while reading.
+
+        Both documents state it, and one of them states it twice - the language server holds
+        back exactly the checks that declare they need the whole project, so a check gaining
+        or losing that flag makes every one of those sentences wrong at once.
+        """
+        document, _ = PROJECT_WIDE_DOCUMENTS[name]
+        expected = len(project_wide_checks())
+        counts = project_wide_counts(document)
+        assert counts, f"{name} no longer says how many checks need every component"
+        for word in counts:
+            assert NUMBER_WORDS[word.lower()] == expected, (
+                f"{name} says {word} checks need every component of a project, and {expected} do"
+            )
+
+    @pytest.mark.parametrize("name", sorted(PROJECT_WIDE_DOCUMENTS))
+    def test_the_checks_needing_every_component_are_named_as_the_registry_names_them(
+        self, name: str
+    ) -> None:
+        """Each document also lists them once, and a list is a second thing that can drift."""
+        document, tick = PROJECT_WIDE_DOCUMENTS[name]
+        expected = project_wide_checks()
+        enumerations = project_wide_enumerations(document, tick)
+        assert len(enumerations) == 1, f"{name} enumerates them {len(enumerations)} times, not once"
+        assert sorted(enumerations[0]) == sorted(expected), (
+            f"{name} lists {sorted(enumerations[0])}; the registry says {sorted(expected)}"
+        )
 
 
 class TestCommands:

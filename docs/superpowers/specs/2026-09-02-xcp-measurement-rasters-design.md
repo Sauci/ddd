@@ -326,6 +326,27 @@ named in both `README.md` and `SPEC.md`. Beyond that:
   transport that reaches it.
 - `CHANGELOG.md`, including the dictionary format bump.
 
+Six more pages describe the world before rasters, and this list missed every one of them.
+They were found by the whole-branch review rather than by the plan, and are recorded here so
+that the next feature adding a file kind starts from the full set:
+
+- `docs/data_dictionary.rst`, which embeds a copy of the dictionary schema and walks its top
+  level key by key;
+- `docs/comparing_deliveries.rst`, which counts the properties `changed-storage` covers, in
+  its table and again in the prose below it;
+- `docs/generated_artefacts.rst`, the chapter describing what a generated a2l contains,
+  record by record;
+- `docs/editor_integration.rst`, which enumerates the checks the language server holds back
+  when it checks a file belonging to no project;
+- `docs/data_contracts.rst` and `docs/file_formats/project.rst`, which list what `ddd schema`
+  publishes and what an `includes` may name. The same lists appear in `SPEC.md` sections 3
+  and 3.1, and were missed there too.
+
+The shape of the miss is worth naming: a new file kind is not one page but an entry in every
+enumeration of the kinds, and every count derived from one. `tests/test_documentation.py` now
+holds both documents that count the checks needing the whole project - and the list each of
+them gives - to the registry, which is the part of this a test can carry.
+
 ## 11 Deferred
 
 - **The module level `DAQ` block.** A `daq` key beside `rasters` in the same file, carrying the

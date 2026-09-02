@@ -85,6 +85,13 @@ class MeasurementView:
     matrix_dim: str | None
     format: str | None
     display_identifier: str | None
+    event: int | None
+    """XCP event channel of the object's raster, or nothing when it named none.
+
+    The number rather than the name: the a2l refers to an event by channel, and the name
+    belongs to the module level definition this backend does not write.
+    """
+
     component: str
     condition: str | None
     """Preprocessor condition of the object; a2l cannot express it, so it is a comment."""
@@ -218,6 +225,7 @@ class _A2lModelBuilder:
         self._exported = self._resolve_exported()
         self._methods = _CompuMethodBuilder()
         self._layouts = _RecordLayoutBuilder()
+        self._events = {entry.raster: entry.event for entry in dictionary.rasters}
 
     def build(self, generator: str) -> A2lModel:
         dictionary = self._dictionary
@@ -342,6 +350,7 @@ class _A2lModelBuilder:
             matrix_dim=_matrix_dim(entry),
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
+            event=self._events.get(entry.raster) if entry.raster else None,
             component=entry.owner or "",
             condition=entry.condition,
         )

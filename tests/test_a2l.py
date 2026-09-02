@@ -185,3 +185,88 @@ class TestHelpers:
         path.write_text("[1, 2]", encoding="utf-8")
         with pytest.raises(ValueError, match="expected a json object"):
             load_address_map(path)
+
+
+class TestMeasurementRasters:
+    def a2l_with_rasters(self, tree: Path, *declarations: dict[str, Any], **extra: Any) -> str:
+        files = {
+            "project.ddd.json": project("Device", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+            "a.ddd.json": component("A", *declarations, description="a component", **extra),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    def test_a_measurement_carries_its_event(self, tree: Path) -> None:
+        content = self.a2l_with_rasters(tree, declare("local", "X", raster="10ms"))
+        assert "/begin IF_DATA XCP" in content
+        assert "/begin DAQ_EVENT VARIABLE" in content
+        assert "/begin DEFAULT_EVENT_LIST" in content
+        assert "EVENT 1" in content
+        assert content.count("/begin") == content.count("/end")
+
+    def test_event_channel_zero_still_carries_its_event(self, tree: Path) -> None:
+        """Event ``0`` is a channel like any other; a truth test on ``measurement.event``
+        would read it as "no event" and silently drop the block."""
+        files = {
+            "project.ddd.json": project("Device", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 0, "cycle": "10ms"}]},
+            "a.ddd.json": component(
+                "A", declare("local", "X", raster="10ms"), description="a component"
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert "/begin IF_DATA XCP" in content
+        assert "EVENT 0" in content
+        assert content.count("/begin") == content.count("/end")
+
+    def test_a_measurement_without_a_raster_carries_no_if_data(self, tree: Path) -> None:
+        assert "IF_DATA" not in self.a2l_with_rasters(tree, declare("local", "X"))
+
+    def test_a_calibration_object_carries_no_if_data(self, tree: Path) -> None:
+        content = self.a2l_with_rasters(
+            tree, declare("local", "K", kind="parameter", init=1), raster="10ms"
+        )
+        assert "IF_DATA" not in content
+
+    def test_every_member_of_a_structure_carries_the_event(self, tree: Path) -> None:
+        """A structure reaches the a2l as one measurement per member, and the raster belongs
+        to the variable - so every one of them names the same event."""
+        files = {
+            "project.ddd.json": project("Device", "r.ddd.json", "t.ddd.json", "a.ddd.json"),
+            "r.ddd.json": {"rasters": [{"raster": "10ms", "event": 1, "cycle": "10ms"}]},
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "name": "Pair_t",
+                        "type": "struct",
+                        "members": [
+                            {
+                                "name": "a",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                            {
+                                "name": "b",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component("A", declare("local", "S", typename="Pair_t", raster="10ms")),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert content.count("/begin DAQ_EVENT VARIABLE") == 2
+        assert content.count("/begin") == content.count("/end")

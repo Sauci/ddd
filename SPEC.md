@@ -915,6 +915,8 @@ Errors:
   across files ([section 3.5](#35-memory-placement)).
 - `duplicate-constant`: a constant is declared more than once, within one file or across
   files ([section 3.9](#39-constant-vocabulary)).
+- `duplicate-raster`: a measurement raster is declared more than once, within one file or
+  across files.
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit, or structures
   nest each other so that neither has a size.

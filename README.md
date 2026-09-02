@@ -461,6 +461,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-unit` | a unit is declared more than once, in one file or across files |
 | error | `duplicate-section` | a memory section is declared more than once, in one file or across files |
 | error | `duplicate-constant` | a constant is declared more than once, in one file or across files |
+| error | `duplicate-raster` | a measurement raster is declared more than once, in one file or across files |
 | error | `unknown-type` | a typename names no type any file declares |
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
 | error | `unknown-section` | a definition names a memory section no file declares |

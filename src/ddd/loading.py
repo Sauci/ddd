@@ -23,6 +23,8 @@ from ddd.models import (
     ExternalType,
     Project,
     ProjectFile,
+    RasterDeclaration,
+    RastersFile,
     SectionDeclaration,
     SectionsFile,
     StructType,
@@ -42,7 +44,7 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
-FILE_KINDS = ("project", "component", "types", "units", "sections", "constants")
+FILE_KINDS = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """Top level keys that identify a description file, in the order they are offered."""
 
 _INCLUDE_ONLY_KINDS = {
@@ -54,6 +56,8 @@ _INCLUDE_ONLY_KINDS = {
     "project that places data in them instead of analysing it on its own",
     "constants": "this is a constant vocabulary; list it in the 'includes' of the project "
     "whose sizes it names instead of analysing it on its own",
+    "rasters": "this is a measurement raster description; list it in the 'includes' of the "
+    "project whose measurements name them instead of analysing it on its own",
 }
 """Why a vocabulary file is refused as the root, by kind.
 
@@ -213,6 +217,24 @@ class LoadedSection:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedRaster:
+    """One declared raster together with where it was declared."""
+
+    path: Path
+    index: int
+    """Position in the ``rasters`` list of its file, which is what the location points at."""
+
+    declared: RasterDeclaration
+
+    @property
+    def raster(self) -> str:
+        return self.declared.raster
+
+    def location(self) -> Location:
+        return Location(self.path, f"rasters[{self.index}]")
+
+
+@dataclass(frozen=True, slots=True)
 class LoadedConstant:
     """One declared constant together with where it was declared.
 
@@ -278,6 +300,14 @@ class Workspace:
     Unlike a unit, a section is a reference rather than a spelling: a definition naming one
     that no file declares is ``unknown-section``, whether or not any sections file exists -
     a section without declared properties would be a name the checks can say nothing about.
+    """
+
+    rasters: tuple[LoadedRaster, ...] = ()
+    """The measurement rasters the project declares, sorted by name.
+
+    A reference the way a section is: a definition naming one that no file declares is
+    ``unknown-raster``, whether or not any rasters file exists, because an event nothing
+    describes is a name the a2l could only write as a number nobody chose.
     """
 
     constants: tuple[LoadedConstant, ...] = ()
@@ -377,6 +407,7 @@ class _Loader:
         self._types_by_name: dict[str, LoadedType] = {}
         self._units_by_name: dict[str, LoadedUnit] = {}
         self._sections_by_name: dict[str, LoadedSection] = {}
+        self._rasters_by_name: dict[str, LoadedRaster] = {}
         self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
@@ -431,6 +462,7 @@ class _Loader:
             sections=tuple(
                 sorted(self._sections_by_name.values(), key=lambda entry: entry.section)
             ),
+            rasters=tuple(sorted(self._rasters_by_name.values(), key=lambda entry: entry.raster)),
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
         )
@@ -676,6 +708,25 @@ class _Loader:
             noun="section",
         )
 
+    def _load_rasters(self, path: Path, data: dict[str, Any]) -> None:
+        """Read a raster description and register what it declares.
+
+        A raster is registered under its name; the second file to declare ``10ms`` is refused
+        rather than merged, because the two would carry different event numbers and the one
+        that won would depend on which file loaded first.
+        """
+        self._load_vocabulary(
+            path,
+            data,
+            file_model=RastersFile,
+            entries=lambda model: model.rasters,
+            wrap=LoadedRaster,
+            key=lambda loaded: loaded.raster,
+            location=lambda loaded: loaded.location(),
+            registry=self._rasters_by_name,
+            noun="raster",
+        )
+
     def _load_constants(self, path: Path, data: dict[str, Any]) -> None:
         """Read a constant vocabulary and register what it declares.
 
@@ -781,6 +832,8 @@ class _Loader:
             self._load_units(path, data)
         elif kind == "sections":
             self._load_sections(path, data)
+        elif kind == "rasters":
+            self._load_rasters(path, data)
         elif kind == "constants":
             self._load_constants(path, data)
 

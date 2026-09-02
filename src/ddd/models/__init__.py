@@ -48,6 +48,7 @@ from ddd.models.objects import (
     spelled_dimensions,
 )
 from ddd.models.project import Project, ProjectFile
+from ddd.models.rasters import RasterDeclaration, RastersFile
 from ddd.models.reserved import C_KEYWORDS, is_reserved_identifier
 from ddd.models.sections import SectionAccess, SectionDeclaration, SectionsFile
 from ddd.models.types import (
@@ -102,6 +103,8 @@ __all__ = [
     "Parameter",
     "Project",
     "ProjectFile",
+    "RasterDeclaration",
+    "RastersFile",
     "ScalarType",
     "Scope",
     "SectionAccess",

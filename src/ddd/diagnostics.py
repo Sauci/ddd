@@ -92,6 +92,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a memory section is declared more than once, in one file or across files"),
         _check("duplicate-constant", Severity.ERROR,
                "a constant is declared more than once, in one file or across files"),
+        _check("duplicate-raster", Severity.ERROR,
+               "a measurement raster is declared more than once, in one file or across files"),
         _check("unknown-type", Severity.ERROR,
                "a typename names no type any file declares",
                needs_every_component=True),

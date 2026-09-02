@@ -50,6 +50,15 @@ class TestTheFile:
         with pytest.raises(ValidationError):
             RastersFile.model_validate(rasters(raster("Task_10ms")))
 
+    def test_a_name_of_exactly_the_xcp_event_name_length_is_accepted(self) -> None:
+        """Eight characters, which is the limit itself rather than one below it.
+
+        With only the rejection above, a limit narrowed to seven would go on passing every
+        test in this file while quietly refusing names an XCP event name carries.
+        """
+        declared = RastersFile.model_validate(rasters(raster("Task10ms"))).rasters[0]
+        assert declared.raster == "Task10ms"
+
     def test_a_name_with_whitespace_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             RastersFile.model_validate(rasters(raster("two wds")))
@@ -57,6 +66,11 @@ class TestTheFile:
     def test_an_event_number_wider_than_the_field_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             RastersFile.model_validate(rasters(raster("x", 0x10000)))
+
+    def test_the_widest_event_number_the_field_carries_is_accepted(self) -> None:
+        """0xFFFF is the last channel the field addresses, pinned for the same reason."""
+        declared = RastersFile.model_validate(rasters(raster("x", 0xFFFF))).rasters[0]
+        assert declared.event == 0xFFFF
 
     @pytest.mark.parametrize("cycle", ["10 ms", "1.5ms", "ms", "10min", ""])
     def test_a_period_that_is_not_a_count_and_a_unit_is_refused(self, cycle: str) -> None:
@@ -161,15 +175,22 @@ class TestResolution:
         assert self.resolved(dictionary, "X").raster is None
 
     def test_a_consumers_default_does_not_reach_a_variable_it_reads(self, tree: Path) -> None:
-        """The raster follows the producer: it is the producing task that updates the value."""
+        """The raster follows the producer: it is the producing task that updates the value.
+
+        The consumer is included first on purpose, so that the producer is not also the first
+        declaration loaded: an implementation reading the first declaration rather than the
+        producing one would answer '1ms' here and pass if the two were the same component.
+        A consumer's default being ignored is silent, so no finding is expected either.
+        """
         files = {
-            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json", "b.ddd.json"),
+            "project.ddd.json": project("P", "r.ddd.json", "b.ddd.json", "a.ddd.json"),
             "r.ddd.json": rasters(raster("1ms", 0), raster("10ms", 1)),
-            "a.ddd.json": component("A", declare("output", "X"), raster="10ms"),
             "b.ddd.json": component("B", declare("input", "X"), raster="1ms"),
+            "a.ddd.json": component("A", declare("output", "X"), raster="10ms"),
         }
         dictionary, bag = run_analysis(tree, files)
         assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
         assert self.resolved(dictionary, "X").raster == "10ms"
 
     def test_a_component_default_does_not_reach_a_calibration_object(self, tree: Path) -> None:
@@ -184,6 +205,7 @@ class TestResolution:
             ),
         )
         assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
         assert self.resolved(dictionary, "K").raster is None
         assert self.resolved(dictionary, "X").raster == "10ms"
 
@@ -311,6 +333,7 @@ class TestStructuredVariables:
         }
         dictionary, bag = run_analysis(tree, files)
         assert dictionary is not None, messages(bag)
+        assert checks(bag) == []
         (instance,) = dictionary.instances
         assert instance.raster is None
         assert {leaf.raster for leaf in dictionary.leaves} == {None}

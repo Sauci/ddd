@@ -214,6 +214,26 @@ class DeclarationRef:
         return self.owner.declaration_location(self.index, suffix)
 
 
+def _resolved_raster(producer: DeclarationRef | None, definition: DataObject) -> str | None:
+    """The raster of a variable: the producing declaration's own key, else its component's.
+
+    Two authored levels and no third: the producer's own key wins, the producing component's
+    default answers for everything it did not single out, and a variable nobody gave a raster
+    keeps none. A consumer's default is not consulted at all - the raster follows the
+    producer, because it is the producing task that updates the value - and a calibration
+    object takes no default, since no daq list carries one.
+
+    A plain variable resolves through :class:`Variable` and a structured one does not go
+    through it at all, so the rule lives here rather than in either: it is the central claim
+    of the feature and has one edit site.
+    """
+    if definition.raster is not None:
+        return definition.raster
+    if producer is None or definition.is_calibration:
+        return None
+    return producer.owner.component.raster
+
+
 @dataclass(frozen=True, slots=True)
 class Variable:
     """A resolved data object: one storage location plus all its users."""
@@ -255,19 +275,8 @@ class Variable:
 
     @property
     def raster(self) -> str | None:
-        """The raster of the producing declaration, else its component's default.
-
-        Two authored levels and no third: the producer's own key wins, the producing
-        component's default answers for everything it did not single out, and a variable
-        nobody gave a raster keeps none. A consumer's default is not consulted at all - the
-        raster follows the producer, because it is the producing task that updates the value
-        - and a calibration object takes no default, since no daq list carries one.
-        """
-        if self.definition.raster is not None:
-            return self.definition.raster
-        if self.producer is None or self.definition.is_calibration:
-            return None
-        return self.producer.owner.component.raster
+        """The raster of the producing declaration, else its component's default."""
+        return _resolved_raster(self.producer, self.definition)
 
     def resolve(self) -> ResolvedObject:
         """The public form of this variable, as the backends receive it."""
@@ -1386,9 +1395,10 @@ class _Analysis:
         """The checks that need neither the storage nor the shape of the declaration.
 
         Split out so a declaration that is dropped because its type resolves to nothing
-        still gets them: whether the name is reserved and whether a consumer claims storage
-        it does not own are questions about the declaration alone, and silencing the finding
-        that dropped it must not silence these.
+        still gets them: whether the name is reserved, whether a consumer claims something it
+        does not own, and whether a raster sits on a kind no daq list carries are questions
+        about the declaration alone, and silencing the finding that dropped it must not
+        silence these.
         """
         definition = ref.definition
 
@@ -1789,7 +1799,7 @@ class _Analysis:
             dimensions=spelled,
             volatile=definition.volatile,
             section=definition.section,
-            raster=self._instance_raster(producer, definition),
+            raster=_resolved_raster(producer, definition),
             condition=reference.condition,
             owner=producer.component_name if producer else None,
             consumers=tuple(sorted(ref.component_name for ref in consumers)),
@@ -1815,21 +1825,6 @@ class _Analysis:
                     reference.location("definition"),
                 )
         return instance, leaves
-
-    def _instance_raster(
-        self, producer: DeclarationRef | None, definition: DataObject
-    ) -> str | None:
-        """The raster of a structured variable, by the rule a plain object follows.
-
-        Written out a second time rather than shared with :class:`Variable`, which a
-        structured variable does not go through: the two carry the same rule and the tests
-        hold them to it.
-        """
-        if definition.raster is not None:
-            return definition.raster
-        if producer is None or definition.is_calibration:
-            return None
-        return producer.owner.component.raster
 
     def _flatten(
         self,

@@ -907,6 +907,11 @@ Errors:
   starts out as, and where it lives, is decided by the component that produces it, so a
   reader stating either is claiming storage it does not own, rather than holding an opinion
   to be outvoted.
+- `consumer-raster`: an `input` declaration states a measurement raster. Which event updates
+  a variable is decided by the component that produces it, exactly as `init` and `section`
+  are, so a reader stating one is claiming an authority it does not have. Kept a separate
+  identifier from `consumer-storage`, whose published description says storage, which a
+  raster is not.
 - `duplicate-component`: two files declare the same component name.
 - `duplicate-type`: two files declare the same type name.
 - `duplicate-unit`: a unit is declared more than once, within one file or across files
@@ -929,6 +934,9 @@ Errors:
   nothing about.
 - `section-access`: a measurement, which the software writes, is placed in a `read-only`
   section.
+- `raster-kind`: a raster is stated on a calibration object. A calibration object becomes a
+  `CHARACTERISTIC` rather than a `MEASUREMENT` in the generated a2l, and no DAQ list - the
+  schedule a raster names - carries one.
 - `unknown-constant`: a shape names a constant that no file of the project declares
   ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
 - `unknown-raster`: a definition or a component names a measurement raster no file declares.

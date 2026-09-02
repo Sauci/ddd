@@ -1417,6 +1417,22 @@ class _Analysis:
                 ref.location("definition.section"),
             )
 
+        if not ref.scope.is_producer and definition.raster is not None:
+            self._bag.add(
+                "consumer-raster",
+                f"'{definition.name}': the measurement raster is decided by the component "
+                f"that produces the variable, not by '{ref.component_name}', which reads it",
+                ref.location("definition.raster"),
+            )
+
+        if definition.raster is not None and definition.is_calibration:
+            self._bag.add(
+                "raster-kind",
+                f"'{definition.name}' is a {definition.kind.value} and states the raster "
+                f"'{definition.raster}', but no daq list carries a calibration object",
+                ref.location("definition.raster"),
+            )
+
     def _check_declaration(self, ref: DeclarationRef) -> None:
         definition = ref.definition
         location = ref.location("definition")

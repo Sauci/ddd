@@ -478,6 +478,8 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
+| error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
+| error | `raster-kind` | a raster is stated on a calibration object, which no daq list carries |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the five above |

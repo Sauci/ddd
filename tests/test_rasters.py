@@ -356,3 +356,48 @@ class TestTheReferenceChecks:
         dictionary, bag = run_analysis(tree, self.files(declare("local", "X", raster="10ms")))
         assert dictionary is not None
         assert checks(bag) == []
+
+
+class TestTheAuthorityChecks:
+    def files(self, *components: dict[str, Any]) -> dict[str, Any]:
+        files: dict[str, Any] = {
+            "project.ddd.json": project(
+                "P", "r.ddd.json", *[f"c{index}.ddd.json" for index in range(len(components))]
+            ),
+            "r.ddd.json": rasters(raster("1ms", 0), raster("10ms", 1)),
+        }
+        for index, entry in enumerate(components):
+            files[f"c{index}.ddd.json"] = entry
+        return files
+
+    def test_a_consumer_may_not_state_a_raster(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                component("A", declare("output", "X")),
+                component("B", declare("input", "X", raster="1ms")),
+            ),
+        )
+        assert checks(bag) == ["consumer-raster"]
+        assert "not by 'B', which reads it" in messages(bag)
+
+    def test_a_raster_on_a_calibration_object_is_refused(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                component("A", declare("local", "K", kind="parameter", init=1, raster="1ms"))
+            ),
+        )
+        assert checks(bag) == ["raster-kind"]
+        assert "no daq list carries" in messages(bag)
+
+    def test_a_producer_stating_a_raster_is_clean(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(
+                component("A", declare("output", "X", raster="1ms")),
+                component("B", declare("input", "X")),
+            ),
+        )
+        assert dictionary is not None
+        assert checks(bag) == []

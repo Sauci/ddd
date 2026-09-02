@@ -311,6 +311,12 @@ or an a2l file that does not do what the description says - or that does not com
      - a measurement, which the software writes, is placed in a ``read-only`` section. A
        calibration object may live in either direction: ``const`` data in RAM is a mirrored
        calibration.
+   * - ``raster-kind``
+     - error
+     - a raster is stated on a calibration object (see the
+       :doc:`rasters file <file_formats/rasters>`). A calibration object becomes a
+       ``CHARACTERISTIC`` rather than a ``MEASUREMENT`` in the generated a2l, and no DAQ
+       list - the schedule a raster names - carries one.
    * - ``unknown-constant``
      - error
      - a shape - a ``dimensions`` entry, or the ``size`` of an axis - names a constant no
@@ -377,6 +383,14 @@ or an a2l file that does not do what the description says - or that does not com
        different thing from the disagreements above, and is reported where the claim is
        written rather than where it is overruled. Relaxable, so a project migrating existing
        descriptions can lower it while the ``init`` and ``section`` keys are removed.
+   * - ``consumer-raster``
+     - error
+     - an ``input`` declaration states a measurement raster (see the
+       :doc:`rasters file <file_formats/rasters>`). Which event updates a variable is
+       decided by the component that produces it, exactly as ``init`` and ``section`` are,
+       so a reader stating one is claiming an authority it does not have. Kept a separate
+       identifier from ``consumer-storage``, whose published description says storage,
+       which a raster is not.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns

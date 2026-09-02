@@ -76,10 +76,9 @@ The raster follows the **producer**, because it is the producing task that updat
 A component reading a variable somebody else writes states no raster for it - doing so is
 refused as ``consumer-raster``, the way stating an ``init`` or a ``section`` is - and its own
 default does not reach a variable it merely reads. A default reaches no calibration object
-either: no DAQ list carries a ``CHARACTERISTIC``, so a ``raster`` written on a parameter, a
-curve or a map is refused as ``raster-kind``, while a default that happens to cover one simply
-does not apply. A structured variable carries one raster for the whole object, and every
-member inherits it.
+either: no DAQ list carries a ``CHARACTERISTIC``, so a ``raster`` written on one is refused as
+``raster-kind``, while a default that happens to cover one simply does not apply. A structured
+variable carries one raster for the whole object, and every member inherits it.
 
 A measurement that names no raster, whose component names none either, reaches the a2l exactly
 as it did before there were rasters at all: described, but with no preselected event. Adoption

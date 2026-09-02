@@ -900,9 +900,9 @@ components running at different rates and such a default would be wrong for most
 The raster follows the producer, since it is the producing task that updates the value. A
 consumer stating one is refused as `consumer-raster`, the way it is refused for `init` and
 `section`, and a consumer's own default never applies to a variable it merely reads. No DAQ
-list carries a calibration object, so a `raster` on a parameter, an axis, a curve or a map is
-`raster-kind`, while a component default that happens to cover one does not apply to it. A
-structured variable carries one raster for the whole object and every member inherits it.
+list carries a calibration object, so a `raster` stated on one is `raster-kind`, while a
+component default that happens to cover one does not apply to it. A structured variable
+carries one raster for the whole object and every member inherits it.
 
 ## 4 Consistency checks
 

@@ -71,6 +71,9 @@ _NOT_COMPARED: dict[str, str] = {
     "section": "only a producer may state one, exactly like init: a consumer stating a "
     "section claims storage it does not own and is reported as consumer-storage where the "
     "claim is written",
+    "raster": "only a producer may state one, exactly like section: a consumer stating a "
+    "raster claims an event it does not own and is reported as consumer-raster where the "
+    "claim is written",
     "limits": "compared by a hand-written deference branch, _compare_limits: the resolved "
     "limits are the producer's stated ones, else the first stated set in load order, and "
     "every other stated set is compared against that reference - a table entry could only "
@@ -92,6 +95,8 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "changed-interface",
     "limits": "compared by a hand-written directional branch: narrowing warns, widening is "
     "deliberately silent, and neither is expressible as an equality",
+    "raster": "resolved on every object, but nothing compares one between deliveries yet; "
+    "the change that joins it to _STORAGE_FIELDS, beside section, removes this entry",
 }
 
 

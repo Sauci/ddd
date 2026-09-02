@@ -24,6 +24,7 @@ from ddd.ir import (
     ResolvedLeaf,
     ResolvedMember,
     ResolvedObject,
+    ResolvedRaster,
     ResolvedStruct,
 )
 from ddd.loading import LoadedComponent, LoadedType, Workspace
@@ -252,6 +253,22 @@ class Variable:
         """Whether the a2l carries this object, asked of every component that declares it."""
         return resolve_export(ref.definition.a2l.export for ref in self.declarations)
 
+    @property
+    def raster(self) -> str | None:
+        """The raster of the producing declaration, else its component's default.
+
+        Two authored levels and no third: the producer's own key wins, the producing
+        component's default answers for everything it did not single out, and a variable
+        nobody gave a raster keeps none. A consumer's default is not consulted at all - the
+        raster follows the producer, because it is the producing task that updates the value
+        - and a calibration object takes no default, since no daq list carries one.
+        """
+        if self.definition.raster is not None:
+            return self.definition.raster
+        if self.producer is None or self.definition.is_calibration:
+            return None
+        return self.producer.owner.component.raster
+
     def resolve(self) -> ResolvedObject:
         """The public form of this variable, as the backends receive it."""
         definition = self.definition
@@ -268,6 +285,7 @@ class Variable:
             init=definition.init,
             volatile=definition.volatile,
             section=definition.section,
+            raster=self.raster,
             condition=self.condition,
             references=definition.references,
             owner=self.producer.component_name if self.producer else None,
@@ -485,6 +503,16 @@ class _Analysis:
             objects=tuple(variable.resolve() for variable in variables),
             enums=tuple(enum for enum, _ in (known[key] for key in sorted(known))),
             constants=tuple(entry.declared for entry in workspace.constants),
+            rasters=tuple(
+                ResolvedRaster(
+                    raster=loaded.declared.raster,
+                    event=loaded.declared.event,
+                    cycle=loaded.declared.cycle,
+                    cycle_ns=loaded.declared.cycle_ns,
+                    description=loaded.declared.description,
+                )
+                for loaded in self._workspace.rasters
+            ),
             types=tuple(self._resolve_struct(entry) for entry in _ordered_structures(self._types)),
             instances=tuple(instance for instance, _ in instances),
             leaves=tuple(
@@ -1699,6 +1727,7 @@ class _Analysis:
             dimensions=spelled,
             volatile=definition.volatile,
             section=definition.section,
+            raster=self._instance_raster(producer, definition),
             condition=reference.condition,
             owner=producer.component_name if producer else None,
             consumers=tuple(sorted(ref.component_name for ref in consumers)),
@@ -1724,6 +1753,21 @@ class _Analysis:
                     reference.location("definition"),
                 )
         return instance, leaves
+
+    def _instance_raster(
+        self, producer: DeclarationRef | None, definition: DataObject
+    ) -> str | None:
+        """The raster of a structured variable, by the rule a plain object follows.
+
+        Written out a second time rather than shared with :class:`Variable`, which a
+        structured variable does not go through: the two carry the same rule and the tests
+        hold them to it.
+        """
+        if definition.raster is not None:
+            return definition.raster
+        if producer is None or definition.is_calibration:
+            return None
+        return producer.owner.component.raster
 
     def _flatten(
         self,
@@ -1765,6 +1809,7 @@ class _Analysis:
                         bits=member.bits,
                         volatile=instance.volatile,
                         section=instance.section,
+                        raster=instance.raster,
                         condition=instance.condition,
                         owner=instance.owner,
                         consumers=instance.consumers,

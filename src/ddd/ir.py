@@ -84,6 +84,29 @@ class ResolvedComponent(_Frozen):
     """The interface of the component, in the order it declared it."""
 
 
+class ResolvedRaster(_Frozen):
+    """One declared daq event, as the dictionary publishes it."""
+
+    raster: str
+    """Name the objects refer to, and the short name of the xcp event."""
+
+    event: int
+    """The xcp event channel number."""
+
+    cycle: str | None = None
+    """The period as the project wrote it: ``10ms``. Absent when the event is not cyclic."""
+
+    cycle_ns: int | None = None
+    """The same period in nanoseconds, resolved so that a consumer never parses the spelling.
+
+    Both are kept for the reason ``shape`` and ``dimensions`` both are: the authored form is
+    what a reader recognises, and the number is what a consumer computes with.
+    """
+
+    description: str = ""
+    """Free text from the declaration; the long name of the eventual ``EVENT``."""
+
+
 class ResolvedObject(_Frozen):
     """One data object, with every derived property already worked out."""
 
@@ -131,6 +154,10 @@ class ResolvedObject(_Frozen):
     section: str | None = None
     """Linker section the producing declaration placed the object in; ``null`` for the
     toolchain's defaults."""
+
+    raster: str | None = None
+    """Measurement raster the producing component updates the object in; ``null`` when the
+    project named none. Empty in a dictionary from format 4 or older."""
 
     volatile: bool = False
     """Generate the object ``volatile``: stated by every declaration, on every kind.
@@ -311,6 +338,10 @@ class ResolvedInstance(_Frozen):
     """Linker section the whole structure is placed in; its members have no placement
     of their own."""
 
+    raster: str | None = None
+    """Measurement raster the producing component updates the object in; ``null`` when the
+    project named none. Empty in a dictionary from format 4 or older."""
+
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""
 
@@ -406,6 +437,9 @@ class ResolvedLeaf(_Frozen):
     """Linker section of the structure this member belongs to; a member has no placement
     of its own."""
 
+    raster: str | None = None
+    """Raster of the variable this member belongs to; a member has none of its own."""
+
     condition: str | None = None
     """Preprocessor condition of the producing declaration, if any."""
 
@@ -470,7 +504,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 4
+DICTIONARY_FORMAT = 5
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -522,6 +556,14 @@ class DataDictionary(_Frozen):
     Recorded whole - name, value and description - so that a generator consuming the
     dictionary can emit them the way the shipped templates do, and so that a dimension
     spelled by name stays resolvable after the description files have moved on.
+    """
+
+    rasters: tuple[ResolvedRaster, ...] = ()
+    """The measurement rasters the project declares, sorted by name.
+
+    Recorded whole - name, event, period and description - so that a generator consuming the
+    dictionary can write the event list itself rather than repeat the resolution. Empty in a
+    dictionary from format 4 or older.
     """
 
     types: tuple[ResolvedStruct, ...] = ()

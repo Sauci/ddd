@@ -450,6 +450,19 @@
           "description": "Linker section the whole structure is placed in; its members have no placement\nof their own.",
           "title": "Section"
         },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the producing component updates the object in; ``null`` when the\nproject named none. Empty in a dictionary from format 4 or older.",
+          "title": "Raster"
+        },
         "condition": {
           "anyOf": [
             {
@@ -634,6 +647,19 @@
           "default": null,
           "description": "Linker section of the structure this member belongs to; a member has no placement\nof its own.",
           "title": "Section"
+        },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raster of the variable this member belongs to; a member has none of its own.",
+          "title": "Raster"
         },
         "condition": {
           "anyOf": [
@@ -920,6 +946,19 @@
           "description": "Linker section the producing declaration placed the object in; ``null`` for the\ntoolchain's defaults.",
           "title": "Section"
         },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the producing component updates the object in; ``null`` when the\nproject named none. Empty in a dictionary from format 4 or older.",
+          "title": "Raster"
+        },
         "volatile": {
           "default": false,
           "description": "Generate the object ``volatile``: stated by every declaration, on every kind.\n\nCalibration data carries it as ``const volatile``, which is what a value the calibration\ntool changes in a running ecu needs - see the field of the same name on the authored\ndefinition. The default is kept although a definition may no longer omit it, so that a\ndictionary dumped by an older DDD still reads back; that is what ``DICTIONARY_FORMAT``\nexists to make safe.",
@@ -995,6 +1034,60 @@
       "title": "ResolvedObject",
       "type": "object"
     },
+    "ResolvedRaster": {
+      "additionalProperties": false,
+      "description": "One declared daq event, as the dictionary publishes it.",
+      "properties": {
+        "raster": {
+          "description": "Name the objects refer to, and the short name of the xcp event.",
+          "title": "Raster",
+          "type": "string"
+        },
+        "event": {
+          "description": "The xcp event channel number.",
+          "title": "Event",
+          "type": "integer"
+        },
+        "cycle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The period as the project wrote it: ``10ms``. Absent when the event is not cyclic.",
+          "title": "Cycle"
+        },
+        "cycle_ns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The same period in nanoseconds, resolved so that a consumer never parses the spelling.\n\nBoth are kept for the reason ``shape`` and ``dimensions`` both are: the authored form is\nwhat a reader recognises, and the number is what a consumer computes with.",
+          "title": "Cycle Ns"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text from the declaration; the long name of the eventual ``EVENT``.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "raster",
+        "event"
+      ],
+      "title": "ResolvedRaster",
+      "type": "object"
+    },
     "ResolvedStruct": {
       "additionalProperties": false,
       "description": "One structure, in an order a c file can be written out in.\n\nThe order of ``DataDictionary.types`` matters and is not alphabetical: a structure\nappears after every structure it nests, because a c compiler needs the nested one to be\ncomplete first. The members keep the order the author wrote them in, which is the order the\ncompiler lays them out.",
@@ -1049,7 +1142,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 4,
+      "default": 5,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"
@@ -1108,6 +1201,15 @@
         "$ref": "#/$defs/ConstantDeclaration"
       },
       "title": "Constants",
+      "type": "array"
+    },
+    "rasters": {
+      "default": [],
+      "description": "The measurement rasters the project declares, sorted by name.\n\nRecorded whole - name, event, period and description - so that a generator consuming the\ndictionary can write the event list itself rather than repeat the resolution. Empty in a\ndictionary from format 4 or older.",
+      "items": {
+        "$ref": "#/$defs/ResolvedRaster"
+      },
+      "title": "Rasters",
       "type": "array"
     },
     "types": {

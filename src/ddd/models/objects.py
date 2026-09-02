@@ -279,6 +279,20 @@ class DataObject(_Frozen):
     Left out, the object goes wherever the toolchain's defaults put it.
     """
 
+    raster: str | None = None
+    """Measurement raster the object is updated in, named in the project's rasters file.
+
+    A producer key like ``section``: the producing component's task is what updates the
+    value, so a consumer stating one is refused as ``consumer-raster``, and a structured
+    variable carries one raster for all of its members. Left out, the producing component's
+    default applies; left out there too, the a2l describes the object without saying which
+    daq event carries it, and the calibration tool decides.
+
+    At the top level rather than inside ``a2l``, although only that backend reads it today:
+    which task updates a value is an engineering claim about the data, the way ``section``
+    is, and not a presentation choice.
+    """
+
     init: InitValue | None = None
     """Raw initial value, in the stored domain rather than the physical one.
 

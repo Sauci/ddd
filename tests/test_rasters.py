@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
 from ddd.cli import schema_text
 from ddd.diagnostics import DiagnosticBag
+from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.models import RastersFile
 
@@ -121,3 +122,115 @@ class TestTheSchema:
         published = schema_text("rasters")
         assert '"title": "DDD measurement rasters"' in published
         assert '"additionalProperties": false' in published
+
+
+class TestResolution:
+    def files(self, *declarations: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        return {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters(
+                raster("1ms", 0, cycle="1ms"),
+                raster("10ms", 1, cycle="10ms"),
+            ),
+            "a.ddd.json": component("A", *declarations, **extra),
+        }
+
+    def resolved(self, dictionary: Any, name: str) -> Any:
+        return next(entry for entry in dictionary.objects if entry.name == name)
+
+    def test_a_definition_names_its_own_raster(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(declare("local", "X", raster="1ms")))
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "X").raster == "1ms"
+
+    def test_a_component_default_reaches_the_measurements_it_produces(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(declare("output", "X"), raster="10ms"))
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "X").raster == "10ms"
+
+    def test_a_definition_overrides_the_component_default(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree, self.files(declare("output", "X", raster="1ms"), raster="10ms")
+        )
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "X").raster == "1ms"
+
+    def test_a_measurement_nobody_gave_a_raster_has_none(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(declare("local", "X")))
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "X").raster is None
+
+    def test_a_consumers_default_does_not_reach_a_variable_it_reads(self, tree: Path) -> None:
+        """The raster follows the producer: it is the producing task that updates the value."""
+        files = {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json", "b.ddd.json"),
+            "r.ddd.json": rasters(raster("1ms", 0), raster("10ms", 1)),
+            "a.ddd.json": component("A", declare("output", "X"), raster="10ms"),
+            "b.ddd.json": component("B", declare("input", "X"), raster="1ms"),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "X").raster == "10ms"
+
+    def test_a_component_default_does_not_reach_a_calibration_object(self, tree: Path) -> None:
+        """The default is a blanket statement about measurements; no daq list carries a
+        parameter, and covering one silently is not a finding either."""
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "K", kind="parameter", init=1),
+                declare("local", "X"),
+                raster="10ms",
+            ),
+        )
+        assert dictionary is not None, messages(bag)
+        assert self.resolved(dictionary, "K").raster is None
+        assert self.resolved(dictionary, "X").raster == "10ms"
+
+    def test_the_dictionary_carries_the_declarations(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(declare("local", "X")))
+        assert dictionary is not None, messages(bag)
+        assert [entry.raster for entry in dictionary.rasters] == ["10ms", "1ms"]
+        ten = dictionary.rasters[0]
+        assert ten.event == 1
+        assert ten.cycle == "10ms"
+        assert ten.cycle_ns == 10_000_000
+
+    def test_a_dictionary_of_the_previous_format_still_reads_back(self) -> None:
+        """An archived baseline predates rasters entirely and has to keep loading."""
+        older = DataDictionary.model_validate({"format": 4, "name": "P"})
+        assert older.rasters == ()
+
+
+class TestStructuredVariables:
+    def test_every_leaf_inherits_the_variables_raster(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("P", "r.ddd.json", "t.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters(raster("10ms", 1)),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "name": "Pair_t",
+                        "type": "struct",
+                        "members": [
+                            {
+                                "name": "a",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                            {
+                                "name": "b",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component("A", declare("local", "S", typename="Pair_t", raster="10ms")),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, messages(bag)
+        assert {leaf.raster for leaf in dictionary.leaves} == {"10ms"}

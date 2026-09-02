@@ -117,6 +117,19 @@
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
         },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
+        },
         "init": {
           "anyOf": [
             {
@@ -251,6 +264,19 @@
           "description": "Free text describing the component, offered to the c templates.",
           "title": "Description",
           "type": "string"
+        },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default measurement raster for every variable this component produces.\n\nThe common case stated once: a component updates nearly all of its measurements in one\ntask, and repeating that on several hundred definitions would bury the handful of\nexceptions, which state their own ``raster``. It applies to what this component\nproduces and to nothing it reads - the raster follows the producer - and it reaches no\ncalibration object, since no daq list carries one.",
+          "title": "Raster"
         },
         "interface": {
           "description": "The data interface: everything the component produces, consumes or keeps to itself.\n\nRequired with no default, so that a component with nothing to declare says so with an\nempty list rather than by a key that might merely have been forgotten - the same\nreasoning that makes ``volatile`` and ``kind`` required on a definition.",
@@ -416,6 +442,19 @@
           "default": null,
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
+        },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
         },
         "init": {
           "anyOf": [
@@ -870,6 +909,19 @@
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
         },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
+        },
         "init": {
           "anyOf": [
             {
@@ -1036,6 +1088,19 @@
           "default": null,
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
+        },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
         },
         "init": {
           "anyOf": [
@@ -1369,6 +1434,19 @@
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
         },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
+        },
         "init": {
           "anyOf": [
             {
@@ -1653,6 +1731,19 @@
           "default": null,
           "description": "Linker section the object is placed in, named in the project's sections file.\n\nA storage key like ``init``: the producer states it, a consumer stating one claims\nstorage it does not own (``consumer-storage``), and a structured object is placed whole.\nLeft out, the object goes wherever the toolchain's defaults put it.",
           "title": "Section"
+        },
+        "raster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement raster the object is updated in, named in the project's rasters file.\n\nA producer key like ``section``: the producing component's task is what updates the\nvalue, so a consumer stating one is refused as ``consumer-raster``, and a structured\nvariable carries one raster for all of its members. Left out, the producing component's\ndefault applies; left out there too, the a2l describes the object without saying which\ndaq event carries it, and the calibration tool decides.\n\nAt the top level rather than inside ``a2l``, although only that backend reads it today:\nwhich task updates a value is an engineering claim about the data, the way ``section``\nis, and not a presentation choice.",
+          "title": "Raster"
         },
         "init": {
           "anyOf": [

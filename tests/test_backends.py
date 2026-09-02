@@ -154,6 +154,7 @@ class TestContract:
             "objects",
             "enums",
             "constants",
+            "rasters",
             "types",
             "instances",
             "leaves",

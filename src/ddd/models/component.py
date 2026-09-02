@@ -93,6 +93,16 @@ class Component(BaseModel):
     description: str = ""
     """Free text describing the component, offered to the c templates."""
 
+    raster: str | None = None
+    """Default measurement raster for every variable this component produces.
+
+    The common case stated once: a component updates nearly all of its measurements in one
+    task, and repeating that on several hundred definitions would bury the handful of
+    exceptions, which state their own ``raster``. It applies to what this component
+    produces and to nothing it reads - the raster follows the producer - and it reaches no
+    calibration object, since no daq list carries one.
+    """
+
     interface: tuple[Declaration, ...]
     """The data interface: everything the component produces, consumes or keeps to itself.
 

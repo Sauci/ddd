@@ -44,6 +44,7 @@ from ddd.models import (
     ComponentFile,
     ConstantsFile,
     ProjectFile,
+    RastersFile,
     SectionsFile,
     TypesFile,
     UnitsFile,
@@ -550,6 +551,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "types": TypesFile,
     "units": UnitsFile,
     "sections": SectionsFile,
+    "rasters": RastersFile,
     "constants": ConstantsFile,
     "dictionary": DataDictionary,
 }

@@ -38,12 +38,13 @@ What kind of file this is
 -------------------------
 
 DDD does not ask the file name what a file contains; the **top level key** decides. There are
-six kinds: a file whose top level key is ``project`` is a
+seven kinds: a file whose top level key is ``project`` is a
 :doc:`project description <project>`, one whose top level key is ``component`` is a
 :doc:`component description <component>`, ``types`` is a
 :doc:`structured datatype description <types>`, ``units`` is the project's
 :doc:`unit vocabulary <units>`, ``sections`` declares its
-:doc:`memory sections <sections>`, and ``constants`` its
+:doc:`memory sections <sections>`, ``rasters`` declares its
+:doc:`measurement rasters <rasters>`, and ``constants`` its
 :doc:`constant vocabulary <constants>`. Nothing else appears at that level, and a file has
 to carry exactly one of them.
 
@@ -61,7 +62,7 @@ the message, because the usual cause is a file that was never meant for DDD at a
    1 error
 
    $ ddd check neither.ddd.json
-   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections', 'constants' (found: components, version)
+   neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections', 'constants', 'rasters' (found: components, version)
    1 error
 
 Unknown keys are rejected
@@ -126,6 +127,7 @@ validate the files without running DDD at all:
    ddd schema types        # the structured datatype description
    ddd schema units        # the unit vocabulary
    ddd schema sections     # the memory section description
+   ddd schema rasters      # the measurement raster description
    ddd schema constants    # the constant vocabulary
    ddd schema dictionary   # the resolved data dictionary, the contract the backends consume
    ddd schema all -o DIR   # every schema at once, one file each, into a directory
@@ -137,7 +139,7 @@ validate the files without running DDD at all:
    $ ddd schema project -o project.schema.json
    wrote project.schema.json
 
-The first six describe the files you write; ``dictionary`` describes what DDD makes of them and
+The first seven describe the files you write; ``dictionary`` describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.
@@ -176,4 +178,5 @@ right.
    types
    units
    sections
+   rasters
    constants

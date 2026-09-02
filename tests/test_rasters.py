@@ -14,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from ddd.cli import schema_text
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.models import RastersFile
@@ -113,3 +114,10 @@ class TestTheFile:
         workspace = load_workspace(tree / "project.ddd.json", bag)
         assert workspace is not None
         assert [entry.raster for entry in workspace.rasters] == ["10ms", "1ms"]
+
+
+class TestTheSchema:
+    def test_the_schema_is_published(self) -> None:
+        published = schema_text("rasters")
+        assert '"title": "DDD measurement rasters"' in published
+        assert '"additionalProperties": false' in published

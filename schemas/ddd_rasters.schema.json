@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "RasterDeclaration": {
+      "additionalProperties": false,
+      "description": "One DAQ event the target offers, named so that a definition can refer to it.",
+      "properties": {
+        "raster": {
+          "description": "The name a definition refers to, which is also the short name of the XCP event.\n\nXCP carries eight characters, so a longer name is refused rather than shortened: two\nnames shortened to the same eight would collide in a calibration tool rather than here,\nwhere the author could still do something about it.",
+          "maxLength": 8,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Raster",
+          "type": "string"
+        },
+        "event": {
+          "description": "The XCP event channel number, distinct across the project.\n\nThe one field of a declaration the generated a2l carries today; the rest wait for the\nmodule level ``DAQ`` block that defines the events themselves.",
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Event",
+          "type": "integer"
+        },
+        "cycle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The period, written as an integer and a unit: ``100us``, ``10ms``, ``1s``.\n\nNo space and no fractional part - write ``1500us`` rather than ``1.5ms``. Left out, the\nevent is not cyclic: crank synchronous, on change, on demand. That is a real kind of\nraster rather than an omission, which is why the key has no derived default.",
+          "title": "Cycle"
+        },
+        "description": {
+          "default": "",
+          "description": "Free text saying what the event is, e.g. ``the 10 ms control task``.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "raster",
+        "event"
+      ],
+      "title": "RasterDeclaration",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root object of a ``*.ddd.json`` measurement raster description.\n\n``rasters`` is the top level key that makes this a rasters file; DDD decides what a file\nis from that key alone.  The file is listed in the ``includes`` of a project like any\nother description.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Editor binding to a schema written by ``ddd schema -o``; not interpreted by DDD.",
+      "title": "$Schema"
+    },
+    "rasters": {
+      "description": "The DAQ events the target offers; an empty list is no file at all.",
+      "items": {
+        "$ref": "#/$defs/RasterDeclaration"
+      },
+      "minItems": 1,
+      "title": "Rasters",
+      "type": "array"
+    }
+  },
+  "required": [
+    "rasters"
+  ],
+  "title": "DDD measurement rasters",
+  "type": "object"
+}

@@ -458,6 +458,7 @@ class _Analysis:
         self._check_types()
         self._check_units()
         self._check_sections()
+        self._check_rasters()
         self._check_project_names()
         self._check_component_names()
         for loaded in workspace.components:
@@ -681,6 +682,50 @@ class _Analysis:
                         f"guarantees {entry.alignment}",
                         where,
                     )
+
+    def _check_rasters(self) -> None:
+        """Every named raster is declared, and every declared one has an event of its own.
+
+        A raster is a reference rather than a spelling, so naming one no file declares is
+        ``unknown-raster`` whether or not any rasters file exists: an event nothing describes
+        is a name the a2l could only write as a number nobody chose. The authority rule is
+        not here - a consumer naming one is refused as ``consumer-raster`` where the claim is
+        written.
+        """
+        declared = {entry.raster: entry for entry in self._workspace.rasters}
+        seen: dict[int, str] = {}
+        for entry in self._workspace.rasters:
+            first = seen.setdefault(entry.declared.event, entry.raster)
+            if first != entry.raster:
+                self._bag.add(
+                    "duplicate-event",
+                    f"raster '{entry.raster}' and raster '{first}' both claim event "
+                    f"{entry.declared.event}; one event carries one raster",
+                    entry.location(),
+                )
+
+        for loaded in self._workspace.components:
+            default = loaded.component.raster
+            if default is not None and default not in declared:
+                nearest = _did_you_mean(default, sorted(declared), cutoff=0.5)
+                self._bag.add(
+                    "unknown-raster",
+                    f"component '{loaded.name}' measures in '{default}', which is not a "
+                    f"raster any file of this project declares{nearest}",
+                    loaded.location("component.raster"),
+                )
+            for index, declaration in enumerate(loaded.component.interface):
+                definition = declaration.definition
+                named = definition.raster
+                if named is None or named in declared:
+                    continue
+                nearest = _did_you_mean(named, sorted(declared), cutoff=0.5)
+                self._bag.add(
+                    "unknown-raster",
+                    f"'{definition.name}' is measured in '{named}', which is not a raster "
+                    f"any file of this project declares{nearest}",
+                    loaded.declaration_location(index, "definition.raster"),
+                )
 
     def _alignment_of(self, definition: DataObject) -> int | None:
         """The alignment an object needs, as far as the description can tell.

@@ -872,8 +872,8 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Seven checks need every component of a project to mean anything: `unknown-type`,
-`unknown-unit`, `unknown-section`, `unknown-constant`, `missing-producer`,
+Eight checks need every component of a project to mean anything: `unknown-type`,
+`unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `missing-producer`,
 `unknown-reference` and
 `unused-output`. Exactly these are the checks the language server holds back when it checks
 a file belonging to no project ([section 7.2](#72-editor-integration)).
@@ -931,6 +931,11 @@ Errors:
   section.
 - `unknown-constant`: a shape names a constant that no file of the project declares
   ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
+- `unknown-raster`: a definition or a component names a measurement raster no file declares.
+  Like a section and unlike a unit there is no free text fallback: an event nothing describes
+  is a name the a2l could only write as a number nobody chose.
+- `duplicate-event`: two measurement rasters claim the same event channel number, which
+  would put two rasters on one event.
 - `enum-conflict`: one enum name is used with different enumerators. The ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do
   not.

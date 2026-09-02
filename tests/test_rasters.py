@@ -314,3 +314,43 @@ class TestStructuredVariables:
         (instance,) = dictionary.instances
         assert instance.raster is None
         assert {leaf.raster for leaf in dictionary.leaves} == {None}
+
+
+class TestTheReferenceChecks:
+    def files(self, *declarations: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        vocabulary = extra.pop("vocabulary", [raster("1ms", 0), raster("10ms", 1)])
+        return {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": {"rasters": vocabulary},
+            "a.ddd.json": component("A", *declarations, **extra),
+        }
+
+    def test_a_definition_naming_an_undeclared_raster_is_refused(self, tree: Path) -> None:
+        _, bag = run_analysis(tree, self.files(declare("local", "X", raster="5ms")))
+        assert checks(bag) == ["unknown-raster"]
+        assert "'X' is measured in '5ms'" in messages(bag)
+
+    def test_the_nearest_declared_name_is_suggested(self, tree: Path) -> None:
+        _, bag = run_analysis(tree, self.files(declare("local", "X", raster="10m")))
+        assert "did you mean '10ms'" in messages(bag)
+
+    def test_a_component_default_naming_an_undeclared_raster_is_refused(self, tree: Path) -> None:
+        """The same mistake wherever it is written, and reported where it was written."""
+        # "local" rather than "output": an unconsumed output declaration also raises
+        # unused-output, which is a real finding but not the one this test is about.
+        _, bag = run_analysis(tree, self.files(declare("local", "X"), raster="5ms"))
+        assert checks(bag) == ["unknown-raster"]
+        assert "component 'A' measures in '5ms'" in messages(bag)
+
+    def test_two_rasters_cannot_share_an_event_number(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            self.files(declare("local", "X"), vocabulary=[raster("1ms", 2), raster("10ms", 2)]),
+        )
+        assert checks(bag) == ["duplicate-event"]
+        assert "event 2" in messages(bag)
+
+    def test_a_declared_raster_is_clean(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(declare("local", "X", raster="10ms")))
+        assert dictionary is not None
+        assert checks(bag) == []

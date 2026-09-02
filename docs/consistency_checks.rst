@@ -318,6 +318,17 @@ or an a2l file that does not do what the description says - or that does not com
        :doc:`constants file <file_formats/constants>`). Like a section there is no free
        text fallback, because a name without a value is a dimension nothing can resolve.
        The nearest declared name is suggested.
+   * - ``unknown-raster``
+     - error
+     - a definition or a component names a measurement raster no file declares (see the
+       :doc:`rasters file <file_formats/rasters>`). Like a section and unlike a unit there
+       is no free text fallback: an event nothing describes is a name the a2l could only
+       write as a number nobody chose. The nearest declared name is suggested.
+   * - ``duplicate-event``
+     - error
+     - two measurement rasters claim the same event channel number (see the
+       :doc:`rasters file <file_formats/rasters>`), which would put two rasters on one
+       event.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the

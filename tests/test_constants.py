@@ -1079,14 +1079,14 @@ class TestTheEditor:
             "init-invalid"
         }
 
-    def test_exactly_eight_checks_need_every_component(self) -> None:
+    def test_exactly_nine_checks_need_every_component(self) -> None:
         """``incomplete-project`` is one of them, and has to be.
 
         It reports that a declaration is missing from the dictionary, which is true of a file
-        read on its own for the same reason the other seven are wrong about one: the constant
-        or the type is declared, in a file only the project lists. In a run that was shown the
-        whole project it is the finding that stops a relaxed check from quietly shrinking the
-        dictionary.
+        read on its own for the same reason the other eight are wrong about one: the constant,
+        the raster or the type is declared, in a file only the project lists. In a run that was
+        shown the whole project it is the finding that stops a relaxed check from quietly
+        shrinking the dictionary.
         """
         from ddd.diagnostics import CHECKS
 
@@ -1095,6 +1095,7 @@ class TestTheEditor:
             "unknown-unit",
             "unknown-section",
             "unknown-constant",
+            "unknown-raster",
             "missing-producer",
             "unknown-reference",
             "unused-output",

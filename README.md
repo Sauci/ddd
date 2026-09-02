@@ -462,10 +462,12 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `duplicate-section` | a memory section is declared more than once, in one file or across files |
 | error | `duplicate-constant` | a constant is declared more than once, in one file or across files |
 | error | `duplicate-raster` | a measurement raster is declared more than once, in one file or across files |
+| error | `duplicate-event` | two measurement rasters claim the same event channel number |
 | error | `unknown-type` | a typename names no type any file declares |
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
 | error | `unknown-section` | a definition names a memory section no file declares |
 | error | `unknown-constant` | a shape names a constant no file declares |
+| error | `unknown-raster` | a definition or a component names a measurement raster no file declares |
 | error | `section-access` | a measurement is placed in a section the software cannot write |
 | error | `type-kind` | a declared type is used where its shape does not fit |
 | error | `type-cycle` | structures nest each other, so neither has a size |

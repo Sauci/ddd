@@ -872,11 +872,11 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Eight checks need every component of a project to mean anything: `unknown-type`,
+Nine checks need every component of a project to mean anything: `unknown-type`,
 `unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `missing-producer`,
-`unknown-reference` and
-`unused-output`. Exactly these are the checks the language server holds back when it checks
-a file belonging to no project ([section 7.2](#72-editor-integration)).
+`unknown-reference`, `unused-output` and
+`incomplete-project`. Exactly these are the checks the language server holds back when it
+checks a file belonging to no project ([section 7.2](#72-editor-integration)).
 
 The `schema` check carries every violation of the published file contracts
 ([section 3](#3-file-formats)), including the rules this document states in prose, such as

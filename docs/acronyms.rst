@@ -40,7 +40,9 @@ Acronyms and abbreviations
        (``1``) and from a wrong invocation (``2``).
    * - DAQ
      - Data acquisition, the mechanism by which an XCP slave sends measured values
-       cyclically. The lists that configure it are not part of what DDD writes.
+       cyclically, each one subscribed to an *event*. DDD writes which event a measurement
+       belongs to when a :doc:`raster <file_formats/rasters>` names one; the module level
+       list that configures the events themselves is not part of what DDD writes.
    * - DDD
      - The tool this documentation describes: a data dictionary for the global variables of a
        component based embedded software project. The same three letters name the command,
@@ -77,8 +79,10 @@ Acronyms and abbreviations
      - Measurement, Calibration and Diagnostics, part 2, Measurement and Calibration: the
        formal ASAM name of the format everybody calls a2l.
    * - XCP
-     - Universal Measurement and Calibration Protocol, the successor of CCP. As with CCP, DDD
-       generates no ``IF_DATA`` section describing it.
+     - Universal Measurement and Calibration Protocol, the successor of CCP. An exported
+       measurement with a :doc:`raster <file_formats/rasters>` reaches the generated a2l with
+       an ``IF_DATA XCP`` block naming its DAQ event; the rest of the protocol - the event
+       configuration, ``PROTOCOL_LAYER`` and transport - is not part of what DDD writes.
 
 a2l keywords
 ------------

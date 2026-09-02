@@ -95,8 +95,6 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "changed-interface",
     "limits": "compared by a hand-written directional branch: narrowing warns, widening is "
     "deliberately silent, and neither is expressible as an equality",
-    "raster": "resolved on every object, but nothing compares one between deliveries yet; "
-    "the change that joins it to _STORAGE_FIELDS, beside section, removes this entry",
 }
 
 

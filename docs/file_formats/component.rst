@@ -451,16 +451,19 @@ The types and constants the component declares inline resolve in such a run, whi
 practical payoff of the co-location: a self-contained library file answers ``ddd check`` and
 ``ddd list`` on its own, and only the references that genuinely live elsewhere stay open.
 The pump of ``examples/vocabulary`` names its own ``Torque_t`` and ``PRESSURE_CELLS`` and
-leans on the project only for its sections and for one shared size:
+leans on the project only for its sections, its rasters and one shared size:
 
 .. code-block:: text
 
    $ ddd check pump.ddd.json
+   pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
    pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
    pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
    pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
    pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
-   4 errors
+   pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
+   6 errors
 
-   $ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore
-   ok: 3 variables in 1 component are consistent
+   $ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
+   pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: 'PressureTrend' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
+   1 info

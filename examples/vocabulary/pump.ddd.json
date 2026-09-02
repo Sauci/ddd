@@ -3,6 +3,7 @@
   "component": {
     "name": "Pump",
     "description": "Controls the pump, with its speed in fast RAM and its limit in calibration flash",
+    "raster": "10ms",
     "types": [
       {
         "type": "scalar",
@@ -28,7 +29,8 @@
           "unit": "rpm",
           "conversion": { "kind": "identity" },
           "section": ".fast_ram",
-          "volatile": true
+          "volatile": true,
+          "raster": "1ms"
         }
       },
       {

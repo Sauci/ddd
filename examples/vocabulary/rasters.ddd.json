@@ -1,0 +1,8 @@
+{
+  "$schema": "../../schemas/ddd_rasters.schema.json",
+  "rasters": [
+    { "raster": "1ms", "event": 0, "cycle": "1ms", "description": "fast control task" },
+    { "raster": "10ms", "event": 1, "cycle": "10ms", "description": "control task" },
+    { "raster": "100ms", "event": 2, "cycle": "100ms", "description": "diagnostic task" }
+  ]
+}

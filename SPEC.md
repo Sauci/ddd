@@ -26,6 +26,7 @@
     - [3.7 Type description](#37-type-description)
     - [3.8 Unit vocabulary](#38-unit-vocabulary)
     - [3.9 Constant vocabulary](#39-constant-vocabulary)
+    - [3.10 Measurement rasters](#310-measurement-rasters)
   - [4 Consistency checks](#4-consistency-checks)
     - [4.1 Comparing two deliveries](#41-comparing-two-deliveries)
   - [5 Generated artefacts](#5-generated-artefacts)
@@ -857,6 +858,52 @@ templates receive the declared constants to emit ([section 5.1](#51-c-code)); th
 states one `SYSTEM_CONSTANT` per declared constant and resolved numbers in every record
 ([section 5.2](#52-a2l)).
 
+### 3.10 Measurement rasters
+
+A calibration tool measuring over XCP receives values in a *DAQ event*, and each event belongs
+to a task of the running software. A `rasters` file declares the events a target offers; a
+measurement names the one it is updated in, and the a2l carries that event so that the tool
+preselects it.
+
+```json
+{
+  "rasters": [
+    { "raster": "10ms", "event": 1, "cycle": "10ms", "description": "control task" },
+    { "raster": "crank", "event": 3, "description": "crank synchronous, not cyclic" }
+  ]
+}
+```
+
+`raster` is the name a definition refers to and the short name of the XCP event, so it is at
+most eight characters; a longer one is refused rather than shortened, because two names
+shortened to the same eight would collide in a calibration tool instead of here. `event` is
+the event channel number the target's XCP configuration assigned, in `0 .. 0xFFFF` and
+distinct across the project: two rasters claiming one number is `duplicate-event`. `cycle` is
+the period, a whole number and one of the units `ns`, `us`, `ms`, `s`, and it has to be a
+period XCP carries - a count of 1 to 255 times a decade from 1 ns to 1 s, so `1500us` is one
+and `1234ms` is not. It is optional, and an event without one is not cyclic. Declaring a
+raster twice, in one file or across files, is `duplicate-raster`.
+
+Like a memory section ([section 3.5](#35-memory-placement)) and unlike a unit, a raster is a
+reference rather than a spelling: naming one no file declares is `unknown-raster` whether or
+not a rasters file exists, because an event nothing describes is a name the a2l could only
+write as a number nobody chose. The vocabulary is project wide and has no place inside a
+component, an event channel number being a property of the target's XCP configuration rather
+than of any component that measures.
+
+A definition states its `raster`, and a component states one default for everything it
+produces. The resolution has two levels: the producing declaration's key, else the producing
+component's default, else nothing - and a measurement that resolves to nothing reaches the a2l
+without an `IF_DATA` section. There is no project wide level, because one image mixes
+components running at different rates and such a default would be wrong for most of them.
+
+The raster follows the producer, since it is the producing task that updates the value. A
+consumer stating one is refused as `consumer-raster`, the way it is refused for `init` and
+`section`, and a consumer's own default never applies to a variable it merely reads. No DAQ
+list carries a calibration object, so a `raster` on a parameter, an axis, a curve or a map is
+`raster-kind`, while a component default that happens to cover one does not apply to it. A
+structured variable carries one raster for the whole object and every member inherits it.
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -907,11 +954,11 @@ Errors:
   starts out as, and where it lives, is decided by the component that produces it, so a
   reader stating either is claiming storage it does not own, rather than holding an opinion
   to be outvoted.
-- `consumer-raster`: an `input` declaration states a measurement raster. Which event updates
-  a variable is decided by the component that produces it, exactly as `init` and `section`
-  are, so a reader stating one is claiming an authority it does not have. Kept a separate
-  identifier from `consumer-storage`, whose published description says storage, which a
-  raster is not.
+- `consumer-raster`: an `input` declaration states a measurement raster
+  ([section 3.10](#310-measurement-rasters)). Which event updates a variable is decided by
+  the component that produces it, exactly as `init` and `section` are, so a reader stating
+  one is claiming an authority it does not have. Kept a separate identifier from
+  `consumer-storage`, whose published description says storage, which a raster is not.
 - `duplicate-component`: two files declare the same component name.
 - `duplicate-type`: two files declare the same type name.
 - `duplicate-unit`: a unit is declared more than once, within one file or across files
@@ -921,7 +968,7 @@ Errors:
 - `duplicate-constant`: a constant is declared more than once, within one file or across
   files ([section 3.9](#39-constant-vocabulary)).
 - `duplicate-raster`: a measurement raster is declared more than once, within one file or
-  across files.
+  across files ([section 3.10](#310-measurement-rasters)).
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit, or structures
   nest each other so that neither has a size.
@@ -934,16 +981,18 @@ Errors:
   nothing about.
 - `section-access`: a measurement, which the software writes, is placed in a `read-only`
   section.
-- `raster-kind`: a raster is stated on a calibration object. A calibration object becomes a
+- `raster-kind`: a raster is stated on a calibration object
+  ([section 3.10](#310-measurement-rasters)). A calibration object becomes a
   `CHARACTERISTIC` rather than a `MEASUREMENT` in the generated a2l, and no DAQ list - the
   schedule a raster names - carries one.
 - `unknown-constant`: a shape names a constant that no file of the project declares
   ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
-- `unknown-raster`: a definition or a component names a measurement raster no file declares.
-  Like a section and unlike a unit there is no free text fallback: an event nothing describes
-  is a name the a2l could only write as a number nobody chose.
-- `duplicate-event`: two measurement rasters claim the same event channel number, which
-  would put two rasters on one event.
+- `unknown-raster`: a definition or a component names a measurement raster no file declares
+  ([section 3.10](#310-measurement-rasters)). Like a section and unlike a unit there is no
+  free text fallback: an event nothing describes is a name the a2l could only write as a
+  number nobody chose.
+- `duplicate-event`: two measurement rasters claim the same event channel number
+  ([section 3.10](#310-measurement-rasters)), which would put two rasters on one event.
 - `enum-conflict`: one enum name is used with different enumerators. The ordered name and
   value pairs are compared, so a reordering conflicts and the free text descriptions do
   not.
@@ -1241,7 +1290,7 @@ whose layout DDD does not know. A `bits` member reaches no A2L at all:
 build to report both the word and the bits *(planned)*.
 
 Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, `IF_DATA` for
-XCP/CCP with measurement rasters, and A2L *import* for migration and merging are *planned*.
+CCP, the XCP transport, and A2L *import* for migration and merging are *planned*.
 
 ## 6 Address information
 

@@ -101,7 +101,7 @@ other name is reported as `file-extension`; the check can be relaxed with
 `-W file-extension=warning` while a project is being migrated.
 
 The top level key decides what a file is: `project`, `component`, `types`, `units`,
-`sections` or `constants`.
+`sections`, `constants` or `rasters`.
 Unknown keys are rejected, so typos are found instead of silently ignored - with one
 deliberate exception: a top level `$schema` key is allowed and ignored, because it is how an
 editor binds a file to its schema.  The machine readable contract of each kind is available
@@ -405,9 +405,9 @@ omitted when the shape is unambiguous.
 * `enum` requires an integer datatype and may also be written as a list of
   `{"name": ..., "value": ..., "description": ...}` objects to document each enumerator
 
-### Types, units, sections and constants
+### Types, units, sections, rasters and constants
 
-Beside the project and the component there are four more file kinds, each listed in a
+Beside the project and the component there are five more file kinds, each listed in a
 project's `includes` like a component and each with its own page in the documentation:
 
 * a **types** file declares scalar types, structures and external types the project shares
@@ -424,6 +424,11 @@ project's `includes` like a component and each with its own page in the document
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
   ([documentation](https://sauci.github.io/ddd/file_formats/sections.html));
+* a **rasters** file declares the DAQ events a target's XCP configuration offers - a short
+  name (eight characters at most), an event channel number and, optionally, a cyclic period -
+  and a definition or its producing component names the one a measurement is updated in, so
+  the generated a2l preselects the right event for a calibration tool
+  ([documentation](https://sauci.github.io/ddd/file_formats/rasters.html));
 * a **constants** file declares named integer constants, and a shape names one where it
   would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
   the generated c declares the array by the name, and the a2l records it as a
@@ -432,14 +437,14 @@ project's `includes` like a component and each with its own page in the document
 
 Types and constants have a second home: the component that publishes them may declare them
 inside its own description, with entries exactly as the standalone files write them, and the
-standalone files remain the home of entries shared between components.  Units and sections
-are project wide vocabularies and stay in files of their own.
+standalone files remain the home of entries shared between components.  Units, sections and
+rasters are project wide vocabularies and stay in files of their own.
 
 [examples/structures](examples/structures) is a ready to run project declaring and consuming
 structured types, and [examples/vocabulary](examples/vocabulary) is one that pins its unit
-spellings, places its objects into declared memory sections and dimensions its arrays by
-declared constants - one embedded in the pump component, one shared in a standalone file;
-both projects check clean.
+spellings, places its objects into declared memory sections, measures some of them on
+declared rasters and dimensions its arrays by declared constants - one embedded in the pump
+component, one shared in a standalone file; both projects check clean.
 
 ## Consistency checks
 
@@ -521,7 +526,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile` or the memory `section` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |

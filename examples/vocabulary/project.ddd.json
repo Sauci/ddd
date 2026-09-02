@@ -7,6 +7,7 @@
       "units.ddd.json",
       "sections.ddd.json",
       "constants.ddd.json",
+      "rasters.ddd.json",
       "pump.ddd.json"
     ]
   }

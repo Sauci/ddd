@@ -10,6 +10,21 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **Seventh description file kind: measurement rasters.**  A `rasters` file names the DAQ
+  events a target's XCP configuration offers - a short name, an event channel number and,
+  optionally, a cyclic period - and a definition or its producing component names the one a
+  measurement is updated in, resolved exactly like a memory section: the declaration's own
+  `raster`, else its component's default, else nothing.  Five checks keep the vocabulary
+  honest: `duplicate-raster` and `duplicate-event` catch two rasters sharing a name or an
+  event channel, `unknown-raster` catches naming one nothing declares, `consumer-raster`
+  catches an `input` declaration claiming an event it does not own, and `raster-kind` catches
+  one stated on a calibration object, which no DAQ list ever carries.  An exported measurement
+  with a raster now reaches the generated a2l with an `IF_DATA XCP` block naming its event
+  channel, so a calibration tool preselects the right one instead of an engineer guessing
+  which task moves the signal.  **Migration:** none for existing description files - a
+  measurement naming no raster, whose component names none either, reaches the a2l exactly as
+  before.  The archived dictionary format moves from 4 to 5; a dictionary dumped by an older
+  DDD still reads back, with every object's raster resolving to `null`.
 * **The documentation deployment reads back what it published.**  The archive branch is a git
   push and the site is an artifact handed to Pages, and nothing made the two agree: 0.6.0
   reached `gh-pages` with a version index naming it while the site went on serving a build

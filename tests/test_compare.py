@@ -36,6 +36,24 @@ def one_component(base: Path, name: str, *declarations: dict[str, Any]) -> DataD
     return resolve(base, f"{name}.ddd.json")
 
 
+def one_component_measuring(base: Path, name: str, raster: str) -> DataDictionary:
+    """A single component project whose one measurement names a raster."""
+    write_tree(
+        base,
+        {
+            f"{name}.ddd.json": project("P", f"{name}-r.ddd.json", f"{name}-a.ddd.json"),
+            f"{name}-r.ddd.json": {
+                "rasters": [
+                    {"raster": "1ms", "event": 0, "cycle": "1ms"},
+                    {"raster": "10ms", "event": 1, "cycle": "10ms"},
+                ]
+            },
+            f"{name}-a.ddd.json": component("A", declare("local", "X", raster=raster)),
+        },
+    )
+    return resolve(base, f"{name}.ddd.json")
+
+
 def verdict(baseline: DataDictionary, candidate: DataDictionary, *severities: str) -> DiagnosticBag:
     bag = DiagnosticBag(SeverityPolicy.from_strings(severities))
     compare(baseline, candidate, bag)
@@ -216,6 +234,15 @@ class TestGradedChanges:
         bag = verdict(old, new)
         assert checks(bag) == ["changed-storage"]
         assert "init: 2 != 1" in messages(bag)
+
+    def test_a_changed_raster_is_a_warning(self, tree: Path) -> None:
+        """A signal moving from the 10 ms to the 1 ms event changes the a2l a calibration
+        engineer works with, and invalidates nobody's code."""
+        old = one_component_measuring(tree, "old", "10ms")
+        new = one_component_measuring(tree, "new", "1ms")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "raster: 1ms != 10ms" in messages(bag)
 
     def test_a_new_producer_is_a_warning(self, tree: Path) -> None:
         write_tree(

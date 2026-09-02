@@ -144,6 +144,9 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField(
         "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"
     ),
+    ComparedField(
+        "raster", lambda o: o.raster, lambda o: o.raster if o.raster is not None else "none"
+    ),
 )
 
 

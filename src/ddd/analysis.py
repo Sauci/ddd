@@ -27,7 +27,7 @@ from ddd.ir import (
     ResolvedRaster,
     ResolvedStruct,
 )
-from ddd.loading import LoadedComponent, LoadedType, Workspace
+from ddd.loading import LoadedComponent, LoadedRaster, LoadedType, Workspace
 from ddd.models import (
     MEMBER_OBJECT_KINDS,
     Axis,
@@ -693,15 +693,16 @@ class _Analysis:
         written.
         """
         declared = {entry.raster: entry for entry in self._workspace.rasters}
-        seen: dict[int, str] = {}
+        seen: dict[int, LoadedRaster] = {}
         for entry in self._workspace.rasters:
-            first = seen.setdefault(entry.declared.event, entry.raster)
-            if first != entry.raster:
+            first = seen.setdefault(entry.declared.event, entry)
+            if first is not entry:
                 self._bag.add(
                     "duplicate-event",
-                    f"raster '{entry.raster}' and raster '{first}' both claim event "
+                    f"raster '{entry.raster}' and raster '{first.raster}' both claim event "
                     f"{entry.declared.event}; one event carries one raster",
                     entry.location(),
+                    notes=[("also claims this event", first.location())],
                 )
 
         for loaded in self._workspace.components:

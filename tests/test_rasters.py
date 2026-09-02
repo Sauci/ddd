@@ -348,7 +348,9 @@ class TestTheReferenceChecks:
             self.files(declare("local", "X"), vocabulary=[raster("1ms", 2), raster("10ms", 2)]),
         )
         assert checks(bag) == ["duplicate-event"]
-        assert "event 2" in messages(bag)
+        rendered = messages(bag)
+        assert "raster '1ms' and raster '10ms' both claim event 2" in rendered
+        assert "r.ddd.json#rasters[1]: also claims this event" in rendered
 
     def test_a_declared_raster_is_clean(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, self.files(declare("local", "X", raster="10ms")))

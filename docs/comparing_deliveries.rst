@@ -163,7 +163,8 @@ them together with everything else.
      - an object of the baseline is gone; no component read it
    * - warning
      - ``changed-storage``
-     - the initial value, volatility or memory section of an object changed
+     - the initial value, volatility, memory section or measurement raster of an object
+       changed
    * - warning
      - ``narrowed-limits``
      - the physical limits of an object got tighter, so calibrated data may not fit
@@ -193,8 +194,10 @@ different spellings of one size, and the spelling is what the generated code car
 respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not. ``changed-storage`` covers the three properties that change how an object behaves
-rather than what it means, the initial value, ``volatile`` and the memory ``section``;
+stands reads clean, and a changed size still does not. ``changed-storage`` covers the four properties that change how an object behaves
+rather than what it means, the initial value, ``volatile``, the memory ``section`` and the
+measurement ``raster``; a variable that moved from the 100 ms event to the 1 ms one changes
+the a2l a calibration engineer works with while invalidating nobody's code.
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.
 

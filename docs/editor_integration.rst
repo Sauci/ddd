@@ -97,12 +97,13 @@ three stages:
   project instead: the server walks from the file's directory up to the workspace root and
   checks the file under the project descriptions of the nearest directory that include it.
 * **Standalone.** A file belonging to no build and to no such project is still checked, on
-  its own, but only for what one file can decide. The seven checks that need every component
+  its own, but only for what one file can decide. The nine checks that need every component
   of a project - ``unknown-type``, ``unknown-unit``, ``unknown-section``,
-  ``unknown-constant``, ``missing-producer``, ``unknown-reference`` and ``unused-output`` -
-  are held back, because a component read alone has inputs nobody produces and outputs
-  nobody reads by construction rather than by mistake. Each check declares whether it needs
-  the whole project, so the two modes cannot drift apart.
+  ``unknown-constant``, ``unknown-raster``, ``missing-producer``, ``unknown-reference``,
+  ``unused-output`` and ``incomplete-project`` - are held back, because a component read
+  alone has inputs nobody produces and outputs nobody reads by construction rather than by
+  mistake. Each check declares whether it needs the whole project, so the two modes cannot
+  drift apart.
 
 VS Code
 -------

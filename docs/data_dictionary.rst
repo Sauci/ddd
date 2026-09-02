@@ -215,7 +215,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 4,
+         "default": 5,
          "title": "Format",
          "type": "integer"
        },
@@ -268,6 +268,14 @@ elided here for space):
          "title": "Constants",
          "type": "array"
        },
+       "rasters": {
+         "default": [],
+         "items": {
+           "$ref": "#/$defs/ResolvedRaster"
+         },
+         "title": "Rasters",
+         "type": "array"
+       },
        "types": {
          "default": [],
          "items": {
@@ -307,7 +315,10 @@ emit a type per enumeration - which is what the c backend offers its templates a
 ``model.enums`` - does not have to walk every object and de-duplicate them itself.
 ``constants`` records the :doc:`declared constants <file_formats/constants>` whole - name,
 value and description - so a dimension an object spells by name stays resolvable from the
-document alone. The
+document alone. ``rasters`` records the
+:doc:`declared measurement rasters <file_formats/rasters>` the same way - name, event
+channel, period and description - so that a generator can write the XCP event list itself
+instead of reconstructing it from the events the objects happen to name. The
 conversions themselves are the same models the description files use, and they are documented
 with the other :doc:`data contracts <data_contracts>`. ``types``, ``instances`` and
 ``leaves`` describe the structured variables: the declared structures, the variables

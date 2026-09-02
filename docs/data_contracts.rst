@@ -165,6 +165,7 @@ including the field documentation and the rejection of unknown properties - and
    ddd schema types
    ddd schema units
    ddd schema sections
+   ddd schema rasters
    ddd schema constants
    ddd schema dictionary
    ddd schema all -o schemas

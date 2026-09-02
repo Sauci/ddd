@@ -54,8 +54,8 @@ The keys
        opens the file in a calibration tool.
    * - ``includes``
      - ``[]``
-     - Paths to the component, types, units, sections, constants and sub-project files that
-       make up the project, relative to this file. Wildcards are expanded.
+     - Paths to the component, types, units, sections, rasters, constants and sub-project
+       files that make up the project, relative to this file. Wildcards are expanded.
 
 The identifier rule is tighter than what a c compiler would accept, and deliberately so:
 ASAP2 1.6.1 limits an identifier to 128 characters, and a name DDD cannot write into the a2l

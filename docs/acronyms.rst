@@ -169,6 +169,23 @@ that the table can be read as a description of one file.
      - The name of the symbol an object corresponds to in the linked software, plus an offset.
        DDD always writes it, so that an address patcher can fill the addresses in after the
        link even when no address map was given.
+   * - ``IF_DATA``
+     - An interface specific block, whose content is defined by the interface it names rather
+       than by ASAP2 itself. DDD writes exactly one kind, ``IF_DATA XCP`` inside a
+       ``MEASUREMENT``, and only for a measurement whose
+       :doc:`raster <file_formats/rasters>` resolves to a declared event.
+   * - ``DAQ_EVENT``
+     - The XCP block inside that ``IF_DATA`` saying which event carries the measurement. DDD
+       writes the ``VARIABLE`` form, in which the events named are the ones a calibration
+       tool starts from rather than the only ones it may use.
+   * - ``DEFAULT_EVENT_LIST``
+     - The events a ``DAQ_EVENT VARIABLE`` preselects. It is what makes a raster a suggestion
+       the engineer can override in the tool, so a raster that turns out wrong is corrected
+       there rather than by regenerating the file.
+   * - ``EVENT``
+     - One entry of that list: the event *channel number*, which is the number the
+       ``rasters`` file assigned. The name of the event lives in the module level ``DAQ``
+       block, which describes the target's XCP implementation and which DDD does not write.
    * - ``GROUP``
      - A named collection of measurements and characteristics, used to organise the objects
        in the calibration tool. DDD emits one per component, containing exactly the objects

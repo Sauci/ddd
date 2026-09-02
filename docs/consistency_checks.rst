@@ -530,12 +530,13 @@ registry can be read in one place.
        external tool still might.
    * - ``changed-storage``
      - warning
-     - the initial value, the volatility or the memory section of an object changed. A
+     - the initial value, the volatility, the memory section or the measurement raster of an
+       object changed. A
        calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
        reading twice: it keeps its address and a tool can still write to it, but the compiler
        is now entitled to fold the initial value into the code that reads it, so tuning it
        while the software runs stops working. The section says literally which memory the
-       object ends up in.
+       object ends up in, and the raster which DAQ event a calibration tool measures it on.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.

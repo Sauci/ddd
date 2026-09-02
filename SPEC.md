@@ -179,8 +179,9 @@ purposes. The top level key of a file
 decides what the file is: `project` ([section 3.1](#31-project-description)),
 `component` ([section 3.2](#32-software-component-description)),
 `types` ([section 3.7](#37-type-description)), `units` ([section 3.8](#38-unit-vocabulary)),
-`sections` ([section 3.5](#35-memory-placement)) or
-`constants` ([section 3.9](#39-constant-vocabulary)); only the first two can be the root of
+`sections` ([section 3.5](#35-memory-placement)),
+`constants` ([section 3.9](#39-constant-vocabulary)) or
+`rasters` ([section 3.10](#310-measurement-rasters)); only the first two can be the root of
 a run. A file stating none of these keys, or several at once, is refused (`file-kind`).
 JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
 and parsers generally resolve the duplication silently in favour of the last spelling, so
@@ -193,15 +194,15 @@ parser accepts, is refused the same way (`json-syntax`). Unknown keys are reject
 file to its schema and thereby turns the published contract into completion, hover
 documentation and validation while typing. The formal contract is published by the tool
 itself as a JSON schema (`ddd schema`), in one file per format, covering project,
-component, types, units, sections, constants and the data dictionary, and every authored
-field of it
+component, types, units, sections, constants, rasters and the data dictionary, and every
+authored field of it
 **shall** carry its documentation. The binding is per file rather than per directory
 because the kind of a description is stated in its content, not in its name.
 
 ### 3.1 Project description
 
-Contains a list of components, types files, units files, sections files, constants files
-and/or other (sub-)projects.
+Contains a list of components, types files, units files, sections files, constants files,
+rasters files and/or other (sub-)projects.
 
 ```json
 {
@@ -216,8 +217,8 @@ and/or other (sub-)projects.
 - `"name"` (required): the C identifier of the project, also used as the A2L project and
   module name.
 - `"description"` (optional): free text.
-- `"includes"` (optional): paths to component, types, units, sections, constants or
-  sub-project files,
+- `"includes"` (optional): paths to component, types, units, sections, constants, rasters
+  or sub-project files,
   relative to this file; an absolute path is taken as written. The kind of each included
   file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
@@ -1438,7 +1439,7 @@ is in two projects, and the answer to which one the reader cares about is both. 
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
 descriptions of the nearest directory that include it. A file
-belonging to no build and to no such project is still checked, on its own, with the seven
+belonging to no build and to no such project is still checked, on its own, with the nine
 checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction

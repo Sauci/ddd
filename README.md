@@ -679,8 +679,8 @@ because the components producing the inputs are by definition not part of the fi
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
 `checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
 already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and `ddd templates-dir` print
-a single path, and `ddd id --assign` reports which files it wrote to and how many ids, not a
-list of findings. `ddd dump` is the
+a single path, and `ddd id --assign` reports which files it could not read and one total of
+ids written across all of them, not a list of findings. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format.

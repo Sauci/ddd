@@ -1224,6 +1224,7 @@ def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
         },
     )
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    assert "wrote 2 ids" in capsys.readouterr().err
     written = json.loads((tree / "a.ddd.json").read_text(encoding="utf-8"))
     interface = written["component"]["interface"]
     assert re.fullmatch(r"[a-z0-9]{12}", interface[0]["definition"]["id"])
@@ -1266,6 +1267,9 @@ def test_assigning_ids_skips_a_file_it_cannot_parse(tree, capsys):
     write_tree(tree, {"a.ddd.json": "{ not json"})
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_FINDINGS
     assert (tree / "a.ddd.json").read_text(encoding="utf-8") == "{ not json"
+    captured = capsys.readouterr().err
+    assert "not readable as json, skipped" in captured
+    assert "wrote 0 ids" in captured
 
 
 def test_assigning_ids_keeps_a_byte_order_mark(tree):
@@ -1342,7 +1346,7 @@ def test_assigning_ids_ignores_a_component_with_no_interface(tree):
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
 
 
-def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate(tree):
+def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate(tree, capsys):
     r"""A defensive branch a hand authored file can still reach, if never on purpose.
 
     The scanner in ``ranges.py`` records a value's span under the *raw* text of the key in
@@ -1353,6 +1357,11 @@ def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate
     escaped one. ``value_span_of`` then finds nothing for the pointer this module builds
     off the decoded document, and the declaration is left unstamped rather than the run
     crashing on a ``None`` span.
+
+    Also the regression check for ``assign`` once counting ``len(pointers)`` - declarations
+    *found* - rather than insertions actually made: this file has exactly one pointer and
+    zero of them resolve, so a miscount would print ``wrote 1 id`` for a file the assertion
+    above has just shown was never touched.
     """
     original = (
         '{\n  "component": {\n    "name": "A",\n    "interface": [\n      {\n'
@@ -1364,3 +1373,4 @@ def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate
     write_tree(tree, {"a.ddd.json": original})
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
     assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original
+    assert "wrote 0 ids" in capsys.readouterr().err

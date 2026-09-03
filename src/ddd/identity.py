@@ -19,8 +19,18 @@ from pathlib import Path
 
 from ddd.lsp.ranges import Document, read
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
+from ddd.models.component import Scope
 
-_PRODUCING = ("output", "local")
+_PRODUCING = (Scope.OUTPUT.value, Scope.LOCAL.value)
+"""Spelled as the raw strings a description carries, not as ``Scope`` itself.
+
+This module reads a file's json directly, before the loader has had a chance to say
+whether it is well formed - so a declaration's ``scope`` is whatever the author typed, not
+yet a validated :class:`Scope`. Comparing against the enum's own values keeps this from
+drifting from what ``Scope`` calls a producer, without asking pydantic to construct one
+from a string that has not been checked, which would turn an unrelated malformed value into
+an exception this module has no business raising.
+"""
 
 UNREADABLE = -1
 """What :func:`assign` returns for a file it could not read as json, which is not zero.
@@ -88,6 +98,7 @@ def assign(path: Path) -> int:
     if not pointers:
         return 0
     text = document.text
+    written = 0
     # Back to front, so an insertion never moves the offset of the one before it.
     for pointer in reversed(pointers):
         span = document.value_span_of(pointer)
@@ -96,6 +107,7 @@ def assign(path: Path) -> int:
         at = span[1]
         indent = _indent_of_line_at(text, at)
         text = f'{text[:at]},\n{indent}"id": "{new_id()}"{text[at:]}'
+        written += 1
     # What the file was encoded and ended with, which ``read`` has already normalised away:
     # it decodes with utf-8-sig and with universal newlines, so by the time the text is here
     # a byte order mark is gone and every line ends in "\n". Writing the defaults back would
@@ -104,4 +116,4 @@ def assign(path: Path) -> int:
     raw = path.read_bytes()
     encoding = "utf-8-sig" if raw.startswith(codecs.BOM_UTF8) else "utf-8"
     path.write_text(text, encoding=encoding, newline="\r\n" if b"\r\n" in raw else "\n")
-    return len(pointers)
+    return written

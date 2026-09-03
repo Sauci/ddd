@@ -876,8 +876,11 @@ preselects it.
 ```
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
-most eight characters; a longer one is refused rather than shortened, because two names
-shortened to the same eight would collide in a calibration tool instead of here. `event` is
+most eight characters - the width of that field in the a2l, not a limit of the protocol, which
+length-prefixes an event channel name and carries far more. A longer one is refused rather
+than shortened, because two names shortened to the same eight would collide in a calibration
+tool instead of here. No file DDD writes carries an event name yet; the limit applies anyway,
+so that a rasters file written today still loads once the module level `DAQ` block does. `event` is
 the event channel number the target's XCP configuration assigned, in `0 .. 0xFFFF` and
 distinct across the project: two rasters claiming one number is `duplicate-event`. `cycle` is
 the period, a whole number and one of the units `ns`, `us`, `ms`, `s`, and it has to be a

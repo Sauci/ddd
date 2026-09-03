@@ -6,7 +6,7 @@
       "description": "One DAQ event the target offers, named so that a definition can refer to it.",
       "properties": {
         "raster": {
-          "description": "The name a definition refers to, which is also the short name of the XCP event.\n\nXCP carries eight characters, so a longer name is refused rather than shortened: two\nnames shortened to the same eight would collide in a calibration tool rather than here,\nwhere the author could still do something about it.",
+          "description": "The name a definition refers to, which is also the short name of the XCP event.\n\nThe a2l writes that short name into a field eight characters wide, so a longer name is\nrefused rather than shortened: two names shortened to the same eight would collide in a\ncalibration tool rather than here, where the author could still do something about it.",
           "maxLength": 8,
           "minLength": 1,
           "pattern": "^\\S+$",

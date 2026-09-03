@@ -19,10 +19,13 @@ guess which task moves the signal.
      ]
    }
 
-``raster`` is the name a definition refers to, and it is also the short name XCP gives the
-event - which is why it is limited to eight characters. A longer one is refused rather than
-shortened, because two names shortened to the same eight would collide in a calibration tool
-rather than here, where the author can still do something about it. ``event`` is the event
+``raster`` is the name a definition refers to, and it is also the short name the a2l gives the
+event - a field eight characters wide, which is where the limit comes from. It is not a
+protocol limit: XCP itself length-prefixes an event channel name and carries far more. A
+longer one is refused rather than shortened, because two names shortened to the same eight
+would collide in a calibration tool rather than here, where the author can still do something
+about it. No file DDD writes carries an event name today, and the limit applies anyway, so
+that a rasters file written now still loads once the module level ``DAQ`` block does. ``event`` is the event
 channel number the target's XCP configuration assigned, distinct across the project.
 ``cycle`` is the period, a whole number and a unit - ``100us``, ``10ms``, ``1s``, and
 ``1500us`` rather than ``1.5ms``. It is optional: an event with no period is not cyclic,

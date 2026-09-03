@@ -91,18 +91,28 @@ class RastersFile(FileRoot):
 
 ### 3.1 `raster`
 
-The name every reference uses, and the short name of the XCP event. XCP caps that at eight
-characters, so a longer name is refused at load time with a message naming the limit rather
-than truncated: a silently shortened name would collide with another shortened name sooner or
-later, and the collision would surface in a calibration tool rather than in DDD. `1ms`,
-`10ms` and `crank` fit; `Task_10ms` does not.
+The name every reference uses, and the short name of the XCP event. The a2l gives that short
+name a field eight characters wide, so a longer name is refused at load time with a message
+naming the limit rather than truncated: a silently shortened name would collide with another
+shortened name sooner or later, and the collision would surface in a calibration tool rather
+than in DDD. `1ms`, `10ms` and `crank` fit; `Task_10ms` does not.
 
 The human readable name is `description`, which is what the eventual `EVENT` line writes as
 the long name and what the documentation shows.
 
-The limit of eight is the XCP event short name, and it is baked into a validator here, so it
-has to be confirmed against the ASAM document with the grammar of section 6 rather than taken
-from this paragraph.
+The limit of eight is baked into a validator here, so its provenance matters. **Half of it is
+now settled and half is not.** The protocol layer specification says an event channel name is
+length-prefixed by a byte and carries no terminator, so the *protocol* imposes nothing like a
+limit of eight - the original wording of this section, which credited the cap to XCP itself,
+was wrong. What remains unconfirmed is the width of `EVENT_CHANNEL_SHORT_NAME` in the a2l
+description of an `EVENT`, believed to be `char[9]`, which is the field a raster name is
+actually written to. That still has to be read from the ASAM document alongside the grammar of
+section 6.
+
+The limit is kept at eight while that is open, because the two directions are not symmetric: a
+cap that is later relaxed accepts every file it accepted before, while one that is later
+tightened refuses files that were valid. Nothing DDD writes carries an event name yet, so the
+constraint costs a project only the names it may choose.
 
 ### 3.2 `event`
 

@@ -20,7 +20,15 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from ddd.models.common import FileRoot
 
 EVENT_NAME_LENGTH = 8
-"""Longest event name XCP carries, which here is the reference and the short name at once."""
+"""Longest raster name: the width of the short name an a2l ``EVENT`` carries.
+
+Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and
+forbids a terminator, so it carries far more than eight; the eight is the a2l's
+``EVENT_CHANNEL_SHORT_NAME``, which is where a raster name goes once the module level ``DAQ``
+block is written. Nothing writes one yet, and the limit is enforced anyway, so that a rasters
+file which loads today still loads then - the reason the cycle rule below is enforced ahead of
+its use as well.
+"""
 
 EVENT_MAX = 0xFFFF
 """Widest event channel number XCP addresses."""
@@ -69,9 +77,9 @@ class RasterDeclaration(BaseModel):
     ]
     """The name a definition refers to, which is also the short name of the XCP event.
 
-    XCP carries eight characters, so a longer name is refused rather than shortened: two
-    names shortened to the same eight would collide in a calibration tool rather than here,
-    where the author could still do something about it.
+    The a2l writes that short name into a field eight characters wide, so a longer name is
+    refused rather than shortened: two names shortened to the same eight would collide in a
+    calibration tool rather than here, where the author could still do something about it.
     """
 
     event: int = Field(ge=0, le=EVENT_MAX)

@@ -343,3 +343,9 @@ class TestObjectIdentity:
         finding_for_y, finding_for_z = findings
         assert "'Y'" in finding_for_y.message and "'X'" in finding_for_y.message, messages(bag)
         assert "'Z'" in finding_for_z.message and "'X'" in finding_for_z.message, messages(bag)
+        # The note is what an editor follows to the other declaration - pointing at the
+        # first object's own declaration, not back at the second one reporting it.
+        note_text, note_location = finding_for_y.notes[0]
+        assert note_text == "first carries the id here"
+        assert note_location is not None
+        assert note_location.path.name == "a.ddd.json"

@@ -185,6 +185,7 @@ class TestCommands:
             "generate",
             "list",
             "dump",
+            "id",
             "schema",
             "build-info",
             "lsp",

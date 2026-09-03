@@ -662,6 +662,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd generate all FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
+| `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
@@ -677,8 +678,9 @@ because the components producing the inputs are by definition not part of the fi
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
 `checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
-already, `ddd lsp` speaks json-rpc on its own, and `ddd cmake-dir` and `ddd templates-dir`
-print a single path. `ddd dump` is the
+already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and `ddd templates-dir` print
+a single path, and `ddd id --assign` reports which files it wrote to and how many ids, not a
+list of findings. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
 in either format.

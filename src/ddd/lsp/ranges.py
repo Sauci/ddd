@@ -141,6 +141,16 @@ class Document:
             return None
         return _range(self._position(span[0]), self._position(span[1]))
 
+    def value_span_of(self, pointer: str) -> tuple[int, int] | None:
+        """Where a value's characters sit in the text, as offsets into it.
+
+        :meth:`value_range_of` answers the same question in the line and character terms the
+        protocol counts in, which is what an editor wants. A command rewriting the file wants
+        the offsets it slices with, and converting one back into the other would recompute
+        what the scan already recorded.
+        """
+        return self._values.get(pointer)
+
     def _resolve(self, pointer: str) -> tuple[int, int] | None:
         """The span of the pointer, of its nearest documented ancestor, or nothing."""
         current = pointer

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import codecs
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -1209,3 +1211,156 @@ def test_the_dump_omits_the_id_key_for_an_object_that_carries_none(tree, capsys)
     assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
     dumped = json.loads(capsys.readouterr().out)
     assert "id" not in dumped["objects"][0]
+
+
+def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
+    write_tree(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("local", "X"), declare("output", "Y"), declare("input", "Z")
+            ),
+        },
+    )
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    written = json.loads((tree / "a.ddd.json").read_text(encoding="utf-8"))
+    interface = written["component"]["interface"]
+    assert re.fullmatch(r"[a-z0-9]{12}", interface[0]["definition"]["id"])
+    assert re.fullmatch(r"[a-z0-9]{12}", interface[1]["definition"]["id"])
+    assert "id" not in interface[2]["definition"], "a consumer owns no identity"
+
+
+def test_assigning_ids_twice_changes_nothing(tree):
+    write_tree(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+        },
+    )
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    once = (tree / "a.ddd.json").read_text(encoding="utf-8")
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == once
+
+
+def test_assigning_ids_leaves_the_rest_of_the_file_alone(tree):
+    """One inserted line per declaration, and nothing else touched."""
+    original = (
+        '{\n  "component": {\n    "name": "A",\n    "interface": [\n      {\n'
+        '        "scope": "local",\n        "definition": {\n'
+        '          "name": "X",\n          "datatype": "uint8",\n'
+        '          "conversion": {"kind": "identity"},\n          "kind": "measurement",\n'
+        '          "volatile": false\n        }\n      }\n    ]\n  }\n}\n'
+    )
+    write_tree(tree, {"a.ddd.json": original})
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    after = (tree / "a.ddd.json").read_text(encoding="utf-8")
+    added = [line for line in after.splitlines() if line not in original.splitlines()]
+    assert len(added) == 1
+    assert added[0].startswith('          "id": "')
+
+
+def test_assigning_ids_skips_a_file_it_cannot_parse(tree, capsys):
+    write_tree(tree, {"a.ddd.json": "{ not json"})
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_FINDINGS
+    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == "{ not json"
+
+
+def test_assigning_ids_keeps_a_byte_order_mark(tree):
+    """``ranges.read`` reads with utf-8-sig, so the mark is invisible by the time we edit.
+
+    Written back as plain utf-8 it would be silently dropped - a change to a file this
+    command promises to leave alone but for one line, and one that several Windows editors
+    and PowerShell redirection put there in the first place.
+    """
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    path.write_bytes(codecs.BOM_UTF8 + path.read_bytes())
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert path.read_bytes().startswith(codecs.BOM_UTF8)
+
+
+def test_assigning_ids_keeps_the_line_endings(tree):
+    """``read`` decodes with universal newlines, so a crlf file arrives here as lf.
+
+    Written back with the default translation it would come out lf on Linux and crlf on
+    Windows, whatever it went in as - a diff on every line of the file, which is exactly what
+    makes editing a hand-authored source unreviewable.
+    """
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert b"\r\n" in path.read_bytes()
+    assert path.read_bytes().replace(b"\r\n", b"").count(b"\n") == 0
+
+
+def test_assigning_ids_keeps_a_file_free_of_crlf(tree):
+    """The other side of ``test_assigning_ids_keeps_the_line_endings``.
+
+    ``write_tree`` writes through a text-mode file handle with no explicit ``newline``, so on
+    Windows the fixture itself already carries ``\\r\\n`` before this test ever runs -
+    translated back to plain ``\\n`` here first, so the assertion below is actually about
+    ``assign``'s own choice and not an accident of how the fixture wrote the file. A project
+    that has only ever seen ``\\n`` must not gain a ``\\r`` from being stamped.
+    """
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert b"\r\n" not in path.read_bytes()
+
+
+def test_assigning_ids_ignores_a_file_that_is_not_a_json_object(tree):
+    """A component file is the only kind that declares data objects.
+
+    ``ddd id --assign`` is pointed at whatever files a shell glob expands to, so a stray
+    json file that is not even an object - an array, here - has to be left alone rather
+    than crash the run.
+    """
+    write_tree(tree, {"a.ddd.json": "[]"})
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == "[]"
+
+
+def test_assigning_ids_ignores_a_project_file(tree):
+    """A project file is valid json and an object, but declares no interface at all.
+
+    Pointing the command at a whole project's file list has to be as safe as pointing it at
+    one component, so the project file in the middle of that list is skipped rather than
+    reported as a problem.
+    """
+    write_tree(tree, {"project.ddd.json": project("P", "a.ddd.json")})
+    assert main(["id", "--assign", str(tree / "project.ddd.json")]) == EXIT_OK
+
+
+def test_assigning_ids_ignores_a_component_with_no_interface(tree):
+    """A component may declare no interface at all; there is then nothing to stamp."""
+    write_tree(tree, {"a.ddd.json": {"component": {"name": "A"}}})
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+
+
+def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate(tree):
+    r"""A defensive branch a hand authored file can still reach, if never on purpose.
+
+    The scanner in ``ranges.py`` records a value's span under the *raw* text of the key in
+    front of it, unescaped, while ``json.loads`` decodes it - documented on
+    :meth:`~ddd.lsp.ranges._Scanner._string`. The two agree for every key anybody actually
+    types, but a ``"name"`` spelled with a json unicode escape - legal json, if not
+    something a person writes by hand - decodes to the plain string while scanning to the
+    escaped one. ``value_span_of`` then finds nothing for the pointer this module builds
+    off the decoded document, and the declaration is left unstamped rather than the run
+    crashing on a ``None`` span.
+    """
+    original = (
+        '{\n  "component": {\n    "name": "A",\n    "interface": [\n      {\n'
+        '        "scope": "local",\n        "definition": {\n'
+        '          "\\u006eame": "X",\n          "datatype": "uint8",\n'
+        '          "conversion": {"kind": "identity"},\n          "kind": "measurement",\n'
+        '          "volatile": false\n        }\n      }\n    ]\n  }\n}\n'
+    )
+    write_tree(tree, {"a.ddd.json": original})
+    assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
+    assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original

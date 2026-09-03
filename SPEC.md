@@ -1345,7 +1345,11 @@ options of what it produces; [section 5](#5-generated-artefacts)); listing the r
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
-writing out the data dictionary itself (`ddd dump`); printing the JSON schema of the file
+writing out the data dictionary itself (`ddd dump`); writing an identity into every
+producing declaration that has none (`ddd id --assign`), so that a later `ddd compare`
+reports a rename as a rename rather than a removal and an unrelated addition - a
+declaration that already carries one is left untouched, so running it again changes
+nothing; printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`); listing
 the files a project description

@@ -38,6 +38,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
+from ddd.identity import UNREADABLE, assign
 from ddd.ir import Comparable, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import (
@@ -167,6 +168,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_common_arguments(dump)
     dump.set_defaults(handler=_command_dump)
+
+    identity = subparsers.add_parser(
+        "id",
+        help="write an identity into every producing declaration that has none",
+        description=(
+            "Stamps an 'id' into each declaration of scope 'output' or 'local' that does "
+            "not carry one, editing the files in place. An identity is what lets a later "
+            "'ddd compare' report a rename as a rename. A declaration that already has one "
+            "is left alone, so a second run changes nothing."
+        ),
+    )
+    identity.add_argument("files", type=Path, nargs="+", help="the description files to stamp")
+    identity.add_argument(
+        "--assign",
+        action="store_true",
+        required=True,
+        help="write the ids; required, so that no run edits a file by accident",
+    )
+    identity.set_defaults(handler=_command_id)
 
     lsp = subparsers.add_parser(
         "lsp",
@@ -543,6 +563,22 @@ def _command_dump(args: argparse.Namespace) -> int:
     if dictionary is None:
         return EXIT_FINDINGS
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+
+
+def _command_id(args: argparse.Namespace) -> int:
+    """Stamp identities into description files, reporting what was written."""
+    written = 0
+    skipped: list[Path] = []
+    for path in args.files:
+        count = assign(path)
+        if count == UNREADABLE:
+            skipped.append(path)
+        else:
+            written += count
+    for path in skipped:
+        print(f"{path}: not readable as json, skipped", file=sys.stderr)
+    print(f"wrote {written} id{'' if written == 1 else 's'}", file=sys.stderr)
+    return EXIT_FINDINGS if skipped else EXIT_OK
 
 
 _SCHEMA_MODELS: dict[str, type[BaseModel]] = {

@@ -1304,8 +1304,9 @@ class _Analysis:
         if definition.kind not in MEMBER_OBJECT_KINDS:
             offered = " or ".join(f"'{kind.value}'" for kind in MEMBER_OBJECT_KINDS)
             problem = (
-                f"a '{definition.kind.value}' refers to other objects or is an array of one "
-                f"datatype, and a structure is neither; a structured object is {offered}"
+                f"the kind '{definition.kind.value}' refers to other objects or is an array "
+                f"of one datatype, and a structure is neither; a structured object is "
+                f"{offered}"
             )
         elif definition.init is not None:
             problem = "the initial value of a structure is written by the code that starts it"

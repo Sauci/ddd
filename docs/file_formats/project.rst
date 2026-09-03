@@ -54,7 +54,7 @@ The keys
        opens the file in a calibration tool.
    * - ``includes``
      - ``[]``
-     - Paths to the component, types, units, sections, rasters, constants and sub-project
+     - Paths to the component, types, units, sections, constants, rasters and sub-project
        files that make up the project, relative to this file. Wildcards are expanded.
 
 The identifier rule is tighter than what a c compiler would accept, and deliberately so:

@@ -261,7 +261,7 @@ class TestStructuredVariables:
         self, tree: Path
     ) -> None:
         """The component default resolves a structured variable exactly as it resolves a
-        plain one; _instance_raster carries the same rule Variable.raster does."""
+        plain one: both paths reach the same _resolved_raster."""
         files = {
             "project.ddd.json": project("P", "r.ddd.json", "t.ddd.json", "a.ddd.json"),
             "r.ddd.json": rasters(raster("10ms", 1)),

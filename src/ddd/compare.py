@@ -307,15 +307,39 @@ def _compare_references(
     map over it: a reference that follows a rename is the same reference.
     """
     if old.references.keys() != new.references.keys():
-        return _describe_reference_change(old, new)
+        return _describe_reference_change(old, new, was, now)
     for field, before in old.references.items():
         if _referent(before, was) != _referent(new.references[field], now):
-            return _describe_reference_change(old, new)
+            return _describe_reference_change(old, new, was, now)
     return None
 
 
-def _describe_reference_change(old: Comparable, new: Comparable) -> str:
-    return f"references: {_describe_references(new)} != {_describe_references(old)}"
+def _describe_reference_change(
+    old: Comparable,
+    new: Comparable,
+    was: Mapping[str, Comparable],
+    now: Mapping[str, Comparable],
+) -> str:
+    """Phrase how the referents differ.
+
+    A field whose written name is unchanged but whose referent is not - a name freed by a
+    rename and claimed by something else in the same delivery - says so explicitly, rather than
+    printing that one name on both sides of ``!=``. That would read as nothing having changed,
+    which is exactly backwards: it is the line telling the reader their object is now silently
+    bound to the wrong one, in the one check this whole feature exists to get right.
+    """
+    if old.references.keys() != new.references.keys():
+        return f"references: {_describe_references(new)} != {_describe_references(old)}"
+    news: list[str] = []
+    olds: list[str] = []
+    for field in sorted(old.references):
+        before, after = old.references[field], new.references[field]
+        if before == after and _referent(before, was) != _referent(after, now):
+            news.append(f"{field}={after} (now names a different object)")
+        else:
+            news.append(f"{field}={after}")
+        olds.append(f"{field}={before}")
+    return f"references: {', '.join(news)} != {', '.join(olds)}"
 
 
 def _compare_object(

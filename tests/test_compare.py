@@ -528,6 +528,35 @@ def test_pointing_a_curve_at_a_different_axis_is_still_an_interface_change(tree)
     assert "changed-interface" in checks(verdict(before, after)), messages(verdict(before, after))
 
 
+def test_a_stale_reference_through_a_reused_name_says_so(tree):
+    """The discriminating case a same-text comparison cannot tell apart from no change at all.
+
+    The curve's own declaration is untouched - it still spells ``"axis": "A"`` on both sides -
+    but 'A' was freed by a rename (old 'A' became 'R') and immediately reused by a different
+    axis (old 'Q' became 'A'), so the curve is silently rebound to an object it never named.
+    Printing ``axis=A != axis=A`` would read as nothing having changed; the message has to
+    name what actually happened instead.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "Q", kind="axis", size=8, id="b4n6p8qs2v4w"),
+        declare("local", "C", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "R", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "A", kind="axis", size=8, id="b4n6p8qs2v4w"),
+        declare("local", "C", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+    )
+    bag = verdict(before, after)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "changed-interface"]
+    assert len(findings) == 1, messages(bag)
+    assert "axis=A (now names a different object) != axis=A" in findings[0].render(), messages(bag)
+
+
 def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
     """A leaf's identity is its instance's id together with the part of its path below the
     instance, so ``Inlet[2].value`` stays paired with itself - not with a neighbouring

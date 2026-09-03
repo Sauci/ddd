@@ -396,7 +396,7 @@
             }
           ],
           "default": null,
-          "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.",
+          "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.\n\nUnlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,\na *current* dump omits this key entirely rather than writing it ``null`` when nobody\nstated one: a project that has adopted no ids anywhere would otherwise gain a\npermanently-present ``null`` key on every object it has, for a feature it has not adopted.",
           "title": "Id"
         },
         "type": {
@@ -562,7 +562,7 @@
             }
           ],
           "default": null,
-          "description": "Identity of the variable this leaf belongs to; a member has none of its own.\n\nA leaf is identified by this together with the part of ``path`` below the instance,\nso renaming the instance is tracked and renaming a *member of the type* is not - the\npath is half of the identity. Empty in a dictionary from format 5 or older.",
+          "description": "Identity of the variable this leaf belongs to; a member has none of its own.\n\nA leaf is identified by this together with the part of ``path`` below the instance,\nso renaming the instance is tracked and renaming a *member of the type* is not - the\npath is half of the identity. Empty in a dictionary from format 5 or older.\n\nUnlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,\na *current* dump omits this key entirely rather than writing it ``null`` when nobody\nstated one: a project that has adopted no ids anywhere would otherwise gain a\npermanently-present ``null`` key on every leaf it has, for a feature it has not adopted.",
           "title": "Instance Id"
         },
         "kind": {
@@ -880,7 +880,7 @@
             }
           ],
           "default": null,
-          "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.",
+          "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.\n\nUnlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,\na *current* dump omits this key entirely rather than writing it ``null`` when nobody\nstated one: a project that has adopted no ids anywhere would otherwise gain a\npermanently-present ``null`` key on every object it has, for a feature it has not adopted.",
           "title": "Id"
         },
         "kind": {

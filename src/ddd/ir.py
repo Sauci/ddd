@@ -143,6 +143,11 @@ class ResolvedObject(_Frozen):
 
     Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
     on nothing pairs on its name, exactly as it did then.
+
+    Unlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,
+    a *current* dump omits this key entirely rather than writing it ``null`` when nobody
+    stated one: a project that has adopted no ids anywhere would otherwise gain a
+    permanently-present ``null`` key on every object it has, for a feature it has not adopted.
     """
 
     kind: ObjectKind
@@ -346,6 +351,11 @@ class ResolvedInstance(_Frozen):
 
     Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
     on nothing pairs on its name, exactly as it did then.
+
+    Unlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,
+    a *current* dump omits this key entirely rather than writing it ``null`` when nobody
+    stated one: a project that has adopted no ids anywhere would otherwise gain a
+    permanently-present ``null`` key on every object it has, for a feature it has not adopted.
     """
 
     type: str
@@ -444,6 +454,11 @@ class ResolvedLeaf(_Frozen):
     A leaf is identified by this together with the part of :attr:`path` below the instance,
     so renaming the instance is tracked and renaming a *member of the type* is not - the
     path is half of the identity. Empty in a dictionary from format 5 or older.
+
+    Unlike ``section``, ``raster``, ``condition`` and the other optional fields of this model,
+    a *current* dump omits this key entirely rather than writing it ``null`` when nobody
+    stated one: a project that has adopted no ids anywhere would otherwise gain a
+    permanently-present ``null`` key on every leaf it has, for a feature it has not adopted.
     """
 
     kind: ObjectKind

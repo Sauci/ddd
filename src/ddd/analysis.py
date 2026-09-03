@@ -283,6 +283,7 @@ class Variable:
         definition = self.definition
         return ResolvedObject(
             name=self.name,
+            id=definition.id,
             kind=definition.kind,
             datatype=definition.datatype,
             description=definition.description,
@@ -1842,6 +1843,7 @@ class _Analysis:
         spelled = definition.declared_shape or ()
         instance = ResolvedInstance(
             name=name,
+            id=definition.id,
             type=named,
             kind=definition.kind,
             description=definition.description,
@@ -1905,6 +1907,7 @@ class _Analysis:
                     ResolvedLeaf(
                         path=here,
                         instance=instance.name,
+                        instance_id=instance.id,
                         kind=instance.kind,
                         datatype=datatype,
                         description=member.description,

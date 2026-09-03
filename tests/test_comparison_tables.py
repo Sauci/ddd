@@ -87,6 +87,12 @@ _NOT_COMPARED: dict[str, str] = {
 # derived parts are not compared because they are not claims anybody makes.
 _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "name": _NOT_COMPARED["name"],
+    "id": "an identity is the key a comparison is joined on, never a thing compared once the "
+    "join is made - the same is true of ResolvedLeaf.instance_id, which this guard does not "
+    "reach because it walks ResolvedObject.model_fields alone. Putting either in a table "
+    "would make the single commit that stamps ids across a project report a changed-interface "
+    "or changed-storage finding on every object it touches, since the old side of that first "
+    "comparison never has one to agree or disagree with",
     "description": _NOT_COMPARED["description"],
     "consumers": "derived: who reads the object is a fact about the project, not a property "
     "of the object that could disagree",

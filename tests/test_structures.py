@@ -6,6 +6,7 @@ file, or the rest of the project, to have any meaning.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -1294,3 +1295,50 @@ class TestStructuresReachEverythingElse:
         leaf = dictionary.comparable["X.plain"]
         assert leaf.init is None
         assert leaf.references == {}
+
+
+def test_a_leaf_carries_the_identity_of_its_instance(tree: Path) -> None:
+    """A leaf has no declaration to carry an id, so it borrows its instance's."""
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct("S_t", val("value"), val("raw"))),
+            "a.ddd.json": component(
+                "A", declare("local", "Inlet", typename="S_t", id="k7m2q9xr4t8w")
+            ),
+        },
+    )
+    assert dictionary is not None, messages(bag)
+    assert {leaf.path for leaf in dictionary.leaves} == {"Inlet.value", "Inlet.raw"}
+    assert {leaf.instance_id for leaf in dictionary.leaves} == {"k7m2q9xr4t8w"}
+
+
+def test_the_dump_carries_and_omits_instance_and_leaf_identity(tree: Path) -> None:
+    """The same byte-identical rule as a plain object (see test_cli.py), on a structured one.
+
+    An instance with an id dumps it, and the leaves it flattens into borrow it as
+    ``instance_id``; an instance with none omits the key on itself and on every leaf, so a
+    project with structured objects is not left out of the format 5 dump's byte-identical
+    guarantee.
+    """
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct("S_t", val("value"))),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Inlet", typename="S_t", id="k7m2q9xr4t8w"),
+                declare("local", "Outlet", typename="S_t"),
+            ),
+        },
+    )
+    assert dictionary is not None, messages(bag)
+    dumped = json.loads(dictionary.model_dump_json())
+    instances = {entry["name"]: entry for entry in dumped["instances"]}
+    leaves = {entry["path"]: entry for entry in dumped["leaves"]}
+    assert instances["Inlet"]["id"] == "k7m2q9xr4t8w"
+    assert leaves["Inlet.value"]["instance_id"] == "k7m2q9xr4t8w"
+    assert "id" not in instances["Outlet"]
+    assert "instance_id" not in leaves["Outlet.value"]

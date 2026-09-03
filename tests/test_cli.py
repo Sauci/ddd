@@ -1176,3 +1176,36 @@ class TestSchemaAll:
         target = tmp_path / "one.json"
         assert main(["schema", "component", "-o", str(target)]) == EXIT_OK
         assert target.read_text(encoding="utf-8") == printed
+
+
+def test_the_dictionary_carries_the_identity_and_states_format_six(tree, capsys):
+    write_tree(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+        },
+    )
+    assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
+    dumped = json.loads(capsys.readouterr().out)
+    assert dumped["format"] == 6
+    assert dumped["objects"][0]["id"] == "k7m2q9xr4t8w"
+
+
+def test_the_dump_omits_the_id_key_for_an_object_that_carries_none(tree, capsys):
+    """An unmigrated project's dump stays byte-identical apart from the format stamp.
+
+    Every other optional field - ``section``, ``raster``, ``condition`` - still serializes
+    as ``null`` when absent; ``id`` does not, because format 5 never wrote the key at all,
+    and a project that has adopted no ids anywhere must dump exactly what it always did.
+    """
+    write_tree(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+        },
+    )
+    assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
+    dumped = json.loads(capsys.readouterr().out)
+    assert "id" not in dumped["objects"][0]

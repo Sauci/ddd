@@ -21,7 +21,17 @@ repeat that work, and two backends can never disagree about it.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from typing import Any
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from ddd.models.common import Datatype, Identifier
 from ddd.models.component import Scope
@@ -44,6 +54,21 @@ def _check_dimensions_match(shape: tuple[int, ...], dimensions: tuple[int | str,
             f"{len(shape)}; the two describe the same shape and must agree"
         )
         raise ValueError(msg)
+
+
+def _drop_unstated_id(dumped: dict[str, Any], key: str, stated: str | None) -> dict[str, Any]:
+    """Remove ``key`` from a just-serialized object when nobody gave it an identity.
+
+    Every other optional field of these models - ``section``, ``raster``, ``condition`` -
+    serializes as ``null`` when absent, and an unstated identity could do the same. It does
+    not, because format 5 and older never wrote the key at all: a project that has adopted no
+    ids anywhere must dump exactly what it always did, or the single commit that starts
+    stamping ids across a project would also be the commit where every *other* object's
+    dictionary entry changes shape for no reason of its own.
+    """
+    if stated is None:
+        dumped.pop(key, None)
+    return dumped
 
 
 class _Frozen(BaseModel):
@@ -112,6 +137,13 @@ class ResolvedObject(_Frozen):
 
     name: Identifier
     """Name of the object, unique across the whole project; its c and a2l identifier."""
+
+    id: str | None = None
+    """Identity the producer gave this object, which survives a rename of it.
+
+    Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
+    on nothing pairs on its name, exactly as it did then.
+    """
 
     kind: ObjectKind
     """Which sort of object this is, taken from the definition that produced it."""
@@ -210,6 +242,10 @@ class ResolvedObject(_Frozen):
         _check_dimensions_match(self.shape, self.dimensions)
         return self
 
+    @model_serializer(mode="wrap")
+    def _omit_id_when_unstated(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _drop_unstated_id(handler(self), "id", self.id)
+
 
 class ResolvedMember(_Frozen):
     """One member of a structure, as the c templates need it to declare the member.
@@ -305,6 +341,13 @@ class ResolvedInstance(_Frozen):
     name: Identifier
     """Name of the variable; its c identifier and the root of every leaf path."""
 
+    id: str | None = None
+    """Identity the producer gave this object, which survives a rename of it.
+
+    Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
+    on nothing pairs on its name, exactly as it did then.
+    """
+
     type: str
     """Name of the structure it is, which is the c type of the declaration."""
 
@@ -371,6 +414,10 @@ class ResolvedInstance(_Frozen):
         _check_dimensions_match(self.shape, self.dimensions)
         return self
 
+    @model_serializer(mode="wrap")
+    def _omit_id_when_unstated(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _drop_unstated_id(handler(self), "id", self.id)
+
 
 class ResolvedLeaf(_Frozen):
     """One member of one structured variable, at the end of one access path.
@@ -390,6 +437,14 @@ class ResolvedLeaf(_Frozen):
 
     instance: Identifier
     """Name of the variable this leaf belongs to, which is the root of :attr:`path`."""
+
+    instance_id: str | None = None
+    """Identity of the variable this leaf belongs to; a member has none of its own.
+
+    A leaf is identified by this together with the part of :attr:`path` below the instance,
+    so renaming the instance is tracked and renaming a *member of the type* is not - the
+    path is half of the identity. Empty in a dictionary from format 5 or older.
+    """
 
     kind: ObjectKind
     """Taken from the variable: every leaf of one object has the storage class of the whole."""
@@ -494,6 +549,12 @@ class ResolvedLeaf(_Frozen):
         _check_dimensions_match(self.shape, self.dimensions)
         return self
 
+    @model_serializer(mode="wrap")
+    def _omit_instance_id_when_unstated(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        return _drop_unstated_id(handler(self), "instance_id", self.instance_id)
+
 
 Comparable = ResolvedObject | ResolvedLeaf
 """What one delivery offers another: a plain object, or a member of a structured one.
@@ -504,7 +565,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 5
+DICTIONARY_FORMAT = 6
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later

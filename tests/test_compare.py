@@ -715,3 +715,128 @@ def test_a_storage_only_difference_is_not_offered_as_a_lost_identity(tree):
     findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
     assert len(findings) == 1, messages(bag)
     assert findings[0].notes == (), messages(bag)
+
+
+def test_the_renames_file_lists_the_pairs_a_dataset_needs(tree, tmp_path):
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component("A", declare("local", "FiltGain", id="k7m2q9xr4t8w")),
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component("A", declare("local", "FilterGain", id="k7m2q9xr4t8w")),
+        },
+    )
+    out = tmp_path / "renames.json"
+    main(
+        [
+            "compare",
+            str(tree / "before.ddd.json"),
+            str(tree / "after.ddd.json"),
+            "--renames",
+            str(out),
+        ]
+    )
+    assert json.loads(out.read_text(encoding="utf-8")) == [
+        {"id": "k7m2q9xr4t8w", "from": "FiltGain", "to": "FilterGain"}
+    ]
+
+
+def test_a_comparison_with_no_renames_writes_an_empty_list(tree, tmp_path):
+    """So a build step can tell 'no renames' from 'compare never ran'."""
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+        },
+    )
+    out = tmp_path / "renames.json"
+    main(
+        [
+            "compare",
+            str(tree / "before.ddd.json"),
+            str(tree / "after.ddd.json"),
+            "--renames",
+            str(out),
+        ]
+    )
+    assert json.loads(out.read_text(encoding="utf-8")) == []
+
+
+def test_the_renames_file_is_sorted_by_the_new_name(tree, tmp_path):
+    """Neither test above can tell a sort by ``to`` from no sort at all: one has a single
+    entry and the other has none, so either order - or none - reads the same. Pairing is
+    itself ordered by the *old* name, so two renames whose old and new names fall in opposite
+    orders are what it takes to tell the two apart.
+    """
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component(
+                "A",
+                declare("local", "Zeta", id="k7m2q9xr4t8w"),
+                declare("local", "Beta", id="p3rt5vwx9z2q"),
+            ),
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component(
+                "A",
+                declare("local", "Alpha", id="k7m2q9xr4t8w"),
+                declare("local", "Omega", id="p3rt5vwx9z2q"),
+            ),
+        },
+    )
+    out = tmp_path / "renames.json"
+    main(
+        [
+            "compare",
+            str(tree / "before.ddd.json"),
+            str(tree / "after.ddd.json"),
+            "--renames",
+            str(out),
+        ]
+    )
+    # By old name this would be Beta->Omega then Zeta->Alpha; sorted by new name it is the
+    # other way round.
+    assert json.loads(out.read_text(encoding="utf-8")) == [
+        {"id": "k7m2q9xr4t8w", "from": "Zeta", "to": "Alpha"},
+        {"id": "p3rt5vwx9z2q", "from": "Beta", "to": "Omega"},
+    ]
+
+
+def test_a_failing_comparison_still_writes_the_renames_file(tree, tmp_path):
+    """None of the tests above ever fail the comparison, so a write silently skipped whenever
+    ``bag.has_errors`` would pass every one of them. A delivery that cannot be accepted still
+    needs its renames listed, so this pairs the rename with a breaking datatype change and
+    checks both: the run reports failure, and the file is there anyway.
+    """
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component(
+                "A", declare("local", "FiltGain", "uint8", id="k7m2q9xr4t8w")
+            ),
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component(
+                "A", declare("local", "FilterGain", "uint16", id="k7m2q9xr4t8w")
+            ),
+        },
+    )
+    out = tmp_path / "renames.json"
+    exit_code = main(
+        [
+            "compare",
+            str(tree / "before.ddd.json"),
+            str(tree / "after.ddd.json"),
+            "--renames",
+            str(out),
+        ]
+    )
+    assert exit_code == EXIT_FINDINGS
+    assert json.loads(out.read_text(encoding="utf-8")) == [
+        {"id": "k7m2q9xr4t8w", "from": "FiltGain", "to": "FilterGain"}
+    ]

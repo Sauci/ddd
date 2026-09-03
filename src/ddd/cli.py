@@ -29,7 +29,7 @@ from ddd.backends import (
     write,
 )
 from ddd.build_info import BuildInfo, build_info_text
-from ddd.compare import compare
+from ddd.compare import compare, renames
 from ddd.diagnostics import (
     CHECKS,
     DiagnosticBag,
@@ -131,6 +131,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     compare_parser.add_argument("baseline", type=Path, help="the published dictionary or project")
     compare_parser.add_argument("candidate", type=Path, help="the delivery to judge")
+    compare_parser.add_argument(
+        "--renames",
+        type=Path,
+        help="also write the old-to-new name pairs here, for migrating datasets and recordings",
+    )
     _add_policy_arguments(compare_parser)
     compare_parser.set_defaults(handler=_command_compare)
 
@@ -411,6 +416,12 @@ def _command_compare(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
 
     compare(baseline, candidate, bag, location=Location(args.candidate))
+    if args.renames is not None:
+        # Written whether or not the comparison found errors: a delivery that cannot be
+        # accepted still needs its renames listed, so that whoever fixes it knows what moved.
+        args.renames.write_text(
+            json.dumps(renames(baseline, candidate), indent=2) + "\n", encoding="utf-8"
+        )
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.

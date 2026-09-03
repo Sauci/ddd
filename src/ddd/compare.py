@@ -205,6 +205,21 @@ def _pair(
     return paired, removed, added
 
 
+def renames(baseline: DataDictionary, candidate: DataDictionary) -> list[dict[str, str]]:
+    """The old-to-new name pairs of this comparison, for migrating what DDD cannot see.
+
+    Sorted by the new name, so two runs of one comparison produce the same file and a diff of
+    two such files means something.
+    """
+    paired, _, _ = _pair(baseline.comparable, candidate.comparable)
+    moved = [
+        {"id": key[0], "from": old.name, "to": new.name}
+        for old, new in paired
+        if old.name != new.name and (key := identity(old)) is not None
+    ]
+    return sorted(moved, key=lambda entry: entry["to"])
+
+
 def compare(
     baseline: DataDictionary,
     candidate: DataDictionary,

@@ -520,8 +520,14 @@ binary, and compare against it later:
 ```bash
 ddd dump project.ddd.json > baseline.json     # at release time
 ddd compare baseline.json project.ddd.json    # later, for the next delivery
+ddd compare baseline.json project.ddd.json --renames renames.json   # ...and list what moved
 ddd check project.ddd.json --baseline baseline.json   # both questions, one exit code
 ```
+
+`--renames` writes the old-to-new name pairs of the comparison - each object's `id`, its old
+name and its new name - to a json file, so a migration tool can update the calibration
+datasets, recordings, test scripts and requirement documents that key on the old spelling
+without having to parse the findings above.
 
 Either side may be an archived dictionary or a project description, so nothing has to be
 staged into a temporary file. The comparison is **directional** - can the candidate stand in

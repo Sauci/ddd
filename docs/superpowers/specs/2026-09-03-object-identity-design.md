@@ -291,10 +291,14 @@ typing a line that is already exact.
 
 ## 10 The dictionary
 
-`ddd dump` writes the id where an object carries one and omits the key otherwise, so a
-dictionary from a project that has not migrated is byte-identical to what format 5 wrote apart
-from the format stamp. `ddd list` gains no column: the id is machinery, and a person reading a
-list of objects is looking for names.
+`ddd dump` writes the id where an object carries one and `null` where it does not, exactly like
+`section`, `raster`, `condition` and the other optional fields of the same models. An earlier
+draft of this section asked for a dictionary from an unmigrated project to stay byte-identical
+to what format 5 wrote, apart from the format stamp, to protect existing consumers of a dumped
+dictionary - there are none, so nothing needs protecting, and the key instead follows the
+convention its two closest precedents, `dimensions` and `raster`, already set: neither was held
+to a byte-identical bar when it arrived. `ddd list` gains no column: the id is machinery, and a
+person reading a list of objects is looking for names.
 
 The published `ddd schema dictionary` and the per-kind schemas grow the key, and
 `schemas/*.schema.json` are regenerated and committed.

@@ -659,6 +659,7 @@ PINNED_LIST_PAYLOAD = """\
   "variables": [
     {
       "name": "State",
+      "id": null,
       "kind": "measurement",
       "datatype": "uint8",
       "description": "",
@@ -702,6 +703,7 @@ PINNED_LIST_PAYLOAD = """\
     },
     {
       "name": "Temperature",
+      "id": null,
       "kind": "measurement",
       "datatype": "uint16",
       "description": "",
@@ -1194,12 +1196,11 @@ def test_the_dictionary_carries_the_identity_and_states_format_six(tree, capsys)
     assert dumped["objects"][0]["id"] == "k7m2q9xr4t8w"
 
 
-def test_the_dump_omits_the_id_key_for_an_object_that_carries_none(tree, capsys):
-    """An unmigrated project's dump stays byte-identical apart from the format stamp.
+def test_the_dump_states_a_null_id_for_an_object_that_carries_none(tree, capsys):
+    """``id`` serializes like every other optional field of the model.
 
-    Every other optional field - ``section``, ``raster``, ``condition`` - still serializes
-    as ``null`` when absent; ``id`` does not, because format 5 never wrote the key at all,
-    and a project that has adopted no ids anywhere must dump exactly what it always did.
+    Unstated, it writes ``null`` exactly as ``section``, ``raster`` and ``condition`` do -
+    there is no consumer of a dumped dictionary to protect from the key's arrival.
     """
     write_tree(
         tree,
@@ -1210,7 +1211,7 @@ def test_the_dump_omits_the_id_key_for_an_object_that_carries_none(tree, capsys)
     )
     assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
     dumped = json.loads(capsys.readouterr().out)
-    assert "id" not in dumped["objects"][0]
+    assert dumped["objects"][0]["id"] is None
 
 
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):

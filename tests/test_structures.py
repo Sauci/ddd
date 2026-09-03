@@ -1314,13 +1314,12 @@ def test_a_leaf_carries_the_identity_of_its_instance(tree: Path) -> None:
     assert {leaf.instance_id for leaf in dictionary.leaves} == {"k7m2q9xr4t8w"}
 
 
-def test_the_dump_carries_and_omits_instance_and_leaf_identity(tree: Path) -> None:
-    """The same byte-identical rule as a plain object (see test_cli.py), on a structured one.
+def test_the_dump_carries_and_nulls_instance_and_leaf_identity(tree: Path) -> None:
+    """The same rule as a plain object (see test_cli.py), on a structured one.
 
     An instance with an id dumps it, and the leaves it flattens into borrow it as
-    ``instance_id``; an instance with none omits the key on itself and on every leaf, so a
-    project with structured objects is not left out of the format 5 dump's byte-identical
-    guarantee.
+    ``instance_id``; an instance with none states ``null`` for the key on itself and on
+    every leaf, like any other unstated optional field.
     """
     dictionary, bag = run_analysis(
         tree,
@@ -1340,5 +1339,5 @@ def test_the_dump_carries_and_omits_instance_and_leaf_identity(tree: Path) -> No
     leaves = {entry["path"]: entry for entry in dumped["leaves"]}
     assert instances["Inlet"]["id"] == "k7m2q9xr4t8w"
     assert leaves["Inlet.value"]["instance_id"] == "k7m2q9xr4t8w"
-    assert "id" not in instances["Outlet"]
-    assert "instance_id" not in leaves["Outlet.value"]
+    assert instances["Outlet"]["id"] is None
+    assert leaves["Outlet.value"]["instance_id"] is None

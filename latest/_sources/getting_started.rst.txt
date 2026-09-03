@@ -26,7 +26,7 @@ no compiler, since DDD writes c code but never builds it.
 .. code-block:: bash
 
    pip install ddd-tool                              # from an index
-   pip install ./ddd_tool-0.6.0-py3-none-any.whl     # from a delivered wheel, no network
+   pip install ./ddd_tool-0.7.0-py3-none-any.whl     # from a delivered wheel, no network
 
 The second form is the one to use behind a firewall or in an air-gapped build environment: the
 wheel carries everything DDD needs apart from pydantic and jinja2, which have to be reachable
@@ -36,7 +36,7 @@ was built from, and that release is what the header of every generated file ment
 .. code-block:: text
 
    $ ddd --version
-   ddd 0.6.0
+   ddd 0.7.0
 
 .. note::
    The distribution is called ``ddd-tool`` because the name ``ddd`` was already taken on the
@@ -54,7 +54,7 @@ checkout or an unpacked sdist, the package runs directly out of ``src``:
 .. code-block:: text
 
    $ PYTHONPATH=src python -m ddd --version
-   ddd 0.6.0
+   ddd 0.7.0
 
 ``PYTHONPATH=src python -m ddd`` and ``ddd`` are the same program invoked in two ways, and
 every command shown below works with either. The transcripts use the installed form for
@@ -371,7 +371,7 @@ than written by hand so that no variable can be defined twice or defined by the 
     * ddd_globals.c
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.6.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.7.0.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */
@@ -405,7 +405,7 @@ path:
     * SensorHub.h
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.6.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.7.0.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */
@@ -438,7 +438,7 @@ description files. The local parameter appears in its own section, and only here
     * Controller.h
     *
     * Global variable data dictionary of project 'Thermostat'.
-    * Generated from 'thermostat.ddd.json' by ddd 0.6.0.
+    * Generated from 'thermostat.ddd.json' by ddd 0.7.0.
     *
     * DO NOT EDIT - every change is lost the next time DDD runs.
     */

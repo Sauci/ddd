@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../_static/documentation_options.js?v=fe7df9b0"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/js/versions.js?v=a915def3"></script>
@@ -673,7 +673,7 @@ would report it once per route.</p>
 usually perfectly good and the use made of it is not; the note points at the declaration of the
 type so that both ends are on screen:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but a 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
+sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but the kind 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
     note: types.ddd.json#types[0]: declared here
 sensing.ddd.json#component.interface[1].definition: error[type-kind]: 'Preset' is declared as the structure 'Sample_t', but the initial value of a structure is written by the code that starts it
     note: types.ddd.json#types[0]: declared here

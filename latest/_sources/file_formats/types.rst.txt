@@ -592,7 +592,7 @@ type so that both ends are on screen:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but a 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
+   sensing.ddd.json#component.interface[0].definition: error[type-kind]: 'History' is declared as the structure 'Sample_t', but the kind 'value_block' refers to other objects or is an array of one datatype, and a structure is neither; a structured object is 'measurement' or 'parameter'
        note: types.ddd.json#types[0]: declared here
    sensing.ddd.json#component.interface[1].definition: error[type-kind]: 'Preset' is declared as the structure 'Sample_t', but the initial value of a structure is written by the code that starts it
        note: types.ddd.json#types[0]: declared here

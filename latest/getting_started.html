@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -133,7 +133,7 @@ pydantic, which parses and validates the description files, and jinja2, which re
 generated artefacts. Both are installed with it, and nothing else is required - in particular
 no compiler, since DDD writes c code but never builds it.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>ddd-tool<span class="w">                              </span><span class="c1"># from an index</span>
-pip<span class="w"> </span>install<span class="w"> </span>./ddd_tool-0.6.0-py3-none-any.whl<span class="w">     </span><span class="c1"># from a delivered wheel, no network</span>
+pip<span class="w"> </span>install<span class="w"> </span>./ddd_tool-0.7.0-py3-none-any.whl<span class="w">     </span><span class="c1"># from a delivered wheel, no network</span>
 </pre></div>
 </div>
 <p>The second form is the one to use behind a firewall or in an air-gapped build environment: the
@@ -141,7 +141,7 @@ wheel carries everything DDD needs apart from pydantic and jinja2, which have to
 in some form as well. Once the installation succeeded, the tool answers with the release it
 was built from, and that release is what the header of every generated file mentions:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd --version
-ddd 0.6.0
+ddd 0.7.0
 </pre></div>
 </div>
 <div class="admonition note">
@@ -157,7 +157,7 @@ documentation ever refers to <code class="docutils literal notranslate"><span cl
 and while evaluating the tool it is often convenient not to install anything at all. From a
 checkout or an unpacked sdist, the package runs directly out of <code class="docutils literal notranslate"><span class="pre">src</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ PYTHONPATH=src python -m ddd --version
-ddd 0.6.0
+ddd 0.7.0
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span></code> are the same program invoked in two ways, and
@@ -452,7 +452,7 @@ than written by hand so that no variable can be defined twice or defined by the 
 <span class="cm"> * ddd_globals.c</span>
 <span class="cm"> *</span>
 <span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
-<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.7.0.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
@@ -484,7 +484,7 @@ path:</p>
 <span class="cm"> * SensorHub.h</span>
 <span class="cm"> *</span>
 <span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
-<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.7.0.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>
@@ -515,7 +515,7 @@ description files. The local parameter appears in its own section, and only here
 <span class="cm"> * Controller.h</span>
 <span class="cm"> *</span>
 <span class="cm"> * Global variable data dictionary of project 'Thermostat'.</span>
-<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.6.0.</span>
+<span class="cm"> * Generated from 'thermostat.ddd.json' by ddd 0.7.0.</span>
 <span class="cm"> *</span>
 <span class="cm"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="cm"> */</span>

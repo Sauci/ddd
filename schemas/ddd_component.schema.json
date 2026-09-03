@@ -64,6 +64,20 @@
           "title": "Name",
           "type": "string"
         },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -389,6 +403,20 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
         },
         "datatype": {
           "anyOf": [
@@ -856,6 +884,20 @@
           "title": "Name",
           "type": "string"
         },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -1035,6 +1077,20 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
         },
         "datatype": {
           "anyOf": [
@@ -1381,6 +1437,20 @@
           "title": "Name",
           "type": "string"
         },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -1678,6 +1748,20 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[abcdefghjkmnpqrstvwxyz0123456789]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
+          "title": "Id"
         },
         "datatype": {
           "anyOf": [

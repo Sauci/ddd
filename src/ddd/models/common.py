@@ -48,6 +48,29 @@ Identifier = Annotated[
 ]
 """A string that is usable as a c identifier and as an a2l identifier."""
 
+OBJECT_ID_ALPHABET: Final = "abcdefghjkmnpqrstvwxyz0123456789"
+"""The characters an object id is drawn from: lowercase base32 without ``i``, ``l``, ``o``
+or ``u``.
+
+Those four are excluded so that an id read off a screen, a printout or a review comment can
+be typed back without ambiguity. Lowercase alone rather than both cases, because an id that
+differs from another only in case is one somebody will eventually mistype into a duplicate.
+"""
+
+OBJECT_ID_LENGTH: Final = 12
+"""Twelve characters, about sixty bits: a collision inside one project does not happen, and
+``duplicate-id`` catches it if it does."""
+
+OBJECT_ID_PATTERN: Final = rf"^[{OBJECT_ID_ALPHABET}]{{{OBJECT_ID_LENGTH}}}$"
+
+ObjectId = Annotated[str, StringConstraints(pattern=OBJECT_ID_PATTERN)]
+"""The identity of a data object, which survives every rename of it.
+
+Constrained rather than free text so that a hand-typed value is refused by the schema, where
+an editor reports it as it is typed, rather than by a check that only a run of the tool
+reaches. ``ddd id --assign`` is what writes one.
+"""
+
 A2L_FORMAT_PATTERN: Final = r"^%\d*\.\d+$"
 
 A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]

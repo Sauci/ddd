@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+from conftest import checks, component, declare, messages, project, run_analysis
 from ddd.models import (
     ComponentFile,
     ConversionRule,
@@ -245,3 +248,30 @@ class TestConversionInterface:
         assert isinstance(conversion, ConversionRule)
         assert conversion.to_raw(conversion.to_physical(4)) == pytest.approx(4)
         assert conversion.describe()
+
+
+def test_an_id_of_the_right_shape_is_accepted(tree: Path) -> None:
+    dictionary, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+        },
+    )
+    assert dictionary is not None, messages(bag)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["k7m2q9xr4t8", "k7m2q9xr4t8ww", "K7M2Q9XR4T8W", "k7m2q9xr4t8i", "k7m2-q9xr4t8", ""],
+)
+def test_an_id_of_the_wrong_shape_is_refused(tree: Path, value: str) -> None:
+    """Too short, too long, upper case, an excluded letter, punctuation, empty."""
+    _, bag = run_analysis(
+        tree,
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", id=value)),
+        },
+    )
+    assert "schema" in checks(bag), messages(bag)

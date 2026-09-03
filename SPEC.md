@@ -291,6 +291,7 @@ Attributes common to every kind:
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | C identifier of the object |
+| `id` | none | identity of the object, twelve lowercase base32 characters, stated by the producer only; survives a rename and is compared by nothing |
 | `kind` | required | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |

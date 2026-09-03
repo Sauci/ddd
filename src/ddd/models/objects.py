@@ -13,6 +13,7 @@ from ddd.models.common import (
     Datatype,
     Identifier,
     Number,
+    ObjectId,
     Real,
     TypeName,
     format_number,
@@ -242,6 +243,21 @@ class DataObject(_Frozen):
 
     name: Identifier
     """C identifier of the object; also its name in the a2l."""
+
+    id: ObjectId | None = None
+    """Identity of this object, which survives its name.
+
+    Written by the component that produces the object and by nothing else: a consumer stating
+    one is refused as ``consumer-identity``, on the reasoning that makes ``section`` and
+    ``init`` producer keys. It links this object to itself in an earlier delivery, so that
+    ``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated
+    addition, and so that a name freed by a rename cannot be quietly claimed by something
+    else.
+
+    Nothing inside a project reads it: the producer and its consumers go on binding by name,
+    and the generated c and a2l never mention it. Optional, so that a project adopts it one
+    component at a time; ``missing-id`` says where it has not.
+    """
 
     datatype: Datatype | None = None
     """Storage of one element, one of the eleven base datatypes.

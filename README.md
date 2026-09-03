@@ -295,6 +295,9 @@ unchanged, and any component may name them
 }
 ```
 
+A producing declaration may also carry an `id`, the identity that survives a rename; see
+`ddd id`.
+
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | c identifier of the object |

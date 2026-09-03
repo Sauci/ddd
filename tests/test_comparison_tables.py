@@ -61,6 +61,9 @@ DERIVED_AS: dict[str, str] = {
 _NOT_COMPARED: dict[str, str] = {
     "name": "the name is what identifies the object; two declarations that differ in it are "
     "two different objects, not one object described twice",
+    "id": "only a producer may state one, exactly like section and raster: a consumer "
+    "stating an id claims an identity it does not own and is reported as consumer-identity "
+    "where the claim is written",
     "description": "documentation. Two components may describe the same variable in their own "
     "words without disagreeing about it, and the producer's text is the one generated",
     "kind": "compared, but as a table field of its own - listed here only for ResolvedObject, "

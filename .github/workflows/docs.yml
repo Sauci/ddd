@@ -205,6 +205,17 @@ jobs:
           print(f"stable is {stable}, versions are {', '.join(versions)}")
           PY
 
+      # Sphinx puts every asset it generates under a leading underscore - `_static`,
+      # `_images`, `_sources`, `_modules`, `_plantuml` - and Jekyll, which GitHub runs over a
+      # branch it serves, treats a leading underscore as private and publishes none of them.
+      # The result is a site that answers 200 on every page and 404 on every stylesheet and
+      # diagram, which reads as a styling glitch rather than as a build that dropped a third
+      # of its output. The artifact this workflow currently uploads is served without Jekyll
+      # and does not need the file; it is written anyway so that the archive branch is
+      # servable on its own, which is what lets the Pages source move to it.
+      - name: Keep Jekyll from eating the underscored directories
+        run: touch site/.nojekyll
+
       - name: Commit the new state of the site
         env:
           SLOT: ${{ steps.slot.outputs.name }}

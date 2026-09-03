@@ -483,7 +483,11 @@ def test_a_name_freed_by_a_rename_and_claimed_again_is_an_error(tree):
     )
     bag = verdict(before, after)
     assert "reused-name" in checks(bag), messages(bag)
-    assert "is now called 'FilterGain'" in messages(bag), "the note says where it went"
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "reused-name"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes, "the note says where it went"
+    note_text, _ = findings[0].notes[0]
+    assert note_text == "'FiltGain' is now called 'FilterGain'"
 
 
 def test_a_name_reused_after_a_deletion_is_an_error(tree):

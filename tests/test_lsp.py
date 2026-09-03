@@ -2530,18 +2530,16 @@ class TestServer:
                 "a.ddd.json": component("A", declare("input", "Shared")),
             },
         )
-        build_record(tmp_path, tmp_path / "p.ddd.json")
+        # missing-id is silenced the way the build itself would silence any check that is
+        # noise for this project: through the record, not by giving the fixture an identity
+        # that has nothing to do with what this test demonstrates.
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
         assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
 
-        # Given an id along with the fix, or the adoption nudge would leave the list non-empty
-        # and this test would be asserting the wrong thing about the cache.
-        write_tree(
-            tmp_path,
-            {"a.ddd.json": component("A", declare("local", "Shared", id="k7m2q9xr4t8w"))},
-        )
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
@@ -2624,18 +2622,17 @@ class TestServer:
                 "b.ddd.json": component("B", declare("input", "Shared")),
             },
         )
-        build_record(tmp_path, tmp_path / "p.ddd.json")
+        # missing-id is silenced through the record, the same way the build itself would
+        # silence any check that is noise for this project, not by giving the fixture an
+        # identity that has nothing to do with what this test demonstrates.
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         server.refresh(tmp_path / "a.ddd.json")
         assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
 
-        # Somebody produces it now, so the project is clean and the squiggle has to go. Given
-        # with an id, or the adoption nudge would leave a finding behind and mask the point.
-        write_tree(
-            tmp_path,
-            {"a.ddd.json": component("A", declare("output", "Shared", id="k7m2q9xr4t8w"))},
-        )
+        # Somebody produces it now, so the project is clean and the squiggle has to go.
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Shared"))})
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")

@@ -241,6 +241,22 @@ def compare(
             )
         _compare_object(old, new, bag, location)
 
+    for name in sorted(was.keys() & now.keys()):
+        before, after = identity(was[name]), identity(now[name])
+        if before is None or after is None or before == after:
+            continue
+        # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
+        # recording keyed by this spelling binds to the new object as readily as to the old.
+        moved = next((new.name for old, new in paired if old.name == name), None)
+        notes = [(f"'{name}' is now called '{moved}'", None)] if moved else []
+        bag.add(
+            "reused-name",
+            f"'{name}' now names a different object; a calibration dataset or a recording "
+            f"keyed by that spelling will bind to it",
+            location,
+            notes=notes,
+        )
+
     for old in removed:
         _report_removal(old, bag, location)
 

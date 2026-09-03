@@ -1108,6 +1108,15 @@ compile:
   changed. Locality is whether the object is local to its component
   ([section 2.1](#21-scope)); a local object becoming shared, or the reverse, changes who
   **may** use it.
+- `reused-name`: a name of the baseline now belongs to an object with a different id. It is
+  reported above the removal and addition it accompanies, because it is the failure that
+  compiles, links, runs and reads the wrong storage: a calibration dataset or a recorded
+  measurement keyed by that spelling binds to the new object exactly as readily as it did to
+  the old one, and nothing about the delivery looks broken. When the baseline's object
+  survives elsewhere in the candidate under a new name, the finding carries a note saying so -
+  the spelling was freed by a rename and claimed in the same delivery, which is the worst
+  version of it. A project that reuses names deliberately relaxes the check with
+  `-W reused-name=warning`.
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 

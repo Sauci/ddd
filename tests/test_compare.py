@@ -410,8 +410,13 @@ def test_a_rename_that_also_changed_the_interface_reports_both(tree):
     assert set(checks(bag)) == {"renamed-object", "changed-interface"}, messages(bag)
 
 
-def test_a_swap_is_two_renames_and_no_interface_change(tree):
-    """The case no name-matching heuristic can get right."""
+def test_a_swap_is_two_renames_and_two_reused_names(tree):
+    """The case no name-matching heuristic can get right.
+
+    A swap is also the most damaging reuse there is: each name genuinely does come to mean
+    a different object, so `reused-name` firing here alongside the renames is correct - not
+    a false positive to suppress.
+    """
     before = one_component(
         tree,
         "before",
@@ -425,7 +430,12 @@ def test_a_swap_is_two_renames_and_no_interface_change(tree):
         declare("local", "A", id="p3rt5vwx9z2q"),
     )
     bag = verdict(before, after)
-    assert checks(bag) == ["renamed-object", "renamed-object"], messages(bag)
+    assert checks(bag) == [
+        "renamed-object",
+        "renamed-object",
+        "reused-name",
+        "reused-name",
+    ], messages(bag)
 
 
 def test_objects_without_an_identity_still_pair_by_name(tree):
@@ -448,13 +458,44 @@ def test_two_different_objects_that_share_a_name_are_not_paired(tree):
     outright that these are two different objects. Pairing them by name anyway would run
     the whole interface comparison between two unrelated things and report nothing at all
     here, since only the id differs and an id is never a compared field - silently hiding
-    the fact that the name now means something else.
+    the fact that the name now means something else. Leaving them unpaired is what lets
+    `reused-name` say so explicitly instead, alongside the removal and the addition it
+    accompanies (design doc section 5.3).
     """
     before = one_component(tree, "before", declare("local", "A", id="k7m2q9xr4t8w"))
     after = one_component(tree, "after", declare("local", "A", id="p3rt5vwx9z2q"))
     bag = verdict(before, after)
     assert "renamed-object" not in checks(bag), messages(bag)
-    assert set(checks(bag)) == {"removed-unused-object", "added-object"}, messages(bag)
+    assert set(checks(bag)) == {
+        "reused-name",
+        "removed-unused-object",
+        "added-object",
+    }, messages(bag)
+
+
+def test_a_name_freed_by_a_rename_and_claimed_again_is_an_error(tree):
+    before = one_component(tree, "before", declare("local", "FiltGain", id="k7m2q9xr4t8w"))
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "FilterGain", id="k7m2q9xr4t8w"),
+        declare("local", "FiltGain", id="p3rt5vwx9z2q"),
+    )
+    bag = verdict(before, after)
+    assert "reused-name" in checks(bag), messages(bag)
+    assert "is now called 'FilterGain'" in messages(bag), "the note says where it went"
+
+
+def test_a_name_reused_after_a_deletion_is_an_error(tree):
+    before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
+    after = one_component(tree, "after", declare("local", "X", id="p3rt5vwx9z2q"))
+    assert "reused-name" in checks(verdict(before, after)), messages(verdict(before, after))
+
+
+def test_a_name_kept_by_the_same_object_is_not_a_reuse(tree):
+    before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
+    after = one_component(tree, "after", declare("local", "X", id="k7m2q9xr4t8w"))
+    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
 
 
 def test_a_renamed_instance_keeps_its_array_elements_paired(tree):

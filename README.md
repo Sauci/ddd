@@ -531,6 +531,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | --- | --- | --- |
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
+| error | `reused-name` | a name of the baseline now belongs to an object with a different id |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
 | warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
@@ -541,11 +542,14 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | info | `added-object` | the candidate declares something new |
 
-Two details worth knowing. **Widening a limit is silent** - every value the baseline allowed
+Three details worth knowing. **Widening a limit is silent** - every value the baseline allowed
 still fits - while narrowing it is a warning; and when the interface already changed, the
 narrowed limits that follow from it are not reported separately, so the cause is not buried
-under its own symptom. And a rescaled conversion is an **error**, because that is the failure
-which compiles, links, runs, and reports every value wrong by a constant factor.
+under its own symptom. A rescaled conversion is an **error**, because that is the failure
+which compiles, links, runs, and reports every value wrong by a constant factor. And
+`reused-name` is an error for the same reason - a calibration dataset or a recorded
+measurement keyed by that spelling binds to the new object exactly as readily as to the old
+one - but a project that reuses names deliberately can relax it with `-W reused-name=warning`.
 
 The two questions stay separate on purpose: a project can be internally consistent and still
 not be a valid replacement, and the other way round. `ddd compare` on a project description

@@ -181,6 +181,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object of the baseline is gone and somebody read it"),
         _check("changed-interface", Severity.ERROR,
                "kind, datatype, unit, scaling, shape, axes or locality of an object changed"),
+        _check("reused-name", Severity.ERROR,
+               "a name of the baseline now belongs to a different object"),
         _check("removed-unused-object", Severity.WARNING,
                "an object of the baseline is gone; no component read it"),
         _check("changed-storage", Severity.WARNING,

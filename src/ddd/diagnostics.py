@@ -94,6 +94,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a constant is declared more than once, in one file or across files"),
         _check("duplicate-raster", Severity.ERROR,
                "a measurement raster is declared more than once, in one file or across files"),
+        _check("duplicate-id", Severity.ERROR,
+               "two data objects of one project carry the same id"),
         _check("duplicate-event", Severity.ERROR,
                "two measurement rasters claim the same event channel number"),
         _check("unknown-type", Severity.ERROR,

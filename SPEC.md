@@ -981,6 +981,12 @@ Errors:
   files ([section 3.9](#39-constant-vocabulary)).
 - `duplicate-raster`: a measurement raster is declared more than once, within one file or
   across files ([section 3.10](#310-measurement-rasters)).
+- `duplicate-id`: two data objects of one project carry the same `id`, most often because a
+  declaration was copied to make a new object with the original's `id` still on it. An `id`
+  is one object's alone; two objects sharing one would make a later comparison
+  ([section 4.1](#41-comparing-two-deliveries)) pair the wrong pair. Reported on the second
+  object in name order rather than on both, so the finding does not depend on the order the
+  includes are read in; the first object is named in the message.
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit, or structures
   nest each other so that neither has a size.

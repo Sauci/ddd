@@ -313,3 +313,16 @@ class TestObjectIdentity:
             severities=["missing-id=info"],
         )
         assert "missing-id" not in checks(bag), messages(bag)
+
+    def test_two_objects_may_not_share_an_identity(self, tree: Path) -> None:
+        """The likeliest real mistake: a declaration copied to make a new object."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+                "b.ddd.json": component("B", declare("local", "Y", id="k7m2q9xr4t8w")),
+            },
+        )
+        assert "duplicate-id" in checks(bag), messages(bag)
+        assert "'Y'" in messages(bag) and "'X'" in messages(bag)

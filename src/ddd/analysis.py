@@ -477,6 +477,7 @@ class _Analysis:
         self._check_enumerator_collisions(ordered)
         self._check_type_name_collisions(ordered)
         self._check_constant_collisions(ordered)
+        self._check_identity_collisions(ordered)
 
         # The producer owns the definition, so ownership has to be settled before anything
         # that reads a definition - in particular before curves and maps look up their axes.
@@ -1134,6 +1135,32 @@ class _Analysis:
                     entry.location(),
                     notes=[("type declared here", declared_type.location())],
                 )
+
+    def _check_identity_collisions(
+        self, ordered: Sequence[tuple[str, list[DeclarationRef]]]
+    ) -> None:
+        """Two objects claiming one identity, which is a copied declaration nine times in ten.
+
+        Reported on the second one in name order rather than on both, so the finding names a
+        place to edit; the first is named in the message. The one that keeps the id is the
+        one the comparison of a later delivery would pair, and choosing that by file order
+        would make the report depend on the order of the includes.
+        """
+        seen: dict[str, str] = {}
+        for name, refs in ordered:
+            for ref in refs:
+                identity = ref.definition.id
+                if identity is None or not ref.scope.is_producer:
+                    continue
+                first = seen.setdefault(identity, name)
+                if first != name:
+                    self._bag.add(
+                        "duplicate-id",
+                        f"'{name}' carries the id '{identity}', which '{first}' already "
+                        f"carries; an id is one object's alone, and two objects sharing one "
+                        f"make a later comparison pair the wrong pair",
+                        ref.location("definition.id"),
+                    )
 
     def _nearest_type(self, named: str) -> str:
         """`` - did you mean 'uint16'?``, or nothing when nothing is close.

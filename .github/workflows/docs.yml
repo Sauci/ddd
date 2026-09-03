@@ -12,10 +12,10 @@ name: Documentation
 # that has moved on - a two year old tag that no longer builds under the sphinx of the day
 # would take the deployment of the current one down with it.
 #
-# Since a deployment replaces the whole site, the versions that are not being built have to
-# come from somewhere: the `gh-pages` branch is that archive. It is storage rather than the
-# published thing - Pages still serves the artifact this workflow uploads, authenticated by
-# the same short lived token as before, and nothing in the repository settings changes.
+# A build produces one version, and the site is all of them, so the versions that are not
+# being built have to come from somewhere: the `gh-pages` branch holds them. That branch is
+# the site rather than an archive of it - Pages is configured to build from it, so the push
+# below is the publish and there is no second copy to disagree with.
 #
 # The two diagram programs come from apt rather than from a prepared image, so that this needs
 # nothing but a stock runner to reproduce. Only html is built: a pdf would want a LaTeX
@@ -76,13 +76,8 @@ jobs:
     # publishing somebody else's revision of the documentation as the product's own.
     if: github.event_name == 'release' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     permissions:
-      contents: write # the branch the versions that are not being built are kept on
-      pages: write # deploy to the Pages site
-      id-token: write # the deployment authenticates with an OIDC token, not a stored secret
+      contents: write # the gh-pages branch, which is the site
     steps:
       # A release is written under its own tag and frozen there; master is the moving one and
       # always lands in the same place.
@@ -230,35 +225,49 @@ jobs:
             git -C site push origin gh-pages
           fi
 
-      # The archive's own history is not part of the site, and uploading it would publish the
-      # credentials the push above used along with it.
-      - run: rm -rf site/.git
+      # The push above is the publish: Pages serves this branch directly. It used to be one of
+      # two publishes - the branch, and an artifact handed to `actions/deploy-pages` - and
+      # nothing made them agree. What finally parted them was not the split itself but how a
+      # Pages deployment is addressed: `deploy-pages` keys one by commit sha, and a release tag
+      # points at the commit master's own push has already deployed. The second deployment was
+      # therefore a duplicate id, discarded, and the action reported success in five seconds
+      # while the site went on serving the earlier build. It cost two releases - 0.6.0 and
+      # 0.7.0 - and both times the archive branch was correct and the site was not.
+      #
+      # Serving the branch removes the sha from the question entirely. It also costs this job
+      # two permissions and the deployment environment it needed to hold them.
 
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
+      # Pages builds the branch on its own once the push lands, so the run has nothing left to
+      # hand it - and the site's address comes from Pages rather than from a deployment step
+      # that no longer exists. Asked for rather than assembled from the owner and the
+      # repository name, so that a custom domain would not quietly send this check at a url
+      # nobody reads.
+      - name: Ask Pages where the site is
+        id: site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
+          echo "url=${url%/}" >> "$GITHUB_OUTPUT"
 
-      - id: deployment
-        uses: actions/deploy-pages@v5
-
-      # The archive above is a git push and the site is an artifact handed to Pages: two
-      # publishes, with nothing making them agree. When they parted, every step of every job
-      # still reported success - v0.6.0 sat in the archive, named in the version index beside
-      # it, while the site went on serving a build assembled before the release existed. A
-      # complete set of documentation at a url that answered 404, offered by no menu, and
+      # Every step of a run can report success while the site serves something else: that is
+      # how v0.6.0 and 0.7.0 both reached the archive branch, named in the version index beside
+      # the versions before them, while the site went on serving a build assembled before the
+      # release existed - documentation at a url that answered 404, offered by no menu, and
       # nothing red anywhere to say so.
       #
-      # So the run ends by reading back what it just published, which is the only statement
-      # about the site made from outside the machinery that writes it. The query string
-      # defeats an edge still answering for the previous build, and the retry covers the
-      # seconds between the deployment reporting success and the site serving the new bytes.
+      # So the run ends by reading back what it published, which is the only statement about
+      # the site made from outside the machinery that writes it. The query string defeats an
+      # edge still answering for the previous build, and the budget covers a branch build that
+      # queues behind another: it is deliberately longer than a build takes, because a check
+      # that gives up early turns a slow publish into a failed one.
       - name: Read back what was published
         env:
           SLOT: ${{ steps.slot.outputs.name }}
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGE_URL: ${{ steps.site.outputs.url }}
         run: |
           site="${PAGE_URL%/}"
-          for attempt in $(seq 1 10); do
+          for attempt in $(seq 1 20); do
             if [ "$attempt" -gt 1 ]; then sleep 15; fi
             bust="cb=${GITHUB_RUN_ID}-${attempt}"
             served=$(curl -sS -o /dev/null -w '%{http_code}' "${site}/${SLOT}/?${bust}" || echo none)
@@ -271,8 +280,10 @@ jobs:
               printf '%s' "$index" | tr -d ' \n' | tail -c 120
             )"
           done
-          echo "::error::the deployment reported success, but ${site}/${SLOT}/ is not being"
-          echo "::error::served. The site is published from an artifact while the archive is"
-          echo "::error::a git push, so gh-pages can carry this build while the site does not."
-          echo "::error::Re-running this workflow republishes the branch as it now stands."
+          echo "::error::the push to gh-pages succeeded, but ${site}/${SLOT}/ is still not"
+          echo "::error::served after five minutes. gh-pages is the site, so the branch now"
+          echo "::error::carries what should be published: check whether Pages is still"
+          echo "::error::configured to build from that branch, and look at the newest page"
+          echo "::error::build for the error it reports. Re-running this workflow republishes"
+          echo "::error::the branch as it now stands, which is what triggers a fresh build."
           exit 1

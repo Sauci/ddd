@@ -936,16 +936,27 @@ class TestPublishedDocumentation:
             f"the extension is published without waiting for the tag check: {needs.strip()}"
         )
 
-    def test_the_archive_history_is_not_published(self) -> None:
-        """The site is assembled in a git working tree, and only the tree gets uploaded.
+    def test_the_site_is_published_by_pushing_the_branch(self) -> None:
+        """Pages serves ``gh-pages`` itself, and nothing hands it a second copy.
 
-        Past versions are restored from the ``gh-pages`` branch, so the directory handed to
-        the upload is a checkout: it carries the branch's whole history, and on a first run
-        the credentials the push authenticated with are sitting in its remote url. Publishing
-        that changes nothing a reader can see, which is exactly why it has to be pinned here.
+        It used to receive both: the workflow pushed the branch *and* uploaded an artifact
+        assembled from it. ``actions/deploy-pages`` addresses a deployment by commit sha, and a
+        release tag points at the commit master's own push has already deployed - so the
+        release's deployment was a duplicate id, discarded, and the action reported success in
+        five seconds while the site went on serving the earlier build. It cost 0.6.0 and 0.7.0,
+        and both times every step of every job was green.
+
+        Nothing a reader can see distinguishes the two arrangements, which is why the one that
+        works is pinned here. The check this replaced kept the branch's git directory out of
+        the uploaded artifact; with no artifact, there is no directory to hand anywhere.
         """
-        steps = DOCS_WORKFLOW.split("upload-pages-artifact")
-        assert len(steps) == 2, "the workflow no longer uploads exactly one Pages artifact"
-        assert "rm -rf site/.git" in steps[0], (
-            "the archive's git directory is uploaded to the Pages site along with the html"
+        assert "uses: actions/deploy-pages" not in DOCS_WORKFLOW, (
+            "the site is deployed as an artifact again: that is keyed by commit sha, so a "
+            "release whose tag sits on an already deployed commit is silently discarded"
+        )
+        assert "uses: actions/upload-pages-artifact" not in DOCS_WORKFLOW, (
+            "a second copy of the site is uploaded beside the branch that is the site"
+        )
+        assert "git -C site push origin gh-pages" in DOCS_WORKFLOW, (
+            "the workflow no longer publishes by pushing the branch Pages serves"
         )

@@ -292,11 +292,18 @@ def _lost_identity_note(
     one over axis B would otherwise read as identical. Going through the identity-resolving
     helper rather than the written names keeps this correct whether or not either side has
     adopted ids yet, exactly like the comparison it borrows it from.
+
+    A same-named candidate is excluded too. The only way an unpaired removal and an unpaired
+    addition still share a name is ruling 3's pairing skip - two known ids that differ - and
+    there the name never changed at all, so there is no rename to hypothesise: ``reused-name``
+    already says exactly what happened, and this note would only contradict it right beside
+    the highest-severity finding the whole feature produces.
     """
     same = [
         new
         for new in added
-        if not differing(_interface_fields(old, new), old, new)
+        if new.name != old.name
+        and not differing(_interface_fields(old, new), old, new)
         and not differing(_STORAGE_FIELDS, old, new)
         and _compare_references(old, new, was, now) is None
     ]

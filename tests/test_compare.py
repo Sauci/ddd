@@ -684,3 +684,34 @@ def test_the_note_still_fires_when_the_shared_axis_was_only_renamed(tree):
         "'D' was added with an identical interface; if that was a rename, "
         "the id did not travel with it"
     )
+
+
+def test_a_shared_name_under_different_ids_gets_no_lost_identity_note(tree):
+    """Ruling 3's pairing skip is the only way an unpaired removal and an unpaired addition
+    still share a name: both sides already agree on what the name is, so there is no rename
+    to hypothesise. `reused-name` already says exactly what happened here, at the highest
+    severity this feature produces - the note must not contradict it right beside it.
+    """
+    before = one_component(tree, "before", declare("local", "A", id="k7m2q9xr4t8w"))
+    after = one_component(tree, "after", declare("local", "A", id="p3rt5vwx9z2q"))
+    bag = verdict(before, after)
+    assert set(checks(bag)) == {
+        "reused-name",
+        "removed-unused-object",
+        "added-object",
+    }, messages(bag)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes == (), messages(bag)
+
+
+def test_a_storage_only_difference_is_not_offered_as_a_lost_identity(tree):
+    """Isolates the guard's storage clause: interface and referents agree (there are none),
+    only a storage field differs, so this must not be offered as a possible rename either.
+    """
+    before = one_component(tree, "before", declare("local", "FiltGain", init=1))
+    after = one_component(tree, "after", declare("local", "FilterGain", init=2))
+    bag = verdict(before, after)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes == (), messages(bag)

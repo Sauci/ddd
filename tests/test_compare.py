@@ -597,3 +597,90 @@ def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
     bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
     assert checks(bag) == ["renamed-object"] * 3, messages(bag)
     assert "'Inlet[2].value'" in messages(bag) and "'Sensor[2].value'" in messages(bag)
+
+
+def test_an_identical_removal_and_addition_suggest_a_lost_identity(tree):
+    """Nothing in one version can see a hand-edited id; this is the only net under it."""
+    before = one_component(tree, "before", declare("local", "FiltGain"))
+    after = one_component(tree, "after", declare("local", "FilterGain"))
+    bag = verdict(before, after)
+    assert "removed-unused-object" in checks(bag), messages(bag)
+    assert "the id did not travel with it" in messages(bag)
+
+
+def test_no_such_note_when_the_two_differ(tree):
+    before = one_component(tree, "before", declare("local", "FiltGain", "uint8"))
+    after = one_component(tree, "after", declare("local", "FilterGain", "uint16"))
+    assert "did not travel" not in messages(verdict(before, after))
+
+
+def test_two_equally_identical_additions_name_neither(tree):
+    """Naming either candidate would be a guess dressed as a suggestion, so the note stays
+    silent once more than one addition matches equally well - the ``len(same) != 1`` guard
+    is the point of the note, not an accident of its implementation.
+    """
+    before = one_component(tree, "before", declare("local", "FiltGain"))
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "FilterGainA"),
+        declare("local", "FilterGainB"),
+    )
+    bag = verdict(before, after)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes == (), messages(bag)
+
+
+def test_a_curve_over_a_different_axis_is_not_offered_as_a_lost_identity(tree):
+    """Ruling 1: once ``references`` left the interface table, the note's own filter has to
+    look at referents by hand - otherwise a curve over axis A and one over axis B, alike in
+    every field the table still checks, would be offered as the same curve under a new name.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "Ax", "uint16", kind="axis", size=3),
+        declare("local", "Ay", "uint16", kind="axis", size=3),
+        declare("local", "C", "uint8", kind="curve", axis="Ax"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "Ax", "uint16", kind="axis", size=3),
+        declare("local", "Ay", "uint16", kind="axis", size=3),
+        declare("local", "D", "uint8", kind="curve", axis="Ay"),
+    )
+    bag = verdict(before, after)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes == (), messages(bag)
+
+
+def test_the_note_still_fires_when_the_shared_axis_was_only_renamed(tree):
+    """Ruling 1's refinement: referents are compared through ``_compare_references``, which
+    resolves an identity before falling back to a name. A curve that follows its axis through
+    a rename is still offered as a possible lost identity of its own - which a raw comparison
+    of the written reference names would have missed, since 'Ax' and 'Bx' do not read equal.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "Ax", "uint16", kind="axis", size=3, id="k7m2q9xr4t8w"),
+        declare("local", "C", "uint8", kind="curve", axis="Ax"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "Bx", "uint16", kind="axis", size=3, id="k7m2q9xr4t8w"),
+        declare("local", "D", "uint8", kind="curve", axis="Bx"),
+    )
+    bag = verdict(before, after)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes, "the note names the identical addition"
+    note_text, _ = findings[0].notes[0]
+    assert note_text == (
+        "'D' was added with an identical interface; if that was a rename, "
+        "the id did not travel with it"
+    )

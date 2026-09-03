@@ -261,7 +261,7 @@ def compare(
         )
 
     for old in removed:
-        _report_removal(old, bag, location)
+        _report_removal(old, bag, location, added, was, now)
 
     for new in added:
         bag.add(
@@ -272,12 +272,60 @@ def compare(
         )
 
 
-def _report_removal(old: Comparable, bag: DiagnosticBag, location: Location | None) -> None:
+def _lost_identity_note(
+    old: Comparable,
+    added: Sequence[Comparable],
+    was: Mapping[str, Comparable],
+    now: Mapping[str, Comparable],
+) -> list[tuple[str, Location | None]]:
+    """A note naming an addition identical to this removal, if there is exactly one.
+
+    It asserts nothing and pairs nothing - the two really may be different objects. What it
+    catches is the case no check can: an id edited by hand or mangled by a merge, after which
+    the object is two unrelated objects again and every finding about it is technically true
+    and completely unhelpful. Exactly one candidate, because naming several would be a guess
+    dressed as a list.
+
+    Referents are compared too, through :func:`_compare_references` rather than the fields
+    table: ``references`` left that table (see its comment above) because a referent is not a
+    property of the entry alone, and the same reasoning applies here - a curve over axis A and
+    one over axis B would otherwise read as identical. Going through the identity-resolving
+    helper rather than the written names keeps this correct whether or not either side has
+    adopted ids yet, exactly like the comparison it borrows it from.
+    """
+    same = [
+        new
+        for new in added
+        if not differing(_interface_fields(old, new), old, new)
+        and not differing(_STORAGE_FIELDS, old, new)
+        and _compare_references(old, new, was, now) is None
+    ]
+    if len(same) != 1:
+        return []
+    return [
+        (
+            f"'{same[0].name}' was added with an identical interface; if that was a rename, "
+            f"the id did not travel with it",
+            None,
+        )
+    ]
+
+
+def _report_removal(
+    old: Comparable,
+    bag: DiagnosticBag,
+    location: Location | None,
+    added: Sequence[Comparable],
+    was: Mapping[str, Comparable],
+    now: Mapping[str, Comparable],
+) -> None:
+    notes = _lost_identity_note(old, added, was, now)
     if old.consumers:
         bag.add(
             "removed-object",
             f"'{old.name}' is gone, but was read by {', '.join(old.consumers)}",
             location,
+            notes=notes,
         )
     else:
         bag.add(
@@ -285,6 +333,7 @@ def _report_removal(old: Comparable, bag: DiagnosticBag, location: Location | No
             f"'{old.name}' is gone; no component read it, but a calibration dataset or an "
             f"external tool still might",
             location,
+            notes=notes,
         )
 
 

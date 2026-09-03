@@ -128,6 +128,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an input declaration states storage that only the producing component decides"),
         _check("consumer-raster", Severity.ERROR,
                "an input declaration states a measurement raster only the producer decides"),
+        _check("consumer-identity", Severity.ERROR,
+               "a declaration that reads a variable states its identity"),
         _check("multiple-producers", Severity.ERROR,
                "a variable is written by more than one component"),
         _check("missing-producer", Severity.ERROR, "an input variable is written by nobody",

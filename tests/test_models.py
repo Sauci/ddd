@@ -250,28 +250,40 @@ class TestConversionInterface:
         assert conversion.describe()
 
 
-def test_an_id_of_the_right_shape_is_accepted(tree: Path) -> None:
-    dictionary, bag = run_analysis(
-        tree,
-        {
-            "project.ddd.json": project("P", "a.ddd.json"),
-            "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
-        },
-    )
-    assert dictionary is not None, messages(bag)
+class TestObjectIdentity:
+    def test_an_id_of_the_right_shape_is_accepted(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+            },
+        )
+        assert dictionary is not None, messages(bag)
 
-
-@pytest.mark.parametrize(
-    "value",
-    ["k7m2q9xr4t8", "k7m2q9xr4t8ww", "K7M2Q9XR4T8W", "k7m2q9xr4t8i", "k7m2-q9xr4t8", ""],
-)
-def test_an_id_of_the_wrong_shape_is_refused(tree: Path, value: str) -> None:
-    """Too short, too long, upper case, an excluded letter, punctuation, empty."""
-    _, bag = run_analysis(
-        tree,
-        {
-            "project.ddd.json": project("P", "a.ddd.json"),
-            "a.ddd.json": component("A", declare("local", "X", id=value)),
-        },
+    @pytest.mark.parametrize(
+        "value",
+        ["k7m2q9xr4t8", "k7m2q9xr4t8ww", "K7M2Q9XR4T8W", "k7m2q9xr4t8i", "k7m2-q9xr4t8", ""],
     )
-    assert "schema" in checks(bag), messages(bag)
+    def test_an_id_of_the_wrong_shape_is_refused(self, tree: Path, value: str) -> None:
+        """Too short, too long, upper case, an excluded letter, punctuation, empty."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", id=value)),
+            },
+        )
+        assert "schema" in checks(bag), messages(bag)
+
+    def test_a_consumer_may_not_state_an_identity(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", id="k7m2q9xr4t8w")),
+                "b.ddd.json": component("B", declare("input", "X", id="p3rt5vwx9z2q")),
+            },
+        )
+        assert "consumer-identity" in checks(bag), messages(bag)
+        assert "'B', which reads it" in messages(bag)

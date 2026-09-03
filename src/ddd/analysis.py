@@ -1436,6 +1436,14 @@ class _Analysis:
                 ref.location("definition.raster"),
             )
 
+        if not ref.scope.is_producer and definition.id is not None:
+            self._bag.add(
+                "consumer-identity",
+                f"'{definition.name}': the identity is decided by the component that "
+                f"produces the variable, not by '{ref.component_name}', which reads it",
+                ref.location("definition.id"),
+            )
+
         if definition.raster is not None and definition.is_calibration:
             self._bag.add(
                 "raster-kind",

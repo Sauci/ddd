@@ -456,7 +456,9 @@ The storage keys are `init` and `section` ([section 3.5](#35-memory-placement)).
 object starts out as, and where it lives, is decided by the component that produces it, so
 a declaration whose scope is `input` **must not** state either key (`consumer-storage`).
 This is not an opinion to be outvoted: it is a claim over storage the component does not
-own, and it is reported where it is written rather than where it is overruled.
+own, and it is reported where it is written rather than where it is overruled. `id` is
+decided by the same component for the same reason, so a declaration whose scope is `input`
+**must not** state it either (`consumer-identity`).
 
 ##### 3.3.1.3 Presentation
 
@@ -964,6 +966,11 @@ Errors:
   the component that produces it, exactly as `init` and `section` are, so a reader stating
   one is claiming an authority it does not have. Kept a separate identifier from
   `consumer-storage`, whose published description says storage, which a raster is not.
+- `consumer-identity`: a declaration whose scope is `input` states an `id`. Which earlier
+  delivery this object continues is decided by the component that produces it, exactly as
+  `init` and `section` are, so a reader stating one is claiming an identity it does not have.
+  Kept a separate identifier from `consumer-storage`, whose published description says
+  storage, which an identity is not.
 - `duplicate-component`: two files declare the same component name.
 - `duplicate-type`: two files declare the same type name.
 - `duplicate-unit`: a unit is declared more than once, within one file or across files

@@ -23,11 +23,12 @@ EVENT_NAME_LENGTH = 8
 """Longest raster name: the width of the short name an a2l ``EVENT`` carries.
 
 Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and
-forbids a terminator, so it carries far more than eight; the eight is the a2l's
-``EVENT_CHANNEL_SHORT_NAME``, which is where a raster name goes once the module level ``DAQ``
-block is written. Nothing writes one yet, and the limit is enforced anyway, so that a rasters
-file which loads today still loads then - the reason the cycle rule below is enforced ahead of
-its use as well.
+forbids a terminator, so it carries far more than eight. The eight is from the a2l, whose
+``EVENT`` block declares ``EVENT_CHANNEL_SHORT_NAME`` as ``char[9]`` - eight characters and a
+terminator - beside the ``char[101]`` long name that ``description`` supplies. That is where a
+raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and
+the limit is enforced anyway, so that a rasters file which loads today still loads then - the
+reason the cycle rule below is enforced ahead of its use as well.
 """
 
 EVENT_MAX = 0xFFFF

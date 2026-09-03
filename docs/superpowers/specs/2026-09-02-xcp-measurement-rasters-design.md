@@ -100,19 +100,29 @@ than in DDD. `1ms`, `10ms` and `crank` fit; `Task_10ms` does not.
 The human readable name is `description`, which is what the eventual `EVENT` line writes as
 the long name and what the documentation shows.
 
-The limit of eight is baked into a validator here, so its provenance matters. **Half of it is
-now settled and half is not.** The protocol layer specification says an event channel name is
-length-prefixed by a byte and carries no terminator, so the *protocol* imposes nothing like a
-limit of eight - the original wording of this section, which credited the cap to XCP itself,
-was wrong. What remains unconfirmed is the width of `EVENT_CHANNEL_SHORT_NAME` in the a2l
-description of an `EVENT`, believed to be `char[9]`, which is the field a raster name is
-actually written to. That still has to be read from the ASAM document alongside the grammar of
-section 6.
+The limit of eight is baked into a validator here, so its provenance matters. **It is settled,
+and it is not a protocol limit.** The protocol layer specification length-prefixes an event
+channel name with a byte and carries no terminator, so the protocol itself imposes nothing like
+a cap of eight; an earlier version of this section credited the limit to XCP in that sense and
+was wrong. The eight comes from the a2l, where the `EVENT` block of the XCP a2ml declares
 
-The limit is kept at eight while that is open, because the two directions are not symmetric: a
-cap that is later relaxed accepts every file it accepted before, while one that is later
-tightened refuses files that were valid. Nothing DDD writes carries an event name yet, so the
-constraint costs a project only the names it may choose.
+```
+block "EVENT" struct {
+  char[101];  /* EVENT_CHANNEL_NAME */
+  char[9];    /* EVENT_CHANNEL_SHORT_NAME */
+  uint;       /* EVENT_CHANNEL_NUMBER */
+  enum { "DAQ" = 1, "STIM" = 2, "DAQ_STIM" = 3 };
+  uchar;      /* MAX_DAQ_LIST */
+  uchar;      /* TIME_CYCLE */
+  uchar;      /* TIME_UNIT */
+  uchar;      /* PRIORITY */
+};
+```
+
+`char[9]` is eight characters and a terminator, which is the field a raster name is written to
+once the module level block of section 11 exists - and `char[101]` is the hundred character
+long name that `description` supplies. Both were read from the a2ml carried in two independent
+published a2l files, which agree character for character.
 
 ### 3.2 `event`
 
@@ -263,10 +273,26 @@ reaches no a2l at all and therefore no `IF_DATA` either.
 
 The event number is written in decimal, as the rasters file writes it.
 
-**Implementation note.** The exact grammar of `DAQ_EVENT` above - the `VARIABLE` taggedunion
-and the `DEFAULT_EVENT_LIST` block inside it - has to be checked against the XCP a2ml
-description before release, and the generated file opened by at least one calibration tool. It
-is written here as the shape the design intends, not as a quotation.
+**Verified.** The grammar above was checked against the XCP a2ml, which declares
+
+```
+block "DAQ_EVENT" taggedunion {
+  "FIXED_EVENT_LIST" taggedstruct { ("EVENT" uint)*; };
+  "VARIABLE" taggedstruct {
+    block "AVAILABLE_EVENT_LIST" taggedstruct { ("EVENT" uint)*; };
+    block "DEFAULT_EVENT_LIST" taggedstruct { ("EVENT" uint)*; };
+  };
+};
+```
+
+so `DAQ_EVENT VARIABLE` wrapping a `DEFAULT_EVENT_LIST` block of `EVENT` numbers is the
+construct this design emits, and `AVAILABLE_EVENT_LIST` is the sibling it deliberately leaves
+out. Vector's own XCPlite emits the same construct for a measurement whose event is a
+suggestion. It writes the number in hexadecimal where this design writes decimal; the a2ml
+types the field `uint`, so either is a number and both read.
+
+What remains untested is the generated file in a calibration tool, which is a different claim
+from the grammar being right.
 
 ## 7 Checks
 

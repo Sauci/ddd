@@ -326,3 +326,20 @@ class TestObjectIdentity:
         )
         assert "duplicate-id" in checks(bag), messages(bag)
         assert "'Y'" in messages(bag) and "'X'" in messages(bag)
+
+    def test_three_objects_sharing_an_identity_all_point_at_the_first(self, tree: Path) -> None:
+        """N=3 does not blow up pairwise: one finding per extra claimant, not one per pair."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w")),
+                "b.ddd.json": component("B", declare("local", "Y", id="k7m2q9xr4t8w")),
+                "c.ddd.json": component("C", declare("local", "Z", id="k7m2q9xr4t8w")),
+            },
+        )
+        findings = [diagnostic for diagnostic in bag if diagnostic.check == "duplicate-id"]
+        assert len(findings) == 2, messages(bag)
+        finding_for_y, finding_for_z = findings
+        assert "'Y'" in finding_for_y.message and "'X'" in finding_for_y.message, messages(bag)
+        assert "'Z'" in finding_for_z.message and "'X'" in finding_for_z.message, messages(bag)

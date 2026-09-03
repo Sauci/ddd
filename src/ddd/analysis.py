@@ -1146,20 +1146,23 @@ class _Analysis:
         one the comparison of a later delivery would pair, and choosing that by file order
         would make the report depend on the order of the includes.
         """
-        seen: dict[str, str] = {}
+        seen: dict[str, DeclarationRef] = {}
         for name, refs in ordered:
             for ref in refs:
                 identity = ref.definition.id
                 if identity is None or not ref.scope.is_producer:
                     continue
-                first = seen.setdefault(identity, name)
-                if first != name:
+                first_ref = seen.setdefault(identity, ref)
+                if first_ref.name != name:
                     self._bag.add(
                         "duplicate-id",
-                        f"'{name}' carries the id '{identity}', which '{first}' already "
-                        f"carries; an id is one object's alone, and two objects sharing one "
-                        f"make a later comparison pair the wrong pair",
+                        f"'{name}' carries the id '{identity}', which '{first_ref.name}' "
+                        f"already carries; an id is one object's alone, and two objects "
+                        f"sharing one make a later comparison pair the wrong pair",
                         ref.location("definition.id"),
+                        notes=[
+                            ("first carries the id here", first_ref.location("definition.id")),
+                        ],
                     )
 
     def _nearest_type(self, named: str) -> str:

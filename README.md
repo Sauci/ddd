@@ -49,7 +49,7 @@ Requires Python 3.12 or newer; the only runtime dependencies are pydantic and ji
 
 ```bash
 pip install ddd-tool                 # from the index
-pip install ./ddd_tool-0.6.0-py3-none-any.whl   # from a delivered wheel, no network
+pip install ./ddd_tool-0.7.0-py3-none-any.whl   # from a delivered wheel, no network
 ddd --version
 ```
 

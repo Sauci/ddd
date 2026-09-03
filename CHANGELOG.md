@@ -8,7 +8,7 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
-## Unreleased
+## 0.7.0
 
 * **Seventh description file kind: measurement rasters.**  A `rasters` file names the DAQ
   events a target's XCP configuration offers - a short name, an event channel number and,

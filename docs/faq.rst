@@ -527,7 +527,7 @@ selectable:
 
 .. code-block:: text
 
-   /* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.6.0. DO NOT EDIT. */
+   /* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.7.0. DO NOT EDIT. */
    ASAP2_VERSION 1 61
 
 One consequence is worth knowing, because it is the only place where the format is narrower

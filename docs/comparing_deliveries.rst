@@ -135,6 +135,39 @@ release-to-release case, comparing a dump with the working tree is the daily cas
 comparing two working trees is how a branch is judged against the trunk it will be merged
 into. Nothing has to be staged into a temporary file first.
 
+Renames
+-------
+
+A rename is invisible to a comparison keyed on names alone: the old spelling is a removal and
+the new one an unrelated addition, the two never meet, and a rename that also widened a
+datatype or rescaled a conversion is not reported at all - only that one name left and another
+arrived. An ``id`` on the producing declaration is what relates them, so adopting one turns
+the workflow above into:
+
+.. code-block:: bash
+
+   ddd id --assign components/*.ddd.json                              # once, per project
+   ddd dump project.ddd.json > baseline.json                          # at release time
+   ddd compare baseline.json project.ddd.json --renames renames.json  # later, for the next delivery
+
+``renames.json`` holds one entry per renamed object - its ``id``, its old name under ``from``
+and its new one under ``to``:
+
+.. code-block:: json
+
+   [{ "id": "k7m2q9xr4t8w", "from": "FiltGain", "to": "FilterGain" }]
+
+sorted by the new name, and written whether or not the comparison found errors, since a
+delivery that cannot be accepted still needs its renames listed so that whoever fixes it knows
+what moved. This is what a calibration dataset, a recorded measurement or a test script keyed
+by the old spelling is migrated with.
+
+The comparison itself reports ``renamed-object`` for each pair it finds this way, and the
+ordinary interface comparison still runs across the pair, so a rename that also changed the
+object is no longer invisible. And where a spelling freed by a rename has been claimed by a
+different object in the same delivery, it reports ``reused-name`` instead - the failure that
+binds an old dataset to new storage without anything about the delivery looking broken.
+
 The comparison checks
 ---------------------
 
@@ -158,6 +191,12 @@ them together with everything else.
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes or locality of an object changed
+   * - error
+     - ``reused-name``
+     - a name of the baseline now belongs to an object with a different id
+   * - warning
+     - ``renamed-object``
+     - an object of the baseline is offered under a different name; its ``id`` says so
    * - warning
      - ``removed-unused-object``
      - an object of the baseline is gone; no component read it

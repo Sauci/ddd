@@ -8,6 +8,35 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
+## Unreleased
+
+* **`id` on a producing declaration: the identity of a data object, which survives a
+  rename.**  Twelve lowercase base32 characters, opaque, written by `ddd id --assign` rather
+  than typed by hand.  `duplicate-id` refuses two objects of one project sharing one, and
+  `consumer-identity` refuses it on an `input` declaration, the same reasoning that already
+  refuses `init` and `section` there; `missing-id` reports a producing declaration that states
+  none, at `info`, so an unmigrated project sees it without being held to it.  `ddd compare`
+  now pairs objects on the id before falling back to the name, so a rename is one
+  `renamed-object` finding with the ordinary interface comparison still run across it, rather
+  than a removal and an addition that never meet; a name freed by a rename and claimed by a
+  different object is `reused-name`, an error, because a calibration dataset or a recording
+  keyed by that spelling binds to the new object exactly as readily as it did to the old one.
+  **Migration:** the dictionary format is 6, and every object of a freshly dumped dictionary
+  now carries `id`, `null` where nothing was stamped, exactly like `section` or `raster`; a
+  leaf of a structured object carries the same thing under `instance_id`.  Run
+  `ddd id --assign` over the description files once and commit the result; until then
+  `missing-id` reports at info, which a migrated project turns into its gate with
+  `-W missing-id=error`.  A baseline archived at format 5 or older carries neither key at all,
+  which is not the same as having none stated - its objects pair by name and no rename is ever
+  inferred against it.
+* **`ddd id --assign FILE...`** writes an id into every producing declaration and instance
+  that has none, editing the files in place; a declaration that already carries one is left
+  alone, so a second run changes nothing.
+* **`ddd compare --renames PATH`** writes the old-to-new name pairs of the comparison - each
+  object's id, its old name and its new name - so a calibration dataset, a recording or a test
+  script keyed by the old spelling can be migrated without parsing the comparison's own
+  findings.
+
 ## 0.7.0
 
 * **Seventh description file kind: measurement rasters.**  A `rasters` file names the DAQ

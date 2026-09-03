@@ -295,12 +295,10 @@ unchanged, and any component may name them
 }
 ```
 
-A producing declaration may also carry an `id`, the identity that survives a rename; see
-`ddd id`.
-
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | c identifier of the object |
+| `id` | none | identity of the object, twelve lowercase base32 characters, stated by the producer only; survives a rename and is compared by nothing |
 | `kind` | required | see the next section |
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`.  Exactly one of `datatype` and `typename` is stated |
 | `typename` | one of the two | the name of a declared type, stated instead of `datatype`: a scalar type fixes what the value means, a structure makes this a structured variable |
@@ -488,7 +486,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
-| error | `consumer-identity` | a declaration whose scope is `input` states an `id`, which only the producing component decides |
+| error | `consumer-identity` | an `input` declaration states an `id`, which only the producing component decides |
 | error | `raster-kind` | a raster is stated on a calibration object, which no daq list carries |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema` | the file tree cannot be read; these five cannot be relaxed |

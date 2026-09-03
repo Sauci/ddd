@@ -1,0 +1,642 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Developer documentation &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="FAQ" href="faq.html" />
+    <link rel="prev" title="Data dictionary" href="data_dictionary.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Developer documentation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#layers">Layers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-split-is-enforced-by-a-test">The split is enforced by a test</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-backend-is">What a backend is</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#adding-an-output-format">Adding an output format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#diagnostics-never-raise">Diagnostics never raise</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-calibration-tools-actually-implement">What the calibration tools actually implement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-coverage-gate">The coverage gate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-the-checks">Running the checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#building-this-documentation">Building this documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#publishing-this-documentation">Publishing this documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#delivering-the-editor-extension">Delivering the editor extension</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Developer documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/developer_documentation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="developer-documentation">
+<h1>Developer documentation<a class="headerlink" href="#developer-documentation" title="Link to this heading"></a></h1>
+<p>This page is for whoever has to change DDD rather than use it: to add an output format, to
+add a check, or to understand why the code is arranged the way it is before moving something
+in it.</p>
+<p>DDD is a front end and a set of backends with one contract between them. The front end
+reads the description files, resolves the project and reports every disagreement it finds;
+each backend turns the resolved result into files of one output format. The front end never
+mentions c or a2l, and a backend never touches the loader or the checks. That is not a style
+preference: a code generator whose layers leak becomes a generator in which nobody can
+change the c output without wondering what it does to the a2l, and in which a rule about
+ownership ends up being re-implemented, slightly differently, in a jinja template.</p>
+<section id="layers">
+<h2>Layers<a class="headerlink" href="#layers" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 39.0%" />
+<col style="width: 39.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>layer</p></th>
+<th class="head"><p>knows about</p></th>
+<th class="head"><p>does not know about</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/models/</span></code></p></td>
+<td><p>the json file formats, storage sizes, value ranges</p></td>
+<td><p>c, a2l</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/loading.py</span></code></p></td>
+<td><p>files, includes, globs, encodings</p></td>
+<td><p>what the data means</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/analysis.py</span></code></p></td>
+<td><p>ownership, agreement between components, references</p></td>
+<td><p>any output format</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/ir.py</span></code></p></td>
+<td><p><strong>the contract</strong>: the resolved data dictionary</p></td>
+<td><p>how it is rendered</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, literals, include guards, rendering the project’s templates</p></td>
+<td><p>a2l, the loader, the checks, what the generated files are called</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/a2l/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, compu methods, record layouts, its own templates</p></td>
+<td><p>c, the loader, the checks</p></td>
+</tr>
+</tbody>
+</table>
+<p>The last two rows are deliberately not symmetric. The a2l backend carries its own templates,
+because ASAP2 is a format ASAM defines and a project has nothing to decide about it; the c
+backend carries none, because what generated c looks like is a house style. It is constructed
+with the template directory <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code> names, works out what to render from the file
+names it finds there, and therefore does not know before a run which files that run produces.
+Those naming rules are part of the interface a project depends on: <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a> documents
+them, and the module docstring of <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/backend.py</span></code> states them again next to
+the code that implements them.</p>
+<p>Three smaller modules sit beside them. <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> holds the severity policy and the
+registry of every check, and is what both the loader and the analysis report through.
+<code class="docutils literal notranslate"><span class="pre">compare.py</span></code> answers the directional question of whether one dictionary may replace
+another, and is the second consumer of the contract next to the backends. <code class="docutils literal notranslate"><span class="pre">cli.py</span></code> is the
+only module that knows about argument parsing, exit codes and where output goes; it is also
+where the backends a <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> run uses are assembled.</p>
+<p>The two contract pages describe the data that travels between the layers: the input file
+formats under <a class="reference internal" href="data_contracts.html"><span class="doc">data contracts</span></a>, and the resolved form under
+<a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a>.</p>
+</section>
+<section id="the-split-is-enforced-by-a-test">
+<h2>The split is enforced by a test<a class="headerlink" href="#the-split-is-enforced-by-a-test" title="Link to this heading"></a></h2>
+<p>A layering that lives only in the documentation rots the first time somebody is in a hurry,
+so DDD asserts it. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> parses every module under <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> with
+<code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the <code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if the import graph
+disagrees with the table above:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">loading.py</span></code>, <code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code> and <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> import no backend,</p></li>
+<li><p>nothing under <code class="docutils literal notranslate"><span class="pre">backends/</span></code> imports <code class="docutils literal notranslate"><span class="pre">ddd.loading</span></code> or <code class="docutils literal notranslate"><span class="pre">ddd.analysis</span></code>,</p></li>
+<li><p>the c backend does not import the a2l backend, and the a2l backend does not import the
+c one,</p></li>
+<li><p>both backends satisfy the <code class="docutils literal notranslate"><span class="pre">ddd.backends.base.Backend</span></code> protocol, and every datatype
+is spelled by both of them, so a new datatype cannot be added to the contract while one
+output format silently has no name for it.</p></li>
+</ul>
+<p>A second test in the same file reads the text of <code class="docutils literal notranslate"><span class="pre">src/ddd/models/</span></code> and fails if a spelling
+that belongs to a single output format - <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, <code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">COMPU_</span></code>, <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code>,
+<code class="docutils literal notranslate"><span class="pre">stdint</span></code> - has leaked into the input contract. The one documented exception is
+<code class="docutils literal notranslate"><span class="pre">src/ddd/models/reserved.py</span></code>, which lists the c keywords and the names <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code>
+claims: which identifiers a c compiler takes for itself is a property of the input format,
+because generating c is not optional in DDD. It is a file of its own precisely so that the
+guard can stay strict about everything else.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The word <code class="docutils literal notranslate"><span class="pre">measurement</span></code> is deliberately not on that list. It is DDD’s own term for an
+online value and part of the input file format; that the a2l keyword <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code>
+happens to coincide with it is not a leak.</p>
+</div>
+</section>
+<section id="what-a-backend-is">
+<h2>What a backend is<a class="headerlink" href="#what-a-backend-is" title="Link to this heading"></a></h2>
+<p>A backend is anything with a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a <code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> method, as
+described by the protocol in <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/base.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@runtime_checkable</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Backend</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Turns a data dictionary into files."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dictionary</span><span class="p">:</span> <span class="n">DataDictionary</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">GeneratedFile</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Render every artefact of this backend; nothing is written to disk."""</span>
+        <span class="o">...</span>
+</pre></div>
+</div>
+<p>That signature carries two decisions worth knowing. First, <code class="docutils literal notranslate"><span class="pre">generate</span></code> receives the resolved
+<a class="reference internal" href="data_dictionary.html#ddd.ir.DataDictionary" title="ddd.ir.DataDictionary"><code class="xref py py-class docutils literal notranslate"><span class="pre">ddd.ir.DataDictionary</span></code></a> and nothing else: no workspace, no diagnostic bag, no command
+line arguments. Anything it needs about the project has to be a field of the contract, which
+is what stops one output format from acquiring its own private view of what a project means.
+Second, a backend <em>renders</em> but does not <em>write</em>. It returns fully rendered <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code>
+objects, and the driver decides what happens to them, which is what makes three things
+possible in one place rather than in every backend:</p>
+<ul class="simple">
+<li><p>two artefacts claiming the same path are refused with a message naming the backends
+involved, instead of one silently overwriting the other,</p></li>
+<li><p>a file whose content has not changed is left alone, so that a regeneration does not
+trigger a rebuild of everything downstream,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> is a parameter of the writing step rather than a flag every backend has to
+honour correctly.</p></li>
+</ul>
+<p>What a backend needs about the <em>run</em> rather than about the project is settled when it is
+constructed, and the constructor is a backend’s own business. That is where the two differ:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">CBackend</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">template_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">COptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"ddd"</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">A2lBackend</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">A2lOptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"ddd"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</pre></div>
+</div>
+<p>The template directory comes first for the c backend because it is the one argument that has
+no default: a run without <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code> is a usage error of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>, never a
+fallback to a built-in set of templates, and there is nothing for the constructor to fall back
+to either. The a2l backend takes no such argument at all, since its templates are part of the
+package.</p>
+<section id="adding-an-output-format">
+<h3>Adding an output format<a class="headerlink" href="#adding-an-output-format" title="Link to this heading"></a></h3>
+<p>Adding one - a header for another language, a csv, an ARXML - means adding a package next to
+the existing two and touching nothing else:</p>
+<ol class="arabic simple">
+<li><p>Create <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/&lt;format&gt;/</span></code> with a class exposing <code class="docutils literal notranslate"><span class="pre">name</span></code> and <code class="docutils literal notranslate"><span class="pre">generate</span></code>.
+Follow the shape of the existing two: a <code class="docutils literal notranslate"><span class="pre">model.py</span></code> that turns the dictionary into
+whatever the templates want to iterate over, a <code class="docutils literal notranslate"><span class="pre">types.py</span></code> mapping every
+<code class="docutils literal notranslate"><span class="pre">ddd.models.Datatype</span></code> to the spelling of that format, and an <code class="docutils literal notranslate"><span class="pre">options.py</span></code> for what
+the command line can tune. Then decide where the templates come from, which is the one
+design question a new backend has to answer for itself: ship a <code class="docutils literal notranslate"><span class="pre">templates/</span></code> directory
+inside the package if the format is specified elsewhere, as a2l is, or take a template
+directory as the first constructor argument if the format is a house style, as c is. Use
+<code class="docutils literal notranslate"><span class="pre">ddd.backends.base.make_environment</span></code> and <code class="docutils literal notranslate"><span class="pre">render_template</span></code> either way, so the jinja
+settings - in particular <code class="docutils literal notranslate"><span class="pre">StrictUndefined</span></code>, which turns a typo in a template into an
+error rather than into an empty string - are the same as everywhere else.</p></li>
+<li><p>Export it from <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/__init__.py</span></code>.</p></li>
+<li><p>Add it to the list of backends that <code class="docutils literal notranslate"><span class="pre">_command_generate</span></code> in <code class="docutils literal notranslate"><span class="pre">src/ddd/cli.py</span></code> builds,
+together with the option that selects or configures it.</p></li>
+<li><p>Add it to the protocol assertion in <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code>. The import graph tests
+pick the new package up on their own, so the first thing the suite will tell you is
+whether the new backend reached into the front end.</p></li>
+</ol>
+<p>Nothing in the front end changes, and neither of the existing backends is touched.</p>
+</section>
+</section>
+<section id="diagnostics-never-raise">
+<h2>Diagnostics never raise<a class="headerlink" href="#diagnostics-never-raise" title="Link to this heading"></a></h2>
+<p>The loader and the analysis report through a <code class="docutils literal notranslate"><span class="pre">ddd.diagnostics.DiagnosticBag</span></code> and do
+not raise. An exception escaping from the middle of a run would end it with a bare python
+message and throw away everything already collected, and the author would fix one problem,
+run again, and be told about the next one. Collecting instead means a run reports as much as
+it can: a file that cannot be read, a file that is not utf-8, json nested deeper than python
+can parse, a path the operating system cannot represent - each comes back as a located
+finding, and the rest of the project is still checked.</p>
+<p>Two consequences for anyone adding a check. A check is an entry in the <code class="docutils literal notranslate"><span class="pre">CHECKS</span></code> registry
+in <code class="docutils literal notranslate"><span class="pre">src/ddd/diagnostics.py</span></code> - an identifier, a default severity and a one line description
+- plus the code that adds the finding; the identifier is part of the public interface of the
+tool, since it is what <code class="docutils literal notranslate"><span class="pre">-W</span></code> and <code class="docutils literal notranslate"><span class="pre">--strict</span></code> address and what a ci job matches on, and
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> prints the registry as it stands (see <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>). And a check that cannot be relaxed has to say so: the five entries
+marked <code class="docutils literal notranslate"><span class="pre">overridable=False</span></code> are the ones after which nothing further can be said about the
+file at all, and every other check has to survive being set to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>.</p>
+</section>
+<section id="what-the-calibration-tools-actually-implement">
+<h2>What the calibration tools actually implement<a class="headerlink" href="#what-the-calibration-tools-actually-implement" title="Link to this heading"></a></h2>
+<p>Structured data can be written into an a2l two ways, and the choice is not a matter of taste.
+ASAP2 has a typedef family - <code class="docutils literal notranslate"><span class="pre">TYPEDEF_STRUCTURE</span></code>, <code class="docutils literal notranslate"><span class="pre">STRUCTURE_COMPONENT</span></code>, <code class="docutils literal notranslate"><span class="pre">INSTANCE</span></code> - that
+describes a structure once and instantiates it, which is the obvious fit for a project with
+twenty instances of one type. The alternative is to flatten: one ordinary object per leaf, named
+after the path to it, at the address of the instance plus the offset of the member.</p>
+<p>The native form was tested against <strong>CANape 15</strong> before any of it was built, with hand written
+a2l files, and it is not usable there:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ASAP2_VERSION</span> <span class="pre">1</span> <span class="pre">71</span></code> is <strong>refused outright</strong> - <code class="docutils literal notranslate"><span class="pre">unknown</span> <span class="pre">ASAP2</span> <span class="pre">version</span> <span class="pre">1.71</span></code> - so the
+version DDD declares cannot simply be raised. <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">70</span></code> is accepted.</p></li>
+<li><p>at <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">61</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">70</span></code> a file containing a <code class="docutils literal notranslate"><span class="pre">TYPEDEF_STRUCTURE</span></code> and two <code class="docutils literal notranslate"><span class="pre">INSTANCE</span></code> of it
+<strong>loads without a warning and contains no objects at all</strong>. Loading is not evidence of support.</p></li>
+<li><p>the grammar does know the keyword: a <code class="docutils literal notranslate"><span class="pre">SYMBOL_TYPE_LINK</span></code> inside the structure is a syntax
+error on its own line, not on the enclosing block, so the body is being parsed and validated.
+It accepts the shape and exposes nothing for it.</p></li>
+<li><p>a <code class="docutils literal notranslate"><span class="pre">GROUP</span></code> referencing members through their instance loads, and is <strong>empty</strong>.</p></li>
+</ul>
+<p>So the a2l flattens, and two further constraints come out of the same exercise. Do not emit
+<code class="docutils literal notranslate"><span class="pre">ASAP2_VERSION</span> <span class="pre">1</span> <span class="pre">71</span></code>, since <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">61</span></code> carries everything a flattened structure needs. And do not
+rely on a tool to report a bad reference: CANape silently dropped one it could not resolve, which
+means a mistake in a generated name costs an object with no diagnostic anywhere, and the burden
+of catching it sits here.</p>
+<p>INCA has not been tested. Since it is generally the more conservative of the two, flattening is
+what a project targeting both can rely on.</p>
+</section>
+<section id="the-coverage-gate">
+<h2>The coverage gate<a class="headerlink" href="#the-coverage-gate" title="Link to this heading"></a></h2>
+<p>Coverage runs with every test run, over statements <strong>and</strong> branches, and a gap fails the
+run:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[tool.pytest.ini_options]
+addopts = "-q --cov --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+source = ["ddd"]
+branch = true
+</pre></div>
+</div>
+<p>The reasoning is that a line nobody executes is a line nobody has ever seen behave - and in
+a code generator, an unexercised branch means an output nobody has ever looked at. The two
+consequences are worth stating plainly, because they change how the gate is met. The gate is
+what found the dead code this project used to carry, in the shape of unused properties on
+the analysis and contract types; the fix was deleting them, not writing tests for them. And
+the paths that only a coverage run reaches - unreadable files, malformed json, relaxed
+severities, odd float literals - are collected in <code class="docutils literal notranslate"><span class="pre">tests/test_edge_cases.py</span></code> rather than
+being scattered through the suite that describes behaviour.</p>
+<p>Three suites guard things a type checker cannot. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> walks the import
+graph, as described above. <code class="docutils literal notranslate"><span class="pre">tests/test_hardening.py</span></code> holds one test per defect that once
+reached a customer-facing artefact or verdict - a transposed a2l array, a header that does
+not compile, a legal name rejected, a description file that ended the run with a python
+traceback - grouped by what was at stake rather than by module. <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code>
+asserts that every check identifier, every command, every object kind and every datatype is
+named in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and in <code class="docutils literal notranslate"><span class="pre">SPEC.md</span></code>, that the README invents no check that is not
+registered, and that no link in either points at a file that no longer exists.</p>
+</section>
+<section id="running-the-checks">
+<h2>Running the checks<a class="headerlink" href="#running-the-checks" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w">              </span><span class="c1"># the suite, the coverage gate and the documentation checks</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>--no-cov<span class="w">     </span><span class="c1"># quicker, while working on a single test</span>
+python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.
+python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>.
+python<span class="w"> </span>-m<span class="w"> </span>mypy
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">mypy</span></code> runs in strict mode over <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> with the pydantic plugin; <code class="docutils literal notranslate"><span class="pre">ruff</span></code> lints the
+sources, the tests and the documentation configuration with a line length of 100. The suite
+runs in a few seconds, so there is no reason to run anything less than all of it.</p>
+<p>Nothing in the suite skips. A test that skips when a tool is absent reports success without
+having run, and the one place that used to do it - validating the examples against the
+committed schemas, which needs <code class="docutils literal notranslate"><span class="pre">jsonschema</span></code> - was skipping everywhere except on the machine
+of whoever happened to have it installed. It is a development dependency instead.</p>
+<p>The repository also ships a small linux image, which is what the generated c code is
+actually compiled with - a generator whose output no compiler has ever accepted is a
+generator with no evidence behind it. Run it from a WSL shell, where docker speaks linux
+containers:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="nb">test</span><span class="w">        </span><span class="c1"># pytest with the coverage gate</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>coverage<span class="w">    </span><span class="c1"># same, plus build/htmlcov/index.html</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>lint<span class="w">        </span><span class="c1"># ruff check, ruff format --check and mypy</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile<span class="w">     </span><span class="c1"># generate, compile, link and verify the symbols</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>cmake<span class="w">       </span><span class="c1"># build examples/cmake through cmake/Ddd.cmake</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>docs<span class="w">        </span><span class="c1"># build this documentation</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">compile</span></code> service is the one that keeps the c backend honest. It generates the demo
+project, writes one translation unit per generated header that includes it twice - which
+proves that every header is self contained and that its include guard works - compiles
+everything with <code class="docutils literal notranslate"><span class="pre">-std=c11</span> <span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span> <span class="pre">-Wshadow</span>
+<span class="pre">-Wcast-qual</span> <span class="pre">-Wstrict-prototypes</span></code>, links all objects into one binary, and finally compares
+<code class="docutils literal notranslate"><span class="pre">nm</span></code> against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code> so that every variable DDD promised is defined
+exactly once and nothing else is. The last three steps run twice, once plain and once with
+the conditional declarations enabled, so both states of a <code class="docutils literal notranslate"><span class="pre">#if</span></code> guarded variable are
+covered. It renders the example templates, which is what makes them evidence rather than a
+sketch: the set a project starts from is the set a compiler has accepted. <code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code> points
+the service at any other directory, so a project can put its own templates through the same
+treatment.</p>
+</section>
+<section id="continuous-integration">
+<h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code> runs exactly the commands above - the suite with its coverage
+gate, <code class="docutils literal notranslate"><span class="pre">ruff</span></code> twice and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> - on every push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and every pull request.</p>
+<p>The suite runs across a matrix of ubuntu and windows on python 3.12 and 3.13, which is the
+four combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise. That is not thoroughness
+for its own sake: a path handling defect that only appeared on linux has already reached a
+user of this project, having passed the whole suite on windows first. A test in
+<code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> keeps the matrix and those classifiers in agreement, so
+advertising a new interpreter without testing it fails.</p>
+<p>Each job installs the project with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">&quot;.[dev]&quot;</span></code> rather than running it out of
+<code class="docutils literal notranslate"><span class="pre">src</span></code>. That is deliberate too, and it is the cheapest check in the file: it exercises the
+packaging metadata, which the tests themselves never touch, so a dependency list that no
+longer builds fails here rather than for whoever installs the distribution.</p>
+<p>Style and types are checked once rather than per platform, since neither varies by platform.
+<code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> runs the suite again before it builds a release, which is not redundant: a
+release can be cut from a commit this workflow never saw, and an upload to an index is
+permanent.</p>
+</section>
+<section id="building-this-documentation">
+<h2>Building this documentation<a class="headerlink" href="#building-this-documentation" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[docs]"</span>
+sphinx-build<span class="w"> </span>-b<span class="w"> </span>html<span class="w"> </span>docs<span class="w"> </span>build/docs/html<span class="w"> </span>-W<span class="w"> </span>--keep-going
+</pre></div>
+</div>
+<p>Warnings are errors, which matters more here than in most projects: the reference sections
+are generated from the sources - <code class="docutils literal notranslate"><span class="pre">autoprogram</span></code> renders the command line from the argument
+parser itself, <code class="docutils literal notranslate"><span class="pre">autodoc_pydantic</span></code> renders the file formats from the contracts - so a
+renamed option or a changed field cannot leave its documentation behind, and a reference
+that no longer resolves fails the build instead of quietly disappearing from the page.</p>
+<p>Two programs have to be on the path as well, and each fails visibly rather than silently
+dropping a figure: <code class="docutils literal notranslate"><span class="pre">dot</span></code> from graphviz draws the entity relationship diagram of every model
+on the <a class="reference internal" href="file_formats/index.html"><span class="doc">file format pages</span></a>, and <code class="docutils literal notranslate"><span class="pre">plantuml</span></code> draws the <code class="docutils literal notranslate"><span class="pre">..</span> <span class="pre">uml::</span></code>
+diagrams. Without a plantuml installation, <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> still names one, so the build
+reports a warning per diagram - which under <code class="docutils literal notranslate"><span class="pre">-W</span></code> is a failure. Both are apt packages, and
+both are in the image behind <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">run</span> <span class="pre">--rm</span> <span class="pre">docs</span></code>, which is the way to build the
+documentation without installing either.</p>
+</section>
+<section id="publishing-this-documentation">
+<h2>Publishing this documentation<a class="headerlink" href="#publishing-this-documentation" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.github/workflows/docs.yml</span></code> builds the html and publishes it to
+<a class="reference external" href="https://sauci.github.io/ddd/">GitHub Pages</a>. It runs on every pull request, and deploys on
+two events: a push to <code class="docutils literal notranslate"><span class="pre">master</span></code>, and a published release. The deployment authenticates the
+same way the release upload does, with a short lived OIDC token rather than a stored secret.</p>
+<p>The site keeps one directory per version, and a menu in the bottom left corner of every page
+switches between them:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Directory</p></th>
+<th class="head"><p>Written by</p></th>
+<th class="head"><p>Rewritten</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">latest</span></code></p></td>
+<td><p>a push to <code class="docutils literal notranslate"><span class="pre">master</span></code></p></td>
+<td><p>every push</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">v0.5.0</span></code>, <code class="docutils literal notranslate"><span class="pre">v0.6.0</span></code>, …</p></td>
+<td><p>publishing that release</p></td>
+<td><p>never</p></td>
+</tr>
+</tbody>
+</table>
+<p>Old documentation describes old code, so nothing rebuilds a released version. That is not
+only a saving: a tag from two years ago would have to keep building under the sphinx of the
+day, and the run that failed would be the one publishing the <em>current</em> release.</p>
+<p>Since a deployment replaces the whole site, the versions that are not being built have to
+come from somewhere. The <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch is that archive - storage rather than the
+published thing, restored at the start of the job and pushed back at the end of it. Pages
+still serves the artifact the workflow uploads, so its <code class="docutils literal notranslate"><span class="pre">Source</span></code> setting stays on
+<em>GitHub Actions</em>. The branch is created by the first deployment; there is nothing to set up.</p>
+<p>The menu cannot be baked into a page at build time, or a version released today would be
+missing from the menu of every page built before it - which is the menu somebody reading an
+old page is looking at. So <code class="docutils literal notranslate"><span class="pre">docs/_templates/versions.html</span></code> renders an empty menu and
+<code class="docutils literal notranslate"><span class="pre">docs/_static/js/versions.js</span></code> fills it in on load from <code class="docutils literal notranslate"><span class="pre">versions.json</span></code> at the root of the
+site, which the workflow rewrites from what is on disk on every deployment. A build with no
+such file above it - a local one, a pull request one - shows no menu at all, which is honest:
+there is nothing to switch to.</p>
+<p>The root of the site redirects to the newest release rather than to <code class="docutils literal notranslate"><span class="pre">latest</span></code>. Somebody
+arriving without a version in the url wants the documentation of what they can install, not
+<code class="docutils literal notranslate"><span class="pre">master</span></code>’s account of features that are not released yet.</p>
+<p>The workflow installs graphviz and plantuml from apt, so publishing needs nothing but a stock
+runner: there is no prepared image to keep in step with the sources. Only html is built. A pdf
+would want a LaTeX distribution, roughly a gigabyte of packages, and nothing asks for one -
+<code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> still carries the LaTeX settings, so <code class="docutils literal notranslate"><span class="pre">sphinx-build</span> <span class="pre">-M</span> <span class="pre">latexpdf</span> <span class="pre">docs</span> <span class="pre">output</span></code>
+produces one for whoever does.</p>
+<p>Three things are worth knowing before the first run.</p>
+<p><strong>Pages has to be switched on by hand, once.</strong> In <em>Settings</em> → <em>Pages</em>, set <em>Source</em> to
+<em>GitHub Actions</em>. The workflow’s token may deploy to a site but may not create one, so until
+that setting is made the deployment step fails with a message about a missing Pages site.
+There is nothing to change in the repository to fix it: correct the setting and re-run.</p>
+<p><strong>The ``github-pages`` environment has to allow tags.</strong> GitHub creates that environment with
+its deployments restricted to the default branch, which is the whole of what a release
+deployment is not: the run is triggered by a tag. It fails with <em>not allowed to deploy to
+github-pages due to environment protection rules</em>, after a green build, on the release. In
+<em>Settings</em> → <em>Environments</em> → <em>github-pages</em> → <em>Deployment branches and tags</em>, choose
+<em>Selected branches and tags</em> and add a branch rule for <code class="docutils literal notranslate"><span class="pre">master</span></code> and a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>.
+This is a setting rather than a file, so it survives nothing in the repository and has to be
+made once per repository.</p>
+<p><strong>A pull request builds but never deploys.</strong> The deploy job names the branch and the release
+event it publishes, rather than resting on the event alone, because a pull request from a
+fork proposes arbitrary content: without that condition, opening one would be enough to
+publish somebody else’s revision as the product’s documentation.</p>
+</section>
+<section id="publishing-a-release">
+<h2>Publishing a release<a class="headerlink" href="#publishing-a-release" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.github/workflows/publish.yml</span></code> builds, checks and uploads the distribution. It never
+holds an API token: the upload authenticates with <a class="reference external" href="https://docs.pypi.org/trusted-publishers/">trusted publishing</a>, where GitHub mints a short lived OIDC token
+and the index decides whether the claims in it match a publisher somebody registered.</p>
+<p>Two things follow from that, and both have bitten this project.</p>
+<p><strong>The two indices are separate registrations.</strong> TestPyPI and PyPI are different services with
+different accounts and different publisher configurations. A publisher registered on
+<code class="docutils literal notranslate"><span class="pre">pypi.org</span></code> has no effect whatsoever on <code class="docutils literal notranslate"><span class="pre">test.pypi.org</span></code>, even though the pages look
+identical. The workflow uploads to whichever the job names, so each needs its own:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>field</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">test.pypi.org</span></code> registration</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">pypi.org</span></code> registration</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>PyPI project name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd-tool</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd-tool</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>owner</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sauci</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sauci</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>repository</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>workflow name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">publish.yml</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">publish.yml</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>environment name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">testpypi</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pypi</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The environment name is the field most easily got wrong, because it is the GitHub
+<em>deployment environment</em> of the job rather than anything about the index: the job publishing
+to TestPyPI declares <code class="docutils literal notranslate"><span class="pre">environment:</span> <span class="pre">name:</span> <span class="pre">testpypi</span></code>, so the registration has to say
+<code class="docutils literal notranslate"><span class="pre">testpypi</span></code> too.</p>
+<p>Until the project exists on an index, its registration is a <strong>pending</strong> publisher, which is
+also what creates the project on first upload. Note what the page itself warns: a pending
+publisher does not reserve the name, so anybody may take it first. Once the project exists
+the registration becomes an ordinary publisher, and a project that already exists needs the
+publisher configured <em>on the project</em> rather than as a pending one.</p>
+<p><strong>The configuration is read at upload time, not at commit time.</strong> A run that failed with
+<code class="docutils literal notranslate"><span class="pre">invalid-publisher</span></code> will succeed on a plain re-run once the registration is corrected -
+there is nothing to change in the repository and no new commit to push.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> run with <code class="docutils literal notranslate"><span class="pre">target:</span> <span class="pre">testpypi</span></code> is the dry run; publishing to PyPI
+happens on a published GitHub release tagged <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code>, and the build refuses to go on
+unless that tag is exactly <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. The prefix is
+checked rather than stripped, because the documentation site publishes a release under a
+directory named after its tag and lists only the ones beginning with <code class="docutils literal notranslate"><span class="pre">v</span></code>.</p>
+<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and so is
+subject to the same trap as <code class="docutils literal notranslate"><span class="pre">github-pages</span></code> above: an environment whose <em>Deployment branches
+and tags</em> is left at the default rejects a release, because a release is triggered by a tag
+and the default permits only the default branch. It fails after a green build, with
+<em>not allowed to deploy … due to environment protection rules</em>, and is fixed in the settings
+rather than in the repository.</p>
+</section>
+<section id="delivering-the-editor-extension">
+<h2>Delivering the editor extension<a class="headerlink" href="#delivering-the-editor-extension" title="Link to this heading"></a></h2>
+<p>The same workflow packages <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code> and attaches the <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to the
+release. That asset is the whole of how the extension is delivered: a permanent url needing
+no account and no network policy exception, installed with <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">--install-extension</span>
+<span class="pre">ddd-&lt;version&gt;.vsix</span></code> or through <strong>Install from VSIX…</strong> in the Extensions view.</p>
+<p>The job runs after the tag check rather than beside it, because it names the file it uploads
+after the tag; a test pins that ordering.</p>
+<p><strong>It is deliberately not published to the Visual Studio Marketplace.</strong> A step that would have
+done so existed until 0.6.0 and never once worked: the marketplace has no equivalent of
+trusted publishing, so it needed a personal access token from an Azure DevOps organisation
+owning a <code class="docutils literal notranslate"><span class="pre">sauci</span></code> publisher, and neither the organisation nor the publisher was ever
+created. It failed on every release it ran on while the rest of the pipeline reported success
+around it, and four pages meanwhile told a customer to search the Extensions view for an item
+that answered 404.</p>
+<p>Publishing there again is a decision with a prerequisite, not a step to restore. The
+publisher is created once at <a class="reference external" href="https://marketplace.visualstudio.com/manage">https://marketplace.visualstudio.com/manage</a> against an Azure
+DevOps organisation; its id has to be the <code class="docutils literal notranslate"><span class="pre">publisher</span></code> field of
+<code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>, which is what makes the extension <code class="docutils literal notranslate"><span class="pre">sauci.ddd</span></code>. The token
+is a personal access token scoped <em>Marketplace</em> → <em>Manage</em>, issued against <em>All accessible
+organizations</em> rather than a single one - a token scoped to one authenticates and is then
+refused when it publishes, which reads as a wrong password rather than a wrong scope. It
+expires within a year, and the failure lands on a release that has already uploaded to PyPI.
+Whoever takes that on puts the install instructions back on the four pages at the same time;
+a test refuses the two halves separately.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="data_dictionary.html" class="btn btn-neutral float-left" title="Data dictionary" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="faq.html" class="btn btn-neutral float-right" title="FAQ" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

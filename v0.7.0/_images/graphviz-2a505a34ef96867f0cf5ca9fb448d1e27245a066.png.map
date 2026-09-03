@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="5,5,243,117"/>
+</map>

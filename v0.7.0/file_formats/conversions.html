@@ -1,0 +1,514 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversions &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Type description" href="types.html" />
+    <link rel="prev" title="Variable definition" href="variable_definition.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Conversions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/conversions.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="conversions">
+<h1>Conversions<a class="headerlink" href="#conversions" title="Link to this heading"></a></h1>
+<p>A <code class="docutils literal notranslate"><span class="pre">uint16</span></code> in an embedded image is sixteen bits and nothing more. Whether those bits are a
+frequency in quarter hertz, a temperature in tenths of a degree with an offset, or the number
+three standing for the word <code class="docutils literal notranslate"><span class="pre">STATE_DEGRADED</span></code> is a fact that lives outside the c code - in a
+comment, in a header of magic constants, or in the memory of whoever wrote the driver. That
+fact is what a calibration engineer needs in order to read the value at all, and what a
+consuming component has to agree with in order to use it correctly, so DDD makes it part of
+the definition:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linear"</span><span class="p">,</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mf">-40.0</span><span class="w"> </span><span class="p">}</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"enum"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StateA_t"</span><span class="p">,</span><span class="w"> </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"STATE_OFF"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"STATE_FAULT"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>The conversion is the rule that maps the <strong>raw</strong> value - the number in the storage the target
+allocates - to the <strong>physical</strong> value, the quantity the number stands for. It is what makes
+the a2l show 23.5 degC where the image holds 235, and it is one of the attributes on which the
+components sharing a variable have to agree: a rescaling that only one side knows about is the
+failure that compiles, links, runs, and reports every value wrong by a constant factor.</p>
+<p><code class="docutils literal notranslate"><span class="pre">kind</span></code> may be omitted when the shape of the object makes it unambiguous. An object with
+<code class="docutils literal notranslate"><span class="pre">enumerators</span></code> or a <code class="docutils literal notranslate"><span class="pre">name</span></code> is an enum, one with a <code class="docutils literal notranslate"><span class="pre">factor</span></code> or an <code class="docutils literal notranslate"><span class="pre">offset</span></code> is linear, and
+one with neither is the identity. That is why <code class="docutils literal notranslate"><span class="pre">{&quot;factor&quot;:</span> <span class="pre">0.001}</span></code> is a complete conversion,
+and it is the form most of <code class="docutils literal notranslate"><span class="pre">examples/demo/</span></code> uses. Spelling <code class="docutils literal notranslate"><span class="pre">kind</span></code> out is never wrong and
+is worth doing wherever the file is read more often than it is written.</p>
+<section id="identity">
+<h2>identity<a class="headerlink" href="#identity" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">==</span> <span class="pre">raw</span></code>: the stored number <em>is</em> the quantity. It is stated like every other
+conversion - a <code class="docutils literal notranslate"><span class="pre">conversion</span></code> is required wherever storage is named by <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">{}</span></code> is its shortest spelling - because raw equalling physical is an engineering claim
+about the data, and a forgotten scaling on a fixed point value displays raw counts without
+anything looking broken. Use it for counters, bit fields, flags, and for floating point
+values that already carry the physical quantity.</p>
+<p><code class="docutils literal notranslate"><span class="pre">linear</span></code> with <code class="docutils literal notranslate"><span class="pre">factor</span></code> 1 and <code class="docutils literal notranslate"><span class="pre">offset</span></code> 0 is <em>not</em> the identity: conversions compare as
+written, so two components spelling the no-op the two ways disagree
+(<code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code>), and the a2l carries what was written - a <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code> against an
+<code class="docutils literal notranslate"><span class="pre">IDENTICAL</span></code>.</p>
+<p>The identity is not the absence of a conversion, though, and the a2l shows the difference. An
+object with no unit gets <code class="docutils literal notranslate"><span class="pre">NO_COMPU_METHOD</span></code>, because there is genuinely nothing to say about
+how to read it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT FlagA "Boolean measurement"
+  UBYTE NO_COMPU_METHOD 0 0 0 1
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "FlagA" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>An object that <em>does</em> carry a unit gets a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> of type <code class="docutils literal notranslate"><span class="pre">IDENTICAL</span></code>, whose whole
+content is that unit and a display format - so the calibration tool labels the axis of its
+plot and the column of its list, which is the entire point of having written <code class="docutils literal notranslate"><span class="pre">&quot;unit&quot;:</span>
+<span class="pre">&quot;degC&quot;</span></code> in the first place:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_IDENT_DEGC "physical value in degC"
+  IDENTICAL "%8.3" "degC"
+/end COMPU_METHOD
+
+/begin MEASUREMENT ValueC "Floating point measurement without a conversion"
+  FLOAT32_IEEE CM_IDENT_DEGC 0 0 -50 90
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "ValueC" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+</section>
+<section id="linear">
+<h2>linear<a class="headerlink" href="#linear" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">=</span> <span class="pre">raw</span> <span class="pre">*</span> <span class="pre">factor</span> <span class="pre">+</span> <span class="pre">offset</span></code>. This is the scaling of a fixed point value: the reason an
+integer datatype can carry a fractional quantity, and by far the most common conversion in a
+real project. <code class="docutils literal notranslate"><span class="pre">factor</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">1.0</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code> to <code class="docutils literal notranslate"><span class="pre">0.0</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">{&quot;factor&quot;:</span> <span class="pre">0.25}</span></code> and <code class="docutils literal notranslate"><span class="pre">{&quot;offset&quot;:</span> <span class="pre">-40}</span></code> are both complete.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 15.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">factor</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1.0</span></code></p></td>
+<td><p>The resolution: how much physical quantity one count of the raw value is worth. May be
+negative; may not be zero.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">offset</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p>The physical value that raw zero stands for.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">factor</span></code> must not be zero, and a file that says otherwise is refused when it is read:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check zerofactor.ddd.json
+zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
+1 error
+</pre></div>
+</div>
+<p>A factor of zero would map every raw value in the image onto the same physical value, which
+makes the variable unreadable, and it has no inverse - the calibration tool going the other
+way computes <code class="docutils literal notranslate"><span class="pre">raw</span> <span class="pre">=</span> <span class="pre">(physical</span> <span class="pre">-</span> <span class="pre">offset)</span> <span class="pre">/</span> <span class="pre">factor</span></code> and would divide by zero. Neither the c
+code nor the a2l could be generated meaningfully, so the value is rejected at the source
+rather than producing an output that fails somewhere downstream.</p>
+<section id="what-the-a2l-looks-like">
+<h3>What the a2l looks like<a class="headerlink" href="#what-the-a2l-looks-like" title="Link to this heading"></a></h3>
+<p>A linear conversion becomes a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> of type <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code>. Its <code class="docutils literal notranslate"><span class="pre">COEFFS</span></code> look
+inverted at first sight, and they are: ASAP2 defines the rational function as a mapping from
+the <strong>physical</strong> value to the raw one, <code class="docutils literal notranslate"><span class="pre">f(x)</span> <span class="pre">=</span> <span class="pre">(a·x²</span> <span class="pre">+</span> <span class="pre">b·x</span> <span class="pre">+</span> <span class="pre">c)</span> <span class="pre">/</span> <span class="pre">(d·x²</span> <span class="pre">+</span> <span class="pre">e·x</span> <span class="pre">+</span> <span class="pre">f)</span></code>, so the
+six coefficients <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">1</span> <span class="pre">-offset</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">factor</span></code> spell out <code class="docutils literal notranslate"><span class="pre">raw</span> <span class="pre">=</span> <span class="pre">(physical</span> <span class="pre">-</span> <span class="pre">offset)</span> <span class="pre">/</span> <span class="pre">factor</span></code>,
+which is DDD’s rule read backwards. The description string above the coefficients carries the
+rule in the readable direction:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_DEGC "phys = raw * 0.1 + 0"
+  RAT_FUNC "%8.3" "degC"
+  COEFFS 0 1 0 0 0 0.1
+/end COMPU_METHOD
+
+/begin MEASUREMENT ValueF "Signed measurement with a fixed point conversion"
+  SWORD CM_LIN_DEGC 0 0 -40 150
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "ValueF" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>With a non-zero offset the sign becomes visible. A conversion of <code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">0.5,</span> <span class="pre">offset</span> <span class="pre">-40</span></code>
+produces <code class="docutils literal notranslate"><span class="pre">COEFFS</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">40</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0.5</span></code> - the offset negated, exactly as the inverted reading
+requires.</p>
+</section>
+</section>
+<section id="enum">
+<h2>enum<a class="headerlink" href="#enum" title="Link to this heading"></a></h2>
+<p>Some values are not measured but named: a state machine, a fault code, an operating mode. An
+enum conversion is a verbal conversion table - the raw value <em>is</em> the physical value, and what
+the conversion adds is a name for each of them. It requires an integer datatype, since a state
+machine cannot be in state 2.5 and no calibration tool would know what to display for it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumfloat.ddd.json
+enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
+1 error
+</pre></div>
+</div>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 15.0%" />
+<col style="width: 63.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>key</p></th>
+<th class="head"><p>default</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The name of the generated c type. It is shared across the project: two objects with the
+same enum name are the same enumeration and must agree.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enumerators</span></code></p></td>
+<td><p>required</p></td>
+<td><p>The named values, at least one, in either of the two spellings below. Names have to be
+unique within the enum.</p></td>
+</tr>
+</tbody>
+</table>
+<section id="two-spellings">
+<h3>Two spellings<a class="headerlink" href="#two-spellings" title="Link to this heading"></a></h3>
+<p>The short one is a plain json object mapping each name to its value. It is the form to use
+when the names speak for themselves, and it keeps a twenty-entry fault code list readable:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mode"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Short form"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"enum"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mode_t"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"MODE_OFF"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"MODE_RUN"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"MODE_FAULT"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The long one is a list of objects, which costs more lines and buys a <code class="docutils literal notranslate"><span class="pre">description</span></code> per
+enumerator - the sentence that explains what the state actually means to somebody who did not
+write the state machine:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Level"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Long form"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Level_t"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"enumerators"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_LOW"</span><span class="p">,</span><span class="w">  </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"below the working range"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_OK"</span><span class="p">,</span><span class="w">   </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inside the working range"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LEVEL_HIGH"</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"above the working range"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The two are the same thing to DDD - the short form is expanded into the long one with empty
+descriptions - so a project can start with the short spelling and grow into the long one
+where it turns out to be worth the space. Note that the conversion of the second example above
+omits its <code class="docutils literal notranslate"><span class="pre">kind</span></code>: a conversion carrying <code class="docutils literal notranslate"><span class="pre">enumerators</span></code> cannot be anything else. The
+<code class="docutils literal notranslate"><span class="pre">kind</span></code> next to the name of the object is the other one - what sort of data object this is -
+and that one is always stated.</p>
+</section>
+<section id="what-it-generates">
+<h3>What it generates<a class="headerlink" href="#what-it-generates" title="Link to this heading"></a></h3>
+<p>In c, each distinct enum reaches the templates as one entry of <code class="docutils literal notranslate"><span class="pre">model.enums</span></code>, and the
+example templates turn it into one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> with the descriptions as comments on the
+enumerators. The variable itself keeps its declared datatype, so the storage is exactly the
+<code class="docutils literal notranslate"><span class="pre">uint8</span></code> that was asked for rather than whatever width the compiler would pick for an enum;
+the generated type is there for the application code to use for the constants and in its
+switch statements.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* Level_t */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">enum</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">LEVEL_LOW</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="cm">/**&lt; below the working range */</span>
+<span class="w">    </span><span class="n">LEVEL_OK</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="cm">/**&lt; inside the working range */</span>
+<span class="w">    </span><span class="n">LEVEL_HIGH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="cm">/**&lt; above the working range */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">Level_t</span><span class="p">;</span>
+
+<span class="cm">/* Mode_t */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">enum</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">MODE_OFF</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">MODE_RUN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="n">MODE_FAULT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span>
+<span class="p">}</span><span class="w"> </span><span class="n">Mode_t</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>In the a2l, the enum becomes a <code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code> holding the table and a <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> of type
+<code class="docutils literal notranslate"><span class="pre">TAB_VERB</span></code> pointing at it, so the calibration tool shows the name and not the number:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_VTAB VTAB_Mode_t "values of Mode_t" TAB_VERB 3
+  0 "MODE_OFF"
+  1 "MODE_RUN"
+  15 "MODE_FAULT"
+/end COMPU_VTAB
+
+/begin COMPU_METHOD CM_Mode_t "verbal conversion for Mode_t"
+  TAB_VERB "%8.0" ""
+  COMPU_TAB_REF VTAB_Mode_t
+/end COMPU_METHOD
+</pre></div>
+</div>
+</section>
+<section id="one-name-one-enumeration">
+<h3>One name, one enumeration<a class="headerlink" href="#one-name-one-enumeration" title="Link to this heading"></a></h3>
+<p>Because the enum name becomes a c type name shared by the whole project, two components using
+that name for two different sets of values is an error, and the finding prints both sets so
+that the difference does not have to be hunted for:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
+    note: here: STATE_OFF=0, STATE_ON=2
+    note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
+1 error
+</pre></div>
+</div>
+<p>Two components declaring the <strong>same</strong> set of values are fine, and only one entry reaches the
+templates for them. Where they differ only in how well they are documented, the better
+documented spelling is the one that reaches the generated code - so a consumer that spelled
+the enum out with descriptions improves the header for everybody, and a producer that used the
+short form loses nothing:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">typedef</span><span class="w"> </span><span class="k">enum</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">STATE_OFF</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="cm">/**&lt; powered but idle */</span>
+<span class="w">    </span><span class="n">STATE_ON</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="cm">/**&lt; running */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">State_t</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>Two further things are checked. Every enumerator has to fit into the datatype of the object,
+which is an error, since the constant would otherwise be truncated silently:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json
+dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
+dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
+1 error, 1 warning
+</pre></div>
+</div>
+<p>And two enumerators sharing a value is a warning rather than an error, because it is legal c
+and occasionally intended - an alias for a state that has been renamed - but it makes the a2l
+table ambiguous, since the calibration tool has two names to choose from for the same reading.</p>
+</section>
+</section>
+<section id="limits-and-where-they-come-from-when-nobody-writes-them">
+<h2>Limits, and where they come from when nobody writes them<a class="headerlink" href="#limits-and-where-they-come-from-when-nobody-writes-them" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">limits</span></code> are physical and optional, and DDD always ends up with a pair, because an a2l object
+without a range is not something a calibration tool can work with. When the definition gives
+none, the limits are derived from the datatype and the conversion - the full raw range of the
+storage, run through the conversion:</p>
+<ul class="simple">
+<li><p><strong>identity</strong> - the raw range of the datatype, unchanged. A <code class="docutils literal notranslate"><span class="pre">uint8</span></code> gives 0 .. 255.</p></li>
+<li><p><strong>linear</strong> - the conversion applied to both ends of the raw range. A <code class="docutils literal notranslate"><span class="pre">uint8</span></code> with
+<code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">0.5,</span> <span class="pre">offset</span> <span class="pre">-40</span></code> gives -40 .. 87.5.</p></li>
+<li><p><strong>enum</strong> - the smallest and the largest enumerator value. The values in between do not have
+to be contiguous, and the range is about what the tool may display, not about what the
+storage could hold.</p></li>
+</ul>
+<p>A <strong>negative factor swaps the two ends</strong>, and DDD swaps them back: the conversion of the
+smallest raw value is then the largest physical value, and limits with <code class="docutils literal notranslate"><span class="pre">min</span></code> above <code class="docutils literal notranslate"><span class="pre">max</span></code>
+would be rejected by the very validation that keeps hand-written limits sane. An <code class="docutils literal notranslate"><span class="pre">sint8</span></code> with
+<code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">-0.25,</span> <span class="pre">offset</span> <span class="pre">10</span></code> runs from raw -128, which is 42, down to raw 127, which is -21.75,
+and the derived limits come out in the order a reader expects:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inverted"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint8"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bar"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">-0.25</span><span class="p">,</span><span class="w"> </span><span class="nt">"offset"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_BAR "phys = raw * -0.25 + 10"
+  RAT_FUNC "%8.3" "bar"
+  COEFFS 0 1 -10 0 0 -0.25
+/end COMPU_METHOD
+
+/begin MEASUREMENT Inverted "Inverted"
+  SBYTE CM_LIN_BAR 0 0 -21.75 42
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "Inverted" 0
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>Derived limits are what most of <code class="docutils literal notranslate"><span class="pre">examples/demo/</span></code> relies on for its calibration data:
+<code class="docutils literal notranslate"><span class="pre">CurveA</span></code> is a <code class="docutils literal notranslate"><span class="pre">uint16</span></code> scaled by 0.01 and gets <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">655.35</span></code>, <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> is a <code class="docutils literal notranslate"><span class="pre">uint8</span></code>
+scaled by 0.5 and gets <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">127.5</span></code>, <code class="docutils literal notranslate"><span class="pre">MapA</span></code> is an <code class="docutils literal notranslate"><span class="pre">sint8</span></code> scaled by 0.5 and gets
+<code class="docutils literal notranslate"><span class="pre">-64</span> <span class="pre">63.5</span></code>. Writing the limits out by hand is worth doing when the <em>intended</em> range is
+narrower than what the storage can hold - <code class="docutils literal notranslate"><span class="pre">ParameterA</span></code> is a <code class="docutils literal notranslate"><span class="pre">uint16</span></code> scaled by 0.25 and
+could reach 16383.75, but the project means it to stay between 500 and 1500 Hz, and only the
+description file knows that.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Explicit limits are checked against the range the storage can actually represent, but only
+as a warning: <code class="docutils literal notranslate"><span class="pre">limits-out-of-range</span></code> fires when a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> scaled by 0.5 is given a
+maximum of 200, which is beyond the 127.5 it can reach. It is a warning because limits
+never reach the c compiler - they are a statement of intent about the data - but it is the
+finding that stops a calibration engineer from entering a value the software will silently
+wrap.</p>
+</div>
+</section>
+<section id="one-compu-method-per-conversion-and-unit">
+<h2>One compu method per conversion and unit<a class="headerlink" href="#one-compu-method-per-conversion-and-unit" title="Link to this heading"></a></h2>
+<p>Conversions are not written out once per object. Two objects with the same conversion <strong>and</strong>
+the same unit share one <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>, whatever their kind and whatever their datatype, so
+the a2l stays readable and the calibration tool has one entry to configure rather than twenty
+identical ones. In the demo, <code class="docutils literal notranslate"><span class="pre">ValueA</span></code>, <code class="docutils literal notranslate"><span class="pre">AxisB</span></code>, <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> and <code class="docutils literal notranslate"><span class="pre">MapA</span></code> all use
+<code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> - a measurement, an axis, a curve and a map, over two datatypes and one
+conversion.</p>
+<p>The unit is part of the identity because it is part of what the method says; the name is built
+from it, which is why <code class="docutils literal notranslate"><span class="pre">CM_LIN_HZ</span></code>, <code class="docutils literal notranslate"><span class="pre">CM_LIN_DEGC</span></code> and <code class="docutils literal notranslate"><span class="pre">CM_LIN_V</span></code> read the way they do. Two
+different conversions in the same unit therefore want the same name, and the second gets a
+numbered suffix - the demo scales one percentage by 0.5 and another by 0.1, and ends up with
+<code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code>. The display format that goes with a method is derived from
+the datatype and the conversion, <code class="docutils literal notranslate"><span class="pre">%8.0</span></code> where every physical value is whole and <code class="docutils literal notranslate"><span class="pre">%8.3</span></code>
+otherwise; a single object can override it with its own <code class="docutils literal notranslate"><span class="pre">a2l.format</span></code>, which is described with
+the <a class="reference internal" href="variable_definition.html"><span class="doc">variable definition</span></a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="variable_definition.html" class="btn btn-neutral float-left" title="Variable definition" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="types.html" class="btn btn-neutral float-right" title="Type description" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

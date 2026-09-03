@@ -1,0 +1,845 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.models.objects &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.models.objects</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.models.objects</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""The data objects a component can declare: measurements and calibration data."""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Container</span><span class="p">,</span> <span class="n">Iterable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">get_args</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">A2lFormat</span><span class="p">,</span>
+    <span class="n">Datatype</span><span class="p">,</span>
+    <span class="n">Identifier</span><span class="p">,</span>
+    <span class="n">Number</span><span class="p">,</span>
+    <span class="n">Real</span><span class="p">,</span>
+    <span class="n">TypeName</span><span class="p">,</span>
+    <span class="n">format_number</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
+
+<span class="nb">type</span> <span class="n">InitValue</span> <span class="o">=</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Real</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="sd">"""A scalar, or a (nested) sequence of scalars matching the shape of the object."""</span>
+
+<span class="nb">type</span> <span class="n">Shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="sd">"""A fully numeric array shape, as the analysis resolves it."""</span>
+
+<span class="n">Dimension</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="n">Identifier</span>
+<span class="sd">"""One array dimension as a definition writes it: a number, or the name of a constant.</span>
+
+<span class="sd">An integer of at least 1, or the name of a constant the project declares.  Strict on the</span>
+<span class="sd">integer side so that the two spellings stay two: without it, a quoted</span>
+<span class="sd">``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,</span>
+<span class="sd">and the file would say something its author did not write.</span>
+<span class="sd">"""</span>
+
+<span class="nb">type</span> <span class="n">WrittenShape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="sd">"""An array shape as it is written: each dimension a number or the name of a constant."""</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ObjectKind</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""What sort of data object a definition describes."""</span>
+
+    <span class="n">MEASUREMENT</span> <span class="o">=</span> <span class="s2">"measurement"</span>
+<span class="w">    </span><span class="sd">"""An online value the software writes and the calibration tool only reads."""</span>
+
+    <span class="n">PARAMETER</span> <span class="o">=</span> <span class="s2">"parameter"</span>
+<span class="w">    </span><span class="sd">"""A single calibratable constant."""</span>
+
+    <span class="n">VALUE_BLOCK</span> <span class="o">=</span> <span class="s2">"value_block"</span>
+<span class="w">    </span><span class="sd">"""An array of calibratable constants."""</span>
+
+    <span class="n">CURVE</span> <span class="o">=</span> <span class="s2">"curve"</span>
+<span class="w">    </span><span class="sd">"""A one dimensional calibratable table over one axis."""</span>
+
+    <span class="n">MAP</span> <span class="o">=</span> <span class="s2">"map"</span>
+<span class="w">    </span><span class="sd">"""A two dimensional calibratable table over two axes."""</span>
+
+    <span class="n">AXIS</span> <span class="o">=</span> <span class="s2">"axis"</span>
+<span class="w">    </span><span class="sd">"""Shared axis points a curve or map is interpolated over."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Everything but a measurement is calibration data and therefore ``const``."""</span>
+        <span class="k">return</span> <span class="bp">self</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Frozen</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span>
+        <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span>
+        <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="Limits">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Limits">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Limits</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Physical lower/upper limit of a data object."""</span>
+
+    <span class="nb">min</span><span class="p">:</span> <span class="n">Number</span>
+<span class="w">    </span><span class="sd">"""Smallest physical value the object may take."""</span>
+
+    <span class="nb">max</span><span class="p">:</span> <span class="n">Number</span>
+<span class="w">    </span><span class="sd">"""Largest physical value the object may take; at least ``min``."""</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ordered</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Limits</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">min</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"min (</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">min</span><span class="p">)</span><span class="si">}</span><span class="s2">) is greater than max (</span><span class="si">{</span><span class="n">format_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">min</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="A2lObjectOptions">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.A2lObjectOptions">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">A2lObjectOptions</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""What a declaration asks of the a2l backend. Only that backend interprets it.</span>
+
+<span class="sd">    Nothing here changes the generated c or the meaning of the object; a project that</span>
+<span class="sd">    generates no a2l can leave the whole block out.</span>
+<span class="sd">    """</span>
+
+    <span class="n">export</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Whether the object belongs in the a2l file; omitted, it does.</span>
+
+<span class="sd">    The one a2l option any component may state, not only the producer. Which signals a</span>
+<span class="sd">    calibration engineer needs to see is not a property of whoever happens to write the</span>
+<span class="sd">    variable: a component reading a value from a library it does not own has as good a claim</span>
+<span class="sd">    to measuring it.</span>
+
+<span class="sd">    Stated by several, the answer is yes if any of them says so - see :func:`resolve_export`.</span>
+<span class="sd">    """</span>
+
+    <span class="nb">format</span><span class="p">:</span> <span class="n">A2lFormat</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""a2l ``FORMAT`` string, e.g. ``"%8.3"``: total width, then decimal places."""</span>
+
+    <span class="n">display_identifier</span><span class="p">:</span> <span class="n">Identifier</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Alternative name shown by the calibration tool."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">exported</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Whether the object reaches the a2l, with an unstated ``export`` read as yes.</span>
+
+<span class="sd">        The tri-state belongs to the *authored* side, where "not stated" is what lets several</span>
+<span class="sd">        components be asked - see :func:`resolve_export`. Everything downstream wants a plain</span>
+<span class="sd">        answer, and reading ``None`` as ``False`` is the wrong one: a dictionary that omits the</span>
+<span class="sd">        a2l block altogether is a perfectly good dictionary, and one a generator DDD does not</span>
+<span class="sd">        ship is allowed to hand over. It used to export such an object and has to keep doing so.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">export</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">False</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">effective</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""The a2l entry as it will actually be, for comparing two of them."""</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exported</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">format</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">display_identifier</span><span class="p">)</span></div>
+
+
+
+<span class="n">MEANING_KEYS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"unit"</span><span class="p">,</span> <span class="s2">"conversion"</span><span class="p">,</span> <span class="s2">"limits"</span><span class="p">)</span>
+<span class="sd">"""What says how a raw number is read: the keys a scalar type exists to fix once.</span>
+
+<span class="sd">Written directly on the thing that has them, or fixed by a named type - never both. Which of</span>
+<span class="sd">the two an author picks is a matter of whether the answer is shared: a unit written on one</span>
+<span class="sd">member of one structure says it once, and a ``Speed_t`` says it for every component that names</span>
+<span class="sd">it. The rule against restating is what keeps "where is this object's unit written down" a</span>
+<span class="sd">question with one answer.</span>
+<span class="sd">"""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">refuse_restating</span><span class="p">(</span><span class="n">typename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">stated</span><span class="p">:</span> <span class="n">Container</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse stating what a named type already fixes; an error rather than an override.</span>
+
+<span class="sd">    The same rule wherever a type can be named - on a declaration and on a structure member</span>
+<span class="sd">    alike - because the confusion it prevents is the same one. An override rule would make the</span>
+<span class="sd">    answer to "where is this unit written down" be "in one of two places, and you have to know</span>
+<span class="sd">    which of them wins".</span>
+
+<span class="sd">    Only the meaning keys are refused here. The rest of the difference between a scalar type and</span>
+<span class="sd">    a structure - a structure has no room for a unit at all - needs to know which kind of type</span>
+<span class="sd">    the name refers to, and that is a check rather than a contract rule.</span>
+<span class="sd">    """</span>
+    <span class="n">restated</span> <span class="o">=</span> <span class="p">[</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">MEANING_KEYS</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">stated</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">restated</span><span class="p">:</span>
+        <span class="n">listed</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">'"</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restated</span><span class="p">)</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">typename</span><span class="si">}</span><span class="s2">' is a declared type and already fixes what this value means, so "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">listed</span><span class="si">}</span><span class="s2"> may not be stated here as well"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">refuse_enum_on_non_integer</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse an enum conversion on storage that cannot hold an enumerator exactly.</span>
+
+<span class="sd">    The same rule wherever a ``datatype`` and a ``conversion`` are stated side by side - on a</span>
+<span class="sd">    definition, on a structure member and on a scalar type - shared the way</span>
+<span class="sd">    :func:`refuse_restating` is, because letting one of the three accept what the others</span>
+<span class="sd">    refuse would make the verdict depend on where the same pair happens to be written.</span>
+<span class="sd">    ``boolean`` does not count as an integer datatype: an enumerator is an exact integer,</span>
+<span class="sd">    which a float cannot promise to hold and a truth value has no room for.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="ow">not</span> <span class="n">datatype</span><span class="o">.</span><span class="n">is_integer</span>
+    <span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"enum conversion '</span><span class="si">{</span><span class="n">conversion</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' requires an integer datatype, "</span>
+            <span class="sa">f</span><span class="s2">"got '</span><span class="si">{</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">'"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_storage_named_once</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">typename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse a definition that names its storage twice, or not at all.</span>
+
+<span class="sd">    The same rule wherever storage is named - on a definition and on a structure member</span>
+<span class="sd">    alike - shared the way :func:`refuse_restating` is: two keys stating one storage leaves</span>
+<span class="sd">    a reader guessing which of them counts, and neither stating it leaves nothing to</span>
+<span class="sd">    allocate.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">datatype</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="n">typename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">"storage is named exactly once: 'datatype' for a base datatype, 'typename' "</span>
+            <span class="s2">"for a type the project declares"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_conversion_stated</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse base storage that states no conversion; the identity is an answer, not a default.</span>
+
+<span class="sd">    The same rule wherever a base ``datatype`` is stated - on a definition and on a structure</span>
+<span class="sd">    member alike - because the forgotten scaling it prevents is the same one: a fixed point</span>
+<span class="sd">    value silently displayed as raw counts, with nothing looking broken.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">conversion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">"a 'datatype' comes with a 'conversion': the identity "</span>
+            <span class="s1">'({"kind": "identity"}) is an answer to state, not a default to fall into'</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_export</span><span class="p">(</span><span class="n">stated</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether an object reaches the a2l, given what every component said about it.</span>
+
+<span class="sd">    Anyone may ask for it and nobody may veto, which is the safe direction rather than the</span>
+<span class="sd">    tidy one: an object in the a2l that nobody looks at costs a longer file, while one missing</span>
+<span class="sd">    from it costs somebody a measurement they cannot take and a delivery to wait for.</span>
+
+<span class="sd">    Order independent on purpose. Two consumers can then never conflict, so there is no</span>
+<span class="sd">    finding to invent for a disagreement between them and no dependence on which components a</span>
+<span class="sd">    given image happens to link.</span>
+<span class="sd">    """</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">stated</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="c1"># Nothing stated at all is the default, which is to export.</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">values</span> <span class="k">else</span> <span class="kc">True</span>
+
+
+<div class="viewcode-block" id="DataObject">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.DataObject">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DataObject</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Attributes shared by every kind of data object."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""C identifier of the object; also its name in the a2l."""</span>
+
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Storage of one element, one of the eleven base datatypes.</span>
+
+<span class="sd">    Exactly one of ``datatype`` and ``typename`` is stated. Two keys rather than one union,</span>
+<span class="sd">    so that the published schema says ``datatype`` is one of eleven values - an editor</span>
+<span class="sd">    completes and documents exactly them, and a mistyped one is refused as it is typed - and</span>
+<span class="sd">    so that a declaration tells its reader at a glance whether storage is base or declared.</span>
+<span class="sd">    """</span>
+
+    <span class="n">typename</span><span class="p">:</span> <span class="n">TypeName</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Name of a type the project declares, stated instead of ``datatype``.</span>
+
+<span class="sd">    Naming a structure is what makes this object a structured one; naming a scalar type is</span>
+<span class="sd">    what lets several components agree about a value by naming it rather than by each copying</span>
+<span class="sd">    out its unit, its scaling and its limits - and a declaration that names a type may not</span>
+<span class="sd">    restate any of them.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""What the object is, offered to the c templates and used as the a2l long identifier."""</span>
+
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Physical unit, e.g. ``"Hz"``.</span>
+
+<span class="sd">    Free text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only</span>
+<span class="sd">    checks that every component declaring this object spells the unit the same way.</span>
+<span class="sd">    """</span>
+
+    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Linker section the object is placed in, named in the project's sections file.</span>
+
+<span class="sd">    A storage key like ``init``: the producer states it, a consumer stating one claims</span>
+<span class="sd">    storage it does not own (``consumer-storage``), and a structured object is placed whole.</span>
+<span class="sd">    Left out, the object goes wherever the toolchain's defaults put it.</span>
+<span class="sd">    """</span>
+
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Measurement raster the object is updated in, named in the project's rasters file.</span>
+
+<span class="sd">    A producer key like ``section``: the producing component's task is what updates the</span>
+<span class="sd">    value, so a consumer stating one is refused as ``consumer-raster``, and a structured</span>
+<span class="sd">    variable carries one raster for all of its members. Left out, the producing component's</span>
+<span class="sd">    default applies; left out there too, the a2l describes the object without saying which</span>
+<span class="sd">    daq event carries it, and the calibration tool decides.</span>
+
+<span class="sd">    At the top level rather than inside ``a2l``, although only that backend reads it today:</span>
+<span class="sd">    which task updates a value is an engineering claim about the data, the way ``section``</span>
+<span class="sd">    is, and not a presentation choice.</span>
+<span class="sd">    """</span>
+
+    <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Raw initial value, in the stored domain rather than the physical one.</span>
+
+<span class="sd">    ``null`` leaves the object zero initialised by the startup code. For an array shaped</span>
+<span class="sd">    object, either a nested list matching the shape exactly, or a single scalar, which</span>
+<span class="sd">    initialises every element with that value.</span>
+<span class="sd">    """</span>
+
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
+
+<span class="sd">    Required wherever storage is named by ``datatype``, although the identity would be</span>
+<span class="sd">    derivable: raw equalling physical is an engineering claim about the data, not a</span>
+<span class="sd">    formatting accident, and a forgotten scaling on a fixed point value displays raw counts</span>
+<span class="sd">    without anything looking broken. A definition naming a ``typename`` states no conversion</span>
+<span class="sd">    - the type fixes it. ``kind`` may be left out when the keys make it unambiguous:</span>
+<span class="sd">    ``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,</span>
+<span class="sd">    and ``{}`` means ``identity``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Physical limits of the object, in the unit given by ``unit``.</span>
+
+<span class="sd">    Omitted, they are derived from ``datatype`` and ``conversion``: the whole range the</span>
+<span class="sd">    storage can hold, converted. State them to say that the software handles less than that,</span>
+<span class="sd">    which is what stops a calibration tool offering a value the software cannot take.</span>
+<span class="sd">    """</span>
+
+    <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">"""What this object asks of the a2l file: whether to export it, how to display it.</span>
+
+<span class="sd">    Only the a2l backend reads it, so a project that generates no a2l can leave it out</span>
+<span class="sd">    entirely.</span>
+<span class="sd">    """</span>
+
+    <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span>
+<span class="w">    </span><span class="sd">"""Whether the c declaration carries ``volatile``; stated on every definition.</span>
+
+<span class="sd">    Required, with no default, and on every kind rather than on measurements alone. Both</span>
+<span class="sd">    follow from what the qualifier does, which is to forbid the compiler to assume it already</span>
+<span class="sd">    knows the value.</span>
+
+<span class="sd">    A measurement needs it when something outside the reading component's control writes the</span>
+<span class="sd">    variable - an interrupt, a second core, a peripheral. A calibration object needs it when</span>
+<span class="sd">    the calibration tool is to change the value in a running ecu: without it the compiler is</span>
+<span class="sd">    entitled to use the initialiser in place of a read wherever it can see it - within one</span>
+<span class="sd">    translation unit at every optimisation level, ``-O0`` included, and across them under link</span>
+<span class="sd">    time optimisation - and, where the load does survive, to serve two reads from one of them.</span>
+<span class="sd">    Either way the tool writes a new value the software does not pick up.</span>
+
+<span class="sd">    Interface rather than storage, because it reaches every component that reads the object:</span>
+<span class="sd">    their header declares it ``extern volatile``, which is what tells their code not to cache</span>
+<span class="sd">    the value and not to expect two reads to agree. Every declaration of one object therefore</span>
+<span class="sd">    has to say the same thing, and a disagreement is an error.</span>
+
+<span class="sd">    There is no default because there is no answer DDD could derive - unlike ``limits``, which</span>
+<span class="sd">    follow from the datatype and the conversion. The two answers have different costs and only</span>
+<span class="sd">    the project knows which it is paying: ``true`` keeps a value tunable and, on a typical</span>
+<span class="sd">    toolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash</span>
+<span class="sd">    and lets the optimiser cache it. Saying nothing would pick one of them silently, and the</span>
+<span class="sd">    one it picked would be wrong roughly as often as not.</span>
+<span class="sd">    """</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
+<span class="w">    </span><span class="sd">"""Which sort of object this is; stated on every definition.</span>
+
+<span class="sd">    It also decides which further keys the definition may carry: ``dimensions`` on a</span>
+<span class="sd">    measurement or a value block, ``size`` and ``input`` on an axis, ``axis`` on a curve,</span>
+<span class="sd">    ``x_axis`` and ``y_axis`` on a map, and none of them on a parameter.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="o">.</span><span class="n">is_calibration</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WrittenShape</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The shape as far as the definition itself writes it, spelling and all.</span>
+
+<span class="sd">        ``None`` for curves and maps, whose shape follows from the axes they refer to</span>
+<span class="sd">        and is therefore only known once the whole project is resolved.  A dimension stated</span>
+<span class="sd">        as the name of a constant stays that name here: declarations compare as written,</span>
+<span class="sd">        and the numeric value is the analysis's to resolve.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">references</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Names of other data objects this one refers to, keyed by the field name."""</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The type this definition names, or nothing if its storage is a base datatype."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">storage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Datatype</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The base datatype this object is stored as.</span>
+
+<span class="sd">        Only ever asked of a definition the analysis has already resolved: one that named a</span>
+<span class="sd">        type has had it filled in, and one that named a type nobody declares was reported and</span>
+<span class="sd">        dropped before anything got this far. The assertion is what says so to a reader and to</span>
+<span class="sd">        a type checker, rather than each caller quietly narrowing the union again.</span>
+<span class="sd">        """</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
+        <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_storage_is_named_exactly_once</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
+        <span class="n">check_storage_named_once</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_base_storage_states_its_conversion</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
+        <span class="n">check_conversion_stated</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_a_named_type_is_not_restated</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">refuse_restating</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="c1"># The shape of a stated ``init`` is deliberately not validated here. Only part of the</span>
+    <span class="c1"># answer is written in the file - a curve or a map takes its shape from axes another</span>
+    <span class="c1"># declaration owns - so the analysis checks every kind in one place and reports every</span>
+    <span class="c1"># wrong shape as ``init-invalid``, one identifier instead of two severities.</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">physical_limits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Limits</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Explicit limits, or the full range implied by datatype and conversion.</span>
+
+<span class="sd">        Only ever asked of a definition whose datatype is a base one: a definition naming a type</span>
+<span class="sd">        has its datatype, unit, conversion and limits filled in from that type by the analysis</span>
+<span class="sd">        before anything reads them.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">limits</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="n">low</span><span class="p">,</span> <span class="n">high</span> <span class="o">=</span> <span class="n">conversion_range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Limits</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="n">low</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="n">high</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">scalar_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""All raw init values, flattened; empty when no init is given."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">init</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">()</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">flatten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">init</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="Measurement">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Measurement">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Measurement</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""An online value: written by the software, only measured by the calibration tool."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span><span class="p">]</span>
+    <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Array dimensions; empty for a scalar.</span>
+
+<span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, in a</span>
+<span class="sd">    constants file or in a component - ``[3, 4]`` and ``["PRESSURE_CELLS", 4]`` are both</span>
+<span class="sd">    shapes.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WrittenShape</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span></div>
+
+
+
+<div class="viewcode-block" id="Parameter">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Parameter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Parameter</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A single calibratable constant."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">PARAMETER</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="ValueBlock">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ValueBlock">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ValueBlock</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""An array of calibratable constants."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">VALUE_BLOCK</span><span class="p">]</span>
+    <span class="n">dimensions</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""Array dimensions in c declaration order; a value block is never a scalar.</span>
+
+<span class="sd">    Each an integer of at least 1, or the name of a constant the project declares, mixed</span>
+<span class="sd">    freely.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WrittenShape</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span></div>
+
+
+
+<div class="viewcode-block" id="Axis">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Axis">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Axis</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Shared axis points; several curves and maps may be interpolated over one axis."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">AXIS</span><span class="p">]</span>
+    <span class="n">size</span><span class="p">:</span> <span class="n">Dimension</span>
+<span class="w">    </span><span class="sd">"""Number of axis points: an integer of at least 1, or the name of a declared</span>
+<span class="sd">    constant."""</span>
+
+    <span class="nb">input</span><span class="p">:</span> <span class="n">Identifier</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Measurement that indexes the axis; the a2l input quantity."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WrittenShape</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">,)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">references</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"input"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">input</span><span class="p">}</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">input</span> <span class="k">else</span> <span class="p">{}</span></div>
+
+
+
+<div class="viewcode-block" id="Curve">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Curve">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Curve</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A one dimensional calibratable table."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">CURVE</span><span class="p">]</span>
+    <span class="n">axis</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the axis object the curve is interpolated over."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">references</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"axis"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">axis</span><span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="Map">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Map">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Map</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A two dimensional calibratable table, stored as ``[y][x]``."""</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">MAP</span><span class="p">]</span>
+    <span class="n">x_axis</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the axis whose index runs fastest; the last dimension of the c array."""</span>
+
+    <span class="n">y_axis</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the axis selecting the row; the first dimension of the c array."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">declared_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">references</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"x_axis"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">x_axis</span><span class="p">,</span> <span class="s2">"y_axis"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">y_axis</span><span class="p">}</span></div>
+
+
+
+<span class="n">AnyDataObject</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
+    <span class="n">Measurement</span> <span class="o">|</span> <span class="n">Parameter</span> <span class="o">|</span> <span class="n">ValueBlock</span> <span class="o">|</span> <span class="n">Curve</span> <span class="o">|</span> <span class="n">Map</span> <span class="o">|</span> <span class="n">Axis</span><span class="p">,</span>
+    <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"kind"</span><span class="p">),</span>
+<span class="p">]</span>
+<span class="sd">"""Any data object, told apart by its required ``kind``.</span>
+
+<span class="sd">``kind`` is stated on every definition rather than defaulting to ``measurement``: the default</span>
+<span class="sd">made a bare ``{"name", "datatype"}`` match two variants at once, which a strict json schema</span>
+<span class="sd">validator - the editor binding a file to ``ddd schema`` - reports as an ambiguity. Requiring</span>
+<span class="sd">it keeps the published schema and the loader in agreement, at the cost of one more line on a</span>
+<span class="sd">measurement.</span>
+<span class="sd">"""</span>
+
+<span class="n">_VARIANTS</span><span class="p">:</span> <span class="n">Final</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">[</span><span class="n">DataObject</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="nb">str</span><span class="p">(</span><span class="n">get_args</span><span class="p">(</span><span class="n">variant</span><span class="o">.</span><span class="n">model_fields</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span><span class="o">.</span><span class="n">annotation</span><span class="p">)[</span><span class="mi">0</span><span class="p">]):</span> <span class="n">variant</span>
+    <span class="k">for</span> <span class="n">variant</span> <span class="ow">in</span> <span class="n">get_args</span><span class="p">(</span><span class="n">get_args</span><span class="p">(</span><span class="n">AnyDataObject</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+<span class="p">}</span>
+<span class="sd">"""Each ``kind`` value and the model that describes it - see :func:`definition_keys`."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">spelled_dimensions</span><span class="p">(</span><span class="n">definition</span><span class="p">:</span> <span class="n">DataObject</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Every dimension a definition spells as a constant name, with the key it is under.</span>
+
+<span class="sd">    ``(name, pointer suffix)`` pairs, so that a finding or a jump about the constant lands</span>
+<span class="sd">    on the entry that names it rather than on the definition as a whole. A measurement or a</span>
+<span class="sd">    value block spells its ``dimensions``, an axis its ``size``, and a curve or a map</span>
+<span class="sd">    spells no dimension of its own - its shape is the axes' business. One walk for the</span>
+<span class="sd">    analysis and the editor alike, so the two can never disagree about where a name is</span>
+<span class="sd">    spelled.</span>
+<span class="sd">    """</span>
+    <span class="n">found</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="p">,</span> <span class="n">Measurement</span> <span class="o">|</span> <span class="n">ValueBlock</span><span class="p">):</span>
+        <span class="n">found</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">dimension</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"dimensions[</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">]"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">dimension</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dimension</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="p">,</span> <span class="n">Axis</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">found</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">definition</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="s2">"size"</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">found</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">format_shape</span><span class="p">(</span><span class="n">shape</span><span class="p">:</span> <span class="n">WrittenShape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""``"[4][2]"`` for a 4x2 array, ``""`` for a scalar; for diagnostics and listings.</span>
+
+<span class="sd">    A dimension spelled as the name of a constant renders as that name -</span>
+<span class="sd">    ``"[PRESSURE_CELLS]"`` - because the spelling is what the reader wrote and what the</span>
+<span class="sd">    generated code carries.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="s2">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">dimension</span><span class="si">}</span><span class="s2">]"</span> <span class="k">for</span> <span class="n">dimension</span> <span class="ow">in</span> <span class="n">shape</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_shape</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Validate a nested init value against an array shape."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">"init is a list but the object is a scalar"</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="c1"># Only the init as a whole may be a scalar, which then fills every element; a scalar</span>
+        <span class="c1"># inside a nested list describes no shape, so it is refused rather than broadcast.</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"init must be a list of </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> elements; only the whole init may be a "</span>
+            <span class="sa">f</span><span class="s2">"single scalar"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"init has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2"> elements, expected </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">check_shape</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">if</span> <span class="n">problem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">problem</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">flatten</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">scalar</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">value</span> <span class="k">for</span> <span class="n">scalar</span> <span class="ow">in</span> <span class="n">flatten</span><span class="p">(</span><span class="n">element</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">broadcast</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InitValue</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Expand a scalar init over ``shape``; a nested value is returned unchanged."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">broadcast</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">definition_keys</span><span class="p">(</span><span class="n">kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Which keys a definition of that kind accepts, and which of them it must state.</span>
+
+<span class="sd">    Derived from the variants rather than listed, for the reason every list in this file is</span>
+<span class="sd">    derived: a key added to a model is covered here the moment it exists, and one that moves</span>
+<span class="sd">    between models cannot be left behind in a copy of the answer.</span>
+
+<span class="sd">    The caller is an editor offering to change one key of one definition. Both halves are what</span>
+<span class="sd">    stops it offering an edit that produces a file the loader then refuses - removing a key the</span>
+<span class="sd">    kind requires, or writing one the kind does not have.</span>
+<span class="sd">    """</span>
+    <span class="n">variant</span> <span class="o">=</span> <span class="n">_VARIANTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">variant</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># A kind the file states and DDD does not know. The loader has its own opinion about</span>
+        <span class="c1"># that; here it simply means nothing can be said, which every caller reads as "offer</span>
+        <span class="c1"># nothing" rather than as an error of its own.</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">frozenset</span><span class="p">(),</span> <span class="nb">frozenset</span><span class="p">())</span>
+    <span class="n">fields</span> <span class="o">=</span> <span class="n">variant</span><span class="o">.</span><span class="n">model_fields</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="nb">frozenset</span><span class="p">(</span><span class="n">fields</span><span class="p">),</span>
+        <span class="nb">frozenset</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">is_required</span><span class="p">()),</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">discriminator_tags</span><span class="p">(</span><span class="o">*</span><span class="n">unions</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""The discriminator values of every variant of the given tagged unions.</span>
+
+<span class="sd">    pydantic names the selected variant in the location of a validation error</span>
+<span class="sd">    (``definition.measurement.datatype``, ``types[0].scalar.limits``). Deriving the set from</span>
+<span class="sd">    the unions themselves means a new variant is covered without anyone remembering to add</span>
+<span class="sd">    its tag somewhere else - and the discriminating field is read from each union's own</span>
+<span class="sd">    ``Field(discriminator=...)``, because the unions do not agree on its name: the data</span>
+<span class="sd">    objects and the conversions discriminate on ``kind``, the declared types on ``type``.</span>
+<span class="sd">    """</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">union</span> <span class="ow">in</span> <span class="n">unions</span><span class="p">:</span>
+        <span class="n">annotated</span><span class="p">,</span> <span class="o">*</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">get_args</span><span class="p">(</span><span class="n">union</span><span class="p">)</span>
+        <span class="n">discriminator</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+            <span class="n">entry</span><span class="o">.</span><span class="n">discriminator</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">metadata</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="s2">"discriminator"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">variant</span> <span class="ow">in</span> <span class="n">get_args</span><span class="p">(</span><span class="n">annotated</span><span class="p">):</span>
+            <span class="c1"># The tag is the single value of the variant's ``Literal[...]`` discriminator,</span>
+            <span class="c1"># read from the annotation rather than a default so it does not depend on the</span>
+            <span class="c1"># field carrying one - the data object kinds are required, the conversion kinds</span>
+            <span class="c1"># default.</span>
+            <span class="p">(</span><span class="n">literal</span><span class="p">,)</span> <span class="o">=</span> <span class="n">get_args</span><span class="p">(</span><span class="n">variant</span><span class="o">.</span><span class="n">model_fields</span><span class="p">[</span><span class="n">discriminator</span><span class="p">]</span><span class="o">.</span><span class="n">annotation</span><span class="p">)</span>
+            <span class="n">tags</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">literal</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

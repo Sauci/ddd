@@ -1,0 +1,111 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.component.Component
+
+The interface specification of one software component.
+" alt="" coords="5,1426,536,1622"/>
+<area shape="rect" id="node2" title="ddd.models.component.Declaration
+
+One entry of the ``interface`` list of a component.
+" alt="" coords="680,1407,1205,1519"/>
+<area shape="rect" id="node3" title="ddd.models.constants.ConstantDeclaration
+
+One named integer constant, declared once and named wherever a shape needs it.
+" alt="" coords="858,1944,1027,2056"/>
+<area shape="rect" id="node4" title="ddd.models.types.ExternalType
+
+A name for a c type that DDD does not declare: a hand written header defines it.
+
+DDD generates no typedef for it and knows neither its layout nor its meaning &#45; which is
+the point: a driver&#39;s status word or an operating system&#39;s handle already has one
+authoritative definition, and a copy of it in the description would drift. &#160;Only a
+structure member may name one, as opaque storage that reaches the generated structure
+verbatim; such a member states no unit, conversion or limits, because DDD does not check
+meaning it cannot see.
+" alt="" coords="831,1755,1054,1895"/>
+<area shape="rect" id="node5" title="ddd.models.types.ScalarType
+
+A name for what a number means, so components agree by naming rather than by copying.
+
+Three components consuming an engine speed each used to write out the datatype, the unit,
+the scaling and the limits, leaving DDD to notice when one of them was wrong. &#160;If all three
+say ``Speed_t`` instead, there is nothing left to disagree about &#45; which is checking turned
+into construction.
+
+It fixes exactly the four things that make two declarations interchangeable, and nothing
+else. &#160;``kind``, ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable:
+they are properties of one object rather than of the type, and two measurements of the same
+type may well differ in whether an interrupt writes one of them.
+" alt="" coords="1388,5,1911,229"/>
+<area shape="rect" id="node6" title="ddd.models.types.StructType
+
+One structured datatype: a name and the members it lays out, in order.
+" alt="" coords="826,1567,1059,1707"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Axis
+
+Shared axis points; several curves and maps may be interpolated over one axis.
+" alt="" coords="1351,277,1948,725"/>
+<area shape="rect" id="node8" title="ddd.models.objects.Curve
+
+A one dimensional calibratable table.
+" alt="" coords="1351,774,1948,1194"/>
+<area shape="rect" id="node9" title="ddd.models.objects.Map
+
+A two dimensional calibratable table, stored as ``[y][x]``.
+" alt="" coords="1351,1243,1948,1691"/>
+<area shape="rect" id="node10" title="ddd.models.objects.Measurement
+
+An online value: written by the software, only measured by the calibration tool.
+" alt="" coords="1349,1739,1949,2159"/>
+<area shape="rect" id="node11" title="ddd.models.objects.Parameter
+
+A single calibratable constant.
+" alt="" coords="1351,2208,1948,2600"/>
+<area shape="rect" id="node12" title="ddd.models.objects.ValueBlock
+
+An array of calibratable constants.
+" alt="" coords="1349,2649,1949,3069"/>
+<area shape="rect" id="node13" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="2093,1496,2359,1608"/>
+<area shape="rect" id="node15" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; the default for every variable.
+" alt="" coords="2141,1656,2311,1712"/>
+<area shape="rect" id="node16" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="2143,1760,2309,1872"/>
+<area shape="rect" id="node18" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="2141,1921,2311,2005"/>
+<area shape="rect" id="node19" title="ddd.models.types.Member
+
+One member of a structure, in the order the structure declares it.
+
+Order is significant: it is the order the c struct is generated in, and therefore the order
+the compiler lays out. &#160;Reordering members of a released structure moves every address after
+the change, which is why a comparison against a baseline reports it.
+" alt="" coords="1349,3117,1949,3453"/>
+<area shape="rect" id="node17" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="2107,2053,2345,2165"/>
+<area shape="rect" id="node14" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="2503,1581,2620,1693"/>
+</map>

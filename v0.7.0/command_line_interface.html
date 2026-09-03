@@ -1,0 +1,992 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Command line interface &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Build integration" href="build_integration.html" />
+    <link rel="prev" title="Templates" href="templates.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Command line interface</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-commands">The commands</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#severity-options">Severity options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-sources-of-a-project">The sources of a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reference">Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ddd">ddd</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Command line interface</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/command_line_interface.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="command-line-interface">
+<h1>Command line interface<a class="headerlink" href="#command-line-interface" title="Link to this heading"></a></h1>
+<p>DDD has no daemon, no editor plug-in and no state of its own: everything it does happens
+while a project is being built or delivered, so it is a plain command line tool that reads
+json files, writes files or a report, and exits. That is what makes it usable from wherever
+the build already lives - a makefile, a cmake project (see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>), a batch
+file on an engineer’s machine, or a ci job that never sees a terminal.</p>
+<p>The same discipline governs the output. The findings - everything the tool has to say about
+a project - are written to standard error, one line per finding followed by a summary, while
+what a command actually produces (a listing, the dumped dictionary, a json schema, the list
+of source files, completion candidates) goes to standard output. The two never mix, so
+nothing has to be filtered out of a redirection: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span>
+<span class="pre">baseline.json</span></code> archives the dictionary and nothing else, even on a run that had something to
+say about it.</p>
+<p>For a job that files findings rather than reads them, seven commands understand
+<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">sources</span></code> and
+<code class="docutils literal notranslate"><span class="pre">checks</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, whose output is
+machine readable already. In json the diagnostics become part of the document the
+command prints, next to whatever else it has to report:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
+{
+  "diagnostics": [],
+  "summary": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "generated": [
+    {
+      "path": "build/gen/ddd_globals.c",
+      "status": "created"
+    },
+    {
+      "path": "build/gen/ddd_globals.h",
+      "status": "created"
+    },
+    ...
+    {
+      "path": "build/gen/DemoDevice.a2l",
+      "status": "created"
+    }
+  ]
+}
+</pre></div>
+</div>
+<p>The one exception is <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code>, whose standard output is itself the payload: there the json
+diagnostics go to standard error, so that both formats leave the dictionary alone.</p>
+<p>The exit code is the same everywhere, which lets a build system treat DDD like a compiler:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 10.0%" />
+<col style="width: 90.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>code</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>the command did what it was asked and found nothing worth reporting.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>findings: at least one diagnostic of severity <code class="docutils literal notranslate"><span class="pre">error</span></code> survived the severity policy.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> also exits <code class="docutils literal notranslate"><span class="pre">1</span></code> when the file it was pointed at cannot be read at all.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>the invocation itself was wrong: an unknown command or option, a required option left
+out, an unknown check identifier or severity, an attempt to relax a check that cannot
+be relaxed, an output directory that cannot be
+written into. The project was never examined, so the absence of findings means nothing
+here.</p></td>
+</tr>
+</tbody>
+</table>
+<section id="the-commands">
+<h2>The commands<a class="headerlink" href="#the-commands" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 42.0%" />
+<col style="width: 58.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>command</p></th>
+<th class="head"><p>purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">FILE</span></code></p></td>
+<td><p>run every consistency check on a project or on a single component; with <code class="docutils literal notranslate"><span class="pre">--baseline</span></code>
+also answer whether that project can still replace a published delivery, so that one
+command and one exit code cover both questions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">BASELINE</span> <span class="pre">CANDIDATE</span></code></p></td>
+<td><p>report whether the candidate delivery can stand in for the baseline. Either side may be
+an archived dictionary or a project description.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c|a2l|all</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">DIR</span></code></p></td>
+<td><p>check the project and, if it is consistent, write the named artefact into <code class="docutils literal notranslate"><span class="pre">DIR</span></code>:
+<code class="docutils literal notranslate"><span class="pre">c</span></code> renders the c sources, <code class="docutils literal notranslate"><span class="pre">a2l</span></code> writes the a2l file, <code class="docutils literal notranslate"><span class="pre">all</span></code> produces both in one
+run. Each artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
+templates the c sources are rendered from, required wherever c is rendered and with no
+default, because which files the project wants and what they look like is not
+something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to the a2l.
+<code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> reports what would be written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code>
+generates in spite of errors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">FILE</span></code></p></td>
+<td><p>print the table of variables with their kind, datatype, unit, shape, initial value
+with its physical reading, producer and consumers - the quickest answer to “who
+writes this?”.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">FILE</span></code></p></td>
+<td><p>print the resolved data dictionary, the contract every backend consumes. This is what
+gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">KIND</span></code></p></td>
+<td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, <code class="docutils literal notranslate"><span class="pre">project</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sections</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">units</span></code>, for an editor that offers completion inside a
+<code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file or for a validator in a ci job; <code class="docutils literal notranslate"><span class="pre">all</span></code> writes every schema into
+a directory.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
+<td><p>list every description file the project is built out of, for the dependency list of a
+build system.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code></p></td>
+<td><p>run the language server, speaking the Language Server Protocol on stdin and stdout,
+so an editor reports the checks while a description file is being written; see
+<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
+<td><p>record which project description a build runs DDD on and under which severity policy,
+the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> an editor reads; <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> calls it at configure
+time, so a hand-rolled build is the only caller that needs it directly.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
+<td><p>list every check with its identifier, its default severity and whether it can be
+relaxed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code></p></td>
+<td><p>print the directory holding <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code>, so that a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> finds the
+integration module of the installation it is actually using.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code></p></td>
+<td><p>print the directory holding the example c templates, to copy into a project as a
+starting point for its own. They are an example and not a default: no run of
+<code class="docutils literal notranslate"><span class="pre">generate</span></code> falls back to them.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">FILE</span></code> is a project description or a single component description in every command that
+takes one. A component checks, lists, dumps and generates on its own, which is what lets a
+supplier verify a component long before an integrator ever sees it.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">-t</span></code> of the c-rendering artefacts has no default at all: an invocation that renders c
+without it is refused rather than falling back to templates of DDD’s own.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
+usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                        [--const-inputs] [--byte-order {little,big}]
+                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        project
+ddd generate all: error: the following arguments are required: -t/--template-dir
+</pre></div>
+</div>
+<p>A default would have to be somebody’s house style, and a project that inherited one without
+choosing it would find out which one only by reading the generated code; <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>
+makes that case at length. The a2l is the opposite case, since its structure is ASAM’s rather
+than the project’s: the a2l backend is internal and there is no template directory to give
+it - which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span></code>, the run a build repeats after linking to fill the
+addresses in, does not even accept one.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code> exist for a related reason. Neither the cmake module nor
+the example templates have a fixed path once DDD is installed - a wheel, an editable install
+and a source checkout put them in three different places - so a project asks the tool it is
+actually running where they are instead of hard-coding a guess:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd templates-dir
+/home/you/ddd/examples/templates
+</pre></div>
+</div>
+<p>How both directories are used from a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> is in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+</section>
+<section id="severity-options">
+<h2>Severity options<a class="headerlink" href="#severity-options" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">dump</span></code> all reach the same analysis, so
+they all take the same two options for deciding how loud a finding is: <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">CHECK=SEVERITY</span></code>
+(repeatable, also spelled <code class="docutils literal notranslate"><span class="pre">--severity</span></code>) sets one check to <code class="docutils literal notranslate"><span class="pre">error</span></code>, <code class="docutils literal notranslate"><span class="pre">warning</span></code>, <code class="docutils literal notranslate"><span class="pre">info</span></code>
+or <code class="docutils literal notranslate"><span class="pre">ignore</span></code>, and <code class="docutils literal notranslate"><span class="pre">--strict</span></code> reports every warning as an error.</p>
+<p>The reason the policy lives on the command line rather than in the description files is that
+the same finding means different things in different places. A component checked on its own
+has no counterpart: the components producing its inputs are by definition not part of the
+file, and nobody reads its outputs yet, so the two checks about the other side of the
+interface have to be switched off - while everything DDD can decide from the file alone still
+applies.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
+examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+2 errors, 5 warnings
+
+$ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
+ok: 12 variables in 1 component are consistent
+</pre></div>
+</div>
+<p>A check identifier or a severity that DDD does not know is a usage error rather than a silent
+no-op, because the opposite behaviour would let a typo in a ci script disable a check for
+years without anybody noticing:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W no-such-check=ignore
+ddd: unknown check 'no-such-check'
+
+$ ddd check examples/demo/demo.ddd.json -W unused-output=nope
+ddd: unknown severity 'nope' for check 'unused-output', expected one of error, warning, info, ignore
+</pre></div>
+</div>
+<p>Both exit with <code class="docutils literal notranslate"><span class="pre">2</span></code>. Five checks cannot be relaxed at all - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>,
+<code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code> - because a file that cannot
+be read has nothing further to say, and a run that carried on regardless would report the
+absence of findings about a project it never saw. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks those <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>, and
+an attempt to override one is refused rather than ignored:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W schema=ignore
+ddd: the severity of check 'schema' cannot be changed
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--strict</span></code> is the other end of the same dial: it turns every warning into an error, which is
+what a delivery build wants, while the daily build of the same project stays readable. The
+full list of checks, with the reasoning behind each default severity, is in
+<a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a>.</p>
+</section>
+<section id="the-sources-of-a-project">
+<h2>The sources of a project<a class="headerlink" href="#the-sources-of-a-project" title="Link to this heading"></a></h2>
+<p>A project description does not name its components on the command line; it pulls them in
+through <code class="docutils literal notranslate"><span class="pre">includes</span></code>, possibly through wildcards, and possibly through further project files.
+A build system that made the generated code depend on the project file alone would therefore
+be wrong in the ordinary case: editing a component would change nothing the build can see, and
+the image would happily link yesterday’s globals and ship yesterday’s a2l.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> closes that gap. It prints one absolute path per line: the project file
+itself and every description it includes however deeply:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/demo/demo.ddd.json
+/home/you/ddd/examples/demo/components/controller.ddd.json
+/home/you/ddd/examples/demo/components/sensor_hub.ddd.json
+/home/you/ddd/examples/demo/components/user_interface.ddd.json
+/home/you/ddd/examples/demo/demo.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/event_logger.ddd.json
+/home/you/ddd/examples/demo/subsystems/logging/logging.ddd.json
+</pre></div>
+</div>
+<p>The paths are absolute and always written with forward slashes, on Windows as well, so the
+list can be pasted into a makefile, a ninja file or a cmake dependency list without being
+translated first, and a file reached over two different include paths appears once.</p>
+<p>The command is deliberately more tolerant than the others: a project whose interfaces disagree
+still has a well defined set of source files, and a build system asking what to watch deserves
+an answer even while the project does not check out. Only a file that cannot be read at all is
+fatal. This is what <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written project description watch
+its own components, described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> the same list arrives as the <code class="docutils literal notranslate"><span class="pre">sources</span></code> array of a json document, next
+to the diagnostics and their summary, exactly as the other commands report them.</p>
+</section>
+<section id="reference">
+<h2>Reference<a class="headerlink" href="#reference" title="Link to this heading"></a></h2>
+<p>The reference below is generated from the argument parser of the tool itself, so an option
+that is added, renamed or removed cannot leave its documentation behind.</p>
+<section id="ddd">
+<h3>ddd<a class="headerlink" href="#ddd" title="Link to this heading"></a></h3>
+<p>Data dictionary for the global variables of a component based embedded software project.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd [-h] [-v]</span>
+<span class="go">           {check,compare,generate,list,dump,lsp,build-info,schema,sources,checks,cmake-dir,templates-dir}</span>
+<span class="go">           ...</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-h">
+<span id="cmdoption-ddd-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-v">
+<span id="cmdoption-ddd-version"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--version</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-v" title="Link to this definition"></a></dt>
+<dd><p>show program’s version number and exit</p>
+</dd></dl>
+
+<section id="ddd-build-info">
+<h4>ddd build-info<a class="headerlink" href="#ddd-build-info" title="Link to this heading"></a></h4>
+<p>Writes the project description a build runs DDD on, and the severity policy it applies, into a small json file. A build system calls this at configure time so that an editor can report what the build reports. The project description is recorded rather than read: with CMake it is often generated later in the same configure run, out of the link graph.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd build-info [-h] -o OUTPUT [--image IMAGE] [-W CHECK=SEVERITY]</span>
+<span class="go">                      [--strict]</span>
+<span class="go">                      project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-build-info-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-h">
+<span id="cmdoption-ddd-build-info-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-build-info-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-o">
+<span id="cmdoption-ddd-build-info-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-build-info-o" title="Link to this definition"></a></dt>
+<dd><p>file to write the result to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-image">
+<span class="sig-name descname"><span class="pre">--image</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;image&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-build-info-image" title="Link to this definition"></a></dt>
+<dd><p>name of the build target this belongs to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-W">
+<span id="cmdoption-ddd-build-info-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-build-info-W" title="Link to this definition"></a></dt>
+<dd><p>severity override the build applies; repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-build-info-strict" title="Link to this definition"></a></dt>
+<dd><p>the build reports warnings as errors</p>
+</dd></dl>
+
+</section>
+<section id="ddd-check">
+<h4>ddd check<a class="headerlink" href="#ddd-check" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd check [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                 [--baseline BASELINE]</span>
+<span class="go">                 project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-check-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-h">
+<span id="cmdoption-ddd-check-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-check-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-W">
+<span id="cmdoption-ddd-check-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-check-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-check-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-check-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-check-baseline">
+<span class="sig-name descname"><span class="pre">--baseline</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;baseline&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-check-baseline" title="Link to this definition"></a></dt>
+<dd><p>also verify that the project can still replace this published dictionary</p>
+</dd></dl>
+
+</section>
+<section id="ddd-checks">
+<h4>ddd checks<a class="headerlink" href="#ddd-checks" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd checks [-h] [--format {text,json}]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-checks-h">
+<span id="cmdoption-ddd-checks-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-checks-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-checks-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-checks-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
+<section id="ddd-cmake-dir">
+<h4>ddd cmake-dir<a class="headerlink" href="#ddd-cmake-dir" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd cmake-dir [-h]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-cmake-dir-h">
+<span id="cmdoption-ddd-cmake-dir-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-cmake-dir-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+</section>
+<section id="ddd-compare">
+<h4>ddd compare<a class="headerlink" href="#ddd-compare" title="Link to this heading"></a></h4>
+<p>Compares two data dictionaries, or two project descriptions, or one of each. The question is directional: can CANDIDATE stand in for BASELINE?</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd compare [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                   baseline candidate</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-arg-baseline">
+<span class="sig-name descname"><span class="pre">baseline</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-compare-arg-baseline" title="Link to this definition"></a></dt>
+<dd><p>the published dictionary or project</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-arg-candidate">
+<span class="sig-name descname"><span class="pre">candidate</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-compare-arg-candidate" title="Link to this definition"></a></dt>
+<dd><p>the delivery to judge</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-h">
+<span id="cmdoption-ddd-compare-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-compare-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-W">
+<span id="cmdoption-ddd-compare-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-compare-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-compare-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-compare-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
+<section id="ddd-dump">
+<h4>ddd dump<a class="headerlink" href="#ddd-dump" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd dump [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-dump-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-h">
+<span id="cmdoption-ddd-dump-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-dump-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-W">
+<span id="cmdoption-ddd-dump-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-dump-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-dump-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-dump-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
+<section id="ddd-generate">
+<h4>ddd generate<a class="headerlink" href="#ddd-generate" title="Link to this heading"></a></h4>
+<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both in one run; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all} ...</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-h">
+<span id="cmdoption-ddd-generate-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+</section>
+<section id="ddd-generate-a2l">
+<h4>ddd generate a2l<a class="headerlink" href="#ddd-generate-a2l" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate a2l [-h] [-W CHECK=SEVERITY] [--strict]</span>
+<span class="go">                        [--format {text,json}] -o OUTPUT_DIR</span>
+<span class="go">                        [--byte-order {little,big}]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--dry-run] [--force]</span>
+<span class="go">                        project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-h">
+<span id="cmdoption-ddd-generate-a2l-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-W">
+<span id="cmdoption-ddd-generate-a2l-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-o">
+<span id="cmdoption-ddd-generate-a2l-output-dir"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-o" title="Link to this definition"></a></dt>
+<dd><p>directory the generated files are written to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-byte-order">
+<span class="sig-name descname"><span class="pre">--byte-order</span></span><span class="sig-prename descclassname"> <span class="pre">{little,big}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-byte-order" title="Link to this definition"></a></dt>
+<dd><p>byte order reported in the a2l file, default: little</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-address-map">
+<span class="sig-name descname"><span class="pre">--address-map</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address_map&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-address-map" title="Link to this definition"></a></dt>
+<dd><p>json file mapping variable names to their address in the target</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-dry-run">
+<span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-dry-run" title="Link to this definition"></a></dt>
+<dd><p>report what would be written, write nothing</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-force">
+<span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-force" title="Link to this definition"></a></dt>
+<dd><p>generate even if the consistency check fails</p>
+</dd></dl>
+
+</section>
+<section id="ddd-generate-all">
+<h4>ddd generate all<a class="headerlink" href="#ddd-generate-all" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]</span>
+<span class="go">                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
+<span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--dry-run] [--force]</span>
+<span class="go">                        project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-h">
+<span id="cmdoption-ddd-generate-all-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-W">
+<span id="cmdoption-ddd-generate-all-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-o">
+<span id="cmdoption-ddd-generate-all-output-dir"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-o" title="Link to this definition"></a></dt>
+<dd><p>directory the generated files are written to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-t">
+<span id="cmdoption-ddd-generate-all-template-dir"></span><span class="sig-name descname"><span class="pre">-t</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--template-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-t" title="Link to this definition"></a></dt>
+<dd><p>directory holding the jinja2 templates of the c sources. Every file in it ending in .jinja2 is rendered to a file named like the template without that extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting with an underscore is a helper that renders nothing on its own, and a name containing {component} is rendered once per component. ‘ddd templates-dir’ prints a set of example templates to copy from</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-const-inputs">
+<span class="sig-name descname"><span class="pre">--const-inputs</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-const-inputs" title="Link to this definition"></a></dt>
+<dd><p>declare input variables const in the consumer headers</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-byte-order">
+<span class="sig-name descname"><span class="pre">--byte-order</span></span><span class="sig-prename descclassname"> <span class="pre">{little,big}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-byte-order" title="Link to this definition"></a></dt>
+<dd><p>byte order reported in the a2l file, default: little</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-address-map">
+<span class="sig-name descname"><span class="pre">--address-map</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address_map&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-address-map" title="Link to this definition"></a></dt>
+<dd><p>json file mapping variable names to their address in the target</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-dry-run">
+<span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-dry-run" title="Link to this definition"></a></dt>
+<dd><p>report what would be written, write nothing</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-force">
+<span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-force" title="Link to this definition"></a></dt>
+<dd><p>generate even if the consistency check fails</p>
+</dd></dl>
+
+</section>
+<section id="ddd-generate-c">
+<h4>ddd generate c<a class="headerlink" href="#ddd-generate-c" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate c [-h] [-W CHECK=SEVERITY] [--strict]</span>
+<span class="go">                      [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
+<span class="go">                      [--const-inputs] [--dry-run] [--force]</span>
+<span class="go">                      project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-h">
+<span id="cmdoption-ddd-generate-c-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-W">
+<span id="cmdoption-ddd-generate-c-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-o">
+<span id="cmdoption-ddd-generate-c-output-dir"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-o" title="Link to this definition"></a></dt>
+<dd><p>directory the generated files are written to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-t">
+<span id="cmdoption-ddd-generate-c-template-dir"></span><span class="sig-name descname"><span class="pre">-t</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--template-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-t" title="Link to this definition"></a></dt>
+<dd><p>directory holding the jinja2 templates of the c sources. Every file in it ending in .jinja2 is rendered to a file named like the template without that extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting with an underscore is a helper that renders nothing on its own, and a name containing {component} is rendered once per component. ‘ddd templates-dir’ prints a set of example templates to copy from</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-const-inputs">
+<span class="sig-name descname"><span class="pre">--const-inputs</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-const-inputs" title="Link to this definition"></a></dt>
+<dd><p>declare input variables const in the consumer headers</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-dry-run">
+<span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-dry-run" title="Link to this definition"></a></dt>
+<dd><p>report what would be written, write nothing</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-force">
+<span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-force" title="Link to this definition"></a></dt>
+<dd><p>generate even if the consistency check fails</p>
+</dd></dl>
+
+</section>
+<section id="ddd-list">
+<h4>ddd list<a class="headerlink" href="#ddd-list" title="Link to this heading"></a></h4>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd list [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-list-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-h">
+<span id="cmdoption-ddd-list-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-list-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-W">
+<span id="cmdoption-ddd-list-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-list-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check (error, warning, info, ignore); repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-list-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-list-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
+<section id="ddd-lsp">
+<h4>ddd lsp<a class="headerlink" href="#ddd-lsp" title="Link to this heading"></a></h4>
+<p>Speaks the Language Server Protocol on stdin and stdout. It reports the consistency checks while a description file is being written, which a json schema cannot do: whether an axis names a declared axis, whether exactly one component produces a name, whether two components agree on a unit. Which project a file belongs to is read from the ‘ddd-build.json’ that ddd_generate writes, so the editor and the build apply the same severities.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd lsp [-h] [-b DIR]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-lsp-h">
+<span id="cmdoption-ddd-lsp-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-lsp-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-lsp-b">
+<span id="cmdoption-ddd-lsp-build-directory"></span><span class="sig-name descname"><span class="pre">-b</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--build-directory</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-lsp-b" title="Link to this definition"></a></dt>
+<dd><p>directory holding a build of this project; repeatable. Without it the usual build directory names next to the workspace are searched</p>
+</dd></dl>
+
+</section>
+<section id="ddd-schema">
+<h4>ddd schema<a class="headerlink" href="#ddd-schema" title="Link to this heading"></a></h4>
+<p>Prints the json schema of one file format, or writes every schema into a directory with ‘all’. Committing those files and pointing the ‘$schema’ key of each description at the matching one is what gives an editor completion, hover documentation and validation while a description file is being written.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT]</span>
+<span class="go">                  {component,constants,dictionary,project,rasters,sections,types,units,all}</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-schema-arg-kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-schema-arg-kind" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-schema-h">
+<span id="cmdoption-ddd-schema-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-schema-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-schema-o">
+<span id="cmdoption-ddd-schema-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-schema-o" title="Link to this definition"></a></dt>
+<dd><p>write to this file instead of stdout; with ‘all’ it is the directory the schemas are written into, each named ‘ddd_&lt;kind&gt;.schema.json’</p>
+</dd></dl>
+
+</section>
+<section id="ddd-sources">
+<h4>ddd sources<a class="headerlink" href="#ddd-sources" title="Link to this heading"></a></h4>
+<p>Prints one absolute path per line: the project file and every file it includes however deeply. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and none of them is named on the command line.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] [--format {text,json}] project</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-sources-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-h">
+<span id="cmdoption-ddd-sources-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-sources-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-sources-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
+<section id="ddd-templates-dir">
+<h4>ddd templates-dir<a class="headerlink" href="#ddd-templates-dir" title="Link to this heading"></a></h4>
+<p>The c sources are rendered from templates the project provides, so that their house style is the project’s own. The templates printed here are a working set to copy into a project and change, not a default: nothing falls back to them.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd templates-dir [-h]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-templates-dir-h">
+<span id="cmdoption-ddd-templates-dir-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-templates-dir-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+</section>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="templates.html" class="btn btn-neutral float-left" title="Templates" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="build_integration.html" class="btn btn-neutral float-right" title="Build integration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

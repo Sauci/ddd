@@ -285,5 +285,5 @@ class TestObjectIdentity:
                 "b.ddd.json": component("B", declare("input", "X", id="p3rt5vwx9z2q")),
             },
         )
-        assert "consumer-identity" in checks(bag), messages(bag)
+        assert checks(bag) == ["consumer-identity"], messages(bag)
         assert "'B', which reads it" in messages(bag)

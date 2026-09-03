@@ -22,7 +22,9 @@ from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 
 class TestCheck:
     def test_consistent_project(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["check", str(DEMO)]) == EXIT_OK
+        # The demo has not adopted ids, so 'missing-id' is silenced here; it is an adoption
+        # nudge, not a consistency problem, and is not what this test is about.
+        assert main(["check", str(DEMO), "-W", "missing-id=ignore"]) == EXIT_OK
         assert "are consistent" in capsys.readouterr().err
 
     def test_inconsistent_project(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -33,7 +35,10 @@ class TestCheck:
         assert "4 errors, 1 warning" in captured
 
     def test_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["check", str(INCONSISTENT), "--format", "json"]) == EXIT_FINDINGS
+        # The known 4 errors and 1 warning of this fixture are the point; the example has not
+        # adopted ids, and that adoption nudge is not one of them.
+        arguments = ["check", str(INCONSISTENT), "--format", "json", "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_FINDINGS
         payload = json.loads(capsys.readouterr().out)
         assert payload["summary"] == {"error": 4, "warning": 1, "info": 0}
         assert payload["diagnostics"][0]["check"] == "multiple-producers"
@@ -807,11 +812,22 @@ class TestList:
                 ),
             },
         )
-        assert main(["list", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        # Neither declaration carries an id; the payload this pins predates the check, and
+        # the adoption nudge is not part of the shape being pinned here.
+        arguments = [
+            "list",
+            str(tmp_path / "p.ddd.json"),
+            "--format",
+            "json",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
         assert capsys.readouterr().out == PINNED_LIST_PAYLOAD
 
     def test_json(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["list", str(DEMO), "--format", "json"]) == EXIT_OK
+        # The demo has not adopted ids; that adoption nudge is not what this test is about.
+        assert main(["list", str(DEMO), "--format", "json", "-W", "missing-id=ignore"]) == EXIT_OK
         payload = json.loads(capsys.readouterr().out)
         assert payload["project"] == "DemoDevice"
         entry = next(v for v in payload["variables"] if v["name"] == "ValueE")

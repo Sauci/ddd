@@ -1071,6 +1071,12 @@ Information:
   as an archived dictionary missing an object, and every backend as generated files that
   never declare it. This check fires only when the cause is silenced; a reported cause
   already says the declaration could not resolve.
+- `missing-id`: a producing declaration or instance states no `id`. The key is an adoption a
+  project takes up one component at a time, so its absence is reported at `info` rather than
+  held against a project that has not started; `-W missing-id=error` is how a project that has
+  finished migrating turns the same finding into its gate. Left unstated, a later delivery
+  that renames the object reports a removal and an unrelated addition rather than the rename
+  it was.
 
 ### 4.1 Comparing two deliveries
 

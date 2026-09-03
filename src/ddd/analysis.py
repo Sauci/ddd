@@ -1444,6 +1444,17 @@ class _Analysis:
                 ref.location("definition.id"),
             )
 
+        if ref.scope.is_producer and definition.id is None:
+            # Info, and optional, because the key is an adoption: a project that has migrated
+            # turns this into its gate with -W missing-id=error, and one that has not is not
+            # stopped by a run that reports something it has not started doing.
+            self._bag.add(
+                "missing-id",
+                f"'{definition.name}' has no 'id', so a later delivery that renames it "
+                f"reports a removal and an unrelated addition; 'ddd id --assign' writes one",
+                ref.location("definition.name"),
+            )
+
         if definition.raster is not None and definition.is_calibration:
             self._bag.add(
                 "raster-kind",

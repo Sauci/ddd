@@ -84,7 +84,15 @@ def run_analysis(
     strict: bool = False,
 ) -> tuple[DataDictionary | None, DiagnosticBag]:
     write_tree(base, files)
-    bag = DiagnosticBag(SeverityPolicy.from_strings(severities, strict=strict))
+    # `missing-id` is an adoption nudge: it fires on every producing declaration with no `id`,
+    # and no fixture in this suite has adopted one, so left at its default it would fire on
+    # nearly every test in the suite and couple all of them to this one feature. Silenced here
+    # instead; a test exercising the check itself passes its own `missing-id=...` override,
+    # which sits after this default in the tuple and so wins - `from_strings` keeps the last
+    # entry it sees for a repeated check.
+    bag = DiagnosticBag(
+        SeverityPolicy.from_strings(("missing-id=ignore", *severities), strict=strict)
+    )
     workspace = load_workspace(base / root, bag)
     if workspace is None or bag.has_errors:
         return None, bag

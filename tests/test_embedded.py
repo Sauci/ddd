@@ -27,7 +27,7 @@ from conftest import (
     write_tree,
 )
 from ddd.analysis import analyze
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.loading import load_workspace
 from ddd.lsp.hover import describe_constant
 from ddd.lsp.navigation import constant_at, definition, index, references, rename_problem
@@ -219,8 +219,14 @@ class TestALoneComponent:
         assert sorted(checks(bag)) == ["unknown-constant", "unknown-section"]
 
     def test_the_example_pump_resolves_alone(self) -> None:
-        """The shipped example keeps proving it: ``ddd list pump.ddd.json`` answers."""
-        bag = DiagnosticBag()
+        """The shipped example keeps proving it: ``ddd list pump.ddd.json`` answers.
+
+        The example has not adopted ids, so ``missing-id`` is silenced here the way
+        ``conftest.run_analysis`` silences it for every other fixture: it is not one of the
+        cross-file gaps this test is about, unlike the sibling test above, which resolves an
+        equivalent library through ``run_analysis`` and so is silenced the same way already.
+        """
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
         workspace = load_workspace(EXAMPLES / "vocabulary" / "pump.ddd.json", bag)
         assert workspace is not None
         dictionary = analyze(workspace, bag)

@@ -376,6 +376,18 @@ class TestCommandLine:
     ) -> None:
         baseline = tmp_path / "baseline.json"
         self.dump_to(baseline, DEMO, capsys)
-        assert main(["compare", str(baseline), str(DEMO), "--format", "json"]) == EXIT_OK
+        # The candidate side is analysed fresh from its description, so the demo's own
+        # missing-id nudges would otherwise land in this bag alongside the comparison; they
+        # are not a finding of the comparison this test is about.
+        arguments = [
+            "compare",
+            str(baseline),
+            str(DEMO),
+            "--format",
+            "json",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
         payload = json.loads(capsys.readouterr().out)
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}

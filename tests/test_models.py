@@ -287,3 +287,29 @@ class TestObjectIdentity:
         )
         assert checks(bag) == ["consumer-identity"], messages(bag)
         assert "'B', which reads it" in messages(bag)
+
+    def test_a_producing_declaration_without_an_identity_is_reported(self, tree: Path) -> None:
+        """`missing-id` is silenced by default across the suite (see conftest.run_analysis),
+        so this opts back in - otherwise the test would pass whether or not the check fires."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+            severities=["missing-id=info"],
+        )
+        assert "missing-id" in checks(bag), messages(bag)
+
+    def test_a_reading_declaration_without_an_identity_is_not_reported(self, tree: Path) -> None:
+        """The key is the producer's to state, so its absence is only the producer's silence."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", id="k7m2q9xr4t8w")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+            severities=["missing-id=info"],
+        )
+        assert "missing-id" not in checks(bag), messages(bag)

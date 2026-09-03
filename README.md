@@ -503,6 +503,7 @@ further to say: `file-not-found`, `json-syntax`, `file-kind`, `schema` and `incl
 | warning | `address-missing` | an object in the a2l has no entry in the address map the run was given |
 | info | `empty-component` | a component declares no variable |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
+| info | `missing-id` | a producing declaration or instance states no `id` |
 
 When components disagree, the declaration of the **producing** component is the reference:
 its definition is the one that gets generated, and the diagnostics point at the deviating

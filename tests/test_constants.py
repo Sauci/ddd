@@ -1057,7 +1057,11 @@ class TestTheEditor:
             },
         )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
-        assert {entry["code"] for findings in reports.values() for entry in findings} == set()
+        # 'X' is a producing declaration with no 'id', and that finding needs no other
+        # component to be right either, so it is the one thing standalone mode still says.
+        assert {entry["code"] for findings in reports.values() for entry in findings} == {
+            "missing-id"
+        }
 
     def test_a_lonely_file_still_reports_what_no_constant_is_needed_for(
         self, tmp_path: Path
@@ -1076,7 +1080,8 @@ class TestTheEditor:
         )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
         assert {entry["code"] for findings in reports.values() for entry in findings} == {
-            "init-invalid"
+            "init-invalid",
+            "missing-id",
         }
 
     def test_exactly_nine_checks_need_every_component(self) -> None:

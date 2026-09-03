@@ -171,6 +171,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a declaration is missing from the dictionary and the finding that explains "
                "why is not reported",
                needs_every_component=True),
+        _check("missing-id", Severity.INFO,
+               "a declaration that produces a variable states no identity for it"),
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it"),
         _check("changed-interface", Severity.ERROR,

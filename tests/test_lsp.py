@@ -419,7 +419,10 @@ class TestDiagnostics:
         assert (tmp_path / "p.ddd.json") in reports
         codes = {entry["code"] for findings in reports.values() for entry in findings}
         assert "unknown-type" not in codes
-        assert codes == {"unused-output"}
+        # 'missing-id' needs no other component either, so full project context reports it
+        # exactly as standalone mode would - unlike 'unknown-type', it is not one of the
+        # checks that context was needed to answer.
+        assert codes == {"unused-output", "missing-id"}
 
     def test_a_file_no_project_claims_falls_back_to_reading_it_alone(self, tmp_path: Path) -> None:
         """A thin answer, but the only honest one when there is nothing else to read."""
@@ -448,7 +451,12 @@ class TestDiagnostics:
             },
         )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
-        assert {entry["code"] for findings in reports.values() for entry in findings} == set()
+        # 'NobodyReads' and 'Curve' are both producing declarations with no 'id', and that
+        # finding needs no other component to be right, so it survives where the three
+        # project-wide checks above do not.
+        assert {entry["code"] for findings in reports.values() for entry in findings} == {
+            "missing-id"
+        }
 
     def test_what_one_file_can_decide_is_still_reported(self, tmp_path: Path) -> None:
         """Silencing the project-wide checks must not leave standalone mode saying nothing."""
@@ -462,7 +470,8 @@ class TestDiagnostics:
         )
         reports = service.collect([], [tmp_path / "lonely.ddd.json"])
         assert {entry["code"] for findings in reports.values() for entry in findings} == {
-            "init-invalid"
+            "init-invalid",
+            "missing-id",
         }
 
     def test_every_check_that_needs_the_whole_project_is_silenced(self) -> None:
@@ -2527,7 +2536,12 @@ class TestServer:
         server.refresh(tmp_path / "a.ddd.json")
         assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
 
-        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Shared"))})
+        # Given an id along with the fix, or the adoption nudge would leave the list non-empty
+        # and this test would be asserting the wrong thing about the cache.
+        write_tree(
+            tmp_path,
+            {"a.ddd.json": component("A", declare("local", "Shared", id="k7m2q9xr4t8w"))},
+        )
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")
@@ -2616,8 +2630,12 @@ class TestServer:
         server.refresh(tmp_path / "a.ddd.json")
         assert published(writer)["a.ddd.json"][0]["code"] == "missing-producer"
 
-        # Somebody produces it now, so the project is clean and the squiggle has to go.
-        write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Shared"))})
+        # Somebody produces it now, so the project is clean and the squiggle has to go. Given
+        # with an id, or the adoption nudge would leave a finding behind and mask the point.
+        write_tree(
+            tmp_path,
+            {"a.ddd.json": component("A", declare("output", "Shared", id="k7m2q9xr4t8w"))},
+        )
         writer = io.BytesIO()
         server.writer = writer
         server.refresh(tmp_path / "a.ddd.json")

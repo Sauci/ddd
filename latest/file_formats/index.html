@@ -140,10 +140,11 @@ seven kinds: a file whose top level key is <code class="docutils literal notrans
 <a class="reference internal" href="component.html"><span class="doc">component description</span></a>, <code class="docutils literal notranslate"><span class="pre">types</span></code> is a
 <a class="reference internal" href="types.html"><span class="doc">structured datatype description</span></a>, <code class="docutils literal notranslate"><span class="pre">units</span></code> is the project’s
 <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a>, <code class="docutils literal notranslate"><span class="pre">sections</span></code> declares its
-<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, <code class="docutils literal notranslate"><span class="pre">rasters</span></code> declares its
-<a class="reference internal" href="rasters.html"><span class="doc">measurement rasters</span></a>, and <code class="docutils literal notranslate"><span class="pre">constants</span></code> its
-<a class="reference internal" href="constants.html"><span class="doc">constant vocabulary</span></a>. Nothing else appears at that level, and a file has
-to carry exactly one of them.</p>
+<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, <code class="docutils literal notranslate"><span class="pre">constants</span></code> its
+<a class="reference internal" href="constants.html"><span class="doc">constant vocabulary</span></a>, and <code class="docutils literal notranslate"><span class="pre">rasters</span></code> its
+<a class="reference internal" href="rasters.html"><span class="doc">measurement rasters</span></a>. Nothing else appears at that level, and a file has
+to carry exactly one of them. They are named here in the order the tool itself lists them,
+which is the order the <code class="docutils literal notranslate"><span class="pre">file-kind</span></code> message below prints.</p>
 <p>Detecting the kind from the content rather than from the path is what lets <code class="docutils literal notranslate"><span class="pre">includes</span></code> name
 components and sub-projects in the same list, and what lets <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> be pointed at either
 a whole project or a single component file without being told which of the two it is getting.

@@ -43,10 +43,11 @@ seven kinds: a file whose top level key is ``project`` is a
 :doc:`component description <component>`, ``types`` is a
 :doc:`structured datatype description <types>`, ``units`` is the project's
 :doc:`unit vocabulary <units>`, ``sections`` declares its
-:doc:`memory sections <sections>`, ``rasters`` declares its
-:doc:`measurement rasters <rasters>`, and ``constants`` its
-:doc:`constant vocabulary <constants>`. Nothing else appears at that level, and a file has
-to carry exactly one of them.
+:doc:`memory sections <sections>`, ``constants`` its
+:doc:`constant vocabulary <constants>`, and ``rasters`` its
+:doc:`measurement rasters <rasters>`. Nothing else appears at that level, and a file has
+to carry exactly one of them. They are named here in the order the tool itself lists them,
+which is the order the ``file-kind`` message below prints.
 
 Detecting the kind from the content rather than from the path is what lets ``includes`` name
 components and sub-projects in the same list, and what lets ``ddd check`` be pointed at either

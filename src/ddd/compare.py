@@ -103,7 +103,10 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
         lambda o: o.written_shape,
         lambda o: format_shape(o.spelled_shape) or "scalar",
     ),
-    ComparedField("references", lambda o: o.references, _describe_references),
+    # ``references`` is compared by hand below rather than from this table, for the reason
+    # ``limits`` is: the answer is not a property of the entry alone. A referent is named, and
+    # two deliveries name it differently the moment it is renamed - so the comparison resolves
+    # each name to the referent's identity first, which no lambda over one entry can do.
     ComparedField("local", lambda o: o.local, lambda o: str(o.local).lower()),
 )
 
@@ -239,7 +242,7 @@ def compare(
                 f"and script keyed by the old spelling needs migrating",
                 location,
             )
-        _compare_object(old, new, bag, location)
+        _compare_object(old, new, bag, location, was, now)
 
     for name in sorted(was.keys() & now.keys()):
         before, after = identity(was[name]), identity(now[name])
@@ -285,19 +288,53 @@ def _report_removal(old: Comparable, bag: DiagnosticBag, location: Location | No
         )
 
 
+def _referent(name: str, side: Mapping[str, Comparable]) -> tuple[str, str] | str:
+    """What a referent is compared as: its identity where it has one, else its name."""
+    entry = side.get(name)
+    key = identity(entry) if entry is not None else None
+    return key if key is not None else name
+
+
+def _compare_references(
+    old: Comparable,
+    new: Comparable,
+    was: Mapping[str, Comparable],
+    now: Mapping[str, Comparable],
+) -> str | None:
+    """How the referents differ, or nothing when they are the same objects.
+
+    Compared as identities so that renaming one axis reports the axis and not every curve and
+    map over it: a reference that follows a rename is the same reference.
+    """
+    if old.references.keys() != new.references.keys():
+        return _describe_reference_change(old, new)
+    for field, before in old.references.items():
+        if _referent(before, was) != _referent(new.references[field], now):
+            return _describe_reference_change(old, new)
+    return None
+
+
+def _describe_reference_change(old: Comparable, new: Comparable) -> str:
+    return f"references: {_describe_references(new)} != {_describe_references(old)}"
+
+
 def _compare_object(
     old: Comparable,
     new: Comparable,
     bag: DiagnosticBag,
     location: Location | None,
+    was: Mapping[str, Comparable],
+    now: Mapping[str, Comparable],
 ) -> None:
     interface = differing(_interface_fields(old, new), old, new)
-    if interface:
+    references = _compare_references(old, new, was, now)
+    if interface or references:
         readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+        spelled = spell_out(interface, old, new) if interface else ""
+        both = ", ".join(part for part in (spelled, references or "") if part)
         bag.add(
             "changed-interface",
-            f"'{old.name}' is not the same object any more ({spell_out(interface, old, new)})"
-            f"{readers}",
+            f"'{old.name}' is not the same object any more ({both}){readers}",
             location,
         )
 
@@ -311,10 +348,10 @@ def _compare_object(
 
     # Limits are the one field where the direction decides: a wider range still accepts every
     # value the baseline allowed, a narrower one can invalidate data that was calibrated.
-    # When the interface already changed, tighter limits are a consequence of it - reporting
-    # both would bury the cause under its own symptom.
+    # When the interface already changed - references included - tighter limits are a
+    # consequence of it - reporting both would bury the cause under its own symptom.
     narrowed = new.limits.min > old.limits.min or new.limits.max < old.limits.max
-    if narrowed and not interface:
+    if narrowed and not interface and references is None:
         bag.add(
             "narrowed-limits",
             f"'{old.name}': limits tightened from "

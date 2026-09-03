@@ -502,6 +502,32 @@ def test_a_name_kept_by_the_same_object_is_not_a_reuse(tree):
     assert checks(verdict(before, after)) == [], messages(verdict(before, after))
 
 
+def _curve_over(axis: str, axis_id: str, curve_id: str) -> list[dict[str, Any]]:
+    return [
+        declare("local", axis, kind="axis", size=8, id=axis_id),
+        declare("local", "Curve", kind="curve", axis=axis, id=curve_id),
+    ]
+
+
+def test_renaming_an_axis_does_not_report_its_curve(tree):
+    before = one_component(tree, "before", *_curve_over("A", "k7m2q9xr4t8w", "p3rt5vwx9z2q"))
+    after = one_component(tree, "after", *_curve_over("B", "k7m2q9xr4t8w", "p3rt5vwx9z2q"))
+    bag = verdict(before, after)
+    assert checks(bag) == ["renamed-object"], messages(bag)
+
+
+def test_pointing_a_curve_at_a_different_axis_is_still_an_interface_change(tree):
+    before = one_component(tree, "before", *_curve_over("A", "k7m2q9xr4t8w", "p3rt5vwx9z2q"))
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "Other", kind="axis", size=8, id="w9x8y7z6q5r4"),
+        declare("local", "Curve", kind="curve", axis="Other", id="p3rt5vwx9z2q"),
+    )
+    assert "changed-interface" in checks(verdict(before, after)), messages(verdict(before, after))
+
+
 def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
     """A leaf's identity is its instance's id together with the part of its path below the
     instance, so ``Inlet[2].value`` stays paired with itself - not with a neighbouring

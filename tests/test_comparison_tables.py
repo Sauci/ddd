@@ -104,6 +104,10 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "changed-interface",
     "limits": "compared by a hand-written directional branch: narrowing warns, widening is "
     "deliberately silent, and neither is expressible as an equality",
+    "references": "compared by a hand-written branch, _compare_references, for the same reason "
+    "limits is: the answer is not a property of the entry alone. A referent is named, and "
+    "resolving that name to the referent's identity needs both sides of the comparison - was "
+    "and now - which no table entry, built from one entry at a time, can reach",
 }
 
 
@@ -180,6 +184,17 @@ class TestComparisonTables:
         """
         assert "limits" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
         assert "limits" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
+
+    def test_references_are_compared_by_hand_between_deliveries(self) -> None:
+        """Between two deliveries a referent is compared as an identity, not as a name.
+
+        Inside a project the two declarations of one object are two spellings of one moment,
+        so the analysis compares the names as written. Between deliveries a rename moves the
+        name while the referent stays the same object - and resolving a name to an identity
+        needs both sides, which a table of lambdas over one entry cannot reach.
+        """
+        assert "references" in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
+        assert "references" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
 
     def test_volatile_is_an_interface_field_and_is_not_optional(self) -> None:
         """Nothing derives ``volatile``, which is why the key is required on every

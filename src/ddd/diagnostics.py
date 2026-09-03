@@ -175,6 +175,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                needs_every_component=True),
         _check("missing-id", Severity.INFO,
                "a declaration that produces a variable states no identity for it"),
+        _check("renamed-object", Severity.WARNING,
+               "an object of the baseline is offered under a different name"),
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it"),
         _check("changed-interface", Severity.ERROR,

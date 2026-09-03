@@ -22,11 +22,11 @@ documentation to both questions, and two answers to that would be a drift, not a
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import Comparable, DataDictionary
+from ddd.ir import Comparable, DataDictionary, ResolvedLeaf
 from ddd.models import conversion_identity, format_number, format_shape
 
 
@@ -150,6 +150,58 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
 )
 
 
+def identity(entry: Comparable) -> tuple[str, str] | None:
+    """What two deliveries join this object on, or nothing when it carries no id.
+
+    A plain object is its id. A leaf is its instance's id together with the part of its path
+    below the instance, because a member has no declaration of its own to carry one: renaming
+    the instance keeps the pair, and renaming a member of the *type* changes the second half
+    and is therefore not tracked - which section 2 of the design records as a known gap.
+    """
+    if isinstance(entry, ResolvedLeaf):
+        if entry.instance_id is None:
+            return None
+        return (entry.instance_id, entry.path[len(entry.instance) :])
+    return None if entry.id is None else (entry.id, "")
+
+
+def _pair(
+    was: Mapping[str, Comparable], now: Mapping[str, Comparable]
+) -> tuple[list[tuple[Comparable, Comparable]], list[Comparable], list[Comparable]]:
+    """Pair on identity first, then on name, and say what is left on each side.
+
+    Two passes rather than one so that both regimes coexist while a project migrates: an
+    object that carries an id pairs on it whatever it is called, and one that does not pairs
+    on its name exactly as it did before ids existed.
+    """
+    was_by_id = {key: entry for entry in was.values() if (key := identity(entry)) is not None}
+    now_by_id = {key: entry for entry in now.values() if (key := identity(entry)) is not None}
+
+    paired: list[tuple[Comparable, Comparable]] = []
+    old_done: set[str] = set()
+    new_done: set[str] = set()
+    for key in sorted(was_by_id.keys() & now_by_id.keys()):
+        old, new = was_by_id[key], now_by_id[key]
+        paired.append((old, new))
+        old_done.add(old.name)
+        new_done.add(new.name)
+
+    for name in sorted(was):
+        if name in old_done or name in new_done or name not in now:
+            continue
+        before, after = identity(was[name]), identity(now[name])
+        if before is not None and after is not None and before != after:
+            continue  # two different objects that happen to share a spelling
+        paired.append((was[name], now[name]))
+        old_done.add(name)
+        new_done.add(name)
+
+    paired.sort(key=lambda pair: pair[0].name)
+    removed = [was[name] for name in sorted(was) if name not in old_done]
+    added = [now[name] for name in sorted(now) if name not in new_done]
+    return paired, removed, added
+
+
 def compare(
     baseline: DataDictionary,
     candidate: DataDictionary,
@@ -176,21 +228,27 @@ def compare(
 
     was = baseline.comparable
     now = candidate.comparable
+    paired, removed, added = _pair(was, now)
 
-    for name in sorted(was):
-        old = was[name]
-        new = now.get(name)
-        if new is None:
-            _report_removal(old, bag, location)
-        else:
-            _compare_object(old, new, bag, location)
+    for old, new in paired:
+        if old.name != new.name:
+            readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+            bag.add(
+                "renamed-object",
+                f"'{old.name}' is now called '{new.name}'{readers}; every dataset, recording "
+                f"and script keyed by the old spelling needs migrating",
+                location,
+            )
+        _compare_object(old, new, bag, location)
 
-    for name in sorted(now.keys() - was.keys()):
-        added = now[name]
+    for old in removed:
+        _report_removal(old, bag, location)
+
+    for new in added:
         bag.add(
             "added-object",
-            f"'{name}' is new in {candidate.name} "
-            f"({added.kind.value}, produced by {added.owner or 'nobody'})",
+            f"'{new.name}' is new in {candidate.name} "
+            f"({new.kind.value}, produced by {new.owner or 'nobody'})",
             location,
         )
 

@@ -272,3 +272,23 @@ class TestComparisonTables:
             assert spelled.name == deferred.name
             if spelled.name != "shape":
                 assert spelled is deferred
+
+    def test_the_identity_is_in_neither_table(self) -> None:
+        """The id is what the pairing is *done on*, so it is never a thing compared.
+
+        Putting it in either table would make the one commit that stamps ids report a changed
+        interface on every object in the project - and in the in-project table it would make
+        a consumer's silence about an id a disagreement, when a consumer may not state one at
+        all.
+
+        The field-accountability guard above (``_NOT_COMPARED_RESOLVED``) records a reason for
+        ``id`` but does not by itself stop it from *also* being added to a table: ``accounted``
+        there is true the moment a field is named anywhere, compared or excused, so a field
+        can be in both a table and an excuse dict without failing that guard. Confirmed by
+        experiment before writing this test: adding a trivial ``id`` entry to
+        ``compare._INTERFACE_FIELDS`` left every test in ``TestEveryModelFieldIsAccountedFor``
+        green, ``test_the_excuses_are_not_stale`` included - so this assertion is the only
+        thing in the suite that would actually catch it.
+        """
+        assert "id" not in table_names(analysis._INTERFACE_FIELDS, analysis._STORAGE_FIELDS)
+        assert "id" not in table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)

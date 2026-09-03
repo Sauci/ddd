@@ -1111,6 +1111,15 @@ compile:
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
+- `renamed-object`: an object of the baseline is offered under a different name; its `id`
+  is what says so ([section 3.3](#33-data-object-definition)). A rename that also changed
+  the interface **shall** report both findings rather than only one, and a baseline recorded
+  before an id existed on either side **shall** infer no rename - it is reported as a
+  removal and an addition, exactly as `missing-id` warns it would be
+  ([section 4](#4-consistency-checks)). Warning rather than error: every consumer names the
+  object it reads, so a rename that left one behind already failed `ddd check`; what breaks
+  is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
+  documents keyed by the old spelling.
 - `removed-unused-object`: an object is gone that no component read.
 - `changed-storage`: the initial value, the volatility or the section changed. On a
   calibration object the volatility also decides whether a tool can still change the value

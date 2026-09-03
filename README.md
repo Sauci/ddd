@@ -531,6 +531,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | --- | --- | --- |
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
+| warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
 | warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |

@@ -391,3 +391,109 @@ class TestCommandLine:
         assert main(arguments) == EXIT_OK
         payload = json.loads(capsys.readouterr().out)
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+
+def test_a_renamed_object_is_one_finding_not_two(tree):
+    before = one_component(tree, "before", declare("local", "FiltGain", id="k7m2q9xr4t8w"))
+    after = one_component(tree, "after", declare("local", "FilterGain", id="k7m2q9xr4t8w"))
+    bag = verdict(before, after)
+    assert checks(bag) == ["renamed-object"], messages(bag)
+    assert "'FiltGain'" in messages(bag) and "'FilterGain'" in messages(bag)
+
+
+def test_a_rename_that_also_changed_the_interface_reports_both(tree):
+    before = one_component(tree, "before", declare("local", "FiltGain", "uint8", id="k7m2q9xr4t8w"))
+    after = one_component(
+        tree, "after", declare("local", "FilterGain", "uint16", id="k7m2q9xr4t8w")
+    )
+    bag = verdict(before, after)
+    assert set(checks(bag)) == {"renamed-object", "changed-interface"}, messages(bag)
+
+
+def test_a_swap_is_two_renames_and_no_interface_change(tree):
+    """The case no name-matching heuristic can get right."""
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", id="k7m2q9xr4t8w"),
+        declare("local", "B", id="p3rt5vwx9z2q"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "B", id="k7m2q9xr4t8w"),
+        declare("local", "A", id="p3rt5vwx9z2q"),
+    )
+    bag = verdict(before, after)
+    assert checks(bag) == ["renamed-object", "renamed-object"], messages(bag)
+
+
+def test_objects_without_an_identity_still_pair_by_name(tree):
+    before = one_component(tree, "before", declare("local", "X"))
+    after = one_component(tree, "after", declare("local", "X"))
+    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+
+
+def test_a_baseline_without_identities_infers_no_rename(tree):
+    """A format 5 baseline recorded none, so a rename against it is still two findings."""
+    before = one_component(tree, "before", declare("local", "FiltGain"))
+    after = one_component(tree, "after", declare("local", "FilterGain", id="k7m2q9xr4t8w"))
+    bag = verdict(before, after)
+    assert "renamed-object" not in checks(bag), messages(bag)
+    assert "removed-unused-object" in checks(bag)
+
+
+def test_two_different_objects_that_share_a_name_are_not_paired(tree):
+    """Ruling 3: when both sides carry an id for this name and the ids differ, that says
+    outright that these are two different objects. Pairing them by name anyway would run
+    the whole interface comparison between two unrelated things and report nothing at all
+    here, since only the id differs and an id is never a compared field - silently hiding
+    the fact that the name now means something else.
+    """
+    before = one_component(tree, "before", declare("local", "A", id="k7m2q9xr4t8w"))
+    after = one_component(tree, "after", declare("local", "A", id="p3rt5vwx9z2q"))
+    bag = verdict(before, after)
+    assert "renamed-object" not in checks(bag), messages(bag)
+    assert set(checks(bag)) == {"removed-unused-object", "added-object"}, messages(bag)
+
+
+def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
+    """A leaf's identity is its instance's id together with the part of its path below the
+    instance, so ``Inlet[2].value`` stays paired with itself - not with a neighbouring
+    element - when the instance, not the member, is renamed.
+    """
+    cell_type = {
+        "types": [
+            {
+                "type": "struct",
+                "name": "Cell_t",
+                "members": [
+                    {
+                        "name": "value",
+                        "member": "value",
+                        "datatype": "uint16",
+                        "conversion": {"kind": "identity"},
+                    }
+                ],
+            }
+        ]
+    }
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "t.ddd.json", "before-a.ddd.json"),
+            "after.ddd.json": project("P", "t.ddd.json", "after-a.ddd.json"),
+            "t.ddd.json": cell_type,
+            "before-a.ddd.json": component(
+                "A",
+                declare("local", "Inlet", typename="Cell_t", dimensions=[3], id="k7m2q9xr4t8w"),
+            ),
+            "after-a.ddd.json": component(
+                "A",
+                declare("local", "Sensor", typename="Cell_t", dimensions=[3], id="k7m2q9xr4t8w"),
+            ),
+        },
+    )
+    bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+    assert checks(bag) == ["renamed-object"] * 3, messages(bag)
+    assert "'Inlet[2].value'" in messages(bag) and "'Sensor[2].value'" in messages(bag)

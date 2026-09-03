@@ -31,12 +31,12 @@ What a declaration asks of the a2l backend. Only that backend interprets it.
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
 " alt="" coords="761,563,998,675"/>
-<area shape="rect" id="node6" title="ddd.models.objects.Axis
-
-Shared axis points; several curves and maps may be interpolated over one axis.
-" alt="" coords="5,43,603,463"/>
-<area shape="rect" id="node7" title="ddd.models.objects.Limits
+<area shape="rect" id="node6" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
 " alt="" coords="795,430,964,514"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Map
+
+A two dimensional calibratable table, stored as ``[y][x]``.
+" alt="" coords="5,16,603,464"/>
 </map>

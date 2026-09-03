@@ -34,7 +34,7 @@ generates no a2l can leave the whole block out.
 <area shape="rect" id="node6" title="ddd.models.objects.DataObject
 
 Attributes shared by every kind of data object.
-" alt="" coords="5,43,603,407"/>
+" alt="" coords="5,16,603,408"/>
 <area shape="rect" id="node7" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.

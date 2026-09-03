@@ -272,7 +272,8 @@ them together with everything else.</p>
 </tr>
 <tr class="row-odd"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
-<td><p>the initial value, volatility or memory section of an object changed</p></td>
+<td><p>the initial value, volatility, memory section or measurement raster of an object
+changed</p></td>
 </tr>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
@@ -310,8 +311,10 @@ different spellings of one size, and the spelling is what the generated code car
 respelling <code class="docutils literal notranslate"><span class="pre">[8]</span></code> as <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;]</span></code> changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the three properties that change how an object behaves
-rather than what it means, the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and the memory <code class="docutils literal notranslate"><span class="pre">section</span></code>;
+stands reads clean, and a changed size still does not. <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code> covers the four properties that change how an object behaves
+rather than what it means, the initial value, <code class="docutils literal notranslate"><span class="pre">volatile</span></code>, the memory <code class="docutils literal notranslate"><span class="pre">section</span></code> and the
+measurement <code class="docutils literal notranslate"><span class="pre">raster</span></code>; a variable that moved from the 100 ms event to the 1 ms one changes
+the a2l a calibration engineer works with while invalidating nobody’s code.
 <code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code> covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.</p>
 <p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> is graded differently here than it is <em>inside</em> a project, where it is interface

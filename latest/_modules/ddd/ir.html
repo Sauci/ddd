@@ -184,6 +184,29 @@
 
 
 
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedRaster</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One declared daq event, as the dictionary publishes it."""</span>
+
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">"""Name the objects refer to, and the short name of the xcp event."""</span>
+
+    <span class="n">event</span><span class="p">:</span> <span class="nb">int</span>
+<span class="w">    </span><span class="sd">"""The xcp event channel number."""</span>
+
+    <span class="n">cycle</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The period as the project wrote it: ``10ms``. Absent when the event is not cyclic."""</span>
+
+    <span class="n">cycle_ns</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The same period in nanoseconds, resolved so that a consumer never parses the spelling.</span>
+
+<span class="sd">    Both are kept for the reason ``shape`` and ``dimensions`` both are: the authored form is</span>
+<span class="sd">    what a reader recognises, and the number is what a consumer computes with.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text from the declaration; the long name of the eventual ``EVENT``."""</span>
+
+
 <div class="viewcode-block" id="ResolvedObject">
 <a class="viewcode-back" href="../../data_dictionary.html#ddd.ir.ResolvedObject">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ResolvedObject</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
@@ -233,6 +256,10 @@
     <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Linker section the producing declaration placed the object in; ``null`` for the</span>
 <span class="sd">    toolchain's defaults."""</span>
+
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Measurement raster the producing component updates the object in; ``null`` when the</span>
+<span class="sd">    project named none. Empty in a dictionary from format 4 or older."""</span>
 
     <span class="n">volatile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">"""Generate the object ``volatile``: stated by every declaration, on every kind.</span>
@@ -414,6 +441,10 @@
 <span class="w">    </span><span class="sd">"""Linker section the whole structure is placed in; its members have no placement</span>
 <span class="sd">    of their own."""</span>
 
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Measurement raster the producing component updates the object in; ``null`` when the</span>
+<span class="sd">    project named none. Empty in a dictionary from format 4 or older."""</span>
+
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
 
@@ -509,6 +540,9 @@
 <span class="w">    </span><span class="sd">"""Linker section of the structure this member belongs to; a member has no placement</span>
 <span class="sd">    of its own."""</span>
 
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Raster of the variable this member belongs to; a member has none of its own."""</span>
+
     <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Preprocessor condition of the producing declaration, if any."""</span>
 
@@ -573,7 +607,7 @@
 <span class="sd">"""</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">5</span>
 <span class="sd">"""Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>
@@ -627,6 +661,14 @@
 <span class="sd">    Recorded whole - name, value and description - so that a generator consuming the</span>
 <span class="sd">    dictionary can emit them the way the shipped templates do, and so that a dimension</span>
 <span class="sd">    spelled by name stays resolvable after the description files have moved on.</span>
+<span class="sd">    """</span>
+
+    <span class="n">rasters</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedRaster</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The measurement rasters the project declares, sorted by name.</span>
+
+<span class="sd">    Recorded whole - name, event, period and description - so that a generator consuming the</span>
+<span class="sd">    dictionary can write the event list itself rather than repeat the resolution. Empty in a</span>
+<span class="sd">    dictionary from format 4 or older.</span>
 <span class="sd">    """</span>
 
     <span class="n">types</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ResolvedStruct</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>

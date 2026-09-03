@@ -146,7 +146,9 @@ is built for it: every command that produces findings also produces them as json
 </tr>
 <tr class="row-odd"><td><p>DAQ</p></td>
 <td><p>Data acquisition, the mechanism by which an XCP slave sends measured values
-cyclically. The lists that configure it are not part of what DDD writes.</p></td>
+cyclically, each one subscribed to an <em>event</em>. DDD writes which event a measurement
+belongs to when a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> names one; the module level
+list that configures the events themselves is not part of what DDD writes.</p></td>
 </tr>
 <tr class="row-even"><td><p>DDD</p></td>
 <td><p>The tool this documentation describes: a data dictionary for the global variables of a
@@ -191,8 +193,10 @@ dictionary used as a comparison baseline, and the machine readable diagnostics.<
 formal ASAM name of the format everybody calls a2l.</p></td>
 </tr>
 <tr class="row-odd"><td><p>XCP</p></td>
-<td><p>Universal Measurement and Calibration Protocol, the successor of CCP. As with CCP, DDD
-generates no <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> section describing it.</p></td>
+<td><p>Universal Measurement and Calibration Protocol, the successor of CCP. An exported
+measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> reaches the generated a2l with
+an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its DAQ event; the rest of the protocol - the event
+configuration, <code class="docutils literal notranslate"><span class="pre">PROTOCOL_LAYER</span></code> and transport - is not part of what DDD writes.</p></td>
 </tr>
 </tbody>
 </table>
@@ -303,6 +307,27 @@ instead. It is <code class="docutils literal notranslate"><span class="pre">0x00
 <td><p>The name of the symbol an object corresponds to in the linked software, plus an offset.
 DDD always writes it, so that an address patcher can fill the addresses in after the
 link even when no address map was given.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code></p></td>
+<td><p>An interface specific block, whose content is defined by the interface it names rather
+than by ASAP2 itself. DDD writes exactly one kind, <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> inside a
+<code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code>, and only for a measurement whose
+<a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> resolves to a declared event.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DAQ_EVENT</span></code></p></td>
+<td><p>The XCP block inside that <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> saying which event carries the measurement. DDD
+writes the <code class="docutils literal notranslate"><span class="pre">VARIABLE</span></code> form, in which the events named are the ones a calibration
+tool starts from rather than the only ones it may use.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEFAULT_EVENT_LIST</span></code></p></td>
+<td><p>The events a <code class="docutils literal notranslate"><span class="pre">DAQ_EVENT</span> <span class="pre">VARIABLE</span></code> preselects. It is what makes a raster a suggestion
+the engineer can override in the tool, so a raster that turns out wrong is corrected
+there rather than by regenerating the file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">EVENT</span></code></p></td>
+<td><p>One entry of that list: the event <em>channel number</em>, which is the number the
+<code class="docutils literal notranslate"><span class="pre">rasters</span></code> file assigned. The name of the event lives in the module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code>
+block, which describes the target’s XCP implementation and which DDD does not write.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
 <td><p>A named collection of measurements and characteristics, used to organise the objects

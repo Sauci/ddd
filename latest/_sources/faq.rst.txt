@@ -550,8 +550,12 @@ index that runs fastest first while c declares it last: ``uint8_t Cube[2][3][4]`
 calibration tool would address the wrong element.
 
 .. note::
-   The generated a2l describes the data, not the protocol that reaches it: no file DDD writes
-   today contains an ``IF_DATA`` section for XCP or CCP, or a DAQ list.
+   The generated a2l says which DAQ event carries a measurement, and nothing about the
+   protocol that reaches it: an exported measurement with a :doc:`raster
+   <file_formats/rasters>` gets an ``IF_DATA XCP`` block naming its event channel, while the
+   module level ``DAQ`` list defining the events, the ``PROTOCOL_LAYER`` and the transport
+   come from whatever configures the XCP stack. No file DDD writes contains an ``IF_DATA``
+   section for CCP.
 
 How large may an array be?
 --------------------------

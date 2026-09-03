@@ -192,6 +192,16 @@
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
 <span class="w">    </span><span class="sd">"""Free text describing the component, offered to the c templates."""</span>
 
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Default measurement raster for every variable this component produces.</span>
+
+<span class="sd">    The common case stated once: a component updates nearly all of its measurements in one</span>
+<span class="sd">    task, and repeating that on several hundred definitions would bury the handful of</span>
+<span class="sd">    exceptions, which state their own ``raster``. It applies to what this component</span>
+<span class="sd">    produces and to nothing it reads - the raster follows the producer - and it reaches no</span>
+<span class="sd">    calibration object, since no daq list carries one.</span>
+<span class="sd">    """</span>
+
     <span class="n">interface</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 <span class="w">    </span><span class="sd">"""The data interface: everything the component produces, consumes or keeps to itself.</span>
 

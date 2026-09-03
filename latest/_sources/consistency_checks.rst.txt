@@ -311,6 +311,12 @@ or an a2l file that does not do what the description says - or that does not com
      - a measurement, which the software writes, is placed in a ``read-only`` section. A
        calibration object may live in either direction: ``const`` data in RAM is a mirrored
        calibration.
+   * - ``raster-kind``
+     - error
+     - a raster is stated on a calibration object (see the
+       :doc:`rasters file <file_formats/rasters>`). A calibration object becomes a
+       ``CHARACTERISTIC`` rather than a ``MEASUREMENT`` in the generated a2l, and no DAQ
+       list - the schedule a raster names - carries one.
    * - ``unknown-constant``
      - error
      - a shape - a ``dimensions`` entry, or the ``size`` of an axis - names a constant no
@@ -318,6 +324,17 @@ or an a2l file that does not do what the description says - or that does not com
        :doc:`constants file <file_formats/constants>`). Like a section there is no free
        text fallback, because a name without a value is a dimension nothing can resolve.
        The nearest declared name is suggested.
+   * - ``unknown-raster``
+     - error
+     - a definition or a component names a measurement raster no file declares (see the
+       :doc:`rasters file <file_formats/rasters>`). Like a section and unlike a unit there
+       is no free text fallback: an event nothing describes is a name the a2l could only
+       write as a number nobody chose. The nearest declared name is suggested.
+   * - ``duplicate-event``
+     - error
+     - two measurement rasters claim the same event channel number (see the
+       :doc:`rasters file <file_formats/rasters>`), which would put two rasters on one
+       event.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the
@@ -366,6 +383,14 @@ or an a2l file that does not do what the description says - or that does not com
        different thing from the disagreements above, and is reported where the claim is
        written rather than where it is overruled. Relaxable, so a project migrating existing
        descriptions can lower it while the ``init`` and ``section`` keys are removed.
+   * - ``consumer-raster``
+     - error
+     - an ``input`` declaration states a measurement raster (see the
+       :doc:`rasters file <file_formats/rasters>`). Which event updates a variable is
+       decided by the component that produces it, exactly as ``init`` and ``section`` are,
+       so a reader stating one is claiming an authority it does not have. Kept a separate
+       identifier from ``consumer-storage``, whose published description says storage,
+       which a raster is not.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns
@@ -505,12 +530,13 @@ registry can be read in one place.
        external tool still might.
    * - ``changed-storage``
      - warning
-     - the initial value, the volatility or the memory section of an object changed. A
+     - the initial value, the volatility, the memory section or the measurement raster of an
+       object changed. A
        calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
        reading twice: it keeps its address and a tool can still write to it, but the compiler
        is now entitled to fold the initial value into the code that reads it, so tuning it
        while the software runs stops working. The section says literally which memory the
-       object ends up in.
+       object ends up in, and the raster which DAQ event a calibration tool measures it on.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.

@@ -544,16 +544,19 @@ what the project is for - whether the other components agree.</p>
 practical payoff of the co-location: a self-contained library file answers <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> on its own, and only the references that genuinely live elsewhere stay open.
 The pump of <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> names its own <code class="docutils literal notranslate"><span class="pre">Torque_t</span></code> and <code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> and
-leans on the project only for its sections and for one shared size:</p>
+leans on the project only for its sections, its rasters and one shared size:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check pump.ddd.json
+pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
 pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
 pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
 pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
 pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
-4 errors
+pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
+6 errors
 
-$ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore
-ok: 3 variables in 1 component are consistent
+$ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
+pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: 'PressureTrend' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
+1 info
 </pre></div>
 </div>
 </section>

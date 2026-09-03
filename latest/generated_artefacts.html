@@ -797,6 +797,32 @@ demo’s array measurement is written as</p>
 </div>
 <p>and a <code class="docutils literal notranslate"><span class="pre">FORMAT</span></code> or a <code class="docutils literal notranslate"><span class="pre">DISPLAY_IDENTIFIER</span></code> is appended in the same way when the
 description asks for one under its <code class="docutils literal notranslate"><span class="pre">a2l</span></code> key.</p>
+<p>Last inside the record comes the DAQ event, written for a measurement whose
+<a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> resolves to one - its own <code class="docutils literal notranslate"><span class="pre">raster</span></code> key, or the default
+its producing component states. The demo declares none, so this example comes from
+<code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code>, whose <code class="docutils literal notranslate"><span class="pre">PumpSpeed</span></code> names the <code class="docutils literal notranslate"><span class="pre">1ms</span></code> raster that the project’s
+rasters file put on event channel 0:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT PumpSpeed "Measured pump speed, written by the speed capture interrupt"
+  UWORD CM_IDENT_RPM 0 0 0 65535
+  ECU_ADDRESS 0x00000000
+  SYMBOL_LINK "PumpSpeed" 0
+  /begin IF_DATA XCP
+    /begin DAQ_EVENT VARIABLE
+      /begin DEFAULT_EVENT_LIST
+        EVENT 0
+      /end DEFAULT_EVENT_LIST
+    /end DAQ_EVENT
+  /end IF_DATA
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>The block names the event <em>channel number</em> and not the raster, because that is what an a2l
+refers to an event by; the module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> list that gives the channels their names
+describes the target’s XCP implementation rather than its data, and comes from whatever
+configures the stack. It is a <code class="docutils literal notranslate"><span class="pre">DEFAULT_EVENT_LIST</span></code> rather than a fixed one, so the raster
+is the event a calibration tool preselects and not the only one it will accept. A
+measurement that resolves to no raster - and every measurement of a project that declares
+none - carries no <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> block at all, exactly as before rasters existed.</p>
 </section>
 <section id="conversions-and-why-coeffs-looks-inverted">
 <h3>Conversions, and why <code class="docutils literal notranslate"><span class="pre">COEFFS</span></code> looks inverted<a class="headerlink" href="#conversions-and-why-coeffs-looks-inverted" title="Link to this heading"></a></h3>

@@ -1,0 +1,263 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Measurement rasters &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../_static/ddd-favicon.svg"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/js/versions.js?v=a915def3"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Constant vocabulary" href="constants.html" />
+    <link rel="prev" title="Memory sections" href="sections.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            DDD
+              <img src="../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../concept.html">Concept</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">File formats</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#what-kind-of-file-this-is">What kind of file this is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#unknown-keys-are-rejected">Unknown keys are rejected</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#the-schema-is-published">The schema is published</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html#what-the-schema-carries">What the schema carries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">File formats</a></li>
+      <li class="breadcrumb-item active">Measurement rasters</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/file_formats/rasters.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="measurement-rasters">
+<h1>Measurement rasters<a class="headerlink" href="#measurement-rasters" title="Link to this heading"></a></h1>
+<p>A calibration tool measuring over XCP does not read a variable whenever it likes: the target
+sends values cyclically, in a <em>DAQ event</em> the tool subscribes to, and each event belongs to a
+task of the running software. A <code class="docutils literal notranslate"><span class="pre">rasters</span></code> file declares the events the target offers, and a
+measurement names the one its producing component updates it in; DDD writes that event into
+the generated a2l, so the tool preselects the right one rather than leaving an engineer to
+guess which task moves the signal.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"../../schemas/ddd_rasters.schema.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"rasters"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1ms"</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"cycle"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1ms"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fast control task"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10ms"</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"cycle"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10ms"</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"control task"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="s2">"crank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"crank synchronous, not cyclic"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">raster</span></code> is the name a definition refers to, and it is also the short name XCP gives the
+event - which is why it is limited to eight characters. A longer one is refused rather than
+shortened, because two names shortened to the same eight would collide in a calibration tool
+rather than here, where the author can still do something about it. <code class="docutils literal notranslate"><span class="pre">event</span></code> is the event
+channel number the target’s XCP configuration assigned, distinct across the project.
+<code class="docutils literal notranslate"><span class="pre">cycle</span></code> is the period, a whole number and a unit - <code class="docutils literal notranslate"><span class="pre">100us</span></code>, <code class="docutils literal notranslate"><span class="pre">10ms</span></code>, <code class="docutils literal notranslate"><span class="pre">1s</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">1500us</span></code> rather than <code class="docutils literal notranslate"><span class="pre">1.5ms</span></code>. It is optional: an event with no period is not cyclic,
+which is what a crank synchronous or an on-change raster is, and that is a description rather
+than an omission. <code class="docutils literal notranslate"><span class="pre">description</span></code> is free text.</p>
+<p>The file is project wide, listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other description;
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">rasters</span></code> prints its published contract. It has no place inside a component, for
+the reason the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a> have
+none: an event channel number is a property of the target’s XCP configuration, and a
+component declaring one would be asserting a number it does not decide.</p>
+<section id="naming-a-raster">
+<h2>Naming a raster<a class="headerlink" href="#naming-a-raster" title="Link to this heading"></a></h2>
+<p>A definition states its <code class="docutils literal notranslate"><span class="pre">raster</span></code>, and a component states a default for everything it
+produces:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Controller"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10ms"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"interface"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"EngineSpeed"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rpm"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FuelRate"</span><span class="p">,</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span><span class="w"> </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mg"</span><span class="p">,</span><span class="w"> </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"raster"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1ms"</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">EngineSpeed</span></code> is measured in the 10 ms event because its component says so, and <code class="docutils literal notranslate"><span class="pre">FuelRate</span></code>
+overrides that with its own. Two levels and no third: one image mixes components running at
+different rates, so a project wide default would be wrong for most of them, and “why is this
+signal in the 10 ms event” is a question worth keeping to one place to look.</p>
+<p>The raster follows the <strong>producer</strong>, because it is the producing task that updates the value.
+A component reading a variable somebody else writes states no raster for it - doing so is
+refused as <code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code>, the way stating an <code class="docutils literal notranslate"><span class="pre">init</span></code> or a <code class="docutils literal notranslate"><span class="pre">section</span></code> is - and its own
+default does not reach a variable it merely reads. A default reaches no calibration object
+either: no DAQ list carries a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code>, so a <code class="docutils literal notranslate"><span class="pre">raster</span></code> written on one is refused as
+<code class="docutils literal notranslate"><span class="pre">raster-kind</span></code>, while a default that happens to cover one simply does not apply. A structured
+variable carries one raster for the whole object, and every member inherits it.</p>
+<p>A measurement that names no raster, whose component names none either, reaches the a2l exactly
+as it did before there were rasters at all: described, but with no preselected event. Adoption
+is gradual, one component at a time.</p>
+</section>
+<section id="what-reaches-the-a2l">
+<h2>What reaches the a2l<a class="headerlink" href="#what-reaches-the-a2l" title="Link to this heading"></a></h2>
+<p>Each exported measurement with a raster carries the event it belongs to:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT EngineSpeed "engine speed"
+  UWORD NO_COMPU_METHOD 0 0 0 65535
+  ECU_ADDRESS 0x20000100
+  SYMBOL_LINK "EngineSpeed" 0
+  /begin IF_DATA XCP
+    /begin DAQ_EVENT VARIABLE
+      /begin DEFAULT_EVENT_LIST
+        EVENT 1
+      /end DEFAULT_EVENT_LIST
+    /end DAQ_EVENT
+  /end IF_DATA
+/end MEASUREMENT
+</pre></div>
+</div>
+<p>It is a <code class="docutils literal notranslate"><span class="pre">DEFAULT_EVENT_LIST</span></code> rather than a fixed one: the raster is the event the tool
+preselects, and the engineer may still move the signal, so a raster that turns out wrong is
+corrected in the tool rather than by regenerating the file.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>DDD writes which event a measurement belongs to, and not what the events are or how a tool
+reaches the target. The module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> block defining the event channels, the
+<code class="docutils literal notranslate"><span class="pre">PROTOCOL_LAYER</span></code> and the transport - <code class="docutils literal notranslate"><span class="pre">XCP_ON_CAN</span></code>, <code class="docutils literal notranslate"><span class="pre">XCP_ON_ETH</span></code> - describe the
+target’s XCP implementation rather than its data, and come from whatever configures the
+XCP stack. The <code class="docutils literal notranslate"><span class="pre">cycle</span></code> a raster declares is carried in the
+<a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a> for a generator that writes that block; DDD does
+not write it to the a2l.</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project declaring rasters next to its
+<a class="reference internal" href="units.html"><span class="doc">units</span></a>, <a class="reference internal" href="sections.html"><span class="doc">sections</span></a> and <a class="reference internal" href="constants.html"><span class="doc">constants</span></a>; it checks
+clean.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="sections.html" class="btn btn-neutral float-left" title="Memory sections" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="constants.html" class="btn btn-neutral float-right" title="Constant vocabulary" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

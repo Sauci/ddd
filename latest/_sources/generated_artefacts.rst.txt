@@ -701,6 +701,35 @@ demo's array measurement is written as
 and a ``FORMAT`` or a ``DISPLAY_IDENTIFIER`` is appended in the same way when the
 description asks for one under its ``a2l`` key.
 
+Last inside the record comes the DAQ event, written for a measurement whose
+:doc:`raster <file_formats/rasters>` resolves to one - its own ``raster`` key, or the default
+its producing component states. The demo declares none, so this example comes from
+``examples/vocabulary``, whose ``PumpSpeed`` names the ``1ms`` raster that the project's
+rasters file put on event channel 0:
+
+.. code-block:: text
+
+       /begin MEASUREMENT PumpSpeed "Measured pump speed, written by the speed capture interrupt"
+         UWORD CM_IDENT_RPM 0 0 0 65535
+         ECU_ADDRESS 0x00000000
+         SYMBOL_LINK "PumpSpeed" 0
+         /begin IF_DATA XCP
+           /begin DAQ_EVENT VARIABLE
+             /begin DEFAULT_EVENT_LIST
+               EVENT 0
+             /end DEFAULT_EVENT_LIST
+           /end DAQ_EVENT
+         /end IF_DATA
+       /end MEASUREMENT
+
+The block names the event *channel number* and not the raster, because that is what an a2l
+refers to an event by; the module level ``DAQ`` list that gives the channels their names
+describes the target's XCP implementation rather than its data, and comes from whatever
+configures the stack. It is a ``DEFAULT_EVENT_LIST`` rather than a fixed one, so the raster
+is the event a calibration tool preselects and not the only one it will accept. A
+measurement that resolves to no raster - and every measurement of a project that declares
+none - carries no ``IF_DATA`` block at all, exactly as before rasters existed.
+
 Conversions, and why ``COEFFS`` looks inverted
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

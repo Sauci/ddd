@@ -135,12 +135,13 @@ rest of the checks appear once it is out of the way.</p>
 <section id="what-kind-of-file-this-is">
 <h2>What kind of file this is<a class="headerlink" href="#what-kind-of-file-this-is" title="Link to this heading"></a></h2>
 <p>DDD does not ask the file name what a file contains; the <strong>top level key</strong> decides. There are
-six kinds: a file whose top level key is <code class="docutils literal notranslate"><span class="pre">project</span></code> is a
+seven kinds: a file whose top level key is <code class="docutils literal notranslate"><span class="pre">project</span></code> is a
 <a class="reference internal" href="project.html"><span class="doc">project description</span></a>, one whose top level key is <code class="docutils literal notranslate"><span class="pre">component</span></code> is a
 <a class="reference internal" href="component.html"><span class="doc">component description</span></a>, <code class="docutils literal notranslate"><span class="pre">types</span></code> is a
 <a class="reference internal" href="types.html"><span class="doc">structured datatype description</span></a>, <code class="docutils literal notranslate"><span class="pre">units</span></code> is the project’s
 <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a>, <code class="docutils literal notranslate"><span class="pre">sections</span></code> declares its
-<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and <code class="docutils literal notranslate"><span class="pre">constants</span></code> its
+<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, <code class="docutils literal notranslate"><span class="pre">rasters</span></code> declares its
+<a class="reference internal" href="rasters.html"><span class="doc">measurement rasters</span></a>, and <code class="docutils literal notranslate"><span class="pre">constants</span></code> its
 <a class="reference internal" href="constants.html"><span class="doc">constant vocabulary</span></a>. Nothing else appears at that level, and a file has
 to carry exactly one of them.</p>
 <p>Detecting the kind from the content rather than from the path is what lets <code class="docutils literal notranslate"><span class="pre">includes</span></code> name
@@ -154,7 +155,7 @@ both.ddd.json: error[file-kind]: file has 'project' and 'component' at the top l
 1 error
 
 $ ddd check neither.ddd.json
-neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections', 'constants' (found: components, version)
+neither.ddd.json: error[file-kind]: missing top level key, one of 'project', 'component', 'types', 'units', 'sections', 'constants', 'rasters' (found: components, version)
 1 error
 </pre></div>
 </div>
@@ -213,6 +214,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>component<span class="w
 ddd<span class="w"> </span>schema<span class="w"> </span>types<span class="w">        </span><span class="c1"># the structured datatype description</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>units<span class="w">        </span><span class="c1"># the unit vocabulary</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>sections<span class="w">     </span><span class="c1"># the memory section description</span>
+ddd<span class="w"> </span>schema<span class="w"> </span>rasters<span class="w">      </span><span class="c1"># the measurement raster description</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>constants<span class="w">    </span><span class="c1"># the constant vocabulary</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="w">   </span><span class="c1"># the resolved data dictionary, the contract the backends consume</span>
 ddd<span class="w"> </span>schema<span class="w"> </span>all<span class="w"> </span>-o<span class="w"> </span>DIR<span class="w">   </span><span class="c1"># every schema at once, one file each, into a directory</span>
@@ -223,7 +225,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>all<span class="w"> </s
 wrote project.schema.json
 </pre></div>
 </div>
-<p>The first six describe the files you write; <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> describes what DDD makes of them and
+<p>The first seven describe the files you write; <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> describes what DDD makes of them and
 is documented with the <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a>. The closed objects described
 above appear in all of them as <code class="docutils literal notranslate"><span class="pre">&quot;additionalProperties&quot;:</span> <span class="pre">false</span></code>, so a validating editor
 rejects a misspelled key at the moment it is typed rather than at the next build.</p>
@@ -290,6 +292,11 @@ right.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="units.html">Unit vocabulary</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sections.html">Memory sections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rasters.html">Measurement rasters</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="rasters.html#naming-a-raster">Naming a raster</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rasters.html#what-reaches-the-a2l">What reaches the a2l</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="constants.html">Constant vocabulary</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="constants.html#what-the-outputs-make-of-it">What the outputs make of it</a></li>
 </ul>

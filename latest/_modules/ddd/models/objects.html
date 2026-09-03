@@ -381,6 +381,20 @@
 <span class="sd">    Left out, the object goes wherever the toolchain's defaults put it.</span>
 <span class="sd">    """</span>
 
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Measurement raster the object is updated in, named in the project's rasters file.</span>
+
+<span class="sd">    A producer key like ``section``: the producing component's task is what updates the</span>
+<span class="sd">    value, so a consumer stating one is refused as ``consumer-raster``, and a structured</span>
+<span class="sd">    variable carries one raster for all of its members. Left out, the producing component's</span>
+<span class="sd">    default applies; left out there too, the a2l describes the object without saying which</span>
+<span class="sd">    daq event carries it, and the calibration tool decides.</span>
+
+<span class="sd">    At the top level rather than inside ``a2l``, although only that backend reads it today:</span>
+<span class="sd">    which task updates a value is an engineering claim about the data, the way ``section``</span>
+<span class="sd">    is, and not a presentation choice.</span>
+<span class="sd">    """</span>
+
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Raw initial value, in the stored domain rather than the physical one.</span>
 

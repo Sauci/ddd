@@ -593,8 +593,11 @@ index that runs fastest first while c declares it last: <code class="docutils li
 calibration tool would address the wrong element.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The generated a2l describes the data, not the protocol that reaches it: no file DDD writes
-today contains an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> section for XCP or CCP, or a DAQ list.</p>
+<p>The generated a2l says which DAQ event carries a measurement, and nothing about the
+protocol that reaches it: an exported measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> gets an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its event channel, while the
+module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> list defining the events, the <code class="docutils literal notranslate"><span class="pre">PROTOCOL_LAYER</span></code> and the transport
+come from whatever configures the XCP stack. No file DDD writes contains an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code>
+section for CCP.</p>
 </div>
 </section>
 <section id="how-large-may-an-array-be">

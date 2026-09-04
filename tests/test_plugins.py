@@ -13,7 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import component, declare, project
-from ddd.diagnostics import CheckInfo, Severity
+from ddd.diagnostics import CheckInfo, DiagnosticBag, Severity, SeverityPolicy, UnknownCheckError
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
@@ -239,3 +239,47 @@ class TestTheKeys:
     def test_an_empty_plugin_spelling_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             ProjectFile.model_validate(project("P", plugins=[""]))
+
+
+class TestThePolicy:
+    """A plugin's checks are known only once the project is read; the policy is parsed first."""
+
+    def test_an_override_of_a_plugin_check_is_kept_provisionally(self) -> None:
+        policy = SeverityPolicy.from_strings(["tag/bad-prefix=error", "unused-output=info"])
+        assert policy.provisional == ("tag/bad-prefix",)
+        assert policy.overrides["tag/bad-prefix"] is Severity.ERROR
+
+    def test_a_bad_severity_on_a_provisional_override_is_still_refused(self) -> None:
+        with pytest.raises(UnknownCheckError, match="unknown severity 'loud'"):
+            SeverityPolicy.from_strings(["tag/bad-prefix=loud"])
+
+    def test_verifying_holds_the_provisional_overrides_to_what_was_registered(self) -> None:
+        policy = SeverityPolicy.from_strings(["tag/bad-prefix=error"])
+        info = CheckInfo("tag/bad-prefix", Severity.WARNING, "x")
+        policy.verify({"tag/bad-prefix": info})
+        with pytest.raises(UnknownCheckError, match="no loaded plugin registers it"):
+            policy.verify({})
+
+    def test_a_registered_check_resolves_like_a_built_in_one(self) -> None:
+        info = CheckInfo("tag/bad-prefix", Severity.WARNING, "x")
+        bag = DiagnosticBag()
+        bag.register([info])
+        assert bag.registered == {"tag/bad-prefix": info}
+        found = bag.add("tag/bad-prefix", "m")
+        assert found is not None and found.severity is Severity.WARNING
+
+    def test_an_override_and_strict_apply_to_a_registered_check(self) -> None:
+        info = CheckInfo("tag/bad-prefix", Severity.WARNING, "x")
+        overridden = DiagnosticBag(SeverityPolicy.from_strings(["tag/bad-prefix=info"]))
+        overridden.register([info])
+        found = overridden.add("tag/bad-prefix", "m")
+        assert found is not None and found.severity is Severity.INFO
+        strict = DiagnosticBag(SeverityPolicy.from_strings([], strict=True))
+        strict.register([info])
+        found = strict.add("tag/bad-prefix", "m")
+        assert found is not None and found.severity is Severity.ERROR
+
+    def test_ignoring_a_registered_check_drops_the_finding(self) -> None:
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["tag/bad-prefix=ignore"]))
+        bag.register([CheckInfo("tag/bad-prefix", Severity.WARNING, "x")])
+        assert bag.add("tag/bad-prefix", "m") is None

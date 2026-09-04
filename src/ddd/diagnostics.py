@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -305,6 +305,15 @@ class UnknownCheckError(ValueError):
     """Raised when a severity override names a check that does not exist."""
 
 
+def _parse_severity(text: str, check: str) -> Severity:
+    try:
+        return Severity(text.strip().lower())
+    except ValueError:
+        choices = ", ".join(s.value for s in Severity)
+        msg = f"unknown severity '{text}' for check '{check}', expected one of {choices}"
+        raise UnknownCheckError(msg) from None
+
+
 @dataclass(frozen=True, slots=True)
 class SeverityPolicy:
     """Maps check identifiers to the severity they are reported with."""
@@ -323,6 +332,12 @@ class SeverityPolicy:
             if not separator:
                 msg = f"expected 'check=severity', got '{value}'"
                 raise UnknownCheckError(msg)
+            if PLUGIN_CHECK_SEPARATOR in name:
+                # A plugin's check. Which plugins there are is known only once the project
+                # is read, so the override is kept now and ``verify`` holds it to the
+                # plugins that actually loaded.
+                overrides[name] = _parse_severity(severity, name)
+                continue
             info = CHECKS.get(name)
             if info is None:
                 msg = f"unknown check '{name}'"
@@ -330,16 +345,29 @@ class SeverityPolicy:
             if not info.overridable:
                 msg = f"the severity of check '{name}' cannot be changed"
                 raise UnknownCheckError(msg)
-            try:
-                overrides[name] = Severity(severity.strip().lower())
-            except ValueError:
-                choices = ", ".join(s.value for s in Severity)
-                msg = f"unknown severity '{severity}' for check '{name}', expected one of {choices}"
-                raise UnknownCheckError(msg) from None
+            overrides[name] = _parse_severity(severity, name)
         return cls(overrides, strict)
 
-    def resolve(self, check: str) -> Severity:
-        info = CHECKS.get(check)
+    @property
+    def provisional(self) -> tuple[str, ...]:
+        """The overrides naming a plugin's check, sorted; nothing has confirmed them yet."""
+        return tuple(sorted(name for name in self.overrides if PLUGIN_CHECK_SEPARATOR in name))
+
+    def verify(self, registered: Mapping[str, CheckInfo]) -> None:
+        """Hold every provisional override to the checks the loaded plugins registered.
+
+        The same outcome an unknown built-in check gets, reached later: a usage error, not a
+        finding, because the mistake is on the command line and not in the project.
+        """
+        for name in self.provisional:
+            if name not in registered:
+                msg = f"unknown check '{name}': no loaded plugin registers it"
+                raise UnknownCheckError(msg)
+
+    def resolve(self, check: str, info: CheckInfo | None = None) -> Severity:
+        """The severity ``check`` is reported with; ``info`` is a plugin's entry for it."""
+        if info is None:
+            info = CHECKS.get(check)
         if info is None:
             severity = Severity.ERROR
         elif info.overridable:
@@ -357,6 +385,22 @@ class DiagnosticBag:
     def __init__(self, policy: SeverityPolicy | None = None) -> None:
         self.policy = policy or SeverityPolicy()
         self._items: list[Diagnostic] = []
+        self._registered: dict[str, CheckInfo] = {}
+
+    def register(self, checks: Iterable[CheckInfo]) -> None:
+        """Make a plugin's checks resolvable through this bag.
+
+        Through this bag and no other: ``CHECKS`` stays the registry of the built-in checks
+        and is never mutated, so two runs in one process - the language server checking two
+        projects with different plugins - cannot leak a check from one into the other.
+        """
+        for info in checks:
+            self._registered[info.identifier] = info
+
+    @property
+    def registered(self) -> Mapping[str, CheckInfo]:
+        """The plugin checks registered on this bag, by identifier."""
+        return self._registered
 
     def add(
         self,
@@ -366,7 +410,7 @@ class DiagnosticBag:
         notes: Iterable[tuple[str, Location | None]] = (),
     ) -> Diagnostic | None:
         """Record a finding; returns ``None`` when the check is ignored."""
-        severity = self.policy.resolve(check)
+        severity = self.policy.resolve(check, self._registered.get(check))
         if severity is Severity.IGNORE:
             return None
         diagnostic = Diagnostic(check, severity, message, location, tuple(notes))

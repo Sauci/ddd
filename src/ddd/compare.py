@@ -168,6 +168,46 @@ def identity(entry: Comparable) -> tuple[str, str] | None:
     return None if entry.id is None else (entry.id, "")
 
 
+def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparable]:
+    """One side's entries, keyed by identity - excluding any identity claimed more than once.
+
+    ``duplicate-id`` refuses two objects sharing an identity, but a *baseline* is read back
+    rather than re-checked, so an archived dictionary written with that check relaxed, or
+    edited by hand, can carry a collision anyway. Indexed naively the later entry would win
+    and the earlier one would fall through to a removal - an object vanishing from the report
+    because of a defect in the file it was read from, with nothing said about it.
+
+    A colliding identity is therefore no identity at all here: both entries are left out of
+    the index and pair on their names in the second pass, which is what they would have done
+    before ids existed. Degrading to the older behaviour is the safe direction; silently
+    dropping one of them is not.
+    """
+    seen: dict[tuple[str, str], Comparable] = {}
+    collided: set[tuple[str, str]] = set()
+    for entry in side.values():
+        key = identity(entry)
+        if key is None:
+            continue
+        if key in seen:
+            collided.add(key)
+        seen[key] = entry
+    return {key: entry for key, entry in seen.items() if key not in collided}
+
+
+def _states_different_identities(old: Comparable, new: Comparable) -> bool:
+    """Whether two entries' identities both exist and disagree.
+
+    One rule with two readers, which is why it is a function rather than a condition written
+    out twice. :func:`_pair` refuses to pair such a couple, and :func:`compare` reports the
+    shared spelling as ``reused-name``: the refusal and the finding are two halves of one
+    statement - that these are different objects wearing one name - and they have to agree
+    forever. An entry that states no identity is not evidence either way, so a couple where
+    either side is silent is not this case.
+    """
+    before, after = identity(old), identity(new)
+    return before is not None and after is not None and before != after
+
+
 def _pair(
     was: Mapping[str, Comparable], now: Mapping[str, Comparable]
 ) -> tuple[list[tuple[Comparable, Comparable]], list[Comparable], list[Comparable]]:
@@ -184,8 +224,8 @@ def _pair(
     are different objects, and running the whole interface comparison between two unrelated
     things would bury the ``reused-name`` that is the real finding.
     """
-    was_by_id = {key: entry for entry in was.values() if (key := identity(entry)) is not None}
-    now_by_id = {key: entry for entry in now.values() if (key := identity(entry)) is not None}
+    was_by_id = _joinable(was)
+    now_by_id = _joinable(now)
 
     paired: list[tuple[Comparable, Comparable]] = []
     old_done: set[str] = set()
@@ -199,8 +239,7 @@ def _pair(
     for name in sorted(was):
         if name in old_done or name in new_done or name not in now:
             continue
-        before, after = identity(was[name]), identity(now[name])
-        if before is not None and after is not None and before != after:
+        if _states_different_identities(was[name], now[name]):
             continue  # two different objects that happen to share a spelling
         paired.append((was[name], now[name]))
         old_done.add(name)

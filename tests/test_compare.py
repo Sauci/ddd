@@ -704,6 +704,29 @@ def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
     assert "'Inlet[2].value'" in messages(bag) and "'Sensor[2].value'" in messages(bag)
 
 
+def test_a_baseline_whose_identities_collide_drops_no_object(tree):
+    """``duplicate-id`` refuses this inside a project, but a baseline is read back rather than
+    re-checked, so an archive written with that check relaxed - or edited by hand - can carry a
+    collision anyway.
+
+    Indexed naively the later entry wins: ``B`` would pair with the candidate's ``A`` and be
+    reported as a rename, and ``A`` - present in both deliveries - would fall through to a
+    removal. Two wrong findings about objects that did not move, caused by a defect in the file
+    the baseline was read from. Excluding the collided identity leaves both entries to pair on
+    their names, and only ``B``, which really is gone, is reported.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", id="k7m2q9xr4t8w"),
+        declare("local", "B", id="k7m2q9xr4t8w"),
+    )
+    after = one_component(tree, "after", declare("local", "A", id="k7m2q9xr4t8w"))
+    bag = verdict(before, after)
+    assert checks(bag) == ["removed-unused-object"], messages(bag)
+    assert "'B' is gone" in messages(bag)
+
+
 def test_a_mixed_regime_pairs_each_object_by_what_it_carries(tree):
     """The half-migrated delivery, which is what most of a migration actually looks like.
 

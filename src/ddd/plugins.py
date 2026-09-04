@@ -118,11 +118,11 @@ class Plugin:
             seen.add(identifier)
 
 
-class PluginNotFound(Exception):  # noqa: N818 - paired with PluginInvalid, not a bare "Error"
+class PluginNotFoundError(Exception):
     """The module a project names cannot be found at all."""
 
 
-class PluginInvalid(Exception):  # noqa: N818 - paired with PluginNotFound, not a bare "Error"
+class PluginInvalidError(Exception):
     """The module was found and is not a usable plugin; the message says why."""
 
 
@@ -137,7 +137,7 @@ def load_plugin(spelling: str, base: Path) -> Plugin:
     plugin = getattr(module, "PLUGIN", None)
     if not isinstance(plugin, Plugin):
         msg = f"plugin '{spelling}' exposes no PLUGIN that is a ddd.plugins.Plugin"
-        raise PluginInvalid(msg)
+        raise PluginInvalidError(msg)
     return plugin
 
 
@@ -146,7 +146,7 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     path = (raw if raw.is_absolute() else base / raw).resolve()
     if not path.is_file():
         msg = f"plugin '{spelling}' names '{path.as_posix()}', which does not exist"
-        raise PluginNotFound(msg)
+        raise PluginNotFoundError(msg)
     # One module object per file, whatever spelling reached it: a second project naming the
     # same file gets the same PLUGIN, which is what lets the loader tell "named twice" from
     # "two plugins claiming one name".
@@ -161,7 +161,7 @@ def _load_from_path(spelling: str, base: Path) -> Any:
         spec.loader.exec_module(module)
     except Exception as error:
         msg = f"plugin '{spelling}' failed to import: {error}"
-        raise PluginInvalid(msg) from error
+        raise PluginInvalidError(msg) from error
     sys.modules[name] = module
     return module
 
@@ -174,9 +174,9 @@ def _import(spelling: str) -> Any:
         # found", the second is a plugin that exists and does not work.
         if error.name is not None and spelling.startswith(error.name):
             msg = f"plugin '{spelling}' is not an importable module"
-            raise PluginNotFound(msg) from error
+            raise PluginNotFoundError(msg) from error
         msg = f"plugin '{spelling}' failed to import: {error}"
-        raise PluginInvalid(msg) from error
+        raise PluginInvalidError(msg) from error
     except Exception as error:
         msg = f"plugin '{spelling}' failed to import: {error}"
-        raise PluginInvalid(msg) from error
+        raise PluginInvalidError(msg) from error

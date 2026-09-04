@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from ddd.diagnostics import CheckInfo, Severity
-from ddd.plugins import Plugin, PluginInvalid, PluginNotFound, load_plugin
+from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
 TAG_PLUGIN = '''
 """A plugin that tags an object; the smallest consumer of every hook."""
@@ -150,16 +150,16 @@ class TestLoading:
             sys.modules.pop("installed_tag_plugin", None)
 
     def test_a_missing_file_is_not_found(self, tmp_path: Path) -> None:
-        with pytest.raises(PluginNotFound, match="does not exist"):
+        with pytest.raises(PluginNotFoundError, match="does not exist"):
             load_plugin("nowhere.py", tmp_path)
 
     def test_a_missing_module_is_not_found(self, tmp_path: Path) -> None:
-        with pytest.raises(PluginNotFound, match="not an importable module"):
+        with pytest.raises(PluginNotFoundError, match="not an importable module"):
             load_plugin("ddd_no_such_plugin_module", tmp_path)
 
     def test_a_file_that_raises_on_import_is_invalid(self, tmp_path: Path) -> None:
         write_plugin(tmp_path, "broken.py", "raise RuntimeError('boom')\n")
-        with pytest.raises(PluginInvalid, match="failed to import: boom"):
+        with pytest.raises(PluginInvalidError, match="failed to import: boom"):
             load_plugin("broken.py", tmp_path)
 
     def test_a_module_whose_own_import_is_missing_is_invalid(
@@ -169,7 +169,7 @@ class TestLoading:
         write_plugin(tmp_path, "needs_dep.py", "import ddd_no_such_dependency\n")
         monkeypatch.syspath_prepend(str(tmp_path))
         try:
-            with pytest.raises(PluginInvalid, match="failed to import"):
+            with pytest.raises(PluginInvalidError, match="failed to import"):
                 load_plugin("needs_dep", tmp_path)
         finally:
             sys.modules.pop("needs_dep", None)
@@ -180,17 +180,17 @@ class TestLoading:
         write_plugin(tmp_path, "raises_on_import.py", "raise RuntimeError('boom')\n")
         monkeypatch.syspath_prepend(str(tmp_path))
         try:
-            with pytest.raises(PluginInvalid, match="failed to import: boom"):
+            with pytest.raises(PluginInvalidError, match="failed to import: boom"):
                 load_plugin("raises_on_import", tmp_path)
         finally:
             sys.modules.pop("raises_on_import", None)
 
     def test_a_module_without_a_plugin_object_is_invalid(self, tmp_path: Path) -> None:
         write_plugin(tmp_path, "empty.py", "X = 1\n")
-        with pytest.raises(PluginInvalid, match="exposes no PLUGIN"):
+        with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("empty.py", tmp_path)
 
     def test_a_plugin_object_of_the_wrong_type_is_invalid(self, tmp_path: Path) -> None:
         write_plugin(tmp_path, "wrong.py", "PLUGIN = object()\n")
-        with pytest.raises(PluginInvalid, match="exposes no PLUGIN"):
+        with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("wrong.py", tmp_path)

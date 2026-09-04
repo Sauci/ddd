@@ -8,7 +8,7 @@ copies it and replaces the rules with its own.
 The block on a definition is ``{"key": 0..65535, "version": >= 1}``, both required. The block
 on the project is ``{"max_key": 0..65535}``, defaulting to 65535. The layout is what
 ``changed-interface`` compares - kind, datatype or type, shape, unit and conversion - and for a
-structured variable it is the layout of its leaves.
+structured variable it is its leaves plus the declared order of its members.
 """
 
 from __future__ import annotations

@@ -549,6 +549,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `changed-condition` | the preprocessor condition changed |
 | warning | `changed-a2l` | the a2l entry changed |
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
+| warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
 
 Three details worth knowing. **Widening a limit is silent** - every value the baseline allowed

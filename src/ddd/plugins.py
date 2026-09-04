@@ -250,6 +250,36 @@ def run_check_hooks(
             _call(plugin, "check", plugin.check, CheckContext(dictionary, settings, bag, locate))
 
 
+def run_compare_hooks(
+    plugins: Sequence[Plugin],
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    locate: Callable[[str], Location | None],
+    location: Location | None,
+) -> None:
+    """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
+
+    A comparison that silently skipped a rule would be a confident "can replace" with a hole
+    in it; ``missing-plugin`` is what closes the hole, once per plugin and side.
+    """
+    loaded = {plugin.name for plugin in plugins}
+    for side, dictionary in (("baseline", baseline), ("candidate", candidate)):
+        for name in dictionary.plugins:
+            if name not in loaded:
+                bag.add(
+                    "missing-plugin",
+                    f"the {side} was produced with plugin '{name}', which this run has not "
+                    f"loaded; its comparison rules did not run",
+                    location,
+                )
+    for plugin in plugins:
+        if plugin.compare is not None:
+            settings = settings_of(plugin, candidate.extensions)
+            context = CompareContext(baseline, candidate, settings, bag, locate)
+            _call(plugin, "compare", plugin.compare, context)
+
+
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
         return function(context)

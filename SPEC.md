@@ -1166,6 +1166,10 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   objects and of enumerators alike, are not compared.
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate.
+- `missing-plugin`: the baseline or the candidate records a plugin
+  ([section 3.11](#311-plugins)) this run has not loaded, so that plugin's comparison rules
+  did not run. Once per plugin and side, because a comparison that silently skipped a rule
+  would be a confident verdict with a hole in it.
 
 Information:
 

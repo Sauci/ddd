@@ -895,3 +895,146 @@ class TestSettings:
         plugin = load_plugin(str(write_plugin(tmp_path, "strict_tag.py", source)), tmp_path)
         with pytest.raises(PluginError, match="settings of plugin 'tag' are invalid"):
             settings_of(plugin, {})
+
+
+def two_deliveries(base: Path, old_tag: str, new_tag: str) -> tuple[str, str]:
+    """Two projects naming the tag plugin, whose one object is tagged differently."""
+    write_plugin(base / "tools")
+    for name, tag in (("old", old_tag), ("new", new_tag)):
+        write_tree(
+            base,
+            {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-a.ddd.json", plugins=["tools/tag_plugin.py"]
+                ),
+                f"{name}-a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": tag}})
+                ),
+            },
+        )
+    return str(base / "old.ddd.json"), str(base / "new.ddd.json")
+
+
+def dumped(root: str, base: Path, name: str, capsys: pytest.CaptureFixture[str]) -> str:
+    assert main(["dump", root, "-W", "missing-id=ignore"]) == EXIT_OK
+    path = base / name
+    path.write_text(capsys.readouterr().out, encoding="utf-8")
+    return str(path)
+
+
+class TestTheCompareHook:
+    def test_a_candidate_project_runs_its_own_plugins(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        assert main(["compare", old, new, "-W", "missing-id=ignore"]) == EXIT_FINDINGS
+        assert "error[tag/retagged]: 'X' was retagged" in capsys.readouterr().err
+
+    def test_check_with_a_baseline_runs_them_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        arguments = ["check", new, "--baseline", old, "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "tag/retagged" in capsys.readouterr().err
+
+    def test_an_unchanged_tag_is_no_finding(self, tree: Path) -> None:
+        old, new = two_deliveries(tree, "a", "a")
+        assert main(["compare", old, new, "-W", "missing-id=ignore"]) == EXIT_OK
+
+    def test_two_dumps_without_the_plugin_say_so(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        assert main(["compare", old_dump, new_dump]) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert "warning[missing-plugin]: the baseline was produced with plugin 'tag'" in captured
+        assert "warning[missing-plugin]: the candidate was produced with plugin 'tag'" in captured
+        assert "its comparison rules did not run" in captured
+        assert "tag/retagged" not in captured
+
+    def test_the_option_loads_the_plugin_for_two_dumps(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/tag_plugin.py"]
+        assert main(arguments) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "missing-plugin" not in captured
+        assert "error[tag/retagged]: 'X' was retagged" in captured
+
+    def test_the_option_is_refused_beside_a_project_candidate(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        monkeypatch.chdir(tree)
+        arguments = [
+            "compare",
+            old,
+            new,
+            "--plugin",
+            "tools/tag_plugin.py",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_USAGE
+        assert "a project description names its own" in capsys.readouterr().err
+
+    def test_a_provisional_override_is_verified_against_the_loaded_plugins(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        monkeypatch.chdir(tree)
+        relaxed = [
+            "compare",
+            old_dump,
+            new_dump,
+            "--plugin",
+            "tools/tag_plugin.py",
+            "-W",
+            "tag/retagged=warning",
+        ]
+        assert main(relaxed) == EXIT_OK
+        assert main(["compare", old_dump, new_dump, "-W", "tag/retagged=warning"]) == EXIT_USAGE
+        assert "no loaded plugin registers it" in capsys.readouterr().err
+
+    def test_a_dump_without_the_settings_a_plugin_requires_is_the_plugins_error(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        # A dump made with plain TAG_PLUGIN always carries 'prefix' with its default filled
+        # in, so relaxing 'prefix' back to required would still find it stated. What the dump
+        # never carries is a setting the plugin only started requiring afterwards.
+        source = TAG_PLUGIN.replace('prefix: str = ""', 'prefix: str = ""\n    added: str')
+        write_plugin(tree / "tools", "strict_tag.py", source)
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/strict_tag.py"]
+        assert main(arguments) == EXIT_USAGE
+        assert "settings of plugin 'tag' are invalid" in capsys.readouterr().err
+
+    def test_a_plugin_without_a_compare_hook_is_nothing(self, tree: Path) -> None:
+        from ddd.plugins import run_compare_hooks
+
+        # analysed() always loads the tag plugin, so it must be among the loaded plugins here
+        # too - otherwise 'missing-plugin' fires and this stops testing what it says it tests.
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugins = (Plugin(name="bare"), Plugin(name="tag"))
+        run_compare_hooks(plugins, dictionary, dictionary, bag, lambda _: None, None)
+        assert checks(bag) == []

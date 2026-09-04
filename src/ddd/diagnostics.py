@@ -214,6 +214,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed"),
         _check("project-mismatch", Severity.WARNING,
                "the two sides of a comparison describe differently named projects"),
+        _check("missing-plugin", Severity.WARNING,
+               "a compared dictionary records a plugin this run has not loaded, so that "
+               "plugin's comparison rules did not run"),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
                "did not"),
     )

@@ -6,7 +6,8 @@ import argparse
 import contextlib
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +55,13 @@ from ddd.models import (
     raw_reading,
 )
 from ddd.models.schema import PublishedSchema
-from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
+from ddd.plugins import (
+    Plugin,
+    PluginInvalidError,
+    PluginNotFoundError,
+    load_plugin,
+    run_compare_hooks,
+)
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -137,6 +144,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="also write the old-to-new name pairs here, for migrating datasets and recordings",
     )
+    _add_plugin_argument(compare_parser)
     _add_policy_arguments(compare_parser)
     compare_parser.set_defaults(handler=_command_compare)
 
@@ -425,13 +433,22 @@ def _plugins_from_arguments(
 
 
 def _command_check(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
-    if dictionary is not None and args.baseline is not None:
+    if resolved is not None and args.baseline is not None:
         baseline = _read_baseline(args.baseline, bag)
         if baseline is not None:
-            compare(baseline, dictionary, bag, location=Location(args.project))
+            compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+            run_compare_hooks(
+                resolved.plugins,
+                baseline,
+                resolved.dictionary,
+                bag,
+                resolved.locate,
+                Location(args.project),
+            )
     _report(bag, args.format)
     if args.format == "json":
         return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -458,7 +475,20 @@ def _command_compare(args: argparse.Namespace) -> int:
         _report(bag, args.format)
         return EXIT_FINDINGS
 
-    paired = compare(baseline, candidate, bag, location=Location(args.candidate))
+    plugins = candidate.plugins
+    if args.plugin:
+        if candidate.from_description:
+            msg = (
+                "--plugin names the plugins of an archived dictionary; a project description "
+                "names its own"
+            )
+            raise ValueError(msg)
+        plugins = _plugins_from_arguments(args.plugin, bag)
+    bag.policy.verify(bag.registered)
+
+    location = Location(args.candidate)
+    paired = compare(baseline, candidate.dictionary, bag, location=location)
+    run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
@@ -519,7 +549,8 @@ def _listed(names: list[str]) -> str:
 
 
 def _command_generate(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
@@ -575,7 +606,8 @@ def _command_generate(args: argparse.Namespace) -> int:
 
 
 def _command_list(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
@@ -608,7 +640,8 @@ def _command_dump(args: argparse.Namespace) -> int:
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
     stderr - where they also stay out of the way of a pipe.
     """
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is not None:
         print(dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
@@ -842,17 +875,33 @@ def _command_checks(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _analyze(args: argparse.Namespace) -> tuple[DataDictionary | None, DiagnosticBag]:
+@dataclass(frozen=True, slots=True)
+class Resolved:
+    """A dictionary and what a plugin's hook needs beside it.
+
+    A description resolved on the spot keeps its plugins and can point a finding at a
+    declaration; an archived dump has neither, so its plugins come from ``--plugin`` and a
+    finding points at the file.
+    """
+
+    dictionary: DataDictionary
+    plugins: tuple[Plugin, ...]
+    locate: Callable[[str], Location | None]
+    from_description: bool
+
+
+def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
         return None, bag
     bag.policy.verify(bag.registered)
-    return analyze(workspace, bag), bag
+    dictionary = analyze(workspace, bag)
+    return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
 
 
-def _read_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
     """A dumped dictionary, or a project/component description resolved into one.
 
     Accepting both is what makes the command usable in a pipeline: the baseline is normally
@@ -862,8 +911,11 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
             return None
-        return analyze(workspace, bag)
-    return load_dictionary(path, bag)
+        return Resolved(analyze(workspace, bag), workspace.plugins, workspace.locate, True)
+    dictionary = load_dictionary(path, bag)
+    if dictionary is None:
+        return None
+    return Resolved(dictionary, (), lambda _: Location(path), False)
 
 
 def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -877,9 +929,9 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     being read at all are carried over, because those explain a comparison that cannot happen.
     """
     own = DiagnosticBag(bag.policy)
-    dictionary = _read_dictionary(path, own)
-    if dictionary is not None and not own.has_errors:
-        return dictionary
+    resolved = _read_dictionary(path, own)
+    if resolved is not None and not own.has_errors:
+        return resolved.dictionary
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(

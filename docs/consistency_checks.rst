@@ -581,6 +581,11 @@ registry can be read in one place.
      - warning
      - the two sides of the comparison describe differently named projects, so the baseline is
        probably not the predecessor of this candidate.
+   * - ``missing-plugin``
+     - warning
+     - a compared dictionary records a plugin this run has not loaded, so that plugin's
+       comparison rules did not run. Once per plugin and side, because a comparison that
+       silently skipped a rule would be a confident verdict with a hole in it.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.

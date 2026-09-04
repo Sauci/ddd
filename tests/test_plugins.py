@@ -714,6 +714,22 @@ class TestSchemaWithPlugins:
         reference = node["properties"]["extensions"]["properties"]["nest"]["properties"]["inner"]
         assert reference["$ref"] == "#/$defs/nest.Inner"
 
+    def test_a_plugin_model_may_have_a_field_named_extensions(self) -> None:
+        class Nested(BaseModel):
+            extensions: dict[str, str] = {}
+
+        class Outer(BaseModel):
+            inner: Nested
+
+        plugin = Plugin(name="weird", object_model=Outer)
+        schema = json.loads(schema_text("component", (plugin,)))
+        nested = schema["$defs"]["weird.Nested"]["properties"]["extensions"]
+        assert nested["type"] == "object"
+        assert "properties" not in nested
+        closed = schema["$defs"]["Parameter"]["properties"]["extensions"]
+        assert closed["additionalProperties"] is False
+        assert "weird" in closed["properties"]
+
     def test_the_dictionary_schema_stays_open(self, tmp_path: Path) -> None:
         plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
         assert schema_text("dictionary", (plugin,)) == schema_text("dictionary")

@@ -678,10 +678,17 @@ def _close_extensions(
     models, its nested definitions hoisted into the root ``$defs`` under the plugin's name so
     that two plugins declaring an ``Entry`` cannot collide. A plugin declaring no model for
     this kind is left out, which is what makes a block for it invalid in the editor - the
-    same answer the loader gives.
+    same answer the loader gives. The nodes to close are collected before any hoisting, so a
+    plugin's own model - however nested - may freely declare a field named ``extensions`` of
+    its own without that field being mistaken for the block it is itself contributing to.
     """
-    properties: dict[str, Any] = {}
     definitions: dict[str, Any] = schema.setdefault("$defs", {})
+    targets = [
+        node
+        for node in (schema, *definitions.values())
+        if "extensions" in node.get("properties", {})
+    ]
+    properties: dict[str, Any] = {}
     for plugin in plugins:
         model = plugin.project_model if on_project else plugin.object_model
         if model is None:
@@ -693,15 +700,14 @@ def _close_extensions(
         for name, definition in rendered.pop("$defs", {}).items():
             definitions[f"{plugin.name}.{name}"] = definition
         properties[plugin.name] = rendered
-    for node in (schema, *list(definitions.values())):
-        extensions = node.get("properties", {}).get("extensions")
-        if extensions is not None:
-            node["properties"]["extensions"] = {
-                "type": "object",
-                "description": extensions.get("description", ""),
-                "properties": properties,
-                "additionalProperties": False,
-            }
+    for node in targets:
+        extensions = node["properties"]["extensions"]
+        node["properties"]["extensions"] = {
+            "type": "object",
+            "description": extensions.get("description", ""),
+            "properties": properties,
+            "additionalProperties": False,
+        }
 
 
 def _command_lsp(args: argparse.Namespace) -> int:

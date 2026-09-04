@@ -8,11 +8,11 @@
 ## 1 What this adds
 
 DDD is generic on purpose: it knows what a global variable is, who produces it, who reads it
-and what the generated c and a2l need to say about it, and nothing else. A project that runs
-on a target with a non-volatile memory manager needs one more thing per variable - a 16 bit
-storage id and a layout version, with a rule that the version moves whenever the layout does -
-and that thing is true of that project and of no other. Building it into DDD would make every
-project carry keys it cannot use, and the next project's addition would do the same again.
+and what the generated c and a2l need to say about it, and nothing else. A project regularly
+needs one more thing per variable - a key for a mechanism of its own target, a version tied to
+the layout, a tag another tool reads - and that thing is true of that project and of no other.
+Building it into DDD would make every project carry keys it cannot use, and the next project's
+addition would do the same again.
 
 This design lets a project extend DDD with what only it needs, without DDD learning it:
 
@@ -25,14 +25,14 @@ This design lets a project extend DDD with what only it needs, without DDD learn
 - the dictionary carries every block in resolved form and records which plugins interpreted
   it, so an archived dump keeps every question a plugin can ask answerable across releases.
 
-The mechanism is the deliverable. The first plugin, for non-volatile memory, ships as an
-example so that the api has a real consumer the test suite exercises, and the documentation
-describes the api rather than that plugin.
+The mechanism is the deliverable. One plugin ships as an example so that the api has a real
+consumer the test suite exercises, and the documentation describes the api rather than that
+plugin.
 
 ## 2 Out of scope
 
 - **Blocks on components, type members, sections, rasters, units and constants.** A
-  definition and the project are the two places the case in hand needs; every other model
+  definition and the project are the two places the first plugins need; every other model
   stays closed and opens when a plugin needs it, one at a time ([section 14](#14-deferred)).
 - **Blocks stated by a consumer.** Only a producing declaration may state one
   ([section 4.2](#42-who-may-state-a-block)), so there is never a second block for one object
@@ -61,10 +61,10 @@ dataclass `ddd.plugins.Plugin`:
 from ddd.plugins import Plugin, CheckContext, CompareContext, GenerateContext
 
 PLUGIN = Plugin(
-    name="nvm",
-    object_model=NvmEntry,          # pydantic model of the block on a definition, or None
-    project_model=NvmSettings,      # pydantic model of the block on the project, or None
-    checks=(...),                   # CheckInfo entries, every identifier prefixed "nvm/"
+    name="layout",
+    object_model=Entry,             # pydantic model of the block on a definition, or None
+    project_model=Settings,         # pydantic model of the block on the project, or None
+    checks=(...),                   # CheckInfo entries, every identifier prefixed "layout/"
     check=check,                    # Callable[[CheckContext], None] or None
     compare=compare,                # Callable[[CompareContext], None] or None
     backend=backend,                # Callable[[GenerateContext], Backend] or None
@@ -72,7 +72,7 @@ PLUGIN = Plugin(
 ```
 
 `name` matches `^[a-z][a-z0-9_]*$` and is the extension key: the block of this plugin is
-`"extensions": {"nvm": {...}}`. Every hook is optional, and so is each model; a plugin with
+`"extensions": {"layout": {...}}`. Every hook is optional, and so is each model; a plugin with
 neither model states no block and only contributes hooks.
 
 The models are ordinary pydantic models, which is what lets DDD validate a block without
@@ -98,7 +98,7 @@ plugin that declares no project model. A project model with a required field and
 the project is a `schema` finding at `project.extensions.<name>` saying the plugin requires
 settings.
 
-`bag` is the ordinary `DiagnosticBag`; a hook reports with `bag.add("nvm/duplicate-id",
+`bag` is the ordinary `DiagnosticBag`; a hook reports with `bag.add("layout/duplicate-key",
 message, location, notes)`, exactly as the built-in checks do, and the severity policy of the
 run applies ([section 6.1](#61-registration-and-policy)).
 
@@ -146,8 +146,8 @@ The project file gains two keys:
   "project": {
     "name": "engine",
     "includes": ["components/*.ddd.json"],
-    "plugins": ["tools/ddd_nvm.py"],
-    "extensions": { "nvm": { "max_id": 4095 } }
+    "plugins": ["tools/ddd_layout.py"],
+    "extensions": { "layout": { "max_key": 4095 } }
   }
 }
 ```
@@ -166,8 +166,7 @@ on an instance of a declared type, which is a definition like any other:
   "scope": "output",
   "kind": "parameter",
   "datatype": "uint32",
-  "section": ".nvm",
-  "extensions": { "nvm": { "id": 12, "version": 3 } }
+  "extensions": { "layout": { "key": 12, "version": 3 } }
 }
 ```
 
@@ -198,7 +197,7 @@ sub-project that names its plugin would otherwise be refused for a block that is
 become valid.
 
 A block that fails its model is a `schema` finding, at the pointer of the failing key inside
-the block - `component.interface[3].definition.extensions.nvm.id` - reported through the same
+the block - `component.interface[3].definition.extensions.layout.key` - reported through the same
 path pydantic errors on the built-in keys take, so that an editor underlines the value and not
 the definition.
 
@@ -220,9 +219,9 @@ counted - and because two dumps then compare on one shape even when a plugin has
 a field with a default. A block carried under a relaxed `unknown-extension` is the one
 exception, and is carried as written because nothing can resolve it.
 
-A leaf carries no block, the way it carries no `id` of its own. The case in hand stamps a
-structured variable as a whole - one storage id, one version - and a plugin that needs the
-block of a leaf's instance finds it under `instance`.
+A leaf carries no block, the way it carries no `id` of its own. A block stamps a structured
+variable as a whole, and a plugin that needs the block of a leaf's instance finds it under
+`instance`.
 
 `DataDictionary.plugins` records the names of the plugins in play, sorted, so that a reader
 of a dump knows what interpreted it, and so that a comparison can say when a rule did not run
@@ -245,7 +244,7 @@ needed for that. The example templates are untouched.
 
 A plugin's `CheckInfo` entries are registered on the diagnostic bag when the plugin is
 loaded, and from then on `bag.add` resolves them as it resolves a built-in check: default
-severity, `-W nvm/version-not-bumped=warning`, `--strict`, `ignore`. `CHECKS` stays the
+severity, `-W layout/version-not-bumped=warning`, `--strict`, `ignore`. `CHECKS` stays the
 registry of the built-in checks and is not mutated; the bag carries the plugin's entries next
 to it, so two runs in one process - the language server checking two projects with different
 plugins - cannot leak a check from one into the other.
@@ -257,7 +256,7 @@ a usage error, the same outcome an unknown built-in check gets today, reported t
 
 A plugin check identifier is `<name>/<check>`, where `<check>` follows the grammar of the
 built-in identifiers. The prefix is what makes the namespace: a plugin cannot shadow a
-built-in check and two plugins cannot collide, and a policy file that targets `nvm/...` reads
+built-in check and two plugins cannot collide, and a policy file that targets `layout/...` reads
 as what it is.
 
 ### 6.2 When the hooks run
@@ -289,7 +288,7 @@ why the dictionary carries it.
 Either dictionary may record a plugin that this run has not loaded - a dump made with a plugin
 the project has since dropped, or a run over two dumps without `--plugin`. That is
 `missing-plugin`, a warning, once per plugin and side: `the baseline was produced with plugin
-'nvm', which this run has not loaded; its comparison rules did not run`. A comparison that
+'layout', which this run has not loaded; its comparison rules did not run`. A comparison that
 silently skipped a rule would be a confident "can replace" with a hole in it, and the finding
 is what closes the hole.
 
@@ -306,7 +305,7 @@ The backend runs under the existing `render` and `write`, so two artefacts claim
 are refused between a plugin and the c backend exactly as between the c and a2l backends, and
 `--dry-run` and the write statuses behave the same. The artefact names of a run are known
 only once the project is read, so the plugin artefacts are validated after argument parsing:
-`ddd generate nvm` on a project naming no such plugin is a usage error naming the plugins the
+`ddd generate layout` on a project naming no such plugin is a usage error naming the plugins the
 project does have.
 
 ## 9 Tool interface
@@ -339,44 +338,30 @@ formats, with the same columns.
 
 ## 10 The example plugin
 
-`examples/plugins/ddd_nvm.py`, name `nvm`, and a project under `examples/nvm/` that names it,
-which the tests load. It exists to exercise every part of the api with a real rule set; the
-documentation points at it and does not describe its rules.
+`examples/plugins/ddd_layout.py`, name `layout`, and a project under `examples/layout/` that
+names it, which the tests load. It exists to exercise every part of the api with a rule set
+small enough to read in one sitting; the documentation points at it and does not describe its
+rules.
 
-### 10.1 Its blocks
+It stamps an object with a `key` and a `version` and ties the version to the layout: the
+version has to move whenever the layout of the object does, and must not move otherwise. On a
+definition the block is `{"key": 0..65535, "version": >= 1}`, both required, extra keys
+forbidden; on the project it is `{"max_key": 0..65535}`, defaulting to 65535, which is what
+exercises settings built from `{}`. The layout is kind, datatype or type, shape, unit and
+conversion, the set `changed-interface` compares, and for a structured variable it is the
+layout of its leaves.
 
-On a definition, `{"id": 0..65535, "version": >= 1}`, both required, extra keys forbidden. On
-the project, `{"max_id": 0..65535}`, defaulting to 65535, so that a project reserves the top
-of the range for its memory manager. The default is what exercises settings built from `{}`.
+Its checks, within one dictionary: `layout/duplicate-key` and `layout/key-out-of-range`, both
+errors. Between two deliveries, entries paired on the key and objects paired on the DDD `id`
+where both sides state one: `layout/version-not-bumped` and `layout/reused-key`, errors;
+`layout/key-changed`, error, one object under a different key; `layout/needless-version` and
+`layout/removed-entry`, warnings. Each is the smallest rule that exercises one thing the api
+offers - the settings, the in-project check, the pairing, the locator, the severity policy.
 
-### 10.2 Its checks
-
-Within one dictionary:
-
-- `nvm/duplicate-id`, error: two objects carry one storage id.
-- `nvm/id-out-of-range`, error: a storage id is above `max_id`.
-
-Between two deliveries, entries paired on the storage id, and objects paired on the DDD `id`
-where both sides state one:
-
-- `nvm/version-not-bumped`, error: same storage id on both sides, the layout changed, and the
-  version did not increase. The layout is kind, datatype or type, shape, unit and conversion,
-  the set `changed-interface` compares; for a structured variable it is the layout of its
-  leaves.
-- `nvm/needless-version`, warning: the version changed while the layout did not.
-- `nvm/reused-id`, error: a storage id on both sides now belongs to a different object, told
-  apart by the DDD `id` when both sides state one and by name otherwise.
-- `nvm/id-changed`, error: one object, paired by DDD `id`, carries a different storage id, so
-  its stored entry would be orphaned and a fresh one created.
-- `nvm/removed-entry`, warning: a storage id of the baseline is gone, and the object that
-  carried it was not reported as `nvm/id-changed`.
-
-### 10.3 Its backend
-
-`ddd generate nvm -o DIR` writes `ddd_nvm.h`, one table entry per stamped object sorted by
-storage id - id, version, size and symbol - rendered by plain string building. The point is to
-exercise the hook, not to propose a c style, and the file it writes is one the example c
-templates do not, so the path collision the tests provoke uses a template added for that test.
+Its backend, `ddd generate layout -o DIR`, writes `ddd_layout.h`, one line per stamped object
+sorted by key, rendered by plain string building: the point is to exercise the hook, not to
+propose a c style. The file is one the example c templates do not write, so the path collision
+the tests provoke uses a template added for that test.
 
 ## 11 Testing
 
@@ -393,7 +378,7 @@ templates do not, so the path collision the tests provoke uses a template added 
   side; `ddd generate <name>`, its path collision with the c backend, and the usage error for
   a name no plugin provides; `ddd schema --plugin` merging and closing the property;
   `ddd checks --plugin`.
-- `tests/test_nvm_plugin.py` - the rule matrix of [section 10.2](#102-its-checks), each rule
+- `tests/test_example_plugin.py` - the rules of [section 10](#10-the-example-plugin), each
   with the case that fires it and the nearest case that does not, and the header the backend
   writes.
 - `tests/test_backends.py` - the layering gains a row: `plugins.py` imports no backend, no
@@ -421,7 +406,7 @@ templates do not, so the path collision the tests provoke uses a template added 
   and the three contexts field by field, the check identifier convention, loading and its
   failures, the resolved form in the dictionary, the comparison over dumps and
   `missing-plugin`, publishing schemas for a project's plugins, and a pointer at
-  `examples/plugins/ddd_nvm.py` as the worked example. It documents the api and not the
+  `examples/plugins/ddd_layout.py` as the worked example. It documents the api and not the
   example's rules.
 - `docs/data_dictionary.rst` - `extensions`, `plugins`, format 7.
 - `docs/command_line_interface.rst` - `--plugin` on `schema`, `checks` and `compare`;
@@ -441,7 +426,7 @@ templates do not, so the path collision the tests provoke uses a template added 
 2. **The hooks** - registration and the provisional policy, the check hook inside `analyze`,
    the compare hook with `--plugin` and `missing-plugin`, `ddd generate <name>`,
    `ddd checks --plugin`.
-3. **The example and the page** - `ddd_nvm.py`, `examples/nvm/`, its tests, `docs/plugins.rst`
+3. **The example and the page** - `ddd_layout.py`, `examples/layout/`, its tests, `docs/plugins.rst`
    and the rest of [section 12](#12-documentation).
 
 ## 14 Deferred
@@ -454,7 +439,7 @@ templates do not, so the path collision the tests provoke uses a template added 
   object - a rate, a staleness bound - needs a block on an `input` and an agreement rule
   beside `definition-mismatch`. Wait for the plugin.
 - **A block on a leaf.** The instance carries one for the whole structure; a per-member
-  stamp waits for a memory manager that stores members separately.
+  stamp waits for a plugin that needs one.
 - **Entry point discovery.** Naming a plugin is deliberate ([section 2](#2-out-of-scope)); an
   installed plugin that acts on every project without being named is a different design.
 - **Plugin backends under `all`.** Asked for by name until a project wants them in the

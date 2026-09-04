@@ -1,0 +1,46 @@
+{
+  "$schema": "../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Storage",
+    "description": "Produces the values the plugin stamps; one of them is deliberately not stamped",
+    "interface": [
+      {
+        "scope": "local",
+        "definition": {
+          "name": "EngineHours",
+          "kind": "parameter",
+          "description": "Hours the engine has run, kept across power cycles",
+          "datatype": "uint32",
+          "unit": "h",
+          "conversion": { "factor": 0.1 },
+          "volatile": false,
+          "extensions": { "layout": { "key": 12, "version": 3 } }
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "ServiceCount",
+          "kind": "parameter",
+          "description": "Services performed so far",
+          "datatype": "uint16",
+          "conversion": { "kind": "identity" },
+          "volatile": false,
+          "extensions": { "layout": { "key": 13, "version": 1 } }
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "CoolantTemperature",
+          "kind": "measurement",
+          "description": "Not stamped: a live value the plugin has nothing to say about",
+          "datatype": "sint16",
+          "unit": "degC",
+          "conversion": { "factor": 0.1 },
+          "volatile": true
+        }
+      }
+    ]
+  }
+}

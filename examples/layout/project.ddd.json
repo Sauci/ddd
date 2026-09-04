@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/ddd_project.schema.json",
+  "project": {
+    "name": "LayoutDevice",
+    "description": "A project extended by the example plugin, which stamps its objects with a key and a version",
+    "includes": ["storage.ddd.json"],
+    "plugins": ["../plugins/ddd_layout.py"],
+    "extensions": { "layout": { "max_key": 4095 } }
+  }
+}

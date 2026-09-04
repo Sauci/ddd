@@ -47,6 +47,19 @@ class Project(BaseModel):
     finding, the way a second file declaring a section is refused.
     """
 
+    def __hash__(self) -> int:
+        """A frozen model hashes by default from all its fields, and ``extensions`` may hold
+        whatever a plugin's settings are, which pydantic cannot hash - the same gap
+        :meth:`~ddd.models.objects.DataObject.__hash__` closes, for the same reason.
+
+        Leaving it out of the hash costs nothing a caller would notice: two projects equal in
+        every field, ``extensions`` included, still hash equal, since equality is coarser than
+        this - the only thing a hash has to promise.
+        """
+        return hash(
+            (type(self), *(value for key, value in self.__dict__.items() if key != "extensions"))
+        )
+
 
 class ProjectFile(FileRoot):
     """Root object of a ``*.ddd.json`` project description.

@@ -282,6 +282,17 @@ class TestTheKeys:
         with pytest.raises(ValidationError):
             ProjectFile.model_validate(project("P", plugins=[""]))
 
+    def test_a_project_hashes_despite_its_settings_dict(self) -> None:
+        loaded = ProjectFile.model_validate(
+            project("P", extensions={"tag": {"prefix": "p"}})
+        ).project
+        hash(loaded)  # must not raise
+        again = ProjectFile.model_validate(
+            project("P", extensions={"tag": {"prefix": "p"}})
+        ).project
+        assert loaded == again
+        assert hash(loaded) == hash(again)
+
 
 class TestThePolicy:
     """A plugin's checks are known only once the project is read; the policy is parsed first."""

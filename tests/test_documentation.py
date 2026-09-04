@@ -961,3 +961,53 @@ class TestPublishedDocumentation:
         assert "git -C site push origin gh-pages" in DOCS_WORKFLOW, (
             "the workflow no longer publishes by pushing the branch Pages serves"
         )
+
+
+class TestPreCommitHook:
+    """The hook definition this repository publishes for projects that use ddd.
+
+    It is consumed by *other* repositories - they name this one in their
+    ``.pre-commit-config.yaml`` and get the hook - so nothing here exercises it end to end.
+    What is checked is the part that would rot silently: an entry naming a command or a flag
+    this tool no longer has fails in somebody else's commit, weeks later, with an error that
+    points at their config rather than at this file.
+    """
+
+    def hook(self) -> dict[str, str]:
+        """The single hook's fields, read without a yaml parser.
+
+        The file is a handful of ``key: value`` lines under one list entry, and adding a yaml
+        dependency to the test requirements to read it would be a larger commitment than the
+        thing being read - the dev requirements already argue against a dependency a test can
+        skip on.
+        """
+        text = (ROOT / ".pre-commit-hooks.yaml").read_text(encoding="utf-8")
+        fields = {}
+        for line in text.splitlines():
+            stripped = line.lstrip("- ").strip()
+            if ": " in stripped and not stripped.startswith("#"):
+                key, value = stripped.split(": ", 1)
+                fields[key.strip()] = value.strip().strip("'\"")
+        return fields
+
+    def test_the_entry_names_a_command_this_tool_offers(self) -> None:
+        entry = self.hook()["entry"].split()
+        assert entry[0] == "ddd"
+        # Parsed by the real parser: a renamed command or a dropped flag fails here rather
+        # than in a consuming project's commit hook.
+        parsed = _build_parser().parse_args([*entry[1:], "a.ddd.json"])
+        assert parsed.handler is not None
+
+    def test_it_is_offered_the_files_it_can_act_on(self) -> None:
+        pattern = self.hook()["files"]
+        assert re.search(pattern, "components/controller.ddd.json")
+        assert not re.search(pattern, "src/main.c")
+        assert not re.search(pattern, "package.json")
+
+    def test_it_installs_this_package(self) -> None:
+        """``language: python`` is what makes pre-commit build the hook from this repository.
+
+        Any other language would have it look for a ``ddd`` already on the consuming project's
+        path, which is the one thing pinning the hook to a ``rev`` is meant to avoid.
+        """
+        assert self.hook()["language"] == "python"

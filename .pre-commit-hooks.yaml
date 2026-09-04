@@ -1,0 +1,15 @@
+# Hooks this repository publishes for projects that use ddd. Nothing here runs against ddd
+# itself: a consuming project names this repository in its own .pre-commit-config.yaml and
+# gets the hook. See the pre-commit section of docs/build_integration.rst for what to write.
+#
+# The hook writes an id into every producing declaration that has none, and pre-commit then
+# fails the commit because files changed on disk. That is the point rather than a limitation:
+# the ids land in the author's working tree to be read and staged, instead of arriving in a
+# commit nobody looked at. It is the same bargain the command itself is built on - the tool
+# proposes, the diff is reviewed, a checkout undoes it.
+- id: ddd-id
+  name: stamp ddd object identities
+  description: give every producing declaration an id, so that a later rename can be seen as one
+  entry: ddd id --assign
+  language: python
+  files: \.ddd\.json$

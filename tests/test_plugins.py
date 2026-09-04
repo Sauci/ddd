@@ -174,6 +174,19 @@ class TestLoading:
         finally:
             sys.modules.pop("needs_dep", None)
 
+    def test_a_module_whose_name_extends_a_missing_dependencys_name_is_invalid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """'reqplugin' importing missing 'req' is not 'reqplugin' itself being missing: a raw
+        prefix match would say so, but the dotted-path boundary does not."""
+        write_plugin(tmp_path, "reqplugin.py", "import req\n")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            with pytest.raises(PluginInvalidError, match="failed to import"):
+                load_plugin("reqplugin", tmp_path)
+        finally:
+            sys.modules.pop("reqplugin", None)
+
     def test_a_module_that_raises_on_import_is_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

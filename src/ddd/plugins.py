@@ -171,8 +171,11 @@ def _import(spelling: str) -> Any:
         return importlib.import_module(spelling)
     except ModuleNotFoundError as error:
         # The module itself is missing, or something it imports is: the first is "not
-        # found", the second is a plugin that exists and does not work.
-        if error.name is not None and spelling.startswith(error.name):
+        # found", the second is a plugin that exists and does not work. The boundary is the
+        # dotted path, not a raw prefix - "reqplugin" must not match a missing "req".
+        if error.name is not None and (
+            spelling == error.name or spelling.startswith(error.name + ".")
+        ):
             msg = f"plugin '{spelling}' is not an importable module"
             raise PluginNotFoundError(msg) from error
         msg = f"plugin '{spelling}' failed to import: {error}"

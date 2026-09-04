@@ -1596,15 +1596,25 @@ In `docs/faq.rst`, a new entry in that file's existing question style:
 What happened to this variable?
 -------------------------------
 
-An id is committed by the same change that renames the object, so the repository answers it:
+An id, once written, is never rewritten, so it is still there, under whatever name and in
+whatever file, after a rename or a move:
+
+.. code-block:: bash
+
+   git grep k7m2q9xr4t8w -- '*.ddd.json'
+
+``git log -S`` finds the commit that first wrote the id, and a commit where the declaration
+was added to or removed from a file:
 
 .. code-block:: bash
 
    git log -S k7m2q9xr4t8w --oneline -- '*.ddd.json'
 
-Every commit that touched that object, across renames, file moves, and moves from one
-component to another. DDD has no command for it and needs none - it reads no git, and the
-line above is already exact.
+Not a rename: renaming an object edits its ``name``, never its ``id`` line, so the count
+``-S`` looks for does not change and the rename commit is invisible to it. What an object used
+to be called is what ``ddd compare --renames`` already wrote down in ``renames.json`` when the
+rename happened - the record to keep, rather than one to reconstruct from git. DDD has no
+command wrapping any of this, and needs none: it reads no git.
 ```
 
 - [ ] **Step 3: Write the changelog entry**

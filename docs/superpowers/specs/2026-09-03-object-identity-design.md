@@ -278,16 +278,31 @@ belong to the project - so this is a template change DDD is free to make.
 
 ## 9 History in git
 
-An immutable id in a committed file makes one object's history exact, across renames, file
-moves, and moves from one component to another:
+An earlier draft of this section claimed that an immutable id makes one object's history exact
+across a rename, with `git log -S`. That was verified false, twice and independently, in
+freshly built scratch repositories. `-S` is the pickaxe: it shows a commit only when the
+*number of occurrences* of a string changes. A rename edits `name` in place and never touches
+the `id` line, so the count does not move, and a plain `git mv` is invisible to it too, under
+git's default rename detection.
+
+What holds is narrower, and held from the start: nothing rewrites the id, so it is still
+there, under whatever name and in whatever file, after a rename or a move. That is what the
+rest of this section rests on, not `-S`:
 
 ```bash
+git grep k7m2q9xr4t8w -- '*.ddd.json'
 git log -S k7m2q9xr4t8w --oneline -- '*.ddd.json'
 ```
 
-This is documentation, in the comparing-deliveries page and the faq. No command wraps it: a
-`ddd history` would pull git into a tool whose dependencies are pydantic and jinja2, to save
-typing a line that is already exact.
+The first finds where the object lives now, whatever it is called. The second finds the
+commit that first wrote the id, and a commit where the declaration was added to or removed
+from a file - not a rename, and not a plain `git mv`. What a rename actually was is not a git
+incantation but `renames.json`, written by `ddd compare --renames`, and the `renamed-object`
+finding it comes with.
+
+This is documentation, in the faq. No command wraps it: a `ddd history` would pull git into a
+tool whose dependencies are pydantic and jinja2, to save typing two lines git already gives
+you.
 
 ## 10 The dictionary
 

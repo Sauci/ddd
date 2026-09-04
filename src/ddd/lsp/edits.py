@@ -41,6 +41,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
 
+from ddd.identity import insertions
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.models import definition_keys
@@ -88,6 +89,16 @@ to ask - which is the wrong way round for a fix.
 """
 
 
+UNIDENTIFIED: Final = frozenset({"missing-id"})
+"""The finding the identity action settles, so a client can put its lightbulb on the squiggle.
+
+Its own set rather than a member of :data:`RECONCILED`, because it settles a different kind of
+thing: those actions carry one declaration's answer to another, while this one invents a value
+no declaration has. Sharing the set would offer every reconcile action as a fix for a missing
+id, and this one as a fix for a disagreement it does nothing about.
+"""
+
+
 _WITHIN_DEFINITION: Final = re.compile(r"^component\.interface\[\d+\]\.definition")
 """Anywhere inside one definition, however deep - the prefix names the definition."""
 
@@ -101,6 +112,41 @@ def _keys_of(document: Document, definition: str) -> tuple[frozenset[str], froze
     """
     kind = document.value_at(f"{definition}.kind")
     return definition_keys(kind) if isinstance(kind, str) else (frozenset(), frozenset())
+
+
+def _give_an_identity(
+    path: Path, document: Document, definition: str, name: str
+) -> dict[str, Any] | None:
+    """Offer this declaration an identity, when it produces the object and states none.
+
+    The same answer ``ddd id --assign`` would give, decided in the same place: which
+    declarations want one, and where the key goes, are :mod:`ddd.identity`'s to say, so the
+    editor and the command cannot drift about it. Only the applying differs - the command
+    rewrites the file, this returns an edit and lets the client do it.
+    """
+    wanted = next(
+        (entry for entry in insertions(document) if entry.pointer == f"{definition}.name"), None
+    )
+    if wanted is None:
+        return None
+    # Both readings come from the same recorded spans, and `insertions` only yields a pointer
+    # whose span it already found - so this one is there. Asserted rather than guarded, the way
+    # `DataObject.storage` narrows a union it knows: a branch that cannot be taken is a branch
+    # no test can cover and no reader can trust.
+    span = document.value_range_of(wanted.pointer)
+    assert span is not None
+    # A zero width range at the end of the name's value: the key is inserted after it, and
+    # nothing already written is replaced.
+    at = span["end"]
+    return {
+        "title": f"Give '{name}' an id",
+        "kind": QUICK_FIX,
+        "edit": {
+            "changes": {
+                path.as_uri(): [{"range": {"start": at, "end": at}, "newText": wanted.text}]
+            }
+        },
+    }
 
 
 def actions(
@@ -124,6 +170,12 @@ def actions(
 
     Nothing at all when there is nothing to change: a fix that does nothing teaches a reader
     to stop reading the lightbulb.
+
+    The reconcile actions are offered whether or not the client sent a finding with its
+    request; the identity one is not. It is offered only where ``missing-id`` was actually
+    reported, which is what keeps it inside the project's own severity policy: a project that
+    has silenced the check with ``-W missing-id=ignore`` has said it is not adopting ids yet,
+    and an editor that goes on offering them anyway is arguing with a decision already made.
     """
     within = _WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -166,6 +218,16 @@ def actions(
         for action in offered:
             action["diagnostics"] = settles
         offered[0]["isPreferred"] = True
+
+    # Appended rather than folded into the loop above: it settles its own finding and answers
+    # a different question, so it must not inherit the reconcile actions' diagnostics or take
+    # the preferred slot from a fix the reader actually asked for.
+    unstamped = [entry for entry in reported if entry.get("code") in UNIDENTIFIED]
+    if unstamped:
+        identity = _give_an_identity(path, document, definition, name)
+        if identity is not None:
+            identity["diagnostics"] = unstamped
+            offered.append(identity)
     return offered
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -1766,7 +1767,7 @@ class TestPropagating:
         cache: dict[Path, Document] = {}
         path = tmp_path / "b.ddd.json"
         offered = actions(
-            built, path, read(path, cache), "component.interface[0].definition", cache
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         titles = [entry["title"] for entry in offered]
         assert titles == ["Use the volatile declared in a"]
@@ -3032,3 +3033,83 @@ class TestServer:
         monkeypatch.setattr("sys.stdin", Stream(io.BytesIO()))
         monkeypatch.setattr("sys.stdout", Stream(io.BytesIO()))
         assert main(["lsp", "-b", str(tmp_path)]) == EXIT_OK
+
+
+UNSTAMPED = [{"code": "missing-id", "source": "ddd", "message": "has no 'id'"}]
+
+
+class TestOfferingAnIdentity:
+    """The code action behind ``missing-id``: give this object an id, here, now.
+
+    ``ddd id --assign`` stamps a whole file from the command line. In an editor the useful
+    grain is one declaration - the one whose squiggle you are looking at - so the action is
+    offered per declaration and carries the finding it settles.
+    """
+
+    def built(self, tmp_path: Path, **files: Any) -> Any:
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+
+    def test_a_producing_declaration_without_an_id_is_offered_one(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import actions
+        from ddd.models.common import OBJECT_ID_PATTERN
+
+        built = self.built(tmp_path, **{"a.ddd.json": component("A", declare("local", "Speed"))})
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
+        )
+        (giving,) = [entry for entry in offered if "id" in entry["title"]]
+        (edits,) = giving["edit"]["changes"].values()
+        written = json.loads(apply_edits(path, edits))
+        stamped = written["component"]["interface"][0]["definition"]["id"]
+        assert re.fullmatch(OBJECT_ID_PATTERN, stamped)
+
+    def test_the_offer_carries_the_finding_it_settles(self, tmp_path: Path) -> None:
+        """Which is what puts the lightbulb on the squiggle rather than leaving it to be found."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(tmp_path, **{"a.ddd.json": component("A", declare("local", "Speed"))})
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        reported = [{"code": "missing-id", "source": "ddd", "message": "has no 'id'"}]
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, reported
+        )
+        (giving,) = [entry for entry in offered if "id" in entry["title"]]
+        assert [entry["code"] for entry in giving["diagnostics"]] == ["missing-id"]
+
+    def test_a_declaration_that_already_states_one_is_offered_nothing(self, tmp_path: Path) -> None:
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{"a.ddd.json": component("A", declare("local", "Speed", id="k7m2q9xr4t8w"))},
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
+        )
+        assert [entry for entry in offered if "id" in entry["title"]] == []
+
+    def test_a_consumer_is_offered_nothing(self, tmp_path: Path) -> None:
+        """An identity is the producer's to state; consumer-identity refuses one here."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", id="k7m2q9xr4t8w")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
+        )
+        assert [entry for entry in offered if "id" in entry["title"]] == []

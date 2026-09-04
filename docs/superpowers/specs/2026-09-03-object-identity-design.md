@@ -384,9 +384,8 @@ The implementation plan covered 1 to 3, which is the whole of what shipped.
 - **Renames across a merge of two projects.** Two projects assembled into one image may each
   carry an object with the same id if one was copied from the other. `duplicate-id` reports it,
   which is right, but says nothing about which is the original. Wait for the case to occur.
-- **A language server code action for `missing-id`.** Section 4.3 specified that the language
-  server would offer the same thing as `ddd id --assign` as a code action on a declaration with
-  no id. Specified and deferred rather than built: it is substantial unplanned work for a gap
-  the cli command already closes, and amending the design in flight rather than building past
-  it unplanned is the established pattern on this branch - sections 9 and 10 were both amended
-  the same way.
+- ~~**A language server code action for `missing-id`.**~~ Deferred here when this design
+  shipped, and built afterwards: the server offers the fix on a declaration with no id, writing
+  what `ddd id --assign` writes and reading where it goes from the same place, so the two cannot
+  drift. It is offered only where `missing-id` is reported, which keeps it inside the project's
+  own severity policy. See `docs/editor_integration.rst`.

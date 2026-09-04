@@ -67,11 +67,10 @@ def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
     """Write a mapping of relative path -> json document (or raw string).
 
     ``newline=""`` so a fixture ends its lines the way this file spells them, rather than the
-    way the platform would. Without it ``write_text`` translates every ``
-`` to ``os.linesep``,
-    so on Windows every fixture arrives as crlf - which silently weakens a test that means to
-    write an lf file and check something preserves it, because the file was never lf to begin
-    with.
+    way the platform would. Without it ``write_text`` translates every line ending to
+    ``os.linesep``, so on Windows every fixture arrives as crlf - which silently weakens a
+    test that means to write an lf file and check something preserves it, because the file was
+    never lf to begin with.
     """
     for relative, content in files.items():
         path = base / relative

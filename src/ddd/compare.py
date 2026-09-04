@@ -332,8 +332,9 @@ def compare(
             notes=notes,
         )
 
+    candidates = _by_discriminators(added)
     for old in removed:
-        _report_removal(old, bag, location, added, was, now)
+        _report_removal(old, bag, location, candidates, was, now)
 
     for new in added:
         bag.add(
@@ -346,9 +347,33 @@ def compare(
     return paired
 
 
+def _by_discriminators(
+    added: Sequence[Comparable],
+) -> dict[tuple[str, str, str], list[Comparable]]:
+    """The additions grouped by the three cheapest fields a candidate must agree on.
+
+    This is a filter, not a complexity fix, and should not be read as one.
+    :func:`_lost_identity_note` asks of every removal which additions are identical to it, and
+    answering that by walking every addition for every removal is quadratic - each step running
+    two field tables and a referent comparison. ``kind``, ``datatype`` and ``unit`` are compared
+    fields, so an addition that disagrees on any of them can never be a candidate: grouping on
+    them lets a removal look only at its own bucket. The exact check still decides; this only
+    stops it being asked a question whose answer is already known.
+
+    A delivery whose objects all share those three lands in one bucket and gains nothing. That
+    is the honest limit of it, and it is left there: no such delivery has been seen, the note is
+    advisory, and encoding every compared value into a key instead would have to survive ``init``
+    being an unhashable nested list and a field table that is chosen per pair.
+    """
+    buckets: dict[tuple[str, str, str], list[Comparable]] = {}
+    for new in added:
+        buckets.setdefault((new.kind.value, new.datatype.value, new.unit), []).append(new)
+    return buckets
+
+
 def _lost_identity_note(
     old: Comparable,
-    added: Sequence[Comparable],
+    candidates: Sequence[Comparable],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
 ) -> list[tuple[str, Location | None]]:
@@ -375,7 +400,7 @@ def _lost_identity_note(
     """
     same = [
         new
-        for new in added
+        for new in candidates
         if new.name != old.name
         and not differing(_interface_fields(old, new), old, new)
         and not differing(_STORAGE_FIELDS, old, new)
@@ -396,11 +421,12 @@ def _report_removal(
     old: Comparable,
     bag: DiagnosticBag,
     location: Location | None,
-    added: Sequence[Comparable],
+    candidates: Mapping[tuple[str, str, str], Sequence[Comparable]],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
 ) -> None:
-    notes = _lost_identity_note(old, added, was, now)
+    bucket = candidates.get((old.kind.value, old.datatype.value, old.unit), ())
+    notes = _lost_identity_note(old, bucket, was, now)
     if old.consumers:
         bag.add(
             "removed-object",

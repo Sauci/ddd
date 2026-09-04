@@ -30,7 +30,7 @@ from ddd.diagnostics import PLUGIN_CHECK_SEPARATOR, CheckInfo, DiagnosticBag, Lo
 from ddd.ir import DataDictionary
 
 if TYPE_CHECKING:
-    from ddd.backends.base import Backend
+    from ddd.backends.base import Backend, GeneratedFile
 
 PLUGIN_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 """A plugin name is the key of its block, so it is a lowercase identifier."""
@@ -286,7 +286,33 @@ def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Ba
         msg = f"plugin '{plugin.name}' provides no artefact"
         raise ValueError(msg)
     context = GenerateContext(settings_of(plugin, dictionary.extensions), generator)
-    return _call(plugin, "backend", plugin.backend, context)
+    backend = _call(plugin, "backend", plugin.backend, context)
+    return _GuardedBackend(plugin, backend)
+
+
+class _GuardedBackend:
+    """A plugin's backend, with ``generate`` guarded the way its other hooks already are.
+
+    ``backend_of`` wraps the factory in ``_call``, but the backend it returns used to run
+    unwrapped under :func:`ddd.backends.base.render` - the one place a plugin's own code
+    executed outside a hook. This closes that gap: ``generate`` runs through ``_call`` too, so
+    a defect there is reported the same way, as a ``PluginError`` naming the plugin and the
+    hook rather than a raw traceback. ``name`` and ``generate`` are exactly what the
+    ``Backend`` protocol asks for, so this satisfies it structurally without naming it.
+    """
+
+    def __init__(self, plugin: Plugin, backend: Backend) -> None:
+        self._plugin = plugin
+        self._backend = backend
+        self.name = backend.name
+
+    def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+        return _call(
+            self._plugin,
+            "generate",
+            lambda _: self._backend.generate(dictionary, output_dir),
+            None,
+        )
 
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:

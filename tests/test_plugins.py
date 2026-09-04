@@ -1073,6 +1073,14 @@ class TestTheCompareHook:
         assert checks(bag) == []
 
 
+_GENERATE_SIGNATURE = (
+    "    def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:\n"
+)
+RAISING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        raise KeyError("nope")\n'
+)
+
+
 class TestGenerate:
     def project_with_tags(self, tree: Path) -> str:
         tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}), declare("local", "Y"))
@@ -1086,6 +1094,25 @@ class TestGenerate:
         assert main(["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]) == EXIT_OK
         assert (out / "tags.txt").read_text(encoding="utf-8") == "X t\n"
         assert "wrote" in capsys.readouterr().err
+
+    def test_a_backends_generate_that_raises_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=RAISING_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "plugin 'tag' failed in its generate hook" in capsys.readouterr().err
 
     def test_dry_run_writes_nothing(self, tree: Path) -> None:
         root = self.project_with_tags(tree)

@@ -12,8 +12,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from conftest import component, declare, project
-from ddd.diagnostics import CheckInfo, DiagnosticBag, Severity, SeverityPolicy, UnknownCheckError
+from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from ddd.diagnostics import (
+    CHECKS,
+    CheckInfo,
+    DiagnosticBag,
+    Location,
+    Severity,
+    SeverityPolicy,
+    UnknownCheckError,
+)
+from ddd.loading import load_workspace
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
@@ -283,3 +292,224 @@ class TestThePolicy:
         bag = DiagnosticBag(SeverityPolicy.from_strings(["tag/bad-prefix=ignore"]))
         bag.register([CheckInfo("tag/bad-prefix", Severity.WARNING, "x")])
         assert bag.add("tag/bad-prefix", "m") is None
+
+
+BARE_PLUGIN = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="bare")\n'
+
+
+def tagged(base: Path, *declarations: dict, settings: dict | None = None, **project_keys):
+    """A project naming the tag plugin, with one component; returns the loaded workspace."""
+    write_plugin(base / "tools")
+    extensions = {} if settings is None else {"extensions": {"tag": settings}}
+    files = {
+        "project.ddd.json": project(
+            "P", "a.ddd.json", plugins=["tools/tag_plugin.py"], **extensions, **project_keys
+        ),
+        "a.ddd.json": component("A", *declarations),
+    }
+    write_tree(base, files)
+    bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+    return load_workspace(base / "project.ddd.json", bag), bag
+
+
+class TestLoadingAProject:
+    def test_a_project_loads_the_plugins_it_names(self, tree: Path) -> None:
+        workspace, bag = tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        assert workspace is not None, messages(bag)
+        assert [plugin.name for plugin in workspace.plugins] == ["tag"]
+        assert set(bag.registered) == {"tag/bad-prefix", "tag/retagged"}
+        assert checks(bag) == []
+
+    def test_a_plugin_that_cannot_be_found_stops_the_run(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["nowhere.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["plugin-not-found"]
+        assert "project.ddd.json#project.plugins[0]" in messages(bag)
+        assert not CHECKS["plugin-not-found"].overridable
+
+    def test_a_plugin_that_is_broken_stops_the_run(self, tree: Path) -> None:
+        write_plugin(tree, "broken.py", "raise RuntimeError('boom')\n")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["broken.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["plugin-invalid"]
+        assert "boom" in messages(bag)
+        assert not CHECKS["plugin-invalid"].overridable
+
+    def test_two_plugins_claiming_one_name_is_refused_on_the_second(self, tree: Path) -> None:
+        write_plugin(tree, "one.py")
+        write_plugin(tree, "two.py")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["one.py", "two.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["plugin-invalid"]
+        assert "plugin 'tag' is already provided by 'one.py'" in messages(bag)
+        assert "project.plugins[0]: first named here" in messages(bag)
+        assert workspace is not None and len(workspace.plugins) == 1
+
+    def test_the_same_plugin_named_by_two_projects_loads_once(self, tree: Path) -> None:
+        write_plugin(tree / "tools")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "sub/sub.ddd.json", "a.ddd.json", plugins=["tools/tag_plugin.py"]
+                ),
+                "sub/sub.ddd.json": project("S", plugins=["../tools/tag_plugin.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == []
+        assert workspace is not None and len(workspace.plugins) == 1
+
+    def test_a_block_is_validated_against_the_plugin_model(self, tree: Path) -> None:
+        _, bag = tagged(tree, declare("local", "X", extensions={"tag": {"tag": 3}}))
+        assert checks(bag) == ["schema"]
+        assert "a.ddd.json#component.interface[0].definition.extensions.tag.tag" in messages(bag)
+
+    def test_a_typo_inside_a_block_is_caught(self, tree: Path) -> None:
+        _, bag = tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t", "tg": 1}}))
+        assert checks(bag) == ["schema"]
+        assert "definition.extensions.tag.tg" in messages(bag)
+
+    def test_a_block_naming_no_loaded_plugin_is_unknown(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"nvm": {}})),
+            },
+        )
+        assert checks(bag) == ["unknown-extension"]
+        assert "'nvm' names no plugin this project loads" in messages(bag)
+        assert CHECKS["unknown-extension"].needs_every_component
+
+    def test_an_unknown_block_can_be_relaxed(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"nvm": {}})),
+            },
+            severities=["unknown-extension=ignore"],
+        )
+        assert dictionary is not None and checks(bag) == []
+
+    def test_the_settings_are_validated(self, tree: Path) -> None:
+        _, bag = tagged(tree, declare("local", "X"), settings={"prefix": 3})
+        assert checks(bag) == ["schema"]
+        assert "project.ddd.json#project.extensions.tag.prefix" in messages(bag)
+
+    def test_settings_a_plugin_requires_are_missed_where_they_belong(self, tree: Path) -> None:
+        source = TAG_PLUGIN.replace('prefix: str = ""', "prefix: str")
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["schema"]
+        assert "project.ddd.json#project.extensions.tag.prefix" in messages(bag)
+        assert "required" in messages(bag).lower()
+
+    def test_settings_stated_twice_are_refused_on_the_second(self, tree: Path) -> None:
+        write_plugin(tree / "tools")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P",
+                    "sub/sub.ddd.json",
+                    "a.ddd.json",
+                    plugins=["tools/tag_plugin.py"],
+                    extensions={"tag": {"prefix": "a"}},
+                ),
+                "sub/sub.ddd.json": project("S", extensions={"tag": {"prefix": "b"}}),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["schema"]
+        assert (
+            "sub.ddd.json#project.extensions.tag: error[schema]: the settings of plugin 'tag' "
+            "are already stated"
+        ) in messages(bag)
+        assert "project.ddd.json#project.extensions.tag: first stated here" in messages(bag)
+
+    def test_a_plugin_without_a_project_model_takes_no_settings(self, tree: Path) -> None:
+        write_plugin(tree, "bare.py", BARE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "a.ddd.json", plugins=["bare.py"], extensions={"bare": {}}
+                ),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["schema"]
+        assert "plugin 'bare' takes no 'extensions' block on the project" in messages(bag)
+
+    def test_a_plugin_without_an_object_model_takes_no_block(self, tree: Path) -> None:
+        write_plugin(tree, "bare.py", BARE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["bare.py"]),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"bare": {}})),
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert checks(bag) == ["schema"]
+        assert "plugin 'bare' takes no 'extensions' block on a definition" in messages(bag)
+
+    def test_a_block_on_a_consumer_is_still_validated(self, tree: Path) -> None:
+        """Whose claim it is comes later, in the analysis; a typo is a typo either way."""
+        _, bag = tagged(tree, declare("input", "X", extensions={"tag": {"tag": 3}}))
+        assert checks(bag) == ["schema"]
+
+
+class TestLocating:
+    def test_the_producing_declaration_is_where_a_finding_belongs(self, tree: Path) -> None:
+        workspace, _ = tagged(tree, declare("input", "X"), declare("local", "Y"))
+        assert workspace is not None
+        assert workspace.locate("Y") == Location(tree / "a.ddd.json", "component.interface[1]")
+
+    def test_a_consumer_is_the_fallback(self, tree: Path) -> None:
+        workspace, _ = tagged(tree, declare("input", "X"))
+        assert workspace is not None
+        assert workspace.locate("X") == Location(tree / "a.ddd.json", "component.interface[0]")
+
+    def test_an_unknown_name_has_no_place(self, tree: Path) -> None:
+        workspace, _ = tagged(tree, declare("local", "X"))
+        assert workspace is not None
+        assert workspace.locate("Nope") is None

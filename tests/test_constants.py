@@ -1084,11 +1084,11 @@ class TestTheEditor:
             "missing-id",
         }
 
-    def test_exactly_nine_checks_need_every_component(self) -> None:
+    def test_exactly_ten_checks_need_every_component(self) -> None:
         """``incomplete-project`` is one of them, and has to be.
 
         It reports that a declaration is missing from the dictionary, which is true of a file
-        read on its own for the same reason the other eight are wrong about one: the constant,
+        read on its own for the same reason the other nine are wrong about one: the constant,
         the raster or the type is declared, in a file only the project lists. In a run that was
         shown the whole project it is the finding that stops a relaxed check from quietly
         shrinking the dictionary.
@@ -1105,4 +1105,5 @@ class TestTheEditor:
             "unknown-reference",
             "unused-output",
             "incomplete-project",
+            "unknown-extension",
         }

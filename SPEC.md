@@ -27,6 +27,7 @@
     - [3.8 Unit vocabulary](#38-unit-vocabulary)
     - [3.9 Constant vocabulary](#39-constant-vocabulary)
     - [3.10 Measurement rasters](#310-measurement-rasters)
+    - [3.11 Plugins](#311-plugins)
   - [4 Consistency checks](#4-consistency-checks)
     - [4.1 Comparing two deliveries](#41-comparing-two-deliveries)
   - [5 Generated artefacts](#5-generated-artefacts)
@@ -911,6 +912,10 @@ list carries a calibration object, so a `raster` stated on one is `raster-kind`,
 component default that happens to cover one does not apply to it. A structured variable
 carries one raster for the whole object and every member inherits it.
 
+### 3.11 Plugins
+
+Written in the documentation increment.
+
 ## 4 Consistency checks
 
 Every check has a stable identifier and a default severity. The identifiers are part of the
@@ -926,9 +931,9 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Nine checks need every component of a project to mean anything: `unknown-type`,
-`unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `missing-producer`,
-`unknown-reference`, `unused-output` and
+Ten checks need every component of a project to mean anything: `unknown-type`,
+`unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `unknown-extension`,
+`missing-producer`, `unknown-reference`, `unused-output` and
 `incomplete-project`. Exactly these are the checks the language server holds back when it
 checks a file belonging to no project ([section 7.2](#72-editor-integration)).
 
@@ -981,6 +986,14 @@ Errors:
   files ([section 3.9](#39-constant-vocabulary)).
 - `duplicate-raster`: a measurement raster is declared more than once, within one file or
   across files ([section 3.10](#310-measurement-rasters)).
+- `plugin-not-found`: a project names a plugin ([section 3.11](#311-plugins)) that cannot be
+  found. Fixed severity, because a project cannot be interpreted without the plugins it names.
+- `plugin-invalid`: a plugin module raises on import, exposes no `PLUGIN`, exposes one that is
+  malformed, or claims a name another plugin already has. Fixed severity, for the same reason.
+- `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
+  only means something to the plugin that owns it; relaxing the check is how a project
+  deliberately carries a block no installed plugin interprets, which then reaches the
+  dictionary as written.
 - `duplicate-id`: two data objects of one project carry the same `id`, most often because a
   declaration was copied to make a new object with the original's `id` still on it. An `id`
   is one object's alone; two objects sharing one would make a later comparison
@@ -1496,7 +1509,7 @@ is in two projects, and the answer to which one the reader cares about is both. 
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
 descriptions of the nearest directory that include it. A file
-belonging to no build and to no such project is still checked, on its own, with the nine
+belonging to no build and to no such project is still checked, on its own, with the ten
 checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction

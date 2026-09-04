@@ -208,11 +208,12 @@ years without anybody noticing:
    $ ddd check examples/demo/demo.ddd.json -W unused-output=nope
    ddd: unknown severity 'nope' for check 'unused-output', expected one of error, warning, info, ignore
 
-Both exit with ``2``. Five checks cannot be relaxed at all - ``file-not-found``,
-``json-syntax``, ``file-kind``, ``schema`` and ``include-cycle`` - because a file that cannot
-be read has nothing further to say, and a run that carried on regardless would report the
-absence of findings about a project it never saw. ``ddd checks`` marks those ``(fixed)``, and
-an attempt to override one is refused rather than ignored:
+Both exit with ``2``. Seven checks cannot be relaxed at all - ``file-not-found``,
+``json-syntax``, ``file-kind``, ``schema``, ``include-cycle``, ``plugin-not-found`` and
+``plugin-invalid`` - because a file that cannot be read has nothing further to say, or a
+project cannot be interpreted without the plugins it names, and a run that carried on
+regardless would report the absence of findings about a project it never saw. ``ddd checks``
+marks those ``(fixed)``, and an attempt to override one is refused rather than ignored:
 
 .. code-block:: text
 

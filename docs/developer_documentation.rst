@@ -185,9 +185,9 @@ in ``src/ddd/diagnostics.py`` - an identifier, a default severity and a one line
 - plus the code that adds the finding; the identifier is part of the public interface of the
 tool, since it is what ``-W`` and ``--strict`` address and what a ci job matches on, and
 ``ddd checks`` prints the registry as it stands (see :doc:`consistency checks
-<consistency_checks>`). And a check that cannot be relaxed has to say so: the five entries
+<consistency_checks>`). And a check that cannot be relaxed has to say so: the seven entries
 marked ``overridable=False`` are the ones after which nothing further can be said about the
-file at all, and every other check has to survive being set to ``ignore``.
+file, or the project, at all, and every other check has to survive being set to ``ignore``.
 
 What the calibration tools actually implement
 ---------------------------------------------

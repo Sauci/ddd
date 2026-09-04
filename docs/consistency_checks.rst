@@ -176,16 +176,19 @@ written once into the build system - the CMake integration takes them as ``SEVER
       $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
       ok: 12 variables in 1 component are consistent
 
-The five checks whose severity is fixed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The seven checks whose severity is fixed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Five checks cannot be relaxed: ``file-not-found``, ``json-syntax``, ``file-kind``, ``schema``
-and ``include-cycle``. They are the ones that report that a description could not be *read*,
-and a file that cannot be read has nothing further to say. Downgrading them would not make the
-project more permissive, it would make the rest of the run meaningless: a file that is not
-valid json contributes no declarations, so every variable it produces would be reported as
-having no producer and every name it defines would look free. The tool would bury the one real
-finding - "this file has a comma too many on line 4" - under a page of consequences.
+Seven checks cannot be relaxed: ``file-not-found``, ``json-syntax``, ``file-kind``,
+``schema``, ``include-cycle``, ``plugin-not-found`` and ``plugin-invalid``. Five of them
+report that a description could not be *read*, and a file that cannot be read has nothing
+further to say. Downgrading them would not make the project more permissive, it would make
+the rest of the run meaningless: a file that is not valid json contributes no declarations,
+so every variable it produces would be reported as having no producer and every name it
+defines would look free. The tool would bury the one real finding - "this file has a comma
+too many on line 4" - under a page of consequences. The other two report that a project
+names a plugin that cannot be found, or that is not well formed - a project cannot be
+interpreted without the plugins it names, for the same reason.
 
 The same reasoning explains why the two other load time checks *are* relaxable.
 ``file-extension`` and ``include-empty`` complain about a file tree DDD can read perfectly
@@ -335,6 +338,23 @@ or an a2l file that does not do what the description says - or that does not com
      - two measurement rasters claim the same event channel number (see the
        :doc:`rasters file <file_formats/rasters>`), which would put two rasters on one
        event.
+   * - ``plugin-not-found``
+     - error (fixed)
+     - a project names a plugin, in ``plugins``, that cannot be found at the path or as the
+       module it names. A project cannot be interpreted without the plugins it names, so
+       there is nothing further to say.
+   * - ``plugin-invalid``
+     - error (fixed)
+     - a plugin module raises while it is imported, exposes no ``PLUGIN``, exposes one that
+       is not a well formed ``ddd.plugins.Plugin``, or claims a name another loaded plugin
+       already has. Fixed for the same reason as ``plugin-not-found``.
+   * - ``unknown-extension``
+     - error
+     - an ``extensions`` block, on the project or on a definition, names a plugin the
+       project does not load. A block only means something to the plugin that owns it, so a
+       misspelled or removed name is refused rather than kept as dead configuration;
+       relaxing the check is how a project deliberately keeps a block that no installed
+       plugin currently reads.
    * - ``unknown-unit``
      - error
      - a unit is not in the vocabulary the project declares (see the
@@ -615,9 +635,9 @@ declaration of the variable therefore has to say the same thing, and a disagreem
 ``definition-mismatch`` error. There is no leaving it out, either: unlike ``limits``, which
 DDD derives when a declaration omits them, there is nothing here to derive, so the key is
 required on every definition of every kind and a definition without it does not load at all.
-That is reported as ``schema``, one of the five checks whose severity cannot be relaxed, which
-is why a project adopting this version of DDD adds the key everywhere in one go rather than
-phasing it in.
+That is reported as ``schema``, one of the seven checks whose severity cannot be relaxed,
+which is why a project adopting this version of DDD adds the key everywhere in one go rather
+than phasing it in.
 
 ``export`` is not compared at all. Which signals a calibration engineer needs to see is not the
 producer's to decide alone, so any component may ask for an object to reach the a2l and asking

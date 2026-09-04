@@ -35,6 +35,9 @@ Layers
    * - ``src/ddd/ir.py``
      - **the contract**: the resolved data dictionary
      - how it is rendered
+   * - ``src/ddd/plugins.py``
+     - the plugin contract: the blocks, the hooks
+     - the loader, the analysis, any backend
    * - ``src/ddd/backends/c/``
      - ``uint16_t``, literals, include guards, rendering the project's templates
      - a2l, the loader, the checks, what the generated files are called
@@ -76,7 +79,10 @@ disagrees with the table above:
   c one,
 * both backends satisfy the ``ddd.backends.base.Backend`` protocol, and every datatype
   is spelled by both of them, so a new datatype cannot be added to the contract while one
-  output format silently has no name for it.
+  output format silently has no name for it,
+* ``plugins.py`` imports no loader, analysis or backend at runtime, so a plugin sees exactly
+  what a backend sees, and the ``Backend`` protocol it names is only imported there under
+  ``TYPE_CHECKING``.
 
 A second test in the same file reads the text of ``src/ddd/models/`` and fails if a spelling
 that belongs to a single output format - ``uint16_t``, ``UWORD``, ``COMPU_``, ``AXIS_PTS``,

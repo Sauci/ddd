@@ -914,7 +914,69 @@ carries one raster for the whole object and every member inherits it.
 
 ### 3.11 Plugins
 
-Written in the documentation increment.
+DDD is generic, and a project regularly needs one more thing per variable that is true of
+that project and of no other. A **plugin** is how the project adds it without DDD learning
+it: a python module the project names, owning one `extensions` block on a definition and
+one on the project, and contributing checks, comparison rules and an artefact of its own.
+
+```json
+{
+  "project": {
+    "name": "LayoutDevice",
+    "includes": ["storage.ddd.json"],
+    "plugins": ["../plugins/ddd_layout.py"],
+    "extensions": { "layout": { "max_key": 4095 } }
+  }
+}
+```
+
+- `"plugins"` (optional): module spellings, each a `.py` path relative to this file or a
+  dotted module name imported from the environment. A plugin acts on a project because the
+  project names it, never because it is installed. A sub-project **may** name plugins too;
+  the set in play is the union, because the blocks a plugin interprets may sit in any
+  component. A module that cannot be found is `plugin-not-found`; one that raises on
+  import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another plugin
+  already has is `plugin-invalid`. Both have a fixed severity, because a project cannot be
+  interpreted without the plugins it names.
+- `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
+  against the plugin's project model with defaults filled in. Stated by one project file;
+  a second file stating a plugin's settings is `schema`, with a note at the first.
+
+A definition states its block under the same key, `"extensions": {"layout": {"key": 12,
+"version": 3}}`, on any kind, and therefore on an instance of a declared type. Only the
+producing declaration states one: an `input` stating a block is `consumer-extension`, on
+the reasoning that makes `init`, `section` and `id` producer keys, and this is what keeps
+`definition-mismatch` out of it, since there is never a second block to disagree with. A
+block is validated against the model of the plugin that owns it, in one pass once every file
+is read, and a failure is `schema` at the failing key inside the block. A block naming no
+loaded plugin is `unknown-extension`, an error; relaxing it is how a project carries a block
+no installed plugin interprets, which then reaches the dictionary as written. The check
+needs every component, because a component read on its own sees no plugin list.
+
+A plugin module exposes `PLUGIN`, a `ddd.plugins.Plugin` with a `name`, optional pydantic
+models for the two blocks, the `CheckInfo` entries it reports - each identifier spelled
+`<name>/<check>`, so that a plugin cannot shadow a built-in check and a severity override
+targets it as `-W layout/duplicate-key=warning` - and three optional hooks, each receiving
+one context object: `check`, run at the end of every analysis over the resolved dictionary
+with the settings, the diagnostic bag and a locator that answers where an object's producing
+declaration is written; `compare`, run after the built-in comparison with both dictionaries;
+and `backend`, returning a backend selected as `ddd generate <name>`. A hook reports through
+the bag exactly as a built-in check does, and a hook that raises is a usage error naming the
+plugin and the hook. Plugin checks are registered per run rather than in the built-in
+registry, and an override naming a plugin check is accepted provisionally and held, once the
+project is read, to the checks the loaded plugins registered.
+
+The dictionary carries every block in resolved form on the object and on the project, and
+records the names of the plugins in play (`plugins`), so that an archived dump keeps every
+question a plugin can ask answerable. A leaf of a structured variable carries no block; the
+instance carries one for the whole structure. `ddd schema --plugin` publishes a kind's
+schema with the `extensions` property closed over the named plugins' models, so that an
+editor validates a block as it is typed; the dictionary schema stays open. A comparison whose
+candidate is a project runs that project's plugins, and one whose candidate is an archived
+dump loads them with `ddd compare --plugin`; a compared dictionary recording a plugin the
+run has not loaded is `missing-plugin` ([section 4.1](#41-comparing-two-deliveries)). The
+api is documented in the plugins page of the documentation; `examples/plugins/ddd_layout.py`
+is a worked example, and `examples/layout` a project that names it.
 
 ## 4 Consistency checks
 
@@ -1388,10 +1450,11 @@ the declarations is *planned*.
 DDD is a command line tool, so that it can be driven from make, batch and CI jobs. It
 offers at least: checking a project (`ddd check`, [section 4](#4-consistency-checks));
 comparing two deliveries (`ddd compare`, the baseline before the candidate, or
-`ddd check --baseline` for both questions in one exit code;
-[section 4.1](#41-comparing-two-deliveries)); generating the artefacts (`ddd generate`,
-the artefact named on the command line: `c`, `a2l` or `all`, each carrying only the
-options of what it produces; [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
+`ddd check --baseline` for both questions in one exit code; `--plugin` loading the plugins
+of an archived candidate; [section 4.1](#41-comparing-two-deliveries)); generating the
+artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all`, or the
+name of a plugin providing an artefact, each carrying only the options of what it produces;
+[section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
@@ -1401,7 +1464,8 @@ reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing; printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
-a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`); listing
+a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
+closing the extension blocks over the named plugins' models); listing
 the files a project description
 depends on (`ddd sources`, which lets a build system re-run its configure step when one
 changes; in JSON the paths are a `sources` list beside the findings); recording how a
@@ -1409,7 +1473,8 @@ build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
-(`ddd checks`, each with its default severity, the unrelaxable ones marked); reporting
+(`ddd checks`, each with its default severity, the unrelaxable ones marked; `--plugin`
+listing a plugin's checks after the built-in ones); reporting
 where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
 printing its own version (`ddd --version`). The root handed to a command is a project or a
@@ -1437,7 +1502,7 @@ either case. `ddd generate --dry-run` reports what it would write and writes not
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
-its own format (`format`, today `4`), raised only when the document's shape changes, so
+its own format (`format`, today `7`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
 `format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
 `format` is newer than the one it implements refuses it (`schema`), located at the file;

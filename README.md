@@ -243,6 +243,9 @@ its content.  Paths are relative to the file that contains them, `*`, `?` and `*
 wildcards are expanded, and a file reached over two different paths is loaded once.
 Include cycles are reported instead of hanging.
 
+`plugins` names the python modules the project extends itself with, and `extensions` holds
+each one's settings, keyed by plugin name; see [Plugins](#plugins) below.
+
 ### Software component description
 
 ```json
@@ -310,6 +313,7 @@ unchanged, and any component may name them
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
+| `extensions` | none | settings for a [plugin](#plugins)'s block, keyed by plugin name, stated by the producing declaration only |
 
 `init` accepts a scalar or a nested list matching the shape of the object.  A scalar given
 for an array initialises **every** element, so `"dimensions": [10], "init": 1` is enough.
@@ -446,6 +450,17 @@ structured types, and [examples/vocabulary](examples/vocabulary) is one that pin
 spellings, places its objects into declared memory sections, measures some of them on
 declared rasters and dimensions its arrays by declared constants - one embedded in the pump
 component, one shared in a standalone file; both projects check clean.
+
+### Plugins
+
+What is true of one project and of no other - a storage key, a layout version, a tag another
+tool reads - lives in a **plugin**: a python module the project names under `plugins`, which
+owns an `extensions` block on a definition and on the project, validates it with a pydantic
+model of its own, and contributes checks (`-W layout/duplicate-key=warning` targets one),
+comparison rules and an artefact (`ddd generate layout`). DDD carries the block into the
+dictionary and never interprets it. The api is documented at
+<https://sauci.github.io/ddd/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
+is a worked example and [examples/layout](examples/layout) a project that names it.
 
 ## Consistency checks
 
@@ -673,16 +688,16 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | command | purpose |
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares |
-| `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another |
-| `ddd generate all FILE -o DIR` | check and generate |
+| `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
-| `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory |
+| `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
-| `ddd checks` | list the checks and their default severity |
+| `ddd checks` | list the checks and their default severity; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 
@@ -868,6 +883,7 @@ link in either points at a file that no longer exists.
 | [loading.py](src/ddd/loading.py) | files, includes, globs | what the data means |
 | [analysis.py](src/ddd/analysis.py) | ownership, agreement, references | any output format |
 | [ir.py](src/ddd/ir.py) | **the contract**: the resolved dictionary | how it is rendered |
+| [plugins.py](src/ddd/plugins.py) | the plugin api: the blocks, the hooks | the loader, the analysis, any backend |
 | [backends/c/](src/ddd/backends/c/) | `uint16_t`, literals, include guards, templates | a2l, the loader |
 | [backends/a2l/](src/ddd/backends/a2l/) | `UWORD`, compu methods, record layouts, templates | c, the loader |
 

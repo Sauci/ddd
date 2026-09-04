@@ -159,6 +159,15 @@ checks the project should get the same verdict as the build server, so the overr
 written once into the build system - the CMake integration takes them as ``SEVERITY`` and
 ``STRICT`` arguments, see :doc:`build_integration` - instead of being remembered by hand.
 
+A :doc:`plugin <plugins>` check is spelled ``<plugin>/<check>`` and takes the same overrides
+a built-in check does - ``-W layout/duplicate-key=warning``, ``--strict``, ``ignore`` - the
+prefix being the only thing that keeps two plugins, or a plugin and a built-in check, from
+colliding on one identifier. Which checks a run actually registers is only known once its
+plugins are loaded, which happens after the command line is parsed, so an override naming a
+plugin check is accepted provisionally at that point and verified once the project is read;
+one naming a check no loaded plugin registered is then the same usage error an unknown
+built-in check is.
+
 .. note::
    Checking a single component before it is integrated is the one case where a relaxed policy
    is the normal thing to do, because the components producing its inputs and consuming its
@@ -411,6 +420,13 @@ or an a2l file that does not do what the description says - or that does not com
        so a reader stating one is claiming an authority it does not have. Kept a separate
        identifier from ``consumer-storage``, whose published description says storage,
        which a raster is not.
+   * - ``consumer-identity``
+     - error
+     - an ``input`` declaration states an ``id``. Which earlier delivery a variable continues
+       is decided by the component that produces it, exactly as ``init`` and ``section`` are,
+       so a reader stating one is claiming an identity it does not have. Kept a separate
+       identifier from ``consumer-storage``, whose published description says storage, which
+       an identity is not.
    * - ``consumer-extension``
      - error
      - an ``input`` declaration states an ``extensions`` block. What a plugin knows about a

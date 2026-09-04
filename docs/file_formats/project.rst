@@ -56,6 +56,14 @@ The keys
      - ``[]``
      - Paths to the component, types, units, sections, constants, rasters and sub-project
        files that make up the project, relative to this file. Wildcards are expanded.
+   * - ``plugins``
+     - ``[]``
+     - Module spellings of the :doc:`plugins <../plugins>` the project names, each a ``.py``
+       path relative to this file or a dotted module name imported from the environment.
+   * - ``extensions``
+     - ``{}``
+     - Settings for each named :doc:`plugin <../plugins>`, keyed by plugin name and validated
+       against its own model.
 
 The identifier rule is tighter than what a c compiler would accept, and deliberately so:
 ASAP2 1.6.1 limits an identifier to 128 characters, and a name DDD cannot write into the a2l

@@ -86,11 +86,13 @@ The commands
        command and one exit code cover both questions.
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
-       an archived dictionary or a project description.
-   * - ``ddd generate c|a2l|all FILE -o DIR``
+       an archived dictionary or a project description; ``--plugin`` loads the plugins of an
+       archived candidate, since only a project description names its own.
+   * - ``ddd generate c|a2l|all|<plugin> FILE -o DIR``
      - check the project and, if it is consistent, write the named artefact into ``DIR``:
        ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both in one
-       run. Each artefact takes only its own options - ``-t`` names the directory of jinja2
+       run, and the name of a plugin the project loads runs that plugin's own backend. Each
+       artefact takes only its own options - ``-t`` names the directory of jinja2
        templates the c sources are rendered from, required wherever c is rendered and with no
        default, because which files the project wants and what they look like is not
        something DDD can guess; ``--address-map`` and ``--byte-order`` belong to the a2l.
@@ -107,7 +109,8 @@ The commands
      - print the json schema of ``component``, ``constants``, ``dictionary``, ``project``,
        ``sections``, ``types`` or ``units``, for an editor that offers completion inside a
        ``*.ddd.json`` file or for a validator in a ci job; ``all`` writes every schema into
-       a directory.
+       a directory; ``--plugin`` closes the ``extensions`` property of ``component`` and
+       ``project`` over the named plugins' models.
    * - ``ddd sources FILE``
      - list every description file the project is built out of, for the dependency list of a
        build system.
@@ -121,7 +124,7 @@ The commands
        time, so a hand-rolled build is the only caller that needs it directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity and whether it can be
-       relaxed.
+       relaxed; ``--plugin`` lists a named plugin's own checks after the built-in ones.
    * - ``ddd cmake-dir``
      - print the directory holding ``Ddd.cmake``, so that a ``CMakeLists.txt`` finds the
        integration module of the installation it is actually using.

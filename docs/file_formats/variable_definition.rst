@@ -116,6 +116,11 @@ rather than ignored.
    * - ``a2l``
      - export
      - Per object settings for the a2l backend, and nothing else reads them.
+   * - ``extensions``
+     - ``{}``
+     - Settings for each named :doc:`plugin <../plugins>`, keyed by plugin name and validated
+       against its own model. Stated by the producing declaration only
+       (``consumer-extension``).
 
 Five of those are required, and none of them is something DDD should invent a value for,
 so the simplest possible definition still says five things:

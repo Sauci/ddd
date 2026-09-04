@@ -74,6 +74,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#what-the-compile-service-proves">What the compile service proves</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#pre-commit">pre-commit</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
@@ -552,6 +553,33 @@ a digest before a result from it is used to release something, as the comment at
 <code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code> describes.</p>
 </div>
 </section>
+</section>
+<section id="pre-commit">
+<h2>pre-commit<a class="headerlink" href="#pre-commit" title="Link to this heading"></a></h2>
+<p>An identity only does its job if every object has one, and the moment a project forgets is the
+moment somebody adds an object without one - which nothing notices until a rename two releases
+later reads as a removal and an addition. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> closes that gap from the command
+line; a <a class="reference external" href="https://pre-commit.com">pre-commit</a> hook closes it without anyone remembering to.</p>
+<p>This repository publishes the hook, so a project that uses DDD adds it by naming this
+repository rather than writing an invocation of its own:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">repos</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/Sauci/ddd</span>
+<span class="w">    </span><span class="nt">rev</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;the release you pin&gt;</span>
+<span class="w">    </span><span class="nt">hooks</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ddd-id</span>
+</pre></div>
+</div>
+<p>pre-commit passes the staged <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> files, and the hook stamps an id into every
+producing declaration that has none. A project, types or units file among them is a no-op: only
+a component file declares data objects.</p>
+<p><strong>The commit then fails, and that is the intended behaviour.</strong> pre-commit reports <code class="docutils literal notranslate"><span class="pre">files</span> <span class="pre">were</span>
+<span class="pre">modified</span> <span class="pre">by</span> <span class="pre">this</span> <span class="pre">hook</span></code> whenever a hook changes something on disk, even when the hook itself
+succeeded. So the new ids arrive in the working tree for their author to read and stage, rather
+than in a commit nobody reviewed - which is the same bargain <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> is built on:
+the tool proposes, the diff is reviewed, a <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span></code> undoes it. Run <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span></code> and
+commit again.</p>
+<p>This is the one part of DDD that assumes git, and only because pre-commit is a git mechanism.
+The tool itself reads no repository and knows nothing about version control.</p>
 </section>
 </section>
 

@@ -451,3 +451,36 @@ templates cannot answer on its behalf.
    mount is a real linux filesystem. The base image is also still referenced by tag: pin it to
    a digest before a result from it is used to release something, as the comment at the top of
    ``docker/Dockerfile`` describes.
+
+pre-commit
+----------
+
+An identity only does its job if every object has one, and the moment a project forgets is the
+moment somebody adds an object without one - which nothing notices until a rename two releases
+later reads as a removal and an addition. ``ddd id --assign`` closes that gap from the command
+line; a `pre-commit <https://pre-commit.com>`_ hook closes it without anyone remembering to.
+
+This repository publishes the hook, so a project that uses DDD adds it by naming this
+repository rather than writing an invocation of its own:
+
+.. code-block:: yaml
+
+   repos:
+     - repo: https://github.com/Sauci/ddd
+       rev: <the release you pin>
+       hooks:
+         - id: ddd-id
+
+pre-commit passes the staged ``*.ddd.json`` files, and the hook stamps an id into every
+producing declaration that has none. A project, types or units file among them is a no-op: only
+a component file declares data objects.
+
+**The commit then fails, and that is the intended behaviour.** pre-commit reports ``files were
+modified by this hook`` whenever a hook changes something on disk, even when the hook itself
+succeeded. So the new ids arrive in the working tree for their author to read and stage, rather
+than in a commit nobody reviewed - which is the same bargain ``ddd id --assign`` is built on:
+the tool proposes, the diff is reviewed, a ``git checkout`` undoes it. Run ``git add`` and
+commit again.
+
+This is the one part of DDD that assumes git, and only because pre-commit is a git mechanism.
+The tool itself reads no repository and knows nothing about version control.

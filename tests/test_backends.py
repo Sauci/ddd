@@ -30,6 +30,28 @@ def imported_modules(path: Path) -> set[str]:
     return modules
 
 
+def runtime_imported_modules(path: Path) -> set[str]:
+    """Every ``ddd.*`` module a source file imports outside an ``if TYPE_CHECKING:`` block."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    guarded: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name)
+            and node.test.id == "TYPE_CHECKING"
+        ):
+            guarded.update(id(child) for child in ast.walk(node))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if id(node) in guarded:
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("ddd"):
+            modules.add(node.module)
+        elif isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names if alias.name.startswith("ddd"))
+    return modules
+
+
 class TestLayering:
     """The split is only real if the import graph enforces it."""
 
@@ -88,6 +110,13 @@ class TestLayering:
         text = (SOURCE / "models" / "objects.py").read_text(encoding="utf-8")
         for word in ("describe_field", "interface_signature", "storage_signature"):
             assert word not in text
+
+    def test_the_plugin_api_sees_what_a_backend_sees(self) -> None:
+        """A plugin gets the dictionary and the diagnostics: not the loader, not the analysis,
+        and no backend at runtime - the Backend protocol is named under TYPE_CHECKING only."""
+        imports = runtime_imported_modules(SOURCE / "plugins.py")
+        assert not imports & {"ddd.loading", "ddd.analysis"}, imports
+        assert not [module for module in imports if module.startswith("ddd.backends")], imports
 
 
 class TestContract:

@@ -26,6 +26,14 @@ class Severity(StrEnum):
 
 _NOTE_INDENT: Final = "    note: "
 
+PLUGIN_CHECK_SEPARATOR: Final = "/"
+"""What separates a plugin's name from its check: ``layout/duplicate-key``.
+
+A built-in identifier never contains it, which is what keeps the two namespaces disjoint: a
+plugin cannot shadow a built-in check, two plugins cannot collide, and a severity override
+naming a check with the separator in it is known to be a plugin's before any plugin is loaded.
+"""
+
 _SEVERITY_RANK: Final[dict[Severity, int]] = {
     Severity.ERROR: 0,
     Severity.WARNING: 1,

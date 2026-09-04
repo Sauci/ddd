@@ -233,7 +233,7 @@ ids at all.
 | `consumer-identity` | error | a declaration whose scope is `input` states an `id` | yes | no |
 | `missing-id` | info | a producing declaration or instance has no `id` | yes | no |
 | `renamed-object` | warning | baseline and candidate share an id under different names | yes | n/a |
-| `reused-name` | error | baseline and candidate share a name under different ids | yes | n/a |
+| `reused-name` | error | baseline and candidate share a name that now names a different object | yes | n/a |
 
 `duplicate-id` is not `needs_every_component`, and for the reason every other duplicate check
 is not: the flag marks a check that reaches the *wrong* answer when a file is missing, which is

@@ -1483,7 +1483,9 @@ project already uses, whether for another object, an enum, an enumerator, a type
 constant,
 because a rename that silently merges two objects compiles, links, and shares storage
 nobody intended to share; and quick fixes that reconcile one key across the declarations of one object, in either
-direction, including removing a key the others do not have.
+direction, including removing a key the others do not have; and, on a `missing-id`, a fix that
+gives the declaration an identity, writing what `ddd id --assign` would write and offered only
+where that finding is reported.
 
 Which project a file belongs to comes from the build records of
 [section 3.6](#36-build-record), found by searching the build directories the client names,

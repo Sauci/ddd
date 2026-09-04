@@ -77,6 +77,12 @@ it: take the producing component's value, spread this one to the others, or, whe
 else states the key, remove it. The value is copied as source text rather than
 re-serialised, so the project's formatting survives the fix.
 
+A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
+key ``ddd id --assign`` would write, in the same place, decided by the same code - the command
+stamps a whole file, the fix stamps the declaration you are looking at. It is offered only
+where the finding is: a project that has silenced ``missing-id`` has said it is not adopting
+ids yet, and the editor does not argue with that.
+
 Which project a file belongs to
 -------------------------------
 

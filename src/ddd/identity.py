@@ -9,17 +9,28 @@ checkout undoes it - and that justification only holds while the diff is one lin
 The text positions come from :mod:`ddd.lsp.ranges`, which is a json-pointer-to-text utility
 that happens to live under the language server; the command reuses it rather than growing a
 second scanner that would drift from it.
+
+That import is deferred into :func:`assign` rather than made at the top, for two reasons that
+point the same way. Importing ``ddd.lsp.ranges`` runs the package's ``__init__``, which brings
+up the whole language server - a cost ``ddd id`` has no use for and a dependency a command
+line tool should not have on an editor service. And the server's own quick fix reads
+:func:`insertions` from here, so a module level import would close a cycle. Only :func:`assign`
+touches the filesystem; everything above it works on a document it is handed.
 """
 
 from __future__ import annotations
 
 import codecs
 import secrets
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ddd.lsp.ranges import Document, read
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 from ddd.models.component import Scope
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ddd.lsp.ranges import Document
 
 _PRODUCING = (Scope.OUTPUT.value, Scope.LOCAL.value)
 """Spelled as the raw strings a description carries, not as ``Scope`` itself.
@@ -83,6 +94,42 @@ def _indent_of_line_at(text: str, offset: int) -> str:
     return text[start : len(text) - len(text[start:].lstrip())]
 
 
+@dataclass(frozen=True, slots=True)
+class Insertion:
+    """Where an id belongs in a description's text, and what to write there.
+
+    Two callers need this answer and must not disagree about it: :func:`assign` rewrites the
+    file, and the language server offers the same edit on one declaration. Both read it from
+    here rather than each working out where the key goes - the reasoning this module already
+    applies to reusing one scanner rather than growing a second of its own.
+    """
+
+    pointer: str
+    """The ``...definition.name`` pointer the new key follows."""
+
+    offset: int
+    """Where it goes in the document's text, for a caller rewriting the whole file."""
+
+    text: str
+    """The key itself, with the comma and the indent of the line it joins."""
+
+
+def insertions(document: Document) -> list[Insertion]:
+    """Every identity this document is missing, in the order its declarations are written.
+
+    Each carries a freshly generated id, so asking twice proposes two different sets - which
+    is why a caller applies the answer it was given rather than asking again.
+    """
+    found = []
+    for pointer in _pointers_needing_an_id(document):
+        span = document.value_span_of(pointer)
+        if span is None:
+            continue
+        indent = _indent_of_line_at(document.text, span[1])
+        found.append(Insertion(pointer, span[1], f',\n{indent}"id": "{new_id()}"'))
+    return found
+
+
 def assign(path: Path) -> int:
     """Write an id into every producing declaration of ``path`` that lacks one.
 
@@ -91,23 +138,18 @@ def assign(path: Path) -> int:
     loader is what has something to say about a description, and this command must not
     rewrite one it could not read.
     """
+    from ddd.lsp.ranges import read
+
     document = read(path, {})
     if document.data is None:
         return UNREADABLE
-    pointers = _pointers_needing_an_id(document)
-    if not pointers:
+    wanted = insertions(document)
+    if not wanted:
         return 0
     text = document.text
-    written = 0
     # Back to front, so an insertion never moves the offset of the one before it.
-    for pointer in reversed(pointers):
-        span = document.value_span_of(pointer)
-        if span is None:
-            continue
-        at = span[1]
-        indent = _indent_of_line_at(text, at)
-        text = f'{text[:at]},\n{indent}"id": "{new_id()}"{text[at:]}'
-        written += 1
+    for entry in reversed(wanted):
+        text = f"{text[: entry.offset]}{entry.text}{text[entry.offset :]}"
     # What the file was encoded and ended with, which ``read`` has already normalised away:
     # it decodes with utf-8-sig and with universal newlines, so by the time the text is here
     # a byte order mark is gone and every line ends in "\n". Writing the defaults back would
@@ -116,4 +158,4 @@ def assign(path: Path) -> int:
     raw = path.read_bytes()
     encoding = "utf-8-sig" if raw.startswith(codecs.BOM_UTF8) else "utf-8"
     path.write_text(text, encoding=encoding, newline="\r\n" if b"\r\n" in raw else "\n")
-    return written
+    return len(wanted)

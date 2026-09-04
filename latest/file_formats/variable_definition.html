@@ -63,6 +63,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../command_line_interface.html">Command line interface</a></li>
@@ -233,6 +234,12 @@ and the startup code zero-initialises the object.</p></td>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l</span></code></p></td>
 <td><p>export</p></td>
 <td><p>Per object settings for the a2l backend, and nothing else reads them.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extensions</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
+<td><p>Settings for each named <a class="reference internal" href="../plugins.html"><span class="doc">plugin</span></a>, keyed by plugin name and validated
+against its own model. Stated by the producing declaration only
+(<code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code>).</p></td>
 </tr>
 </tbody>
 </table>

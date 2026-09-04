@@ -1,0 +1,342 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plugins &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Generated artefacts" href="generated_artefacts.html" />
+    <link rel="prev" title="Comparing deliveries" href="comparing_deliveries.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Plugins</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#naming-a-plugin">Naming a plugin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#writing-one">Writing one</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-hooks">The hooks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#writing-a-well-behaved-plugin">Writing a well-behaved plugin</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-dictionary-carries">What the dictionary carries</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-editor">The editor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-worked-example">A worked example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Plugins</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/plugins.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="plugins">
+<h1>Plugins<a class="headerlink" href="#plugins" title="Link to this heading"></a></h1>
+<p>DDD knows what a global variable is, who produces it, who reads it and what the generated c
+and a2l need to say about it - and nothing else. A project regularly needs one more thing per
+variable that is true of that project and of no other: a key for a mechanism of its own
+target, a version tied to the layout, a tag another tool reads. A plugin is how the project
+adds it without DDD learning it.</p>
+<p>A plugin is a python module the project names. It owns one <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block on a
+definition and one on the project, states a pydantic model for each so that a block is
+validated where it is written and completed in the editor, and contributes three optional
+hooks: checks over the resolved dictionary, comparison rules between two deliveries, and an
+artefact of its own under <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>. DDD carries the block into the dictionary and
+never interprets it.</p>
+<section id="naming-a-plugin">
+<h2>Naming a plugin<a class="headerlink" href="#naming-a-plugin" title="Link to this heading"></a></h2>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LayoutDevice"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"storage.ddd.json"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"plugins"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"../plugins/ddd_layout.py"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"layout"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"max_key"</span><span class="p">:</span><span class="w"> </span><span class="mi">4095</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">plugins</span></code> lists module spellings. A string ending in <code class="docutils literal notranslate"><span class="pre">.py</span></code> is a path relative to the
+project file, for a plugin the project keeps in its own repository; anything else is a
+dotted module name imported from the environment, for one installed as a distribution. A
+plugin acts on a project because the project names it, never because it happens to be
+installed. A sub-project may name plugins too, and the set in play is the union.</p>
+<p><code class="docutils literal notranslate"><span class="pre">extensions</span></code> on the project holds each plugin’s settings, keyed by the plugin’s name and
+validated against its project model with defaults filled in. A definition states its block
+under the same key:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"EngineHours"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint32"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"layout"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"key"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Only the producing declaration states one. An <code class="docutils literal notranslate"><span class="pre">input</span></code> stating a block is
+<code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code>, for the reason that makes <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">section</span></code> and <code class="docutils literal notranslate"><span class="pre">id</span></code> producer
+keys: a block says what the object <em>is</em>, and a component that only reads it has no claim
+over that. A block naming no loaded plugin is <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>; relaxing that check is
+how a project deliberately carries a block no installed plugin interprets, which then reaches
+the dictionary as written.</p>
+</section>
+<section id="writing-one">
+<h2>Writing one<a class="headerlink" href="#writing-one" title="Link to this heading"></a></h2>
+<p>A plugin module exposes <code class="docutils literal notranslate"><span class="pre">PLUGIN</span></code>, an instance of <code class="docutils literal notranslate"><span class="pre">ddd.plugins.Plugin</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.diagnostics</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckInfo</span><span class="p">,</span> <span class="n">Severity</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.plugins</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckContext</span><span class="p">,</span> <span class="n">CompareContext</span><span class="p">,</span> <span class="n">GenerateContext</span><span class="p">,</span> <span class="n">Plugin</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Entry</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">)</span>
+    <span class="n">key</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">65535</span><span class="p">)</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">)</span>
+    <span class="n">max_key</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">65535</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">65535</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="n">context</span><span class="p">:</span> <span class="n">CheckContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="n">context</span><span class="p">:</span> <span class="n">CompareContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">backend</span><span class="p">(</span><span class="n">context</span><span class="p">:</span> <span class="n">GenerateContext</span><span class="p">):</span> <span class="o">...</span>
+
+
+<span class="n">PLUGIN</span> <span class="o">=</span> <span class="n">Plugin</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">"layout"</span><span class="p">,</span>
+    <span class="n">object_model</span><span class="o">=</span><span class="n">Entry</span><span class="p">,</span>
+    <span class="n">project_model</span><span class="o">=</span><span class="n">Settings</span><span class="p">,</span>
+    <span class="n">checks</span><span class="o">=</span><span class="p">(</span><span class="n">CheckInfo</span><span class="p">(</span><span class="s2">"layout/duplicate-key"</span><span class="p">,</span> <span class="n">Severity</span><span class="o">.</span><span class="n">ERROR</span><span class="p">,</span> <span class="s2">"two objects claim one key"</span><span class="p">),),</span>
+    <span class="n">check</span><span class="o">=</span><span class="n">check</span><span class="p">,</span>
+    <span class="n">compare</span><span class="o">=</span><span class="n">compare</span><span class="p">,</span>
+    <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">name</span></code> is the extension key, a lowercase identifier. Every model and every hook is
+optional: a plugin with neither model states no block and only contributes hooks. Forbidding
+extra keys on the models is what makes a typo inside a block a finding at the key, and a red
+underline in the editor; it is a recommendation, not a rule.</p>
+<p>Every check identifier is spelled <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;/&lt;check&gt;</span></code>. The prefix is the namespace: a plugin
+cannot shadow a built-in check, two plugins cannot collide, and a severity override targets
+one exactly as it targets a built-in check - <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">layout/duplicate-key=warning</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--strict</span></code>, <code class="docutils literal notranslate"><span class="pre">ignore</span></code>. The plugin’s checks are registered when the plugin is loaded, so an
+override naming one is accepted first and verified once the project is read; one that no
+loaded plugin registered is a usage error, the same outcome an unknown built-in check gets.</p>
+<section id="the-hooks">
+<h3>The hooks<a class="headerlink" href="#the-hooks" title="Link to this heading"></a></h3>
+<p>Each hook receives one context object rather than positional arguments, so that a field can
+be added without breaking a plugin written against the previous version.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>context</p></th>
+<th class="head"><p>fields</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CheckContext</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, the resolved <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a>; <code class="docutils literal notranslate"><span class="pre">settings</span></code>,
+the project block validated against <code class="docutils literal notranslate"><span class="pre">project_model</span></code> (built from <code class="docutils literal notranslate"><span class="pre">{}</span></code> when the
+project states none, <code class="docutils literal notranslate"><span class="pre">None</span></code> for a plugin without one); <code class="docutils literal notranslate"><span class="pre">bag</span></code>, the diagnostic bag;
+<code class="docutils literal notranslate"><span class="pre">locate(name)</span></code>, where a finding about the object <code class="docutils literal notranslate"><span class="pre">name</span></code> belongs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CompareContext</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">baseline</span></code> and <code class="docutils literal notranslate"><span class="pre">candidate</span></code>; <code class="docutils literal notranslate"><span class="pre">settings</span></code>, the candidate’s; <code class="docutils literal notranslate"><span class="pre">bag</span></code>; <code class="docutils literal notranslate"><span class="pre">locate</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GenerateContext</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">settings</span></code>; <code class="docutils literal notranslate"><span class="pre">generator</span></code>, the tool name and version the built-in backends put into
+their banners.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">check</span></code> runs at the end of every analysis - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>,
+<code class="docutils literal notranslate"><span class="pre">dump</span></code> and the language server alike - over the whole dictionary, with every built-in
+finding already in the bag. A hook reports with <code class="docutils literal notranslate"><span class="pre">context.bag.add(check,</span> <span class="pre">message,</span> <span class="pre">location,</span>
+<span class="pre">notes)</span></code>, exactly as a built-in check does. <code class="docutils literal notranslate"><span class="pre">locate</span></code> returns the producing declaration
+under <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code>, and the dump file when the dictionary was read back from an archive,
+because a dump records a component’s file name and not the position of each declaration.</p>
+<p><code class="docutils literal notranslate"><span class="pre">compare</span></code> runs after the built-in comparison. The plugins in play are the candidate’s: a
+project description names its own, and an archived dump has <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--plugin</span></code>. A
+compared dictionary that records a plugin the run has not loaded is <code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code>, a
+warning saying that plugin’s rules did not run, so that a comparison can never silently skip
+one.</p>
+<p><code class="docutils literal notranslate"><span class="pre">backend</span></code> returns an object satisfying the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol - a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a
+<code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> returning <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code> entries - and is selected as
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code>, with the common options <code class="docutils literal notranslate"><span class="pre">-o</span></code>, <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> and <code class="docutils literal notranslate"><span class="pre">--force</span></code>. It
+runs under the same writer as the built-in artefacts, so two artefacts claiming one path are
+refused exactly as between the c and the a2l backends. <code class="docutils literal notranslate"><span class="pre">all</span></code> stays the built-in pair.</p>
+<p>A hook that raises is a defect of the plugin, not a finding about the project: the exception
+is reported as a usage error naming the plugin and the hook, with exit code 2.</p>
+</section>
+<section id="writing-a-well-behaved-plugin">
+<h3>Writing a well-behaved plugin<a class="headerlink" href="#writing-a-well-behaved-plugin" title="Link to this heading"></a></h3>
+<p>Every identifier a hook reports belongs in <code class="docutils literal notranslate"><span class="pre">checks</span></code>: an undeclared one resolves to a fixed
+<code class="docutils literal notranslate"><span class="pre">unknown</span> <span class="pre">check</span></code> error and cannot be overridden, the same as a typo in a built-in check’s
+name. Keep the module itself stateless - it is imported once per process and reused across
+every project and every run of the language server, so anything it accumulates in a global
+leaks between projects that have nothing to do with each other; editing the plugin file only
+takes effect the next time a process starts. <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code>, what a <code class="docutils literal notranslate"><span class="pre">backend</span></code> hook
+returns from <code class="docutils literal notranslate"><span class="pre">generate</span></code>, is imported from <code class="docutils literal notranslate"><span class="pre">ddd.backends</span></code>. A block read back from an older
+dump may predate a field the plugin added since - <code class="docutils literal notranslate"><span class="pre">model_validate</span></code> fills it from the
+model’s default if there is one, and raises otherwise - and what to do about that gap is the
+plugin’s own decision, not one the api makes for it.</p>
+</section>
+</section>
+<section id="what-the-dictionary-carries">
+<h2>What the dictionary carries<a class="headerlink" href="#what-the-dictionary-carries" title="Link to this heading"></a></h2>
+<p>Every block reaches the dictionary in resolved form - validated and dumped back with its
+defaults filled in - under <code class="docutils literal notranslate"><span class="pre">extensions</span></code> on the object and on the dictionary itself, and the
+dictionary records the names of the plugins in play under <code class="docutils literal notranslate"><span class="pre">plugins</span></code>. That is what keeps a
+plugin’s questions answerable across releases: the archived dump of the previous delivery is
+the database, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> is the query. A leaf of a structured variable carries no
+block; its instance carries one for the whole structure, and a plugin reaches it through the
+leaf’s <code class="docutils literal notranslate"><span class="pre">instance</span></code>. The c templates receive the block on every object view, so a table the
+project derives from a block renders from its own templates without a hook.</p>
+</section>
+<section id="the-editor">
+<h2>The editor<a class="headerlink" href="#the-editor" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">component</span> <span class="pre">--plugin</span> <span class="pre">tools/ddd_layout.py</span> <span class="pre">-o</span> <span class="pre">schemas/ddd_component.schema.json</span></code>
+publishes the schema with the <code class="docutils literal notranslate"><span class="pre">extensions</span></code> property closed over the plugin’s model, and
+likewise for <code class="docutils literal notranslate"><span class="pre">project</span></code>; commit those files and point the <code class="docutils literal notranslate"><span class="pre">$schema</span></code> key of each
+description at them, and the editor validates a block as it is typed. The dictionary schema
+stays open, a dump being a produced document. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span> <span class="pre">--plugin</span></code> lists a plugin’s checks
+after the built-in ones.</p>
+</section>
+<section id="a-worked-example">
+<h2>A worked example<a class="headerlink" href="#a-worked-example" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">examples/plugins/ddd_layout.py</span></code> stamps an object with a key and a version and ties the
+version to the layout; <code class="docutils literal notranslate"><span class="pre">examples/layout</span></code> is a project that names it. It exercises every part
+of the api described above with a rule set small enough to read in one sitting, and is meant
+to be copied and rewritten rather than reused.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="comparing_deliveries.html" class="btn btn-neutral float-left" title="Comparing deliveries" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generated_artefacts.html" class="btn btn-neutral float-right" title="Generated artefacts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

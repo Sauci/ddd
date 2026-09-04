@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -135,7 +136,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd dump examples/demo/demo.ddd.json
 {
-  "format": 4,
+  "format": 7,
   "name": "DemoDevice",
   "description": "Demonstration project showing every DDD feature",
   "source": "demo.ddd.json",
@@ -243,6 +244,13 @@ what lets a build system skip the recompilation. The components, by contrast, ke
 in which the project included them, and the declarations of a component keep the order the
 author wrote them in, because that order is information: it is how the interface of a
 component reads in its own file, and it is how it reads in its generated header.</p>
+<p>The <strong>plugin blocks are resolved too.</strong> Every object, every structured instance and the
+dictionary itself carry <code class="docutils literal notranslate"><span class="pre">extensions</span></code>, validated and dumped back with each plugin’s own
+defaults filled in, and the dictionary names the plugins in play under <code class="docutils literal notranslate"><span class="pre">plugins</span></code>. That is
+what keeps a plugin’s questions answerable from the dictionary alone, long after the project
+that named the plugin has moved on: the archived dump is what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--plugin</span></code> reads
+back a plugin’s comparison rules against, and what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code> hands to a
+plugin’s own backend. See <a class="reference internal" href="plugins.html"><span class="doc">Plugins</span></a> for what a plugin does with them.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><code class="docutils literal notranslate"><span class="pre">owner</span></code> may be <code class="docutils literal notranslate"><span class="pre">null</span></code>, but only for a project that is already known to be
@@ -254,13 +262,13 @@ field is always present.</p>
 <h2>The format field<a class="headerlink" href="#the-format-field" title="Link to this heading"></a></h2>
 <p>A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The <code class="docutils literal notranslate"><span class="pre">format</span></code> field stamps the shape of the document
-- currently <code class="docutils literal notranslate"><span class="pre">4</span></code> - and changes only when that shape changes, not with every release of the
+- currently <code class="docutils literal notranslate"><span class="pre">7</span></code> - and changes only when that shape changes, not with every release of the
 tool.</p>
 <p>It exists so that a later reader can say <em>this file is newer than I understand</em> rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
 one that is newer:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare baseline.json demo.ddd.json
-baseline.json#format: error[schema]: in the baseline: this dictionary is in format 5, and this DDD understands up to 4; use a newer DDD to read it
+baseline.json#format: error[schema]: in the baseline: this dictionary is in format 8, and this DDD understands up to 7; use a newer DDD to read it
 1 error
 </pre></div>
 </div>
@@ -298,7 +306,7 @@ elided here for space):</p>
 <span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The resolved data of one project."</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">    </span><span class="p">},</span>
@@ -420,7 +428,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-b0a1572a74ae5e593abdf28096263cfd0d85fcec.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-0e5364e905ecb9e74105fd8107b9701655f52843.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -438,7 +446,7 @@ consumer never has to repeat the resolution and two consumers can never disagree
       tooltip=&quot;ddd.ir.ComponentDeclaration&amp;#xA;&amp;#xA;One entry of a component interface, in the order the component declared it.&amp;#xA;&amp;#xA;A reference \
 to an object rather than the object itself: the definition lives once, under&amp;#xA;``objects``, and is the one the producing component \
 gave. Two components declaring the&amp;#xA;same name appear here twice and in ``objects`` once.&amp;#xA;&quot;];
-   &quot;ddd.ir.DataDictionary&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;DataDictionary&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;int&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;source&lt;/td&gt;&lt;td port=&quot;source&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;components&lt;/td&gt;&lt;td port=&quot;components&quot;&gt;tuple[ResolvedComponent, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;objects&lt;/td&gt;&lt;td port=&quot;objects&quot;&gt;tuple[ResolvedObject, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;enums&lt;/td&gt;&lt;td port=&quot;enums&quot;&gt;tuple[EnumConversion, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;tuple[ConstantDeclaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;rasters&lt;/td&gt;&lt;td port=&quot;rasters&quot;&gt;tuple[ResolvedRaster, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;tuple[ResolvedStruct, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instances&lt;/td&gt;&lt;td port=&quot;instances&quot;&gt;tuple[ResolvedInstance, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;leaves&lt;/td&gt;&lt;td port=&quot;leaves&quot;&gt;tuple[ResolvedLeaf, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.DataDictionary&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;DataDictionary&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;int&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;source&lt;/td&gt;&lt;td port=&quot;source&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;components&lt;/td&gt;&lt;td port=&quot;components&quot;&gt;tuple[ResolvedComponent, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;objects&lt;/td&gt;&lt;td port=&quot;objects&quot;&gt;tuple[ResolvedObject, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;enums&lt;/td&gt;&lt;td port=&quot;enums&quot;&gt;tuple[EnumConversion, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;constants&lt;/td&gt;&lt;td port=&quot;constants&quot;&gt;tuple[ConstantDeclaration, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;rasters&lt;/td&gt;&lt;td port=&quot;rasters&quot;&gt;tuple[ResolvedRaster, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;types&lt;/td&gt;&lt;td port=&quot;types&quot;&gt;tuple[ResolvedStruct, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instances&lt;/td&gt;&lt;td port=&quot;instances&quot;&gt;tuple[ResolvedInstance, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;leaves&lt;/td&gt;&lt;td port=&quot;leaves&quot;&gt;tuple[ResolvedLeaf, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;plugins&lt;/td&gt;&lt;td port=&quot;plugins&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.DataDictionary&amp;#xA;&amp;#xA;The resolved data of one project.&amp;#xA;&amp;#xA;What ``ddd dump`` writes and every backend reads. Unlike \
 the description files, this one&amp;#xA;is produced rather than authored: every derived property is already worked out, so a&amp;#xA;consumer \
 never has to repeat the resolution and two consumers can never disagree about it.&amp;#xA;&quot;];
@@ -446,7 +454,7 @@ never has to repeat the resolution and two consumers can never disagree about it
       tooltip=&quot;ddd.ir.ResolvedComponent&amp;#xA;&amp;#xA;A component and the objects it declares.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:components:e -&gt; &quot;ddd.ir.ResolvedComponent&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedInstance&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedInstance&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;type&lt;/td&gt;&lt;td port=&quot;type&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedInstance&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedInstance&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;type&lt;/td&gt;&lt;td port=&quot;type&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedInstance&amp;#xA;&amp;#xA;One variable whose datatype is a structure.&amp;#xA;&amp;#xA;Kept apart from :class:`ResolvedObject` rather \
 than widening it: an object with no datatype&amp;#xA;and no limits would turn every reader of those two fields into a branch, and they \
 are read&amp;#xA;unconditionally in a dozen places on the strength of always being there.&amp;#xA;&quot;];
@@ -458,7 +466,7 @@ reaches the a2l as an object per member rather than as an a2l&amp;#xA;structure,
 object in every respect&amp;#xA;but its name, which is a path rather than an identifier.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:leaves:e -&gt; &quot;ddd.ir.ResolvedLeaf&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:objects:e -&gt; &quot;ddd.ir.ResolvedObject&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
@@ -536,7 +544,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">   </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -632,6 +640,24 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Leaves"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"plugins"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The names of the plugins that interpreted this dictionary, sorted.\n\nNames rather than module spellings: a path is relative to a project file the dump no\nlonger has, and the name is what the blocks are keyed by. Empty in a dictionary from\nformat 6 or older, and what ``missing-plugin`` reads when a comparison runs without one\nof them."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Plugins"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The settings of each plugin, in resolved form, keyed by plugin name.\n\nRecorded so that a comparison over an archived dump can rebuild what the plugin's hooks\nwere given, without the project file that stated them."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"$defs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -1011,6 +1037,15 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Id"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">               </span><span class="p">},</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The blocks of the project's plugins, keyed by plugin name, in resolved form.\n\nEach validated against its plugin's model and dumped back, defaults filled in, so two\ndumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded\nnone, and empty for an object nothing stamped."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Name of the structure it is, which is the c type of the declaration."</span><span class="p">,</span>
@@ -1496,6 +1531,15 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Id"</span>
 <span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">               </span><span class="p">},</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The blocks of the project's plugins, keyed by plugin name, in resolved form.\n\nEach validated against its plugin's model and dumped back, defaults filled in, so two\ndumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded\nnone, and empty for an object nothing stamped."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/ObjectKind"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Which sort of object this is, taken from the definition that produced it."</span>
@@ -1799,11 +1843,13 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.constants" title="ddd.ir.DataDictionary.constants"><code class="xref py py-obj docutils literal notranslate"><span class="pre">constants</span> <span class="pre">(tuple[ddd.models.constants.ConstantDeclaration,</span> <span class="pre">...])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.description" title="ddd.ir.DataDictionary.description"><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.enums" title="ddd.ir.DataDictionary.enums"><code class="xref py py-obj docutils literal notranslate"><span class="pre">enums</span> <span class="pre">(tuple[ddd.models.conversion.EnumConversion,</span> <span class="pre">...])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.DataDictionary.extensions" title="ddd.ir.DataDictionary.extensions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extensions</span> <span class="pre">(dict[str,</span> <span class="pre">dict[str,</span> <span class="pre">Any]])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.format" title="ddd.ir.DataDictionary.format"><code class="xref py py-obj docutils literal notranslate"><span class="pre">format</span> <span class="pre">(int)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.instances" title="ddd.ir.DataDictionary.instances"><code class="xref py py-obj docutils literal notranslate"><span class="pre">instances</span> <span class="pre">(tuple[ddd.ir.ResolvedInstance,</span> <span class="pre">...])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.leaves" title="ddd.ir.DataDictionary.leaves"><code class="xref py py-obj docutils literal notranslate"><span class="pre">leaves</span> <span class="pre">(tuple[ddd.ir.ResolvedLeaf,</span> <span class="pre">...])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.name" title="ddd.ir.DataDictionary.name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">name</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.objects" title="ddd.ir.DataDictionary.objects"><code class="xref py py-obj docutils literal notranslate"><span class="pre">objects</span> <span class="pre">(tuple[ddd.ir.ResolvedObject,</span> <span class="pre">...])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.DataDictionary.plugins" title="ddd.ir.DataDictionary.plugins"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plugins</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.rasters" title="ddd.ir.DataDictionary.rasters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rasters</span> <span class="pre">(tuple[ddd.ir.ResolvedRaster,</span> <span class="pre">...])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.source" title="ddd.ir.DataDictionary.source"><code class="xref py py-obj docutils literal notranslate"><span class="pre">source</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.DataDictionary.types" title="ddd.ir.DataDictionary.types"><code class="xref py py-obj docutils literal notranslate"><span class="pre">types</span> <span class="pre">(tuple[ddd.ir.ResolvedStruct,</span> <span class="pre">...])</span></code></a></p></li>
@@ -1812,7 +1858,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 </dl>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.format">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">6</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">7</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
 <dd><p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
@@ -1917,13 +1963,39 @@ document: a generator DDD does not ship reads it without importing python, and n
 should repeat resolution the analysis has already done.</p>
 </dd></dl>
 
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.ir.DataDictionary.plugins">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">plugins</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.plugins" title="Link to this definition"></a></dt>
+<dd><p>The names of the plugins that interpreted this dictionary, sorted.</p>
+<p>Names rather than module spellings: a path is relative to a project file the dump no
+longer has, and the name is what the blocks are keyed by. Empty in a dictionary from
+format 6 or older, and what <code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code> reads when a comparison runs without one
+of them.</p>
+<p>The names of the plugins that interpreted this dictionary, sorted.</p>
+<p>Names rather than module spellings: a path is relative to a project file the dump no
+longer has, and the name is what the blocks are keyed by. Empty in a dictionary from
+format 6 or older, and what <code class="docutils literal notranslate"><span class="pre">missing-plugin</span></code> reads when a comparison runs without one
+of them.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.ir.DataDictionary.extensions">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">extensions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"> <span class="pre">[Optional]</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.extensions" title="Link to this definition"></a></dt>
+<dd><p>The settings of each plugin, in resolved form, keyed by plugin name.</p>
+<p>Recorded so that a comparison over an archived dump can rebuild what the plugin’s hooks
+were given, without the project file that stated them.</p>
+<p>The settings of each plugin, in resolved form, keyed by plugin name.</p>
+<p>Recorded so that a comparison over an archived dump can rebuild what the plugin’s hooks
+were given, without the project file that stated them.</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class pydantic_model">
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedObject</span></span><a class="reference internal" href="_modules/ddd/ir.html#ResolvedObject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.ir.ResolvedObject" title="Link to this definition"></a></dt>
 <dd><p>One data object, with every derived property already worked out.</p>
-<div class="graphviz"><img src="_images/graphviz-a99a82849a26d39b8909b6fbe57e90aaf2e50314.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-3d7778de2b2b49276b1b7bec9ace9045d58486ce.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -1937,7 +2009,7 @@ should repeat resolution the analysis has already done.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.models.conversion.EnumConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;EnumConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['enum']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;enumerators&lt;/td&gt;&lt;td port=&quot;enumerators&quot;&gt;tuple[Enumerator, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.conversion.EnumConversion&amp;#xA;&amp;#xA;A verbal conversion table; the raw value *is* the physical value.&amp;#xA;&amp;#xA;Accepts \
@@ -1994,6 +2066,15 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Id"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The blocks of the project's plugins, keyed by plugin name, in resolved form.\n\nEach validated against its plugin's model and dumped back, defaults filled in, so two\ndumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded\nnone, and empty for an object nothing stamped."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Extensions"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/ObjectKind"</span><span class="p">,</span>
@@ -2441,6 +2522,7 @@ out.&amp;#xA;&quot;];
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.datatype" title="ddd.ir.ResolvedObject.datatype"><code class="xref py py-obj docutils literal notranslate"><span class="pre">datatype</span> <span class="pre">(ddd.models.common.Datatype)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.description" title="ddd.ir.ResolvedObject.description"><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.dimensions" title="ddd.ir.ResolvedObject.dimensions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dimensions</span> <span class="pre">(tuple[int</span> <span class="pre">|</span> <span class="pre">str,</span> <span class="pre">...])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.extensions" title="ddd.ir.ResolvedObject.extensions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extensions</span> <span class="pre">(dict[str,</span> <span class="pre">dict[str,</span> <span class="pre">Any]])</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.id" title="ddd.ir.ResolvedObject.id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">id</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.init" title="ddd.ir.ResolvedObject.init"><code class="xref py py-obj docutils literal notranslate"><span class="pre">init</span> <span class="pre">(ddd.models.objects.InitValue</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.kind" title="ddd.ir.ResolvedObject.kind"><code class="xref py py-obj docutils literal notranslate"><span class="pre">kind</span> <span class="pre">(ddd.models.objects.ObjectKind)</span></code></a></p></li>
@@ -2472,6 +2554,19 @@ on nothing pairs on its name, exactly as it did then.</p>
 <p>Identity the producer gave this object, which survives a rename of it.</p>
 <p>Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
 on nothing pairs on its name, exactly as it did then.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.ir.ResolvedObject.extensions">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">extensions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"> <span class="pre">[Optional]</span></span><a class="headerlink" href="#ddd.ir.ResolvedObject.extensions" title="Link to this definition"></a></dt>
+<dd><p>The blocks of the project’s plugins, keyed by plugin name, in resolved form.</p>
+<p>Each validated against its plugin’s model and dumped back, defaults filled in, so two
+dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
+none, and empty for an object nothing stamped.</p>
+<p>The blocks of the project’s plugins, keyed by plugin name, in resolved form.</p>
+<p>Each validated against its plugin’s model and dumped back, defaults filled in, so two
+dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
+none, and empty for an object nothing stamped.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

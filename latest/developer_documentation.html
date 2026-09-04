@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -154,11 +155,15 @@ ownership ends up being re-implemented, slightly differently, in a jinja templat
 <td><p><strong>the contract</strong>: the resolved data dictionary</p></td>
 <td><p>how it is rendered</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/plugins.py</span></code></p></td>
+<td><p>the plugin contract: the blocks, the hooks</p></td>
+<td><p>the loader, the analysis, any backend</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/c/</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, literals, include guards, rendering the project’s templates</p></td>
 <td><p>a2l, the loader, the checks, what the generated files are called</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/a2l/</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/backends/a2l/</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, compu methods, record layouts, its own templates</p></td>
 <td><p>c, the loader, the checks</p></td>
 </tr>
@@ -195,7 +200,10 @@ disagrees with the table above:</p>
 c one,</p></li>
 <li><p>both backends satisfy the <code class="docutils literal notranslate"><span class="pre">ddd.backends.base.Backend</span></code> protocol, and every datatype
 is spelled by both of them, so a new datatype cannot be added to the contract while one
-output format silently has no name for it.</p></li>
+output format silently has no name for it,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">plugins.py</span></code> imports no loader, analysis or backend at runtime, so a plugin sees exactly
+what a backend sees, and the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol it names is only imported there under
+<code class="docutils literal notranslate"><span class="pre">TYPE_CHECKING</span></code>.</p></li>
 </ul>
 <p>A second test in the same file reads the text of <code class="docutils literal notranslate"><span class="pre">src/ddd/models/</span></code> and fails if a spelling
 that belongs to a single output format - <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>, <code class="docutils literal notranslate"><span class="pre">UWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">COMPU_</span></code>, <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code>,
@@ -296,9 +304,9 @@ finding, and the rest of the project is still checked.</p>
 in <code class="docutils literal notranslate"><span class="pre">src/ddd/diagnostics.py</span></code> - an identifier, a default severity and a one line description
 - plus the code that adds the finding; the identifier is part of the public interface of the
 tool, since it is what <code class="docutils literal notranslate"><span class="pre">-W</span></code> and <code class="docutils literal notranslate"><span class="pre">--strict</span></code> address and what a ci job matches on, and
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> prints the registry as it stands (see <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>). And a check that cannot be relaxed has to say so: the five entries
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> prints the registry as it stands (see <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>). And a check that cannot be relaxed has to say so: the seven entries
 marked <code class="docutils literal notranslate"><span class="pre">overridable=False</span></code> are the ones after which nothing further can be said about the
-file at all, and every other check has to survive being set to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>.</p>
+file, or the project, at all, and every other check has to survive being set to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>.</p>
 </section>
 <section id="what-the-calibration-tools-actually-implement">
 <h2>What the calibration tools actually implement<a class="headerlink" href="#what-the-calibration-tools-actually-implement" title="Link to this heading"></a></h2>

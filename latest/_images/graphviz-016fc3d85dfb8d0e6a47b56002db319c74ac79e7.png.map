@@ -2,7 +2,7 @@
 <area shape="rect" id="node1" title="ddd.models.project.Project
 
 A project is a named list of components and/or sub&#45;projects.
-" alt="" coords="369,63,557,175"/>
+" alt="" coords="369,63,629,231"/>
 <area shape="rect" id="node2" title="ddd.models.project.ProjectFile
 
 Root object of a ``*.ddd.json`` project description.

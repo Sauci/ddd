@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -193,13 +194,13 @@ read is skipped.</p></li>
 project instead: the server walks from the file’s directory up to the workspace root and
 checks the file under the project descriptions of the nearest directory that include it.</p></li>
 <li><p><strong>Standalone.</strong> A file belonging to no build and to no such project is still checked, on
-its own, but only for what one file can decide. The nine checks that need every component
+its own, but only for what one file can decide. The ten checks that need every component
 of a project - <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unused-output</span></code> and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - are held back, because a component read
-alone has inputs nobody produces and outputs nobody reads by construction rather than by
-mistake. Each check declares whether it needs the whole project, so the two modes cannot
-drift apart.</p></li>
+<code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>,
+<code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>, <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - are held back,
+because a component read alone has inputs nobody produces and outputs nobody reads by
+construction rather than by mistake. Each check declares whether it needs the whole
+project, so the two modes cannot drift apart.</p></li>
 </ul>
 </section>
 <section id="vs-code">

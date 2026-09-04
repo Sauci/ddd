@@ -15,6 +15,7 @@ ASAP2 (a2l) description that measurement and calibration tools read.
    file_formats/index
    consistency_checks
    comparing_deliveries
+   plugins
    generated_artefacts
    templates
    command_line_interface

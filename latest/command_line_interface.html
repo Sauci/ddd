@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Command line interface</a><ul>
@@ -198,12 +199,14 @@ command and one exit code cover both questions.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">BASELINE</span> <span class="pre">CANDIDATE</span></code></p></td>
 <td><p>report whether the candidate delivery can stand in for the baseline. Either side may be
-an archived dictionary or a project description.</p></td>
+an archived dictionary or a project description; <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> loads the plugins of an
+archived candidate, since only a project description names its own.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c|a2l|all</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">DIR</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c|a2l|all|&lt;plugin&gt;</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">DIR</span></code></p></td>
 <td><p>check the project and, if it is consistent, write the named artefact into <code class="docutils literal notranslate"><span class="pre">DIR</span></code>:
 <code class="docutils literal notranslate"><span class="pre">c</span></code> renders the c sources, <code class="docutils literal notranslate"><span class="pre">a2l</span></code> writes the a2l file, <code class="docutils literal notranslate"><span class="pre">all</span></code> produces both in one
-run. Each artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
+run, and the name of a plugin the project loads runs that plugin’s own backend. Each
+artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
 templates the c sources are rendered from, required wherever c is rendered and with no
 default, because which files the project wants and what they look like is not
 something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to the a2l.
@@ -223,7 +226,8 @@ gets archived next to a delivery and handed to <code class="docutils literal not
 <td><p>print the json schema of <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">dictionary</span></code>, <code class="docutils literal notranslate"><span class="pre">project</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sections</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code> or <code class="docutils literal notranslate"><span class="pre">units</span></code>, for an editor that offers completion inside a
 <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file or for a validator in a ci job; <code class="docutils literal notranslate"><span class="pre">all</span></code> writes every schema into
-a directory.</p></td>
+a directory; <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> closes the <code class="docutils literal notranslate"><span class="pre">extensions</span></code> property of <code class="docutils literal notranslate"><span class="pre">component</span></code> and
+<code class="docutils literal notranslate"><span class="pre">project</span></code> over the named plugins’ models.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
 <td><p>list every description file the project is built out of, for the dependency list of a
@@ -241,7 +245,7 @@ time, so a hand-rolled build is the only caller that needs it directly.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
 <td><p>list every check with its identifier, its default severity and whether it can be
-relaxed.</p></td>
+relaxed; <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> lists a named plugin’s own checks after the built-in ones.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code></p></td>
 <td><p>print the directory holding <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code>, so that a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> finds the
@@ -320,11 +324,12 @@ $ ddd check examples/demo/demo.ddd.json -W unused-output=nope
 ddd: unknown severity 'nope' for check 'unused-output', expected one of error, warning, info, ignore
 </pre></div>
 </div>
-<p>Both exit with <code class="docutils literal notranslate"><span class="pre">2</span></code>. Five checks cannot be relaxed at all - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>,
-<code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code> - because a file that cannot
-be read has nothing further to say, and a run that carried on regardless would report the
-absence of findings about a project it never saw. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks those <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>, and
-an attempt to override one is refused rather than ignored:</p>
+<p>Both exit with <code class="docutils literal notranslate"><span class="pre">2</span></code>. Seven checks cannot be relaxed at all - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>,
+<code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code> and
+<code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> - because a file that cannot be read has nothing further to say, or a
+project cannot be interpreted without the plugins it names, and a run that carried on
+regardless would report the absence of findings about a project it never saw. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code>
+marks those <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>, and an attempt to override one is refused rather than ignored:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W schema=ignore
 ddd: the severity of check 'schema' cannot be changed
 </pre></div>
@@ -478,7 +483,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-checks">
 <h4>ddd checks<a class="headerlink" href="#ddd-checks" title="Link to this heading"></a></h4>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd checks [-h] [--format {text,json}]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd checks [-h] [--format {text,json}] [--plugin MODULE]</span>
 </pre></div>
 </div>
 <dl class="std option">
@@ -491,6 +496,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-checks-format">
 <span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-checks-format" title="Link to this definition"></a></dt>
 <dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-checks-plugin">
+<span class="sig-name descname"><span class="pre">--plugin</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;module&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-checks-plugin" title="Link to this definition"></a></dt>
+<dd><p>load this plugin, a .py path relative to the working directory or a module name; repeatable. For a run that reads no project description, which names its own plugins</p>
 </dd></dl>
 
 </section>
@@ -509,8 +520,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-compare">
 <h4>ddd compare<a class="headerlink" href="#ddd-compare" title="Link to this heading"></a></h4>
 <p>Compares two data dictionaries, or two project descriptions, or one of each. The question is directional: can CANDIDATE stand in for BASELINE?</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd compare [-h] [--renames RENAMES] [-W CHECK=SEVERITY] [--strict]</span>
-<span class="go">                   [--format {text,json}]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd compare [-h] [--renames RENAMES] [--plugin MODULE]</span>
+<span class="go">                   [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
 <span class="go">                   baseline candidate</span>
 </pre></div>
 </div>
@@ -536,6 +547,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-compare-renames">
 <span class="sig-name descname"><span class="pre">--renames</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;renames&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-compare-renames" title="Link to this definition"></a></dt>
 <dd><p>also write the old-to-new name pairs here, for migrating datasets and recordings</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-plugin">
+<span class="sig-name descname"><span class="pre">--plugin</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;module&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-compare-plugin" title="Link to this definition"></a></dt>
+<dd><p>load this plugin, a .py path relative to the working directory or a module name; repeatable. For a run that reads no project description, which names its own plugins</p>
 </dd></dl>
 
 <dl class="std option">
@@ -597,7 +614,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-generate">
 <h4>ddd generate<a class="headerlink" href="#ddd-generate" title="Link to this heading"></a></h4>
 <p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both in one run; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all} ...</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all,&lt;plugin&gt;} ...</span>
 </pre></div>
 </div>
 <dl class="std option">
@@ -912,7 +929,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-schema">
 <h4>ddd schema<a class="headerlink" href="#ddd-schema" title="Link to this heading"></a></h4>
 <p>Prints the json schema of one file format, or writes every schema into a directory with ‘all’. Committing those files and pointing the ‘$schema’ key of each description at the matching one is what gives an editor completion, hover documentation and validation while a description file is being written.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd schema [-h] [-o OUTPUT] [--plugin MODULE]</span>
 <span class="go">                  {component,constants,dictionary,project,rasters,sections,types,units,all}</span>
 </pre></div>
 </div>
@@ -931,6 +948,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-schema-o">
 <span id="cmdoption-ddd-schema-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-schema-o" title="Link to this definition"></a></dt>
 <dd><p>write to this file instead of stdout; with ‘all’ it is the directory the schemas are written into, each named ‘ddd_&lt;kind&gt;.schema.json’</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-schema-plugin">
+<span class="sig-name descname"><span class="pre">--plugin</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;module&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-schema-plugin" title="Link to this definition"></a></dt>
+<dd><p>load this plugin, a .py path relative to the working directory or a module name; repeatable. For a run that reads no project description, which names its own plugins</p>
 </dd></dl>
 
 </section>

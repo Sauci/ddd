@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -253,11 +254,13 @@ being quietly ignored, because a silently misspelled override is a check nobody 
 ddd: unknown check 'no-such-check'
 </pre></div>
 </div>
-<p>Five checks cannot be relaxed - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">schema</span></code>
-and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code> - and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks them <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>. They all report that a file
-could not be read at all, and a file that could not be read has nothing further to say, so
-downgrading the finding would only replace one clear diagnostic with an unpredictable pile of
-consequences:</p>
+<p>Seven checks cannot be relaxed - <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>,
+<code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code> and <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> - and
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks them <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code>. Most of them report that a file could not be read at
+all, and a file that could not be read has nothing further to say; the last two report that a
+project names a plugin that cannot be found or is not well formed, and a project cannot be
+interpreted without the plugins it names. Downgrading any of them would only replace one
+clear diagnostic with an unpredictable pile of consequences:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json -W schema=ignore
 ddd: the severity of check 'schema' cannot be changed
 </pre></div>

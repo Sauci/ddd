@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -280,14 +281,25 @@
 </li>
       </ul></li>
       <li>
+    --plugin
+
+      <ul>
+        <li><a href="command_line_interface.html#cmdoption-ddd-checks-plugin">ddd-checks command line option</a>
+</li>
+        <li><a href="command_line_interface.html#cmdoption-ddd-compare-plugin">ddd-compare command line option</a>
+</li>
+        <li><a href="command_line_interface.html#cmdoption-ddd-schema-plugin">ddd-schema command line option</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
     --renames
 
       <ul>
         <li><a href="command_line_interface.html#cmdoption-ddd-compare-renames">ddd-compare command line option</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     --severity
 
@@ -601,6 +613,8 @@
 </li>
         <li><a href="command_line_interface.html#cmdoption-ddd-checks-h">--help</a>
 </li>
+        <li><a href="command_line_interface.html#cmdoption-ddd-checks-plugin">--plugin</a>
+</li>
         <li><a href="command_line_interface.html#cmdoption-ddd-checks-h">-h</a>
 </li>
       </ul></li>
@@ -620,6 +634,8 @@
         <li><a href="command_line_interface.html#cmdoption-ddd-compare-format">--format</a>
 </li>
         <li><a href="command_line_interface.html#cmdoption-ddd-compare-h">--help</a>
+</li>
+        <li><a href="command_line_interface.html#cmdoption-ddd-compare-plugin">--plugin</a>
 </li>
         <li><a href="command_line_interface.html#cmdoption-ddd-compare-renames">--renames</a>
 </li>
@@ -820,6 +836,8 @@
 </li>
         <li><a href="command_line_interface.html#cmdoption-ddd-schema-o">--output</a>
 </li>
+        <li><a href="command_line_interface.html#cmdoption-ddd-schema-plugin">--plugin</a>
+</li>
         <li><a href="command_line_interface.html#cmdoption-ddd-schema-h">-h</a>
 </li>
         <li><a href="command_line_interface.html#cmdoption-ddd-schema-o">-o</a>
@@ -893,12 +911,22 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="data_contracts.html#ddd.models.EnumConversion.enumerators">enumerators (EnumConversion attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="data_dictionary.html#ddd.ir.DataDictionary.enums">enums (DataDictionary attribute)</a>
 </li>
       <li><a href="data_contracts.html#ddd.models.A2lObjectOptions.export">export (A2lObjectOptions attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="data_dictionary.html#ddd.ir.DataDictionary.extensions">extensions (DataDictionary attribute)</a>
+
+      <ul>
+        <li><a href="data_contracts.html#ddd.models.DataObject.extensions">(DataObject attribute)</a>
+</li>
+        <li><a href="data_contracts.html#ddd.models.Project.extensions">(Project attribute)</a>
+</li>
+        <li><a href="data_dictionary.html#ddd.ir.ResolvedObject.extensions">(ResolvedObject attribute)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -1073,6 +1101,12 @@
 <h2 id="P">P</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="data_dictionary.html#ddd.ir.DataDictionary.plugins">plugins (DataDictionary attribute)</a>
+
+      <ul>
+        <li><a href="data_contracts.html#ddd.models.Project.plugins">(Project attribute)</a>
+</li>
+      </ul></li>
       <li>
     project
 

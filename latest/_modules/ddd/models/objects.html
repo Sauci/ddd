@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
@@ -361,6 +362,17 @@
 <span class="sd">    component at a time; ``missing-id`` says where it has not.</span>
 <span class="sd">    """</span>
 
+    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""Blocks owned by the project's plugins, keyed by plugin name.</span>
+
+<span class="sd">    ``{"layout": {"key": 12, "version": 3}}``: what a plugin the project names needs to know</span>
+<span class="sd">    about this object and DDD does not. Each block is validated against the model of the</span>
+<span class="sd">    plugin that owns it and carried into the dictionary in resolved form; a block naming no</span>
+<span class="sd">    loaded plugin is ``unknown-extension``. Only the producing declaration states one - a</span>
+<span class="sd">    consumer stating one is ``consumer-extension``, on the reasoning that makes ``section``</span>
+<span class="sd">    and ``id`` producer keys: a block says what the object *is*.</span>
+<span class="sd">    """</span>
+
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Storage of one element, one of the eleven base datatypes.</span>
 
@@ -539,6 +551,18 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">refuse_restating</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""A frozen model hashes by default from all its fields, and ``extensions`` may hold</span>
+<span class="sd">        whatever a plugin put there - a list inside a block, say - which pydantic cannot hash.</span>
+
+<span class="sd">        Leaving it out of the hash costs nothing a caller would notice: two definitions equal</span>
+<span class="sd">        in every field, ``extensions`` included, still hash equal, since equality is coarser</span>
+<span class="sd">        than this - the only thing a hash has to promise.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span>
+            <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="o">*</span><span class="p">(</span><span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">"extensions"</span><span class="p">))</span>
+        <span class="p">)</span>
 
     <span class="c1"># The shape of a stated ``init`` is deliberately not validated here. Only part of the</span>
     <span class="c1"># answer is written in the file - a curve or a map takes its shape from axes another</span>

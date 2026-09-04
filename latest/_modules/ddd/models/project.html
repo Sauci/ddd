@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
@@ -96,7 +97,9 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
 
@@ -120,7 +123,39 @@
 
 <span class="sd">    Shell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every</span>
 <span class="sd">    included file is detected from its top level key.</span>
-<span class="sd">    """</span></div>
+<span class="sd">    """</span>
+
+    <span class="n">plugins</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)],</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<span class="w">    </span><span class="sd">"""Plugins that extend DDD for this project, in the order their hooks run.</span>
+
+<span class="sd">    Each entry is a ``.py`` path relative to this file - a plugin the project keeps in its</span>
+<span class="sd">    own repository - or a dotted module name imported from the environment - one installed as</span>
+<span class="sd">    a distribution. A plugin acts on a project because the project names it, never because</span>
+<span class="sd">    it happens to be installed. A sub-project may name plugins too; the set in play is the</span>
+<span class="sd">    union, because the blocks a plugin interprets may sit in any component.</span>
+<span class="sd">    """</span>
+
+    <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""The settings of each plugin, keyed by plugin name: ``{"layout": {"max_key": 4095}}``.</span>
+
+<span class="sd">    Validated against the plugin's project model, defaults filled in, and carried into the</span>
+<span class="sd">    dictionary so that a comparison over an archived dump still knows them. A plugin's</span>
+<span class="sd">    settings are stated by one project file; a second file stating them is a ``schema``</span>
+<span class="sd">    finding, the way a second file declaring a section is refused.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""A frozen model hashes by default from all its fields, and ``extensions`` may hold</span>
+<span class="sd">        whatever a plugin's settings are, which pydantic cannot hash - the same gap</span>
+<span class="sd">        :meth:`~ddd.models.objects.DataObject.__hash__` closes, for the same reason.</span>
+
+<span class="sd">        Leaving it out of the hash costs nothing a caller would notice: two projects equal in</span>
+<span class="sd">        every field, ``extensions`` included, still hash equal, since equality is coarser than</span>
+<span class="sd">        this - the only thing a hash has to promise.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span>
+            <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="o">*</span><span class="p">(</span><span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">"extensions"</span><span class="p">))</span>
+        <span class="p">)</span></div>
 
 
 

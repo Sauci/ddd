@@ -570,6 +570,39 @@ class TestTheDictionary:
         dictionary, _ = analysed(tree, declare("local", "X"))
         assert dictionary.extensions == {"tag": {"prefix": ""}}
 
+    def test_the_extensions_are_sorted_by_plugin_name(self, tree: Path) -> None:
+        # Two plugins under different names, named in an order that would not itself sort
+        # them, and settings stated for only one - so a dictionary that merely appended the
+        # stated settings after the resolved blocks would still come out sorted by luck.
+        write_plugin(
+            tree / "tools",
+            "beta_plugin.py",
+            TAG_PLUGIN.replace('name="tag"', 'name="beta"').replace("tag/", "beta/"),
+        )
+        write_plugin(
+            tree / "tools",
+            "alpha_plugin.py",
+            TAG_PLUGIN.replace('name="tag"', 'name="alpha"').replace("tag/", "alpha/"),
+        )
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P",
+                    "a.ddd.json",
+                    plugins=["tools/beta_plugin.py", "tools/alpha_plugin.py"],
+                    extensions={"beta": {"prefix": "p"}},
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None and not bag.has_errors, messages(bag)
+        dictionary = analyze(workspace, bag)
+        assert list(dictionary.extensions) == ["alpha", "beta"]
+        assert dictionary.plugins == ("alpha", "beta")
+
     def test_an_unknown_block_that_was_relaxed_is_carried_as_written(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,

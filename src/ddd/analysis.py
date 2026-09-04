@@ -524,10 +524,14 @@ class _Analysis:
             for name, plugin in sorted(self._plugins.items())
             if plugin.project_model is not None
         }
-        extensions = {
-            **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
-            **settings,
-        }
+        extensions = dict(
+            sorted(
+                {
+                    **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
+                    **settings,
+                }.items()
+            )
+        )
         dictionary = DataDictionary(
             name=workspace.name,
             description=workspace.description,

@@ -508,8 +508,6 @@ and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema`, `plugin-not-found`, `plugin-invalid` | the file tree cannot be read; these seven cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the seven above |
-| error | `plugin-not-found` | a project names a plugin that cannot be found; cannot be relaxed |
-| error | `plugin-invalid` | a plugin module does not expose a well formed `PLUGIN`, or two plugins claim one name; cannot be relaxed |
 | error | `unknown-extension` | an `extensions` block names a plugin the project does not load |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `section-alignment` | an object needs stricter alignment than its section guarantees |

@@ -894,6 +894,19 @@ class TestTheCheckHook:
         bag, _ = analyse_standalone(tree / "project.ddd.json")
         assert "tag/bad-prefix" in checks(bag)
 
+    def test_the_language_server_survives_a_hook_that_raises(self, tree: Path) -> None:
+        write_plugin(tree / "tools", source=RAISING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag, _ = analyse_standalone(tree / "project.ddd.json")
+        assert "plugin-invalid" in checks(bag)
+        assert "failed in its check hook: boom" in messages(bag)
+
     def test_a_plugin_without_a_hook_is_nothing(self, tree: Path) -> None:
         write_plugin(tree, "bare.py", BARE_PLUGIN)
         _, bag = run_analysis(

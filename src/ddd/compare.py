@@ -153,7 +153,7 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
 )
 
 
-def identity(entry: Comparable) -> tuple[str, str] | None:
+def _identity(entry: Comparable) -> tuple[str, str] | None:
     """What two deliveries join this object on, or nothing when it carries no id.
 
     A plain object is its id. A leaf is its instance's id together with the part of its path
@@ -185,7 +185,7 @@ def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparabl
     seen: dict[tuple[str, str], Comparable] = {}
     collided: set[tuple[str, str]] = set()
     for entry in side.values():
-        key = identity(entry)
+        key = _identity(entry)
         if key is None:
             continue
         if key in seen:
@@ -204,7 +204,7 @@ def _states_different_identities(old: Comparable, new: Comparable) -> bool:
     forever. An entry that states no identity is not evidence either way, so a couple where
     either side is silent is not this case.
     """
-    before, after = identity(old), identity(new)
+    before, after = _identity(old), _identity(new)
     return before is not None and after is not None and before != after
 
 
@@ -251,17 +251,19 @@ def _pair(
     return paired, removed, added
 
 
-def renames(baseline: DataDictionary, candidate: DataDictionary) -> list[dict[str, str]]:
-    """The old-to-new name pairs of this comparison, for migrating what DDD cannot see.
+def renames(paired: Sequence[tuple[Comparable, Comparable]]) -> list[dict[str, str]]:
+    """The old-to-new name pairs of a comparison, for migrating what DDD cannot see.
+
+    Takes the pairing :func:`compare` returns rather than the two dictionaries, so the map is
+    a second reading of one comparison instead of a second comparison.
 
     Sorted by the new name, so two runs of one comparison produce the same file and a diff of
     two such files means something.
     """
-    paired, _, _ = _pair(baseline.comparable, candidate.comparable)
     moved = [
         {"id": key[0], "from": old.name, "to": new.name}
         for old, new in paired
-        if old.name != new.name and (key := identity(old)) is not None
+        if old.name != new.name and (key := _identity(old)) is not None
     ]
     return sorted(moved, key=lambda entry: entry["to"])
 
@@ -272,8 +274,12 @@ def compare(
     bag: DiagnosticBag,
     *,
     location: Location | None = None,
-) -> None:
-    """Report how far ``candidate`` can stand in for ``baseline``.
+) -> list[tuple[Comparable, Comparable]]:
+    """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
+
+    The pairing is returned because it is a genuine product of comparing and the migration map
+    is a second view of it: ``renames`` reading it back costs nothing, where re-deriving it
+    would build both side maps and run :func:`_pair` a second time over identical input.
 
     The comparison is directional: everything the baseline offered has to still be there and
     still mean the same thing, while anything the candidate adds is its own business.
@@ -306,7 +312,6 @@ def compare(
         _compare_object(old, new, bag, location, was, now)
 
     for name in sorted(was.keys() & now.keys()):
-        before, after = identity(was[name]), identity(now[name])
         # Proof does not need both sides to have adopted an id: pairing (above) may already
         # have matched the baseline's object under this name to a *different* name, by id -
         # which proves whatever still answers to this name in the candidate is not it, whether
@@ -314,7 +319,7 @@ def compare(
         moved = next(
             (new.name for old, new in paired if old.name == name and new.name != name), None
         )
-        if moved is None and (before is None or after is None or before == after):
+        if moved is None and not _states_different_identities(was[name], now[name]):
             continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
         # recording keyed by this spelling binds to the new object as readily as to the old.
@@ -337,6 +342,8 @@ def compare(
             f"({new.kind.value}, produced by {new.owner or 'nobody'})",
             location,
         )
+
+    return paired
 
 
 def _lost_identity_note(
@@ -414,7 +421,7 @@ def _report_removal(
 def _referent_identity(name: str, side: Mapping[str, Comparable]) -> tuple[str, str] | None:
     """The identity of the object a reference names on one side, or nothing when it has none."""
     entry = side.get(name)
-    return identity(entry) if entry is not None else None
+    return _identity(entry) if entry is not None else None
 
 
 def _same_referent(

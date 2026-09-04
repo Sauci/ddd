@@ -261,11 +261,17 @@ def compare(
 
     for name in sorted(was.keys() & now.keys()):
         before, after = identity(was[name]), identity(now[name])
-        if before is None or after is None or before == after:
+        # Proof does not need both sides to have adopted an id: pairing (above) may already
+        # have matched the baseline's object under this name to a *different* name, by id -
+        # which proves whatever still answers to this name in the candidate is not it, whether
+        # or not that entry states an id of its own (design section 5.3).
+        moved = next(
+            (new.name for old, new in paired if old.name == name and new.name != name), None
+        )
+        if moved is None and (before is None or after is None or before == after):
             continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
         # recording keyed by this spelling binds to the new object as readily as to the old.
-        moved = next((new.name for old, new in paired if old.name == name), None)
         notes = [(f"'{name}' is now called '{moved}'", None)] if moved else []
         bag.add(
             "reused-name",
@@ -359,11 +365,30 @@ def _report_removal(
         )
 
 
-def _referent(name: str, side: Mapping[str, Comparable]) -> tuple[str, str] | str:
-    """What a referent is compared as: its identity where it has one, else its name."""
+def _referent_identity(name: str, side: Mapping[str, Comparable]) -> tuple[str, str] | None:
+    """The identity of the object a reference names on one side, or nothing when it has none."""
     entry = side.get(name)
-    key = identity(entry) if entry is not None else None
-    return key if key is not None else name
+    return identity(entry) if entry is not None else None
+
+
+def _same_referent(
+    before: str, was: Mapping[str, Comparable], after: str, now: Mapping[str, Comparable]
+) -> bool:
+    """Whether two written referent names name the same object across the two deliveries.
+
+    Resolved by identity when *both* referents carry one; falls back to comparing the written
+    names the moment either side's referent has none (design section 5.4). Resolving each side
+    on its own and comparing the two answers - what an earlier version of this function did -
+    does not implement that fallback: an id and a bare name never compare equal, so the moment
+    only one side of a project had adopted ids, every reference to the object that had would
+    read as changed whether or not it actually was, reporting a stray `changed-interface` on
+    every curve, map and axis that named it.
+    """
+    before_key = _referent_identity(before, was)
+    after_key = _referent_identity(after, now)
+    if before_key is None or after_key is None:
+        return before == after
+    return before_key == after_key
 
 
 def _compare_references(
@@ -380,7 +405,7 @@ def _compare_references(
     if old.references.keys() != new.references.keys():
         return _describe_reference_change(old, new, was, now)
     for field, before in old.references.items():
-        if _referent(before, was) != _referent(new.references[field], now):
+        if not _same_referent(before, was, new.references[field], now):
             return _describe_reference_change(old, new, was, now)
     return None
 
@@ -405,7 +430,7 @@ def _describe_reference_change(
     olds: list[str] = []
     for field in sorted(old.references):
         before, after = old.references[field], new.references[field]
-        if before == after and _referent(before, was) != _referent(after, now):
+        if before == after and not _same_referent(before, was, after, now):
             news.append(f"{field}={after} (now names a different object)")
         else:
             news.append(f"{field}={after}")

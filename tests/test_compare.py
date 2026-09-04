@@ -490,6 +490,29 @@ def test_a_name_freed_by_a_rename_and_claimed_again_is_an_error(tree):
     assert note_text == "'FiltGain' is now called 'FilterGain'"
 
 
+def test_a_reused_name_is_caught_even_when_the_claimant_has_no_id_yet(tree):
+    """Pairing has already proved, by id, that the baseline's 'FiltGain' is now called
+    'FilterGain', so whatever still answers to 'FiltGain' in the candidate provably is not it -
+    whether or not that entry has adopted an id of its own yet. Requiring both sides to state
+    one stayed silent on exactly this asymmetry, which is not a corner case: it is a project
+    migrating one component at a time (design section 5.1), caught mid-migration.
+    """
+    before = one_component(tree, "before", declare("local", "FiltGain", id="k7m2q9xr4t8w"))
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "FilterGain", id="k7m2q9xr4t8w"),
+        declare("local", "FiltGain"),
+    )
+    bag = verdict(before, after)
+    assert set(checks(bag)) == {"renamed-object", "reused-name", "added-object"}, messages(bag)
+    findings = [diagnostic for diagnostic in bag if diagnostic.check == "reused-name"]
+    assert len(findings) == 1, messages(bag)
+    assert findings[0].notes, "the note says where the old object went"
+    note_text, _ = findings[0].notes[0]
+    assert note_text == "'FiltGain' is now called 'FilterGain'"
+
+
 def test_a_name_reused_after_a_deletion_is_an_error(tree):
     before = one_component(tree, "before", declare("local", "X", id="k7m2q9xr4t8w"))
     after = one_component(tree, "after", declare("local", "X", id="p3rt5vwx9z2q"))
@@ -526,6 +549,88 @@ def test_pointing_a_curve_at_a_different_axis_is_still_an_interface_change(tree)
         declare("local", "Curve", kind="curve", axis="Other", id="p3rt5vwx9z2q"),
     )
     assert "changed-interface" in checks(verdict(before, after)), messages(verdict(before, after))
+
+
+def test_a_format_5_style_baseline_against_a_stamped_candidate_has_no_false_change(tree):
+    """The exact first step ``docs/comparing_deliveries.rst`` teaches: archive a baseline
+    before adopting ids, then run ``ddd id --assign`` on the working tree and compare against
+    it. Resolving each side's referent on its own made a tuple and a bare name compare unequal,
+    so this reported a phantom ``changed-interface`` on the curve the moment the candidate
+    alone had adopted ids - on every project taking this exact first migration step.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", kind="axis", size=8),
+        declare("local", "Curve", kind="curve", axis="A"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+    )
+    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+
+
+def test_only_the_axis_gaining_an_id_this_delivery_has_no_false_change(tree):
+    """Partial adoption within format 6: the curve already carries a stable id from an earlier
+    delivery and pairs on it, while the axis it refers to is only gaining one now. The fallback
+    to comparing written names has to hold regardless of how the *referring* object itself
+    happened to be paired.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", kind="axis", size=8),
+        declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+    )
+    assert checks(verdict(before, after)) == [], messages(verdict(before, after))
+
+
+def test_a_reference_change_still_suppresses_its_own_limits_narrowing(tree):
+    """The gate that suppresses a limits narrowing which is a consequence of an interface
+    change - ``narrowed and not interface and references is None`` in ``_compare_object`` -
+    reads ``_compare_references``'s return value directly. A genuine reference change, an axis
+    actually swapped for another rather than the asymmetric false positive above, still has to
+    suppress it: fixing the false positive must not detach the gate from a real one.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "B", kind="axis", size=8, id="w9x8y7z6q5r4"),
+        declare(
+            "local",
+            "Curve",
+            kind="curve",
+            axis="A",
+            id="p3rt5vwx9z2q",
+            limits={"min": 0, "max": 30},
+        ),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+        declare("local", "B", kind="axis", size=8, id="w9x8y7z6q5r4"),
+        declare(
+            "local",
+            "Curve",
+            kind="curve",
+            axis="B",
+            id="p3rt5vwx9z2q",
+            limits={"min": 10, "max": 20},
+        ),
+    )
+    bag = verdict(before, after)
+    assert checks(bag) == ["changed-interface"], messages(bag)
 
 
 def test_a_stale_reference_through_a_reused_name_says_so(tree):
@@ -840,3 +945,50 @@ def test_a_failing_comparison_still_writes_the_renames_file(tree, tmp_path):
     assert json.loads(out.read_text(encoding="utf-8")) == [
         {"id": "k7m2q9xr4t8w", "from": "FiltGain", "to": "FilterGain"}
     ]
+
+
+def test_a_dumped_baseline_survives_a_rename_end_to_end(tree, capsys):
+    """Every other identity test builds its dictionaries in memory through ``resolve()``; none
+    of them go through the path a project actually runs in production: ``ddd dump`` to a real
+    file, archived, and ``ddd compare`` reading it back through
+    :func:`ddd.loading.load_dictionary` rather than the project loader, against a candidate
+    resolved fresh from a later working tree.
+
+    It is also the shape that reproduces Finding 1: the curve's own rename is tracked by a
+    stable id carried on both sides, but the axis it points at has only just adopted one, so
+    the reference field is the unchanged spelling ``'A'`` on both sides while what it resolves
+    to is a bare name on one and an id on the other - a ``changed-interface`` on the curve
+    under the old, per-side fallback, and nothing under the fix.
+    """
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component(
+                "A",
+                declare("local", "A", kind="axis", size=8),
+                declare("local", "Curve", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+            ),
+        },
+    )
+    baseline = tree / "baseline.json"
+    assert main(["dump", str(tree / "before.ddd.json")]) == EXIT_OK
+    baseline.write_text(capsys.readouterr().out, encoding="utf-8")
+    assert json.loads(baseline.read_text(encoding="utf-8"))["format"] == 6
+
+    write_tree(
+        tree,
+        {
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component(
+                "A",
+                declare("local", "A", kind="axis", size=8, id="k7m2q9xr4t8w"),
+                declare("local", "CurveX", kind="curve", axis="A", id="p3rt5vwx9z2q"),
+            ),
+        },
+    )
+    exit_code = main(["compare", str(baseline), str(tree / "after.ddd.json")])
+    err = capsys.readouterr().err
+    assert exit_code == EXIT_OK, err
+    assert "renamed-object" in err and "'Curve'" in err and "'CurveX'" in err
+    assert "changed-interface" not in err

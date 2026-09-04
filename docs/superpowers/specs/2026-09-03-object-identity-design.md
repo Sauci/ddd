@@ -141,8 +141,7 @@ or the command re-identifies the project on every invocation.
 This is the first command that edits a hand-authored `*.ddd.json`, and it is defensible because
 the project is in git: the tool proposes, the diff is reviewed, `git checkout` undoes it. It
 writes only the new key and preserves the rest of the file's formatting; a file it cannot parse
-is reported and skipped rather than rewritten. The language server offers the same thing as a
-code action on a declaration with no id.
+is reported and skipped rather than rewritten.
 
 ## 5 Comparison
 
@@ -175,10 +174,23 @@ delivery needs a migration step" without claiming the software is wrong.
 
 ### 5.3 `reused-name`
 
-A name present on both sides, carried by objects with *different* ids. Reported at **error**,
-above the removal and addition it accompanies, because it is the failure that compiles, links,
-runs and reads the wrong storage: a dataset or a recording keyed by that spelling binds to the
-new object as readily as it did to the old one, and nothing about the delivery looks broken.
+A name present on both sides that now names a different object, proved either of two ways.
+Both sides state an id for it and the ids differ - two declared objects, unrelated. Or pairing
+(section 5.1) has already matched the baseline's object under that name to a *different* name
+elsewhere in the candidate, by id - which proves that whatever still answers to this name in
+the candidate is not it, whether or not that entry has stated an id of its own. Reported at
+**error**, above the removal and addition it accompanies, because it is the failure that
+compiles, links, runs and reads the wrong storage: a dataset or a recording keyed by that
+spelling binds to the new object as readily as it did to the old one, and nothing about the
+delivery looks broken.
+
+The second proof matters most in exactly the regime section 5.1 exists for: a project adopting
+ids one component at a time. The claimant of a freed name is under no less suspicion before it
+has been stamped with an id than after - the reasoning above is about wrong storage, and wrong
+storage does not care which side of the migration wrote the claim. `reused-name` is also the
+highest-severity finding this feature produces, which makes silence here, for no better reason
+than "the claimant hasn't been stamped yet", the worst place for the feature to have a blind
+spot.
 
 When the baseline's object survives elsewhere in the candidate under a new name, the finding
 carries a note saying so - the spelling was freed by a rename and claimed in the same delivery,
@@ -380,3 +392,9 @@ The implementation plan covers 1 to 3. Section 8 stays specified and unplanned.
 - **Renames across a merge of two projects.** Two projects assembled into one image may each
   carry an object with the same id if one was copied from the other. `duplicate-id` reports it,
   which is right, but says nothing about which is the original. Wait for the case to occur.
+- **A language server code action for `missing-id`.** Section 4.3 specified that the language
+  server would offer the same thing as `ddd id --assign` as a code action on a declaration with
+  no id. Specified and deferred rather than built: it is substantial unplanned work for a gap
+  the cli command already closes, and amending the design in flight rather than building past
+  it unplanned is the established pattern on this branch - sections 9 and 10 were both amended
+  the same way.

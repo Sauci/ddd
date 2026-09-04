@@ -10,7 +10,7 @@ import pytest
 
 from conftest import DEMO, checks, component, declare, messages, project, write_tree
 from ddd.analysis import analyze
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
 from ddd.compare import compare
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.ir import DataDictionary
@@ -998,6 +998,29 @@ def test_the_renames_file_is_sorted_by_the_new_name(tree, tmp_path):
         {"id": "k7m2q9xr4t8w", "from": "Zeta", "to": "Alpha"},
         {"id": "p3rt5vwx9z2q", "from": "Beta", "to": "Omega"},
     ]
+
+
+def test_a_comparison_without_the_flag_writes_no_renames_file(tree):
+    """``--renames`` is opt-in, and the parser must not quietly acquire a default for it.
+
+    An *unconditional* write already fails loudly, since ``None.write_text`` raises and every
+    other comparison in this file runs without the flag. A *defaulted* one would not: the file
+    would simply appear where nobody asked for it. So the assertion is on the parser's default,
+    which is where such a change would be made; the run below is here to show the comparison
+    still does its work without the flag, not to prove a negative about the filesystem.
+    """
+    assert _build_parser().parse_args(["compare", "a.json", "b.json"]).renames is None
+
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "before-a.ddd.json"),
+            "before-a.ddd.json": component("A", declare("local", "FiltGain", id="k7m2q9xr4t8w")),
+            "after.ddd.json": project("P", "after-a.ddd.json"),
+            "after-a.ddd.json": component("A", declare("local", "FilterGain", id="k7m2q9xr4t8w")),
+        },
+    )
+    assert main(["compare", str(tree / "before.ddd.json"), str(tree / "after.ddd.json")]) == EXIT_OK
 
 
 def test_a_failing_comparison_still_writes_the_renames_file(tree, tmp_path):

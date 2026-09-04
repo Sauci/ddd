@@ -280,6 +280,15 @@ def run_compare_hooks(
             _call(plugin, "compare", plugin.compare, context)
 
 
+def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Backend:
+    """The backend a plugin provides, or a usage error saying it provides none."""
+    if plugin.backend is None:
+        msg = f"plugin '{plugin.name}' provides no artefact"
+        raise ValueError(msg)
+    context = GenerateContext(settings_of(plugin, dictionary.extensions), generator)
+    return _call(plugin, "backend", plugin.backend, context)
+
+
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
         return function(context)

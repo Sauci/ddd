@@ -56,9 +56,11 @@ from ddd.models import (
 )
 from ddd.models.schema import PublishedSchema
 from ddd.plugins import (
+    PLUGIN_NAME_PATTERN,
     Plugin,
     PluginInvalidError,
     PluginNotFoundError,
+    backend_of,
     load_plugin,
     run_compare_hooks,
 )
@@ -68,6 +70,7 @@ EXIT_FINDINGS = 1
 EXIT_USAGE = 2
 
 GENERATOR = f"ddd {__version__}"
+BUILT_IN_ARTEFACTS = ("c", "a2l", "all")
 
 
 def cmake_module_directory() -> Path | None:
@@ -94,8 +97,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``ddd`` command; returns the process exit code."""
     _write_utf8(sys.stdout)
     _write_utf8(sys.stderr)
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    parser = _build_parser(_plugin_artefact(arguments))
+    args = parser.parse_args(arguments)
     try:
         handler: Any = args.handler
         return int(handler(args))
@@ -107,7 +111,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _plugin_artefact(arguments: Sequence[str]) -> str | None:
+    """The artefact of a ``ddd generate`` run that is not a built-in one, off the raw arguments.
+
+    argparse wants every subcommand registered before it parses, and the plugins that provide
+    an artefact are known only once the project is read - which is itself an argument. So the
+    name is read here and registered as a subcommand of its own; whether a plugin provides it
+    is decided after the project is loaded, as a usage error naming what the project does
+    provide.
+    """
+    if len(arguments) >= 2 and arguments[0] == "generate":
+        name = arguments[1]
+        if name not in BUILT_IN_ARTEFACTS and PLUGIN_NAME_PATTERN.match(name):
+            return name
+    return None
+
+
+def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ddd",
         description=(
@@ -163,7 +183,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # One subparser per artefact rather than steering flags on a single command: the two
     # backends do not want the same options, and a flag pair like --no-a2l/--a2l-only would
     # leave every run carrying the other backend's options as noise it must not use.
-    artefacts = generate.add_subparsers(dest="artefact", required=True, metavar="{c,a2l,all}")
+    artefacts = generate.add_subparsers(
+        dest="artefact", required=True, metavar="{c,a2l,all,<plugin>}"
+    )
     for name, description, with_c, with_a2l in (
         ("c", "render the c sources from the project's jinja2 templates", True, False),
         ("a2l", "write the a2l file, with the addresses --address-map carries", False, True),
@@ -172,6 +194,12 @@ def _build_parser() -> argparse.ArgumentParser:
         _add_generate_arguments(
             artefacts.add_parser(name, help=description), with_c=with_c, with_a2l=with_a2l
         )
+    if plugin_artefact is not None:
+        extra = artefacts.add_parser(
+            plugin_artefact, help="write the artefact the plugin of that name provides"
+        )
+        _add_generate_arguments(extra, with_c=False, with_a2l=False)
+        extra.set_defaults(plugin_artefact=plugin_artefact)
 
     listing = subparsers.add_parser("list", help="list the global variables of a project")
     _add_common_arguments(listing)
@@ -296,6 +324,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
     checks.add_argument("--format", choices=["text", "json"], default="text", help="output format")
+    _add_plugin_argument(checks)
     checks.set_defaults(handler=_command_checks)
 
     cmake = subparsers.add_parser(
@@ -554,6 +583,7 @@ def _command_generate(args: argparse.Namespace) -> int:
     if dictionary is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
+    assert resolved is not None  # dictionary is only set from resolved; narrows it for mypy
 
     addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
     if args.render_a2l and args.address_map is not None:
@@ -576,6 +606,17 @@ def _command_generate(args: argparse.Namespace) -> int:
                 GENERATOR,
             )
         )
+    name = getattr(args, "plugin_artefact", None)
+    if name is not None:
+        plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
+        if plugin is None:
+            provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
+            msg = (
+                f"'{name}' is not an artefact of this project; it provides: "
+                f"{provided or 'no plugin artefact'}"
+            )
+            raise ValueError(msg)
+        backends.append(backend_of(plugin, dictionary, GENERATOR))
     files = render(dictionary, backends, args.output_dir)
     try:
         results = write(files, dry_run=args.dry_run)
@@ -849,6 +890,8 @@ def _command_sources(args: argparse.Namespace) -> int:
 
 
 def _command_checks(args: argparse.Namespace) -> int:
+    plugins = _plugins_from_arguments(args.plugin)
+    infos = [*CHECKS.values(), *(info for plugin in plugins for info in plugin.checks)]
     if args.format == "json":
         print(
             json.dumps(
@@ -859,14 +902,14 @@ def _command_checks(args: argparse.Namespace) -> int:
                         "description": info.description,
                         "overridable": info.overridable,
                     }
-                    for info in CHECKS.values()
+                    for info in infos
                 ],
                 indent=2,
             )
         )
         return EXIT_OK
-    width = max(len(name) for name in CHECKS)
-    for info in CHECKS.values():
+    width = max(len(info.identifier) for info in infos)
+    for info in infos:
         fixed = "" if info.overridable else " (fixed)"
         print(
             f"{info.identifier:<{width}}  {info.default_severity.value:<7}  "

@@ -7,6 +7,7 @@ the api it is written against, with a plugin small enough to live in this file.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -14,9 +15,27 @@ import jsonschema
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from conftest import (
+    TEMPLATES,
+    checks,
+    component,
+    declare,
+    messages,
+    project,
+    run_analysis,
+    write_tree,
+)
 from ddd.analysis import analyze
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _plugins_from_arguments, main, schema_text
+from ddd.backends import CBackend, render
+from ddd.cli import (
+    EXIT_FINDINGS,
+    EXIT_OK,
+    EXIT_USAGE,
+    _plugin_artefact,
+    _plugins_from_arguments,
+    main,
+    schema_text,
+)
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
@@ -35,6 +54,7 @@ from ddd.plugins import (
     PluginError,
     PluginInvalidError,
     PluginNotFoundError,
+    backend_of,
     load_plugin,
     settings_of,
 )
@@ -1038,3 +1058,135 @@ class TestTheCompareHook:
         plugins = (Plugin(name="bare"), Plugin(name="tag"))
         run_compare_hooks(plugins, dictionary, dictionary, bag, lambda _: None, None)
         assert checks(bag) == []
+
+
+class TestGenerate:
+    def project_with_tags(self, tree: Path) -> str:
+        tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}), declare("local", "Y"))
+        return str(tree / "project.ddd.json")
+
+    def test_a_plugin_artefact_is_generated_by_name(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.project_with_tags(tree)
+        out = tree / "out"
+        assert main(["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]) == EXIT_OK
+        assert (out / "tags.txt").read_text(encoding="utf-8") == "X t\n"
+        assert "wrote" in capsys.readouterr().err
+
+    def test_dry_run_writes_nothing(self, tree: Path) -> None:
+        root = self.project_with_tags(tree)
+        out = tree / "out"
+        arguments = [
+            "generate",
+            "tag",
+            root,
+            "-o",
+            str(out),
+            "--dry-run",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert not (out / "tags.txt").exists()
+
+    def test_a_name_no_plugin_provides_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.project_with_tags(tree)
+        arguments = ["generate", "nvm", root, "-o", str(tree / "out"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        # _listed() quotes every name it lists (see its docstring), so the single artefact it
+        # names here, 'tag', comes back quoted too - matching every other _listed() message.
+        assert (
+            "'nvm' is not an artefact of this project; it provides: 'tag'"
+            in capsys.readouterr().err
+        )
+
+    def test_a_plugin_without_a_backend_provides_no_artefact(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree, "bare.py", BARE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["bare.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "bare", root, "-o", str(tree / "out"), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "plugin 'bare' provides no artefact" in capsys.readouterr().err
+
+    def test_a_project_with_errors_generates_nothing(self, tree: Path) -> None:
+        tagged(tree, declare("input", "X"))
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "tag", root, "-o", str(tree / "out")]
+        assert main(arguments) == EXIT_FINDINGS
+
+    def test_the_built_in_pair_does_not_run_plugin_backends(self, tree: Path) -> None:
+        root = self.project_with_tags(tree)
+        out = tree / "out"
+        arguments = [
+            "generate",
+            "all",
+            root,
+            "-o",
+            str(out),
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert not (out / "tags.txt").exists()
+
+    def test_a_path_collision_with_the_c_backend_is_refused(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "tags.txt.jinja2").write_text("x\n", encoding="utf-8")
+        plugin = load_plugin("tools/tag_plugin.py", tree)
+        backends = [CBackend(templates), backend_of(plugin, dictionary, "ddd test")]
+        with pytest.raises(
+            ValueError, match=re.escape("the tag and c backends would both write 'tags.txt'")
+        ):
+            render(dictionary, backends, tree / "out")
+
+    @pytest.mark.parametrize(
+        ("arguments", "expected"),
+        [
+            (["generate", "tag", "p.ddd.json"], "tag"),
+            (["generate", "c", "p.ddd.json"], None),
+            (["generate", "all"], None),
+            (["generate"], None),
+            (["generate", "--help"], None),
+            (["generate", "Not-A-Name", "p.ddd.json"], None),
+            (["check", "tag"], None),
+        ],
+    )
+    def test_the_artefact_is_read_off_the_raw_arguments(
+        self, arguments: list[str], expected: str | None
+    ) -> None:
+        assert _plugin_artefact(arguments) == expected
+
+
+class TestChecksCommand:
+    def test_the_plugins_checks_are_listed_after_the_built_in_ones(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path / "tools")
+        monkeypatch.chdir(tmp_path)
+        assert main(["checks"]) == EXIT_OK
+        assert "tag/bad-prefix" not in capsys.readouterr().out
+        assert main(["checks", "--plugin", "tools/tag_plugin.py"]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert out.index("added-object") < out.index("tag/bad-prefix")
+        # The column width is the longest identifier of the merged listing - a built-in one,
+        # here - so the gap after a shorter plugin identifier is wider than two spaces; the
+        # whitespace is matched loosely rather than pinned to that incidental width.
+        assert re.search(r"tag/bad-prefix\s+warning\s+a tag is outside the project's prefix", out)
+        assert main(["checks", "--plugin", "tools/tag_plugin.py", "--format", "json"]) == EXIT_OK
+        listed = json.loads(capsys.readouterr().out)
+        assert listed[-1]["check"] == "tag/retagged"

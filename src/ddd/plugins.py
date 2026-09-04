@@ -19,12 +19,12 @@ import importlib
 import importlib.util
 import re
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ddd.diagnostics import PLUGIN_CHECK_SEPARATOR, CheckInfo, DiagnosticBag, Location
 from ddd.ir import DataDictionary
@@ -211,3 +211,48 @@ def resolve_blocks(
 
 def _model_of(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
     return plugin.project_model if on_project else plugin.object_model
+
+
+class PluginError(ValueError):
+    """A hook raised, or a plugin's own data does not validate: a defect of the plugin.
+
+    A ``ValueError`` so that the cli reports it the way it reports a template that does not
+    render - one line naming the plugin and the hook, exit code 2, no half-written output.
+    """
+
+
+def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> BaseModel | None:
+    """The project block validated against the plugin's project model.
+
+    Built from ``{}`` when the project states none, so that defaults apply; ``None`` for a
+    plugin that declares no project model. The loader has validated a stated block already,
+    so a failure here comes from a dump - one archived before the plugin required a setting.
+    """
+    if plugin.project_model is None:
+        return None
+    try:
+        return plugin.project_model.model_validate(extensions.get(plugin.name, {}))
+    except ValidationError as error:
+        msg = f"the settings of plugin '{plugin.name}' are invalid: {error}"
+        raise PluginError(msg) from error
+
+
+def run_check_hooks(
+    plugins: Sequence[Plugin],
+    dictionary: DataDictionary,
+    bag: DiagnosticBag,
+    locate: Callable[[str], Location | None],
+) -> None:
+    """Run every check hook over the dictionary, in the order the project lists the plugins."""
+    for plugin in plugins:
+        if plugin.check is not None:
+            settings = settings_of(plugin, dictionary.extensions)
+            _call(plugin, "check", plugin.check, CheckContext(dictionary, settings, bag, locate))
+
+
+def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
+    try:
+        return function(context)
+    except Exception as error:
+        msg = f"plugin '{plugin.name}' failed in its {hook} hook: {error}"
+        raise PluginError(msg) from error

@@ -16,7 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
 from ddd.analysis import analyze
-from ddd.cli import EXIT_OK, EXIT_USAGE, _plugins_from_arguments, main, schema_text
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _plugins_from_arguments, main, schema_text
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
@@ -28,8 +28,16 @@ from ddd.diagnostics import (
 )
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
+from ddd.lsp import analyse_standalone
 from ddd.models import ComponentFile, ProjectFile
-from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
+from ddd.plugins import (
+    Plugin,
+    PluginError,
+    PluginInvalidError,
+    PluginNotFoundError,
+    load_plugin,
+    settings_of,
+)
 
 TAG_PLUGIN = '''
 """A plugin that tags an object; the smallest consumer of every hook."""
@@ -804,3 +812,86 @@ class TestPluginsFromArguments:
         bag = DiagnosticBag()
         (plugin,) = _plugins_from_arguments(["tag_plugin.py"], bag)
         assert set(bag.registered) == {info.identifier for info in plugin.checks}
+
+
+RAISING_PLUGIN = TAG_PLUGIN.replace(
+    "def check(context: CheckContext) -> None:\n",
+    'def check(context: CheckContext) -> None:\n    raise RuntimeError("boom")\n',
+)
+
+
+class TestTheCheckHook:
+    def test_a_hook_reports_through_the_bag_at_the_producing_declaration(self, tree: Path) -> None:
+        _, bag = analysed(
+            tree, declare("local", "X", extensions={"tag": {"tag": "zz"}}), settings={"prefix": "p"}
+        )
+        assert checks(bag) == ["tag/bad-prefix"]
+        assert "a.ddd.json#component.interface[0]: warning[tag/bad-prefix]" in messages(bag)
+
+    def test_the_hook_sees_the_defaults_of_its_settings(self, tree: Path) -> None:
+        _, bag = analysed(tree, declare("local", "X", extensions={"tag": {"tag": "zz"}}))
+        assert checks(bag) == []
+
+    def test_the_policy_applies_to_a_hook_finding(self, tree: Path) -> None:
+        tagged(
+            tree, declare("local", "X", extensions={"tag": {"tag": "zz"}}), settings={"prefix": "p"}
+        )
+        root = str(tree / "project.ddd.json")
+        quiet = ["-W", "missing-id=ignore"]
+        assert main(["check", root, *quiet]) == EXIT_OK
+        assert main(["check", root, *quiet, "--strict"]) == EXIT_FINDINGS
+        assert main(["check", root, *quiet, "-W", "tag/bad-prefix=error"]) == EXIT_FINDINGS
+        assert main(["check", root, *quiet, "-W", "tag/bad-prefix=ignore", "--strict"]) == EXIT_OK
+
+    def test_an_override_no_plugin_registered_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        tagged(tree, declare("local", "X"))
+        root = str(tree / "project.ddd.json")
+        assert main(["check", root, "-W", "tag/no-such=error"]) == EXIT_USAGE
+        assert (
+            "unknown check 'tag/no-such': no loaded plugin registers it" in capsys.readouterr().err
+        )
+
+    def test_a_hook_that_raises_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=RAISING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        assert "plugin 'tag' failed in its check hook: boom" in capsys.readouterr().err
+
+    def test_the_language_server_runs_the_hook_too(self, tree: Path) -> None:
+        tagged(
+            tree, declare("local", "X", extensions={"tag": {"tag": "zz"}}), settings={"prefix": "p"}
+        )
+        bag, _ = analyse_standalone(tree / "project.ddd.json")
+        assert "tag/bad-prefix" in checks(bag)
+
+    def test_a_plugin_without_a_hook_is_nothing(self, tree: Path) -> None:
+        write_plugin(tree, "bare.py", BARE_PLUGIN)
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["bare.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert checks(bag) == []
+
+
+class TestSettings:
+    def test_a_plugin_without_a_project_model_has_none(self) -> None:
+        assert settings_of(Plugin(name="bare"), {"bare": {"x": 1}}) is None
+
+    def test_invalid_settings_are_the_plugins_error(self, tmp_path: Path) -> None:
+        source = TAG_PLUGIN.replace('prefix: str = ""', "prefix: str")
+        plugin = load_plugin(str(write_plugin(tmp_path, "strict_tag.py", source)), tmp_path)
+        with pytest.raises(PluginError, match="settings of plugin 'tag' are invalid"):
+            settings_of(plugin, {})

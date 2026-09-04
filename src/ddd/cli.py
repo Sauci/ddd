@@ -848,6 +848,7 @@ def _analyze(args: argparse.Namespace) -> tuple[DataDictionary | None, Diagnosti
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
         return None, bag
+    bag.policy.verify(bag.registered)
     return analyze(workspace, bag), bag
 
 

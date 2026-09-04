@@ -59,7 +59,7 @@ from ddd.models import (
     resolve_export,
     spelled_dimensions,
 )
-from ddd.plugins import resolve_blocks
+from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
@@ -528,7 +528,7 @@ class _Analysis:
             **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
             **settings,
         }
-        return DataDictionary(
+        dictionary = DataDictionary(
             name=workspace.name,
             description=workspace.description,
             source=workspace.root.name,
@@ -554,6 +554,11 @@ class _Analysis:
             plugins=tuple(sorted(self._plugins)),
             extensions=extensions,
         )
+        # Inside the analysis rather than beside it, so that nothing that analyses a project -
+        # the cli, the language server, a test - can forget to run them. A hook sees the whole
+        # dictionary, and every built-in finding is already in the bag.
+        run_check_hooks(workspace.plugins, dictionary, self._bag, workspace.locate)
+        return dictionary
 
     def _register_member_enums(self, entry: LoadedType) -> None:
         """An enumeration a member names is one the types header has to declare.

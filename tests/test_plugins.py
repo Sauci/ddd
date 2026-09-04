@@ -10,11 +10,13 @@ import json
 import sys
 from pathlib import Path
 
+import jsonschema
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
 from ddd.analysis import analyze
+from ddd.cli import EXIT_OK, EXIT_USAGE, _plugins_from_arguments, main, schema_text
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
@@ -659,3 +661,130 @@ class TestTheTemplates:
         )
         (file,) = render(dictionary, [CBackend(templates)], tree / "out")
         assert file.content == "X=t\n"
+
+
+def definitions_with_extensions(schema: dict) -> list[dict]:
+    return [
+        node
+        for node in (schema, *schema.get("$defs", {}).values())
+        if "extensions" in node.get("properties", {})
+    ]
+
+
+class TestSchemaWithPlugins:
+    def test_without_plugins_the_block_is_open(self) -> None:
+        schema = json.loads(schema_text("component"))
+        nodes = definitions_with_extensions(schema)
+        assert nodes, "no definition publishes extensions"
+        for node in nodes:
+            assert node["properties"]["extensions"].get("additionalProperties") is not False
+
+    def test_a_plugin_closes_the_block_over_its_model(self, tmp_path: Path) -> None:
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        schema = json.loads(schema_text("component", (plugin,)))
+        for node in definitions_with_extensions(schema):
+            extensions = node["properties"]["extensions"]
+            assert extensions["additionalProperties"] is False
+            assert extensions["properties"]["tag"]["properties"]["tag"]["type"] == "string"
+            assert extensions["properties"]["tag"]["additionalProperties"] is False
+
+    def test_the_project_schema_takes_the_project_model(self, tmp_path: Path) -> None:
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        schema = json.loads(schema_text("project", (plugin,)))
+        (node,) = definitions_with_extensions(schema)
+        assert "prefix" in node["properties"]["extensions"]["properties"]["tag"]["properties"]
+
+    def test_a_plugin_without_the_model_is_left_out(self) -> None:
+        plugin = Plugin(name="bare")
+        schema = json.loads(schema_text("component", (plugin,)))
+        for node in definitions_with_extensions(schema):
+            assert node["properties"]["extensions"]["properties"] == {}
+            assert node["properties"]["extensions"]["additionalProperties"] is False
+
+    def test_a_nested_model_is_hoisted_under_the_plugin_name(self) -> None:
+        class Inner(BaseModel):
+            x: int
+
+        class Outer(BaseModel):
+            inner: Inner
+
+        schema = json.loads(schema_text("component", (Plugin(name="nest", object_model=Outer),)))
+        assert "nest.Inner" in schema["$defs"]
+        node = definitions_with_extensions(schema)[0]
+        reference = node["properties"]["extensions"]["properties"]["nest"]["properties"]["inner"]
+        assert reference["$ref"] == "#/$defs/nest.Inner"
+
+    def test_the_dictionary_schema_stays_open(self, tmp_path: Path) -> None:
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        assert schema_text("dictionary", (plugin,)) == schema_text("dictionary")
+
+    def test_an_editor_validates_a_block_against_the_published_schema(self, tmp_path: Path) -> None:
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        schema = json.loads(schema_text("component", (plugin,)))
+        good = component("A", declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        jsonschema.validate(good, schema)
+        typo = component("A", declare("local", "X", extensions={"tag": {"tg": "t"}}))
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(typo, schema)
+        unknown = component("A", declare("local", "X", extensions={"nvm": {}}))
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(unknown, schema)
+
+
+class TestSchemaCommand:
+    def test_the_option_names_a_plugin_relative_to_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path / "tools")
+        monkeypatch.chdir(tmp_path)
+        assert main(["schema", "component", "--plugin", "tools/tag_plugin.py"]) == EXIT_OK
+        schema = json.loads(capsys.readouterr().out)
+        assert definitions_with_extensions(schema)[0]["properties"]["extensions"]["properties"][
+            "tag"
+        ]
+
+    def test_all_writes_every_schema_with_the_plugins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        write_plugin(tmp_path / "tools")
+        monkeypatch.chdir(tmp_path)
+        arguments = ["schema", "all", "-o", "schemas", "--plugin", "tools/tag_plugin.py"]
+        assert main(arguments) == EXIT_OK
+        written = json.loads((tmp_path / "schemas" / "ddd_project.schema.json").read_text())
+        (node,) = definitions_with_extensions(written)
+        assert "tag" in node["properties"]["extensions"]["properties"]
+
+    def test_a_plugin_that_cannot_be_loaded_is_a_usage_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert main(["schema", "component", "--plugin", "nowhere.py"]) == EXIT_USAGE
+        assert "does not exist" in capsys.readouterr().err
+        write_plugin(tmp_path, "broken.py", "raise RuntimeError('boom')\n")
+        assert main(["schema", "component", "--plugin", "broken.py"]) == EXIT_USAGE
+        assert "boom" in capsys.readouterr().err
+
+    def test_the_same_plugin_twice_is_loaded_once_and_two_with_one_name_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path, "one.py")
+        write_plugin(tmp_path, "two.py")
+        monkeypatch.chdir(tmp_path)
+        twice = ["schema", "project", "--plugin", "one.py", "--plugin", "./one.py"]
+        assert main(twice) == EXIT_OK
+        clash = ["schema", "project", "--plugin", "one.py", "--plugin", "two.py"]
+        assert main(clash) == EXIT_USAGE
+        assert "plugin 'tag' is named twice" in capsys.readouterr().err
+
+
+class TestPluginsFromArguments:
+    """The loading helper other commands - not yet wired to a bag in this task - will reuse."""
+
+    def test_the_bag_learns_the_plugins_checks(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        write_plugin(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        bag = DiagnosticBag()
+        (plugin,) = _plugins_from_arguments(["tag_plugin.py"], bag)
+        assert set(bag.registered) == {info.identifier for info in plugin.checks}

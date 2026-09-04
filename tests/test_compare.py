@@ -704,6 +704,71 @@ def test_a_renamed_instance_keeps_its_array_elements_paired(tree):
     assert "'Inlet[2].value'" in messages(bag) and "'Sensor[2].value'" in messages(bag)
 
 
+def test_a_mixed_regime_pairs_each_object_by_what_it_carries(tree):
+    """The half-migrated delivery, which is what most of a migration actually looks like.
+
+    One object has adopted an id and its neighbour has not. The first pairs on its identity and
+    reports the rename; the second pairs by name exactly as it did before ids existed, and
+    reports its own change. Neither regime disturbs the other.
+    """
+    before = one_component(
+        tree,
+        "before",
+        declare("local", "FiltGain", id="k7m2q9xr4t8w"),
+        declare("local", "Untouched", "uint8"),
+    )
+    after = one_component(
+        tree,
+        "after",
+        declare("local", "FilterGain", id="k7m2q9xr4t8w"),
+        declare("local", "Untouched", "uint16"),
+    )
+    bag = verdict(before, after)
+    assert checks(bag) == ["renamed-object", "changed-interface"], messages(bag)
+
+
+def test_two_instances_sharing_a_name_under_different_ids_are_not_paired(tree):
+    """The same-name-different-id refusal reaches a leaf as it does a plain object.
+
+    ``Inlet`` names a different variable in the two deliveries, so its members are not the same
+    places either. The pairing refuses them rather than comparing one against the other, and
+    ``reused-name`` says why the spelling no longer means what a dataset thinks it means.
+    """
+    cell_type = {
+        "types": [
+            {
+                "type": "struct",
+                "name": "Cell_t",
+                "members": [
+                    {
+                        "name": "value",
+                        "member": "value",
+                        "datatype": "uint16",
+                        "conversion": {"kind": "identity"},
+                    }
+                ],
+            }
+        ]
+    }
+    write_tree(
+        tree,
+        {
+            "before.ddd.json": project("P", "t.ddd.json", "before-a.ddd.json"),
+            "after.ddd.json": project("P", "t.ddd.json", "after-a.ddd.json"),
+            "t.ddd.json": cell_type,
+            "before-a.ddd.json": component(
+                "A", declare("local", "Inlet", typename="Cell_t", id="k7m2q9xr4t8w")
+            ),
+            "after-a.ddd.json": component(
+                "A", declare("local", "Inlet", typename="Cell_t", id="p3rt5vwx9z2q")
+            ),
+        },
+    )
+    bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+    assert checks(bag) == ["reused-name", "removed-unused-object", "added-object"], messages(bag)
+    assert "'Inlet.value'" in messages(bag)
+
+
 def test_an_identical_removal_and_addition_suggest_a_lost_identity(tree):
     """Nothing in one version can see a hand-edited id; this is the only net under it."""
     before = one_component(tree, "before", declare("local", "FiltGain"))

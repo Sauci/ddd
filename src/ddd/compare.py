@@ -173,9 +173,16 @@ def _pair(
 ) -> tuple[list[tuple[Comparable, Comparable]], list[Comparable], list[Comparable]]:
     """Pair on identity first, then on name, and say what is left on each side.
 
-    Two passes rather than one so that both regimes coexist while a project migrates: an
-    object that carries an id pairs on it whatever it is called, and one that does not pairs
-    on its name exactly as it did before ids existed.
+    Two passes rather than one so that both regimes coexist while a project migrates. The
+    first pairs on identity: an object that carries one pairs on it whatever it is called,
+    which is what makes a rename a rename rather than a removal and an addition.
+
+    The second pairs by name whatever the first left over, exactly as this worked before ids
+    existed - and it is the pass that carries the half-migrated project, where one side of a
+    delivery states an id and the other does not yet. It refuses one case: two entries whose
+    identities *both* exist and differ are not paired, because the ids say outright that they
+    are different objects, and running the whole interface comparison between two unrelated
+    things would bury the ``reused-name`` that is the real finding.
     """
     was_by_id = {key: entry for entry in was.values() if (key := identity(entry)) is not None}
     now_by_id = {key: entry for entry in now.values() if (key := identity(entry)) is not None}

@@ -371,7 +371,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h3>ddd<a class="headerlink" href="#ddd" title="Link to this heading"></a></h3>
 <p>Data dictionary for the global variables of a component based embedded software project.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd [-h] [-v]</span>
-<span class="go">           {check,compare,generate,list,dump,lsp,build-info,schema,sources,checks,cmake-dir,templates-dir}</span>
+<span class="go">           {check,compare,generate,list,dump,id,lsp,build-info,schema,sources,checks,cmake-dir,templates-dir}</span>
 <span class="go">           ...</span>
 </pre></div>
 </div>
@@ -509,7 +509,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-compare">
 <h4>ddd compare<a class="headerlink" href="#ddd-compare" title="Link to this heading"></a></h4>
 <p>Compares two data dictionaries, or two project descriptions, or one of each. The question is directional: can CANDIDATE stand in for BASELINE?</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd compare [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd compare [-h] [--renames RENAMES] [-W CHECK=SEVERITY] [--strict]</span>
+<span class="go">                   [--format {text,json}]</span>
 <span class="go">                   baseline candidate</span>
 </pre></div>
 </div>
@@ -529,6 +530,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-compare-h">
 <span id="cmdoption-ddd-compare-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-compare-h" title="Link to this definition"></a></dt>
 <dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-compare-renames">
+<span class="sig-name descname"><span class="pre">--renames</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;renames&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-compare-renames" title="Link to this definition"></a></dt>
+<dd><p>also write the old-to-new name pairs here, for migrating datasets and recordings</p>
 </dd></dl>
 
 <dl class="std option">
@@ -818,6 +825,31 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-c-force">
 <span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-force" title="Link to this definition"></a></dt>
 <dd><p>generate even if the consistency check fails</p>
+</dd></dl>
+
+</section>
+<section id="ddd-id">
+<h4>ddd id<a class="headerlink" href="#ddd-id" title="Link to this heading"></a></h4>
+<p>Stamps an ‘id’ into each declaration of scope ‘output’ or ‘local’ that does not carry one, editing the files in place. An identity is what lets a later ‘ddd compare’ report a rename as a rename. A declaration that already has one is left alone, so a second run changes nothing.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd id [-h] --assign files [files ...]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-id-arg-files">
+<span class="sig-name descname"><span class="pre">files</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-id-arg-files" title="Link to this definition"></a></dt>
+<dd><p>the description files to stamp</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-id-h">
+<span id="cmdoption-ddd-id-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-id-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-id-assign">
+<span class="sig-name descname"><span class="pre">--assign</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-id-assign" title="Link to this definition"></a></dt>
+<dd><p>write the ids; required, so that no run edits a file by accident</p>
 </dd></dl>
 
 </section>

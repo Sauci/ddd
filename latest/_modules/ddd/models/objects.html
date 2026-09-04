@@ -107,6 +107,7 @@
     <span class="n">Datatype</span><span class="p">,</span>
     <span class="n">Identifier</span><span class="p">,</span>
     <span class="n">Number</span><span class="p">,</span>
+    <span class="n">ObjectId</span><span class="p">,</span>
     <span class="n">Real</span><span class="p">,</span>
     <span class="n">TypeName</span><span class="p">,</span>
     <span class="n">format_number</span><span class="p">,</span>
@@ -344,6 +345,21 @@
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""C identifier of the object; also its name in the a2l."""</span>
+
+    <span class="nb">id</span><span class="p">:</span> <span class="n">ObjectId</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Identity of this object, which survives its name.</span>
+
+<span class="sd">    Written by the component that produces the object and by nothing else: a consumer stating</span>
+<span class="sd">    one is refused as ``consumer-identity``, on the reasoning that makes ``section`` and</span>
+<span class="sd">    ``init`` producer keys. It links this object to itself in an earlier delivery, so that</span>
+<span class="sd">    ``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated</span>
+<span class="sd">    addition, and so that a name freed by a rename cannot be quietly claimed by something</span>
+<span class="sd">    else.</span>
+
+<span class="sd">    Nothing inside a project reads it: the producer and its consumers go on binding by name,</span>
+<span class="sd">    and the generated c and a2l never mention it. Optional, so that a project adopts it one</span>
+<span class="sd">    component at a time; ``missing-id`` says where it has not.</span>
+<span class="sd">    """</span>
 
     <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Storage of one element, one of the eleven base datatypes.</span>

@@ -58,6 +58,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#two-questions-not-one">Two questions, not one</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-the-second-question-needs-an-archived-dictionary">Why the second question needs an archived dictionary</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-workflow">The workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#renames">Renames</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-comparison-checks">The comparison checks</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#a-worked-example">A worked example</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-delivery-that-went-out">The delivery that went out</a></li>
@@ -237,6 +238,33 @@ release-to-release case, comparing a dump with the working tree is the daily cas
 comparing two working trees is how a branch is judged against the trunk it will be merged
 into. Nothing has to be staged into a temporary file first.</p>
 </section>
+<section id="renames">
+<h2>Renames<a class="headerlink" href="#renames" title="Link to this heading"></a></h2>
+<p>A rename is invisible to a comparison keyed on names alone: the old spelling is a removal and
+the new one an unrelated addition, the two never meet, and a rename that also widened a
+datatype or rescaled a conversion is not reported at all - only that one name left and another
+arrived. An <code class="docutils literal notranslate"><span class="pre">id</span></code> on the producing declaration is what relates them, so adopting one turns
+the workflow above into:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>id<span class="w"> </span>--assign<span class="w"> </span>components/*.ddd.json<span class="w">                              </span><span class="c1"># once, per project</span>
+ddd<span class="w"> </span>dump<span class="w"> </span>project.ddd.json<span class="w"> </span>&gt;<span class="w"> </span>baseline.json<span class="w">                          </span><span class="c1"># at release time</span>
+ddd<span class="w"> </span>compare<span class="w"> </span>baseline.json<span class="w"> </span>project.ddd.json<span class="w"> </span>--renames<span class="w"> </span>renames.json<span class="w">  </span><span class="c1"># later, for the next delivery</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">renames.json</span></code> holds one entry per renamed object - its <code class="docutils literal notranslate"><span class="pre">id</span></code>, its old name under <code class="docutils literal notranslate"><span class="pre">from</span></code>
+and its new one under <code class="docutils literal notranslate"><span class="pre">to</span></code>:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"k7m2q9xr4t8w"</span><span class="p">,</span><span class="w"> </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FiltGain"</span><span class="p">,</span><span class="w"> </span><span class="nt">"to"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FilterGain"</span><span class="w"> </span><span class="p">}]</span>
+</pre></div>
+</div>
+<p>sorted by the new name, and written whether or not the comparison found errors, since a
+delivery that cannot be accepted still needs its renames listed so that whoever fixes it knows
+what moved. This is what a calibration dataset, a recorded measurement or a test script keyed
+by the old spelling is migrated with.</p>
+<p>The comparison itself reports <code class="docutils literal notranslate"><span class="pre">renamed-object</span></code> for each pair it finds this way, and the
+ordinary interface comparison still runs across the pair, so a rename that also changed the
+object is no longer invisible. And where a spelling freed by a rename has been claimed by a
+different object in the same delivery, it reports <code class="docutils literal notranslate"><span class="pre">reused-name</span></code> instead - the failure that
+binds an old dataset to new storage without anything about the delivery looking broken.</p>
+</section>
 <section id="the-comparison-checks">
 <h2>The comparison checks<a class="headerlink" href="#the-comparison-checks" title="Link to this heading"></a></h2>
 <p>Every difference between the two dictionaries is graded by what it costs the people who
@@ -265,6 +293,14 @@ them together with everything else.</p>
 <tr class="row-odd"><td><p>error</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
 <td><p>kind, datatype, unit, scaling, shape, axes or locality of an object changed</p></td>
+</tr>
+<tr class="row-even"><td><p>error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reused-name</span></code></p></td>
+<td><p>a name of the baseline now names a different object</p></td>
+</tr>
+<tr class="row-odd"><td><p>warning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">renamed-object</span></code></p></td>
+<td><p>an object of the baseline is offered under a different name; its <code class="docutils literal notranslate"><span class="pre">id</span></code> says so</p></td>
 </tr>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>

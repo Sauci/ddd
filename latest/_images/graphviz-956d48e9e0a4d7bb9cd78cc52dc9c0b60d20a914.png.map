@@ -11,32 +11,32 @@ Accepts both the explicit form::
 and the mapping shorthand::
 
  &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
-" alt="" coords="747,5,1012,117"/>
+" alt="" coords="747,23,1012,135"/>
 <area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
-" alt="" coords="1156,91,1273,203"/>
+" alt="" coords="1156,109,1273,221"/>
 <area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
 
 ``physical == raw``; the default for every variable.
-" alt="" coords="794,165,965,221"/>
+" alt="" coords="794,183,965,239"/>
 <area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="796,269,963,381"/>
+" alt="" coords="796,287,963,399"/>
 <area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
 
 What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="761,563,998,675"/>
+" alt="" coords="761,581,998,693"/>
 <area shape="rect" id="node6" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
-" alt="" coords="795,430,964,514"/>
-<area shape="rect" id="node7" title="ddd.models.objects.Map
+" alt="" coords="795,448,964,532"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Parameter
 
-A two dimensional calibratable table, stored as ``[y][x]``.
-" alt="" coords="5,16,603,464"/>
+A single calibratable constant.
+" alt="" coords="5,5,603,425"/>
 </map>

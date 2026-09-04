@@ -115,6 +115,33 @@ were added since. Asking both questions in one exit code is what the ``--baselin
 silent, narrowing it is a warning, changing a datatype is an error - and is described in
 :doc:`comparing deliveries </comparing_deliveries>`.
 
+What happened to this variable?
+-------------------------------
+
+An id, once written, is never rewritten by DDD itself, so wherever the object is today it
+still carries the one it was given, however many times it has since been renamed or moved
+from one file or component to another. Searching the tree for it is what finds the object,
+under whatever it is called now:
+
+.. code-block:: bash
+
+   git grep k7m2q9xr4t8w -- '*.ddd.json'
+
+The id does not exist before the commit that writes it, which is exactly what ``git log -S``
+looks for, so the same id also finds that commit - typically the one that says why, in its
+message:
+
+.. code-block:: bash
+
+   git log -S k7m2q9xr4t8w --oneline -- '*.ddd.json'
+
+``git log -S`` will not find a rename by itself: renaming an object edits its ``name``, not
+its ``id``, so the id's count of occurrences does not change and there is nothing in that
+commit for it to notice. What the object used to be called is exactly what
+``ddd compare --renames`` already wrote down when the rename happened, in the ``renames.json``
+of that delivery (:doc:`comparing deliveries </comparing_deliveries>`) - the record to keep,
+rather than one to reconstruct from git after the fact.
+
 Can I relax a check for one project?
 ------------------------------------
 

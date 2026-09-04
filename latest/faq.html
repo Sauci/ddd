@@ -70,6 +70,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#why-must-my-description-files-be-named-ddd-json">Why must my description files be named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#can-i-check-a-single-component-before-it-is-integrated">Can I check a single component before it is integrated?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-is-the-difference-between-ddd-check-and-ddd-compare">What is the difference between <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code>?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-happened-to-this-variable">What happened to this variable?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#can-i-relax-a-check-for-one-project">Can I relax a check for one project?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#two-components-disagree-whose-definition-is-generated">Two components disagree - whose definition is generated?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-does-my-consumer-not-get-a-definition-mismatch-when-it-leaves-the-limits-out">Why does my consumer not get a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> when it leaves the limits out?</a></li>
@@ -218,6 +219,28 @@ were added since. Asking both questions in one exit code is what the <code class
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> is for. The comparison itself is graded and directional - widening a limit is
 silent, narrowing it is a warning, changing a datatype is an error - and is described in
 <a class="reference internal" href="comparing_deliveries.html"><span class="doc">comparing deliveries</span></a>.</p>
+</section>
+<section id="what-happened-to-this-variable">
+<h2>What happened to this variable?<a class="headerlink" href="#what-happened-to-this-variable" title="Link to this heading"></a></h2>
+<p>An id, once written, is never rewritten by DDD itself, so wherever the object is today it
+still carries the one it was given, however many times it has since been renamed or moved
+from one file or component to another. Searching the tree for it is what finds the object,
+under whatever it is called now:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>grep<span class="w"> </span>k7m2q9xr4t8w<span class="w"> </span>--<span class="w"> </span><span class="s1">'*.ddd.json'</span>
+</pre></div>
+</div>
+<p>The id does not exist before the commit that writes it, which is exactly what <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">log</span> <span class="pre">-S</span></code>
+looks for, so the same id also finds that commit - typically the one that says why, in its
+message:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>log<span class="w"> </span>-S<span class="w"> </span>k7m2q9xr4t8w<span class="w"> </span>--oneline<span class="w"> </span>--<span class="w"> </span><span class="s1">'*.ddd.json'</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">log</span> <span class="pre">-S</span></code> will not find a rename by itself: renaming an object edits its <code class="docutils literal notranslate"><span class="pre">name</span></code>, not
+its <code class="docutils literal notranslate"><span class="pre">id</span></code>, so the id’s count of occurrences does not change and there is nothing in that
+commit for it to notice. What the object used to be called is exactly what
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span> <span class="pre">--renames</span></code> already wrote down when the rename happened, in the <code class="docutils literal notranslate"><span class="pre">renames.json</span></code>
+of that delivery (<a class="reference internal" href="comparing_deliveries.html"><span class="doc">comparing deliveries</span></a>) - the record to keep,
+rather than one to reconstruct from git after the fact.</p>
 </section>
 <section id="can-i-relax-a-check-for-one-project">
 <h2>Can I relax a check for one project?<a class="headerlink" href="#can-i-relax-a-check-for-one-project" title="Link to this heading"></a></h2>

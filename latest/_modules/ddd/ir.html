@@ -115,7 +115,13 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">PositiveInt</span><span class="p">,</span> <span class="n">model_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">BaseModel</span><span class="p">,</span>
+    <span class="n">ConfigDict</span><span class="p">,</span>
+    <span class="n">Field</span><span class="p">,</span>
+    <span class="n">PositiveInt</span><span class="p">,</span>
+    <span class="n">model_validator</span><span class="p">,</span>
+<span class="p">)</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">Identifier</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.component</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
@@ -214,6 +220,13 @@
 
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""Name of the object, unique across the whole project; its c and a2l identifier."""</span>
+
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Identity the producer gave this object, which survives a rename of it.</span>
+
+<span class="sd">    Empty in a dictionary from format 5 or older, which recorded none: an object that pairs</span>
+<span class="sd">    on nothing pairs on its name, exactly as it did then.</span>
+<span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
 <span class="w">    </span><span class="sd">"""Which sort of object this is, taken from the definition that produced it."""</span>
@@ -408,6 +421,13 @@
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""Name of the variable; its c identifier and the root of every leaf path."""</span>
 
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Identity the producer gave this object, which survives a rename of it.</span>
+
+<span class="sd">    Empty in a dictionary from format 5 or older, which recorded none: an object that pairs</span>
+<span class="sd">    on nothing pairs on its name, exactly as it did then.</span>
+<span class="sd">    """</span>
+
     <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span>
 <span class="w">    </span><span class="sd">"""Name of the structure it is, which is the c type of the declaration."""</span>
 
@@ -493,6 +513,14 @@
 
     <span class="n">instance</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""Name of the variable this leaf belongs to, which is the root of :attr:`path`."""</span>
+
+    <span class="n">instance_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Identity of the variable this leaf belongs to; a member has none of its own.</span>
+
+<span class="sd">    A leaf is identified by this together with the part of :attr:`path` below the instance,</span>
+<span class="sd">    so renaming the instance is tracked and renaming a *member of the type* is not - the</span>
+<span class="sd">    path is half of the identity. Empty in a dictionary from format 5 or older.</span>
+<span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span>
 <span class="w">    </span><span class="sd">"""Taken from the variable: every leaf of one object has the storage class of the whole."""</span>
@@ -607,7 +635,7 @@
 <span class="sd">"""</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">6</span>
 <span class="sd">"""Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>

@@ -193,7 +193,7 @@ them together with everything else.
      - kind, datatype, unit, scaling, shape, axes or locality of an object changed
    * - error
      - ``reused-name``
-     - a name of the baseline now belongs to an object with a different id
+     - a name of the baseline now names a different object
    * - warning
      - ``renamed-object``
      - an object of the baseline is offered under a different name; its ``id`` says so

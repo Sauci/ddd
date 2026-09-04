@@ -152,6 +152,20 @@ refused exactly as between the c and the a2l backends. ``all`` stays the built-i
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2.
 
+Writing a well-behaved plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every identifier a hook reports belongs in ``checks``: an undeclared one resolves to a fixed
+``unknown check`` error and cannot be overridden, the same as a typo in a built-in check's
+name. Keep the module itself stateless - it is imported once per process and reused across
+every project and every run of the language server, so anything it accumulates in a global
+leaks between projects that have nothing to do with each other; editing the plugin file only
+takes effect the next time a process starts. ``GeneratedFile``, what a ``backend`` hook
+returns from ``generate``, is imported from ``ddd.backends``. A block read back from an older
+dump may predate a field the plugin added since - ``model_validate`` fills it from the
+model's default if there is one, and raises otherwise - and what to do about that gap is the
+plugin's own decision, not one the api makes for it.
+
 What the dictionary carries
 ---------------------------
 

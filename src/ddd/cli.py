@@ -415,13 +415,11 @@ def _command_compare(args: argparse.Namespace) -> int:
         _report(bag, args.format)
         return EXIT_FINDINGS
 
-    compare(baseline, candidate, bag, location=Location(args.candidate))
+    paired = compare(baseline, candidate, bag, location=Location(args.candidate))
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        args.renames.write_text(
-            json.dumps(renames(baseline, candidate), indent=2) + "\n", encoding="utf-8"
-        )
+        args.renames.write_text(json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8")
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.

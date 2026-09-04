@@ -153,7 +153,7 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
 )
 
 
-def identity(entry: Comparable) -> tuple[str, str] | None:
+def _identity(entry: Comparable) -> tuple[str, str] | None:
     """What two deliveries join this object on, or nothing when it carries no id.
 
     A plain object is its id. A leaf is its instance's id together with the part of its path
@@ -168,17 +168,64 @@ def identity(entry: Comparable) -> tuple[str, str] | None:
     return None if entry.id is None else (entry.id, "")
 
 
+def _joinable(side: Mapping[str, Comparable]) -> dict[tuple[str, str], Comparable]:
+    """One side's entries, keyed by identity - excluding any identity claimed more than once.
+
+    ``duplicate-id`` refuses two objects sharing an identity, but a *baseline* is read back
+    rather than re-checked, so an archived dictionary written with that check relaxed, or
+    edited by hand, can carry a collision anyway. Indexed naively the later entry would win
+    and the earlier one would fall through to a removal - an object vanishing from the report
+    because of a defect in the file it was read from, with nothing said about it.
+
+    A colliding identity is therefore no identity at all here: both entries are left out of
+    the index and pair on their names in the second pass, which is what they would have done
+    before ids existed. Degrading to the older behaviour is the safe direction; silently
+    dropping one of them is not.
+    """
+    seen: dict[tuple[str, str], Comparable] = {}
+    collided: set[tuple[str, str]] = set()
+    for entry in side.values():
+        key = _identity(entry)
+        if key is None:
+            continue
+        if key in seen:
+            collided.add(key)
+        seen[key] = entry
+    return {key: entry for key, entry in seen.items() if key not in collided}
+
+
+def _states_different_identities(old: Comparable, new: Comparable) -> bool:
+    """Whether two entries' identities both exist and disagree.
+
+    One rule with two readers, which is why it is a function rather than a condition written
+    out twice. :func:`_pair` refuses to pair such a couple, and :func:`compare` reports the
+    shared spelling as ``reused-name``: the refusal and the finding are two halves of one
+    statement - that these are different objects wearing one name - and they have to agree
+    forever. An entry that states no identity is not evidence either way, so a couple where
+    either side is silent is not this case.
+    """
+    before, after = _identity(old), _identity(new)
+    return before is not None and after is not None and before != after
+
+
 def _pair(
     was: Mapping[str, Comparable], now: Mapping[str, Comparable]
 ) -> tuple[list[tuple[Comparable, Comparable]], list[Comparable], list[Comparable]]:
     """Pair on identity first, then on name, and say what is left on each side.
 
-    Two passes rather than one so that both regimes coexist while a project migrates: an
-    object that carries an id pairs on it whatever it is called, and one that does not pairs
-    on its name exactly as it did before ids existed.
+    Two passes rather than one so that both regimes coexist while a project migrates. The
+    first pairs on identity: an object that carries one pairs on it whatever it is called,
+    which is what makes a rename a rename rather than a removal and an addition.
+
+    The second pairs by name whatever the first left over, exactly as this worked before ids
+    existed - and it is the pass that carries the half-migrated project, where one side of a
+    delivery states an id and the other does not yet. It refuses one case: two entries whose
+    identities *both* exist and differ are not paired, because the ids say outright that they
+    are different objects, and running the whole interface comparison between two unrelated
+    things would bury the ``reused-name`` that is the real finding.
     """
-    was_by_id = {key: entry for entry in was.values() if (key := identity(entry)) is not None}
-    now_by_id = {key: entry for entry in now.values() if (key := identity(entry)) is not None}
+    was_by_id = _joinable(was)
+    now_by_id = _joinable(now)
 
     paired: list[tuple[Comparable, Comparable]] = []
     old_done: set[str] = set()
@@ -192,8 +239,7 @@ def _pair(
     for name in sorted(was):
         if name in old_done or name in new_done or name not in now:
             continue
-        before, after = identity(was[name]), identity(now[name])
-        if before is not None and after is not None and before != after:
+        if _states_different_identities(was[name], now[name]):
             continue  # two different objects that happen to share a spelling
         paired.append((was[name], now[name]))
         old_done.add(name)
@@ -205,17 +251,19 @@ def _pair(
     return paired, removed, added
 
 
-def renames(baseline: DataDictionary, candidate: DataDictionary) -> list[dict[str, str]]:
-    """The old-to-new name pairs of this comparison, for migrating what DDD cannot see.
+def renames(paired: Sequence[tuple[Comparable, Comparable]]) -> list[dict[str, str]]:
+    """The old-to-new name pairs of a comparison, for migrating what DDD cannot see.
+
+    Takes the pairing :func:`compare` returns rather than the two dictionaries, so the map is
+    a second reading of one comparison instead of a second comparison.
 
     Sorted by the new name, so two runs of one comparison produce the same file and a diff of
     two such files means something.
     """
-    paired, _, _ = _pair(baseline.comparable, candidate.comparable)
     moved = [
         {"id": key[0], "from": old.name, "to": new.name}
         for old, new in paired
-        if old.name != new.name and (key := identity(old)) is not None
+        if old.name != new.name and (key := _identity(old)) is not None
     ]
     return sorted(moved, key=lambda entry: entry["to"])
 
@@ -226,8 +274,12 @@ def compare(
     bag: DiagnosticBag,
     *,
     location: Location | None = None,
-) -> None:
-    """Report how far ``candidate`` can stand in for ``baseline``.
+) -> list[tuple[Comparable, Comparable]]:
+    """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
+
+    The pairing is returned because it is a genuine product of comparing and the migration map
+    is a second view of it: ``renames`` reading it back costs nothing, where re-deriving it
+    would build both side maps and run :func:`_pair` a second time over identical input.
 
     The comparison is directional: everything the baseline offered has to still be there and
     still mean the same thing, while anything the candidate adds is its own business.
@@ -260,7 +312,6 @@ def compare(
         _compare_object(old, new, bag, location, was, now)
 
     for name in sorted(was.keys() & now.keys()):
-        before, after = identity(was[name]), identity(now[name])
         # Proof does not need both sides to have adopted an id: pairing (above) may already
         # have matched the baseline's object under this name to a *different* name, by id -
         # which proves whatever still answers to this name in the candidate is not it, whether
@@ -268,7 +319,7 @@ def compare(
         moved = next(
             (new.name for old, new in paired if old.name == name and new.name != name), None
         )
-        if moved is None and (before is None or after is None or before == after):
+        if moved is None and not _states_different_identities(was[name], now[name]):
             continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
         # recording keyed by this spelling binds to the new object as readily as to the old.
@@ -281,8 +332,9 @@ def compare(
             notes=notes,
         )
 
+    candidates = _by_discriminators(added)
     for old in removed:
-        _report_removal(old, bag, location, added, was, now)
+        _report_removal(old, bag, location, candidates, was, now)
 
     for new in added:
         bag.add(
@@ -292,10 +344,36 @@ def compare(
             location,
         )
 
+    return paired
+
+
+def _by_discriminators(
+    added: Sequence[Comparable],
+) -> dict[tuple[str, str, str], list[Comparable]]:
+    """The additions grouped by the three cheapest fields a candidate must agree on.
+
+    This is a filter, not a complexity fix, and should not be read as one.
+    :func:`_lost_identity_note` asks of every removal which additions are identical to it, and
+    answering that by walking every addition for every removal is quadratic - each step running
+    two field tables and a referent comparison. ``kind``, ``datatype`` and ``unit`` are compared
+    fields, so an addition that disagrees on any of them can never be a candidate: grouping on
+    them lets a removal look only at its own bucket. The exact check still decides; this only
+    stops it being asked a question whose answer is already known.
+
+    A delivery whose objects all share those three lands in one bucket and gains nothing. That
+    is the honest limit of it, and it is left there: no such delivery has been seen, the note is
+    advisory, and encoding every compared value into a key instead would have to survive ``init``
+    being an unhashable nested list and a field table that is chosen per pair.
+    """
+    buckets: dict[tuple[str, str, str], list[Comparable]] = {}
+    for new in added:
+        buckets.setdefault((new.kind.value, new.datatype.value, new.unit), []).append(new)
+    return buckets
+
 
 def _lost_identity_note(
     old: Comparable,
-    added: Sequence[Comparable],
+    candidates: Sequence[Comparable],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
 ) -> list[tuple[str, Location | None]]:
@@ -322,7 +400,7 @@ def _lost_identity_note(
     """
     same = [
         new
-        for new in added
+        for new in candidates
         if new.name != old.name
         and not differing(_interface_fields(old, new), old, new)
         and not differing(_STORAGE_FIELDS, old, new)
@@ -343,11 +421,12 @@ def _report_removal(
     old: Comparable,
     bag: DiagnosticBag,
     location: Location | None,
-    added: Sequence[Comparable],
+    candidates: Mapping[tuple[str, str, str], Sequence[Comparable]],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
 ) -> None:
-    notes = _lost_identity_note(old, added, was, now)
+    bucket = candidates.get((old.kind.value, old.datatype.value, old.unit), ())
+    notes = _lost_identity_note(old, bucket, was, now)
     if old.consumers:
         bag.add(
             "removed-object",
@@ -368,7 +447,7 @@ def _report_removal(
 def _referent_identity(name: str, side: Mapping[str, Comparable]) -> tuple[str, str] | None:
     """The identity of the object a reference names on one side, or nothing when it has none."""
     entry = side.get(name)
-    return identity(entry) if entry is not None else None
+    return _identity(entry) if entry is not None else None
 
 
 def _same_referent(

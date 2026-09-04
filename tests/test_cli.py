@@ -20,6 +20,7 @@ from conftest import (
 )
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
+from ddd.models.common import OBJECT_ID_PATTERN
 
 
 class TestCheck:
@@ -1228,8 +1229,11 @@ def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
     assert "wrote 2 ids" in capsys.readouterr().err
     written = json.loads((tree / "a.ddd.json").read_text(encoding="utf-8"))
     interface = written["component"]["interface"]
-    assert re.fullmatch(r"[a-z0-9]{12}", interface[0]["definition"]["id"])
-    assert re.fullmatch(r"[a-z0-9]{12}", interface[1]["definition"]["id"])
+    # Against the published pattern rather than a hand-written one: `[a-z0-9]{12}` would
+    # accept `i`, `l`, `o` and `u`, which the alphabet excludes precisely so that an id read
+    # off a screen can be typed back. The alphabet itself is pinned in tests/test_models.py.
+    assert re.fullmatch(OBJECT_ID_PATTERN, interface[0]["definition"]["id"])
+    assert re.fullmatch(OBJECT_ID_PATTERN, interface[1]["definition"]["id"])
     assert "id" not in interface[2]["definition"], "a consumer owns no identity"
 
 

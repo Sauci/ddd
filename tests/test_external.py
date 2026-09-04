@@ -190,7 +190,7 @@ class TestResolution:
         assert [instance.name for instance in dictionary.instances] == ["X"]
 
     def test_the_dump_records_the_name_and_the_header(self, tree: Path) -> None:
-        """The dump shape: ``external`` and ``header`` beside null storage, format still 6."""
+        """The dump shape: ``external`` and ``header`` beside null storage, and the format stamp."""
         dictionary, _ = run_analysis(tree, opaque_project())
         assert dictionary is not None
         dumped = json.loads(dictionary.model_dump_json())

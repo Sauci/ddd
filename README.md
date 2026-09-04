@@ -488,6 +488,7 @@ and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
 | error | `consumer-identity` | an `input` declaration states an `id`, which only the producing component decides |
+| error | `consumer-extension` | an `input` declaration states a plugin's `extensions` block, which only the producer decides |
 | error | `raster-kind` | a raster is stated on a calibration object, which no daq list carries |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
 | error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema`, `plugin-not-found`, `plugin-invalid` | the file tree cannot be read; these seven cannot be relaxed |

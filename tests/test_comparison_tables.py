@@ -111,6 +111,9 @@ _NOT_COMPARED_RESOLVED: dict[str, str] = {
     "limits is: the answer is not a property of the entry alone. A referent is named, and "
     "resolving that name to the referent's identity needs both sides of the comparison - was "
     "and now - which no table entry, built from one entry at a time, can reach",
+    "extensions": "a plugin's block is compared by that plugin's compare hook and by nothing "
+    "built in: putting it in a table would turn the commit that stamps a project into a "
+    "changed-interface on every object, and DDD does not know what a change inside one means",
 }
 
 

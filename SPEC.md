@@ -976,6 +976,11 @@ Errors:
   `init` and `section` are, so a reader stating one is claiming an identity it does not have.
   Kept a separate identifier from `consumer-storage`, whose published description says
   storage, which an identity is not.
+- `consumer-extension`: a declaration whose scope is `input` states an `extensions` block
+  ([section 3.11](#311-plugins)). What a plugin knows about an object is decided by the
+  component that produces it, exactly as `init`, `section` and `id` are, so a reader stating
+  a block is claiming something it does not own. Kept a separate identifier from
+  `consumer-storage`, whose published description says storage, which a block is not.
 - `duplicate-component`: two files declare the same component name.
 - `duplicate-type`: two files declare the same type name.
 - `duplicate-unit`: a unit is declared more than once, within one file or across files

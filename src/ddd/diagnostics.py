@@ -148,6 +148,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an input declaration states a measurement raster only the producer decides"),
         _check("consumer-identity", Severity.ERROR,
                "a declaration that reads a variable states its identity"),
+        _check("consumer-extension", Severity.ERROR,
+               "a declaration that reads a variable states a plugin's block for it"),
         _check("multiple-producers", Severity.ERROR,
                "a variable is written by more than one component"),
         _check("missing-producer", Severity.ERROR, "an input variable is written by nobody",

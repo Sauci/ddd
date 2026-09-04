@@ -13,6 +13,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 from ddd.compare import ComparedField, differing, spell_out
 from ddd.diagnostics import DiagnosticBag, Location
@@ -58,6 +59,7 @@ from ddd.models import (
     resolve_export,
     spelled_dimensions,
 )
+from ddd.plugins import resolve_blocks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
@@ -259,6 +261,7 @@ class Variable:
     producer: DeclarationRef | None
     declarations: tuple[DeclarationRef, ...]
     condition: str | None
+    extensions: dict[str, dict[str, Any]]
 
     @property
     def is_local(self) -> bool:
@@ -284,6 +287,7 @@ class Variable:
         return ResolvedObject(
             name=self.name,
             id=definition.id,
+            extensions=self.extensions,
             kind=definition.kind,
             datatype=definition.datatype,
             description=definition.description,
@@ -441,6 +445,8 @@ class _Analysis:
     def __init__(self, workspace: Workspace, bag: DiagnosticBag) -> None:
         self._workspace = workspace
         self._bag = bag
+        self._plugins = {plugin.name: plugin for plugin in workspace.plugins}
+        """The plugins in play, by name; what resolves a block."""
         self._enums = _EnumRegistry()
         self._types = {entry.name: entry for entry in workspace.types}
         """Every type the project declares, by name - structures and scalars alike."""
@@ -507,6 +513,21 @@ class _Analysis:
         # must never name an object its `objects` and `instances` lists do not carry.
         kept = {(ref.component_name, ref.index) for _, refs in resolved for ref in refs}
         known = self._enums.by_name
+
+        # The first mapping keeps a relaxed unknown block as written; the second adds every
+        # plugin's settings with their defaults, so that a plugin whose settings the project
+        # did not state still reaches the dictionary with them.
+        settings = {
+            name: plugin.project_model.model_validate(
+                workspace.project_extensions.get(name, {})
+            ).model_dump(mode="json")
+            for name, plugin in sorted(self._plugins.items())
+            if plugin.project_model is not None
+        }
+        extensions = {
+            **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
+            **settings,
+        }
         return DataDictionary(
             name=workspace.name,
             description=workspace.description,
@@ -530,6 +551,8 @@ class _Analysis:
             leaves=tuple(
                 sorted((leaf for _, leaves in instances for leaf in leaves), key=lambda x: x.path)
             ),
+            plugins=tuple(sorted(self._plugins)),
+            extensions=extensions,
         )
 
     def _register_member_enums(self, entry: LoadedType) -> None:
@@ -1475,6 +1498,15 @@ class _Analysis:
                 ref.location("definition.id"),
             )
 
+        if not ref.scope.is_producer and definition.extensions:
+            self._bag.add(
+                "consumer-extension",
+                f"'{definition.name}': what a plugin knows about the variable is decided by "
+                f"the component that produces the variable, not by '{ref.component_name}', "
+                f"which reads it",
+                ref.location("definition.extensions"),
+            )
+
         if ref.scope.is_producer and definition.id is None:
             # Info, and optional, because the key is an adoption: a project that has migrated
             # turns this into its gate with -W missing-id=error, and one that has not is not
@@ -1844,6 +1876,7 @@ class _Analysis:
         instance = ResolvedInstance(
             name=name,
             id=definition.id,
+            extensions=resolve_blocks(self._plugins, definition.extensions, on_project=False),
             type=named,
             kind=definition.kind,
             description=definition.description,
@@ -2007,6 +2040,7 @@ class _Analysis:
             producer=producer,
             declarations=tuple(refs),
             condition=reference.condition,
+            extensions=resolve_blocks(self._plugins, definition.extensions, on_project=False),
         )
 
     def _limits_reference(

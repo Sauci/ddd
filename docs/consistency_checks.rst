@@ -411,6 +411,13 @@ or an a2l file that does not do what the description says - or that does not com
        so a reader stating one is claiming an authority it does not have. Kept a separate
        identifier from ``consumer-storage``, whose published description says storage,
        which a raster is not.
+   * - ``consumer-extension``
+     - error
+     - an ``input`` declaration states an ``extensions`` block. What a plugin knows about a
+       variable is decided by the component that produces it, exactly as ``init``,
+       ``section`` and ``id`` are, so a reader stating a block is claiming something it does
+       not own. Kept a separate identifier from ``consumer-storage``, whose published
+       description says storage, which a block is not.
    * - ``multiple-producers``
      - error
      - a variable is declared ``output`` by more than one component. Exactly one component owns

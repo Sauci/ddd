@@ -187,6 +187,8 @@ class TestContract:
             "types",
             "instances",
             "leaves",
+            "plugins",
+            "extensions",
         }
 
 

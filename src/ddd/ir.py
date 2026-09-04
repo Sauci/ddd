@@ -21,6 +21,8 @@ repeat that work, and two backends can never disagree about it.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -124,6 +126,14 @@ class ResolvedObject(_Frozen):
 
     Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
     on nothing pairs on its name, exactly as it did then.
+    """
+
+    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    """The blocks of the project's plugins, keyed by plugin name, in resolved form.
+
+    Each validated against its plugin's model and dumped back, defaults filled in, so two
+    dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
+    none, and empty for an object nothing stamped.
     """
 
     kind: ObjectKind
@@ -323,6 +333,14 @@ class ResolvedInstance(_Frozen):
 
     Empty in a dictionary from format 5 or older, which recorded none: an object that pairs
     on nothing pairs on its name, exactly as it did then.
+    """
+
+    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    """The blocks of the project's plugins, keyed by plugin name, in resolved form.
+
+    Each validated against its plugin's model and dumped back, defaults filled in, so two
+    dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
+    none, and empty for an object nothing stamped.
     """
 
     type: str
@@ -532,7 +550,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 6
+DICTIONARY_FORMAT = 7
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -611,6 +629,22 @@ class DataDictionary(_Frozen):
     Written out rather than worked out on demand, because the dictionary is a produced
     document: a generator DDD does not ship reads it without importing python, and no backend
     should repeat resolution the analysis has already done.
+    """
+
+    plugins: tuple[str, ...] = ()
+    """The names of the plugins that interpreted this dictionary, sorted.
+
+    Names rather than module spellings: a path is relative to a project file the dump no
+    longer has, and the name is what the blocks are keyed by. Empty in a dictionary from
+    format 6 or older, and what ``missing-plugin`` reads when a comparison runs without one
+    of them.
+    """
+
+    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    """The settings of each plugin, in resolved form, keyed by plugin name.
+
+    Recorded so that a comparison over an archived dump can rebuild what the plugin's hooks
+    were given, without the project file that stated them.
     """
 
     @property

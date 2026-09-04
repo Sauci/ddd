@@ -19,7 +19,7 @@ import importlib
 import importlib.util
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -183,3 +183,31 @@ def _import(spelling: str) -> Any:
     except Exception as error:
         msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
+
+
+def resolve_blocks(
+    plugins: Mapping[str, Plugin],
+    blocks: Mapping[str, Mapping[str, Any]],
+    *,
+    on_project: bool,
+) -> dict[str, dict[str, Any]]:
+    """Every block in its resolved form, keyed by plugin name in sorted order.
+
+    Validated against the plugin's model and dumped back to json, so defaults are filled in
+    and two dumps compare on one shape. A block no loaded plugin owns, or one the plugin
+    declares no model for, is carried as written: the loader has already reported it, and a
+    project that relaxed ``unknown-extension`` asked for exactly that.
+    """
+    resolved: dict[str, dict[str, Any]] = {}
+    for name in sorted(blocks):
+        plugin = plugins.get(name)
+        model = None if plugin is None else _model_of(plugin, on_project=on_project)
+        if model is None:
+            resolved[name] = dict(blocks[name])
+        else:
+            resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+    return resolved
+
+
+def _model_of(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
+    return plugin.project_model if on_project else plugin.object_model

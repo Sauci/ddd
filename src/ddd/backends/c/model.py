@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from ddd.backends.c.literals import (
     c_type,
@@ -64,6 +65,10 @@ class ObjectView:
     the toolchain's business and therefore the templates', exactly like the rest of the
     house style.
     """
+
+    extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """The blocks of the project's plugins, keyed by plugin name, exactly as the dictionary
+    carries them - a project whose c carries a table derived from a block renders it here."""
 
     @property
     def qualifier(self) -> str:
@@ -482,6 +487,7 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,
         section=entry.section,
+        extensions=entry.extensions,
     )
 
 
@@ -502,6 +508,7 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,
         section=entry.section,
+        extensions=entry.extensions,
     )
 
 

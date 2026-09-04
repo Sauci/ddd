@@ -6,6 +6,7 @@ the api it is written against, with a plugin small enough to live in this file.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis, write_tree
+from ddd.analysis import analyze
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
@@ -22,7 +24,8 @@ from ddd.diagnostics import (
     SeverityPolicy,
     UnknownCheckError,
 )
-from ddd.loading import load_workspace
+from ddd.ir import DICTIONARY_FORMAT, DataDictionary
+from ddd.loading import load_dictionary, load_workspace
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
@@ -513,3 +516,146 @@ class TestLocating:
         workspace, _ = tagged(tree, declare("local", "X"))
         assert workspace is not None
         assert workspace.locate("Nope") is None
+
+
+def analysed(base: Path, *declarations: dict, settings: dict | None = None, **project_keys):
+    """The dictionary of a project naming the tag plugin, and the bag it was analysed into."""
+    workspace, bag = tagged(base, *declarations, settings=settings, **project_keys)
+    assert workspace is not None and not bag.has_errors, messages(bag)
+    return analyze(workspace, bag), bag
+
+
+class TestTheDictionary:
+    def test_a_block_reaches_the_object_in_resolved_form(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        assert dictionary.by_name["X"].extensions == {"tag": {"tag": "t"}}
+        assert dictionary.by_name["X"].model_dump()["extensions"] == {"tag": {"tag": "t"}}
+
+    def test_the_settings_reach_the_dictionary_with_defaults_filled_in(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X"), settings={})
+        assert dictionary.extensions == {"tag": {"prefix": ""}}
+        assert dictionary.plugins == ("tag",)
+
+    def test_a_project_stating_no_settings_still_records_them(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X"))
+        assert dictionary.extensions == {"tag": {"prefix": ""}}
+
+    def test_an_unknown_block_that_was_relaxed_is_carried_as_written(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"nvm": {"id": 1}})),
+            },
+            severities=["unknown-extension=ignore"],
+        )
+        assert dictionary is not None, messages(bag)
+        assert dictionary.by_name["X"].extensions == {"nvm": {"id": 1}}
+        assert dictionary.plugins == ()
+
+    def test_an_instance_carries_the_block_and_its_leaves_do_not(self, tree: Path) -> None:
+        write_plugin(tree / "tools")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "t.ddd.json", "a.ddd.json", plugins=["tools/tag_plugin.py"]
+                ),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Pair_t",
+                            "members": [
+                                {
+                                    "name": "a",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                },
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "P", typename="Pair_t", extensions={"tag": {"tag": "s"}}),
+                ),
+            },
+        )
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None and not bag.has_errors, messages(bag)
+        dictionary = analyze(workspace, bag)
+        assert dictionary.instances[0].extensions == {"tag": {"tag": "s"}}
+        assert not hasattr(dictionary.leaves[0], "extensions")
+
+    def test_the_format_is_seven(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X"))
+        assert DICTIONARY_FORMAT == 7
+        assert dictionary.format == 7
+
+    def test_an_older_dump_reads_back_with_empty_blocks(self, tree: Path) -> None:
+        dictionary, _ = analysed(tree, declare("local", "X"))
+        archived = json.loads(dictionary.model_dump_json())
+        archived["format"] = 6
+        del archived["plugins"]
+        del archived["extensions"]
+        for entry in archived["objects"]:
+            del entry["extensions"]
+        (tree / "old.json").write_text(json.dumps(archived), encoding="utf-8")
+        bag = DiagnosticBag()
+        old = load_dictionary(tree / "old.json", bag)
+        assert old is not None, messages(bag)
+        assert old.plugins == () and old.extensions == {}
+        assert old.by_name["X"].extensions == {}
+
+    def test_the_dictionary_round_trips(self, tree: Path) -> None:
+        dictionary, _ = analysed(
+            tree, declare("local", "X", extensions={"tag": {"tag": "t"}}), settings={"prefix": "p"}
+        )
+        again = DataDictionary.model_validate_json(dictionary.model_dump_json())
+        assert again == dictionary
+
+
+class TestConsumerExtension:
+    def test_a_consumer_stating_a_block_is_refused_where_it_is_written(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X", extensions={"nvm": {}})),
+            },
+            severities=["unknown-extension=ignore"],
+        )
+        assert checks(bag) == ["consumer-extension"]
+        assert "b.ddd.json#component.interface[0].definition.extensions" in messages(bag)
+        assert "decided by the component that produces the variable" in messages(bag)
+
+    def test_a_local_declaration_is_a_producer(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"nvm": {}})),
+            },
+            severities=["unknown-extension=ignore"],
+        )
+        assert checks(bag) == []
+
+
+class TestTheTemplates:
+    def test_a_block_reaches_the_c_templates(self, tree: Path) -> None:
+        from ddd.backends import CBackend, render
+
+        dictionary, _ = analysed(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "blocks.txt.jinja2").write_text(
+            "{% for group in model.groups %}{% for v in group.variables %}"
+            "{{ v.name }}={{ v.extensions.tag.tag }}\n{% endfor %}{% endfor %}",
+            encoding="utf-8",
+        )
+        (file,) = render(dictionary, [CBackend(templates)], tree / "out")
+        assert file.content == "X=t\n"

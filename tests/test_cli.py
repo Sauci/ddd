@@ -20,6 +20,7 @@ from conftest import (
 )
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
+from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
 
@@ -661,6 +662,7 @@ PINNED_LIST_PAYLOAD = """\
     {
       "name": "State",
       "id": null,
+      "extensions": {},
       "kind": "measurement",
       "datatype": "uint8",
       "description": "",
@@ -705,6 +707,7 @@ PINNED_LIST_PAYLOAD = """\
     {
       "name": "Temperature",
       "id": null,
+      "extensions": {},
       "kind": "measurement",
       "datatype": "uint16",
       "description": "",
@@ -1183,7 +1186,7 @@ class TestSchemaAll:
         assert target.read_text(encoding="utf-8") == printed
 
 
-def test_the_dictionary_carries_the_identity_and_states_format_six(tree, capsys):
+def test_the_dictionary_carries_the_identity_and_states_the_format(tree, capsys):
     write_tree(
         tree,
         {
@@ -1193,7 +1196,7 @@ def test_the_dictionary_carries_the_identity_and_states_format_six(tree, capsys)
     )
     assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
     dumped = json.loads(capsys.readouterr().out)
-    assert dumped["format"] == 6
+    assert dumped["format"] == DICTIONARY_FORMAT
     assert dumped["objects"][0]["id"] == "k7m2q9xr4t8w"
 
 

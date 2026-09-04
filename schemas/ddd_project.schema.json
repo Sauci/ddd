@@ -27,6 +27,25 @@
           },
           "title": "Includes",
           "type": "array"
+        },
+        "plugins": {
+          "default": [],
+          "description": "Plugins that extend DDD for this project, in the order their hooks run.\n\nEach entry is a ``.py`` path relative to this file - a plugin the project keeps in its\nown repository - or a dotted module name imported from the environment - one installed as\na distribution. A plugin acts on a project because the project names it, never because\nit happens to be installed. A sub-project may name plugins too; the set in play is the\nunion, because the blocks a plugin interprets may sit in any component.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Plugins",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "The settings of each plugin, keyed by plugin name: ``{\"layout\": {\"max_key\": 4095}}``.\n\nValidated against the plugin's project model, defaults filled in, and carried into the\ndictionary so that a comparison over an archived dump still knows them. A plugin's\nsettings are stated by one project file; a second file stating them is a ``schema``\nfinding, the way a second file declaring a section is refused.",
+          "title": "Extensions",
+          "type": "object"
         }
       },
       "required": [

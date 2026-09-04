@@ -10,8 +10,11 @@ import sys
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
+from conftest import component, declare, project
 from ddd.diagnostics import CheckInfo, Severity
+from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
 TAG_PLUGIN = '''
@@ -207,3 +210,32 @@ class TestLoading:
         write_plugin(tmp_path, "wrong.py", "PLUGIN = object()\n")
         with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("wrong.py", tmp_path)
+
+
+class TestTheKeys:
+    def test_a_definition_carries_blocks_keyed_by_plugin(self) -> None:
+        model = ComponentFile.model_validate(
+            component("A", declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        )
+        assert model.component.interface[0].definition.extensions == {"tag": {"tag": "t"}}
+
+    def test_a_definition_without_blocks_has_none(self) -> None:
+        model = ComponentFile.model_validate(component("A", declare("local", "X")))
+        assert model.component.interface[0].definition.extensions == {}
+
+    def test_a_block_is_an_object(self) -> None:
+        with pytest.raises(ValidationError):
+            ComponentFile.model_validate(
+                component("A", declare("local", "X", extensions={"tag": "not an object"}))
+            )
+
+    def test_a_project_names_its_plugins_and_their_settings(self) -> None:
+        model = ProjectFile.model_validate(
+            project("P", plugins=["tools/tag.py"], extensions={"tag": {"prefix": "p"}})
+        )
+        assert model.project.plugins == ("tools/tag.py",)
+        assert model.project.extensions == {"tag": {"prefix": "p"}}
+
+    def test_an_empty_plugin_spelling_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            ProjectFile.model_validate(project("P", plugins=[""]))

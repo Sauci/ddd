@@ -81,6 +81,9 @@ _NOT_COMPARED: dict[str, str] = {
     "limits are the producer's stated ones, else the first stated set in load order, and "
     "every other stated set is compared against that reference - a table entry could only "
     "compare against the reference declaration, whose limits may be the omitted ones",
+    "extensions": "a plugin's block is the plugin's to compare: only a producer may state one, "
+    "exactly like section and id, so there are never two to reconcile; a consumer stating "
+    "one is reported as consumer-extension where the claim is written",
 }
 
 # ResolvedObject carries the *result* of the analysis as well as the declaration, and the

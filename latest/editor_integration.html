@@ -168,6 +168,11 @@ between the quotes are replaced, so formatting survives and free text is left al
 it: take the producing component’s value, spread this one to the others, or, when nobody
 else states the key, remove it. The value is copied as source text rather than
 re-serialised, so the project’s formatting survives the fix.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> offers one fix of its own: give this object an identity. It writes the same
+key <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> would write, in the same place, decided by the same code - the command
+stamps a whole file, the fix stamps the declaration you are looking at. It is offered only
+where the finding is: a project that has silenced <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> has said it is not adopting
+ids yet, and the editor does not argue with that.</p>
 </section>
 <section id="which-project-a-file-belongs-to">
 <h2>Which project a file belongs to<a class="headerlink" href="#which-project-a-file-belongs-to" title="Link to this heading"></a></h2>

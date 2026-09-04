@@ -59,7 +59,26 @@ def _stamped(dictionary: DataDictionary) -> list[tuple[Stamped, Entry]]:
     return sorted(found, key=lambda pair: pair[1].key)
 
 
+def _member_order(type_name: str, dictionary: DataDictionary) -> tuple[object, ...]:
+    """The members of the named structure, in declared order, nested structures recursively.
+
+    ``dictionary.leaves`` is sorted by path, so two structures that swap two members compare
+    equal there even though the swap is a real layout change in c; this is what tells them
+    apart. ``()`` when ``type_name`` does not name a structure in ``dictionary.types``.
+    """
+    struct = next((t for t in dictionary.types if t.name == type_name), None)
+    if struct is None:
+        return ()
+    return tuple(
+        (member.name, _member_order(member.type, dictionary) if member.type else ())
+        for member in struct.members
+    )
+
+
 def _layout(entry: Stamped, dictionary: DataDictionary) -> tuple[object, ...]:
+    """The layout of one stamped object: leaves carry the datatypes, units and conversions of
+    a structured variable; ``_member_order`` carries where each one sits. Both are needed - the
+    leaves alone sort by path and miss a swap of two members, which changes the c layout."""
     if isinstance(entry, ResolvedObject):
         return (
             entry.kind,
@@ -80,7 +99,7 @@ def _layout(entry: Stamped, dictionary: DataDictionary) -> tuple[object, ...]:
         for leaf in dictionary.leaves
         if leaf.instance == entry.name
     )
-    return (entry.kind, entry.type, entry.shape, leaves)
+    return (entry.kind, entry.type, entry.shape, leaves, _member_order(entry.type, dictionary))
 
 
 def _same_object(old: Stamped, new: Stamped) -> bool:

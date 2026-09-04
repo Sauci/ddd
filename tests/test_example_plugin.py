@@ -199,6 +199,86 @@ class TestBetweenDeliveries:
         )
         assert "layout/version-not-bumped" in capsys.readouterr().err
 
+    def test_reordered_members_are_a_changed_layout(self, tree: Path, capsys) -> None:
+        datatypes = {"a": "uint8", "b": "uint16"}
+
+        def files(name: str, order: tuple[str, str]) -> dict[str, Any]:
+            return {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", plugins=[str(PLUGIN)]
+                ),
+                f"{name}-t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Pair_t",
+                            "members": [
+                                {
+                                    "name": member,
+                                    "member": "value",
+                                    "datatype": datatypes[member],
+                                    "conversion": {"kind": "identity"},
+                                }
+                                for member in order
+                            ],
+                        }
+                    ]
+                },
+                f"{name}-a.ddd.json": component("A", stamped("P", 7, 1, typename="Pair_t")),
+            }
+
+        write_tree(tree, {**files("old", ("a", "b")), **files("new", ("b", "a"))})
+        main(
+            [
+                "compare",
+                str(tree / "old.ddd.json"),
+                str(tree / "new.ddd.json"),
+                "-W",
+                "missing-id=ignore",
+            ]
+        )
+        assert "layout/version-not-bumped" in capsys.readouterr().err
+
+    def test_the_same_member_order_is_clean(self, tree: Path, capsys) -> None:
+        datatypes = {"a": "uint8", "b": "uint16"}
+
+        def files(name: str, order: tuple[str, str]) -> dict[str, Any]:
+            return {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", plugins=[str(PLUGIN)]
+                ),
+                f"{name}-t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Pair_t",
+                            "members": [
+                                {
+                                    "name": member,
+                                    "member": "value",
+                                    "datatype": datatypes[member],
+                                    "conversion": {"kind": "identity"},
+                                }
+                                for member in order
+                            ],
+                        }
+                    ]
+                },
+                f"{name}-a.ddd.json": component("A", stamped("P", 7, 1, typename="Pair_t")),
+            }
+
+        write_tree(tree, {**files("old", ("a", "b")), **files("new", ("a", "b"))})
+        main(
+            [
+                "compare",
+                str(tree / "old.ddd.json"),
+                str(tree / "new.ddd.json"),
+                "-W",
+                "missing-id=ignore",
+            ]
+        )
+        assert "layout/" not in capsys.readouterr().err
+
 
 class TestTheHeader:
     def test_one_entry_per_stamped_object_sorted_by_key(self, tree: Path) -> None:

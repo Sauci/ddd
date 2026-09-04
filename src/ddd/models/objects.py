@@ -259,6 +259,17 @@ class DataObject(_Frozen):
     component at a time; ``missing-id`` says where it has not.
     """
 
+    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    """Blocks owned by the project's plugins, keyed by plugin name.
+
+    ``{"layout": {"key": 12, "version": 3}}``: what a plugin the project names needs to know
+    about this object and DDD does not. Each block is validated against the model of the
+    plugin that owns it and carried into the dictionary in resolved form; a block naming no
+    loaded plugin is ``unknown-extension``. Only the producing declaration states one - a
+    consumer stating one is ``consumer-extension``, on the reasoning that makes ``section``
+    and ``id`` producer keys: a block says what the object *is*.
+    """
+
     datatype: Datatype | None = None
     """Storage of one element, one of the eleven base datatypes.
 
@@ -437,6 +448,18 @@ class DataObject(_Frozen):
         if self.typename is not None:
             refuse_restating(self.typename, self.model_fields_set)
         return self
+
+    def __hash__(self) -> int:
+        """A frozen model hashes by default from all its fields, and ``extensions`` may hold
+        whatever a plugin put there - a list inside a block, say - which pydantic cannot hash.
+
+        Leaving it out of the hash costs nothing a caller would notice: two definitions equal
+        in every field, ``extensions`` included, still hash equal, since equality is coarser
+        than this - the only thing a hash has to promise.
+        """
+        return hash(
+            (type(self), *(value for key, value in self.__dict__.items() if key != "extensions"))
+        )
 
     # The shape of a stated ``init`` is deliberately not validated here. Only part of the
     # answer is written in the file - a curve or a map takes its shape from axes another

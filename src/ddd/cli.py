@@ -6,7 +6,8 @@ import argparse
 import contextlib
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -54,12 +55,22 @@ from ddd.models import (
     raw_reading,
 )
 from ddd.models.schema import PublishedSchema
+from ddd.plugins import (
+    PLUGIN_NAME_PATTERN,
+    Plugin,
+    PluginInvalidError,
+    PluginNotFoundError,
+    backend_of,
+    load_plugin,
+    run_compare_hooks,
+)
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_USAGE = 2
 
 GENERATOR = f"ddd {__version__}"
+BUILT_IN_ARTEFACTS = ("c", "a2l", "all")
 
 
 def cmake_module_directory() -> Path | None:
@@ -86,8 +97,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``ddd`` command; returns the process exit code."""
     _write_utf8(sys.stdout)
     _write_utf8(sys.stderr)
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    parser = _build_parser(_plugin_artefact(arguments))
+    args = parser.parse_args(arguments)
     try:
         handler: Any = args.handler
         return int(handler(args))
@@ -99,7 +111,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _plugin_artefact(arguments: Sequence[str]) -> str | None:
+    """The artefact of a ``ddd generate`` run that is not a built-in one, off the raw arguments.
+
+    argparse wants every subcommand registered before it parses, and the plugins that provide
+    an artefact are known only once the project is read - which is itself an argument. So the
+    name is read here and registered as a subcommand of its own; whether a plugin provides it
+    is decided after the project is loaded, as a usage error naming what the project does
+    provide.
+    """
+    if len(arguments) >= 2 and arguments[0] == "generate":
+        name = arguments[1]
+        if name not in BUILT_IN_ARTEFACTS and PLUGIN_NAME_PATTERN.match(name):
+            return name
+    return None
+
+
+def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ddd",
         description=(
@@ -136,6 +164,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="also write the old-to-new name pairs here, for migrating datasets and recordings",
     )
+    _add_plugin_argument(compare_parser)
     _add_policy_arguments(compare_parser)
     compare_parser.set_defaults(handler=_command_compare)
 
@@ -154,7 +183,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # One subparser per artefact rather than steering flags on a single command: the two
     # backends do not want the same options, and a flag pair like --no-a2l/--a2l-only would
     # leave every run carrying the other backend's options as noise it must not use.
-    artefacts = generate.add_subparsers(dest="artefact", required=True, metavar="{c,a2l,all}")
+    artefacts = generate.add_subparsers(
+        dest="artefact", required=True, metavar="{c,a2l,all,<plugin>}"
+    )
     for name, description, with_c, with_a2l in (
         ("c", "render the c sources from the project's jinja2 templates", True, False),
         ("a2l", "write the a2l file, with the addresses --address-map carries", False, True),
@@ -163,6 +194,12 @@ def _build_parser() -> argparse.ArgumentParser:
         _add_generate_arguments(
             artefacts.add_parser(name, help=description), with_c=with_c, with_a2l=with_a2l
         )
+    if plugin_artefact is not None:
+        extra = artefacts.add_parser(
+            plugin_artefact, help="write the artefact the plugin of that name provides"
+        )
+        _add_generate_arguments(extra, with_c=False, with_a2l=False)
+        extra.set_defaults(plugin_artefact=plugin_artefact)
 
     listing = subparsers.add_parser("list", help="list the global variables of a project")
     _add_common_arguments(listing)
@@ -268,6 +305,7 @@ def _build_parser() -> argparse.ArgumentParser:
             f"schemas are written into, each named '{SCHEMA_FILENAME.format(kind='<kind>')}'"
         ),
     )
+    _add_plugin_argument(schema)
     schema.set_defaults(handler=_command_schema)
 
     sources = subparsers.add_parser(
@@ -286,6 +324,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
     checks.add_argument("--format", choices=["text", "json"], default="text", help="output format")
+    _add_plugin_argument(checks)
     checks.set_defaults(handler=_command_checks)
 
     cmake = subparsers.add_parser(
@@ -381,14 +420,64 @@ def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--format", choices=["text", "json"], default="text", help="output format")
 
 
+def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--plugin",
+        action="append",
+        default=[],
+        metavar="MODULE",
+        help=(
+            "load this plugin, a .py path relative to the working directory or a module "
+            "name; repeatable. For a run that reads no project description, which names "
+            "its own plugins"
+        ),
+    )
+
+
+def _plugins_from_arguments(
+    specs: Sequence[str], bag: DiagnosticBag | None = None
+) -> tuple[Plugin, ...]:
+    """The plugins ``--plugin`` names, loaded relative to the working directory.
+
+    A failure is a usage error rather than a finding: there is no project file to locate it
+    in, and the mistake is on the command line. The checks are registered on ``bag`` when
+    one is given, so that a provisional override can be verified against them.
+    """
+    plugins: list[Plugin] = []
+    for spelling in specs:
+        try:
+            plugin = load_plugin(spelling, Path.cwd())
+        except (PluginNotFoundError, PluginInvalidError) as error:
+            raise ValueError(str(error)) from None
+        known = next((entry for entry in plugins if entry.name == plugin.name), None)
+        if known is plugin:
+            continue
+        if known is not None:
+            msg = f"plugin '{plugin.name}' is named twice by --plugin, by different modules"
+            raise ValueError(msg)
+        plugins.append(plugin)
+        if bag is not None:
+            bag.register(plugin.checks)
+    return tuple(plugins)
+
+
 def _command_check(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
-    if dictionary is not None and args.baseline is not None:
+    if resolved is not None and args.baseline is not None:
         baseline = _read_baseline(args.baseline, bag)
         if baseline is not None:
-            compare(baseline, dictionary, bag, location=Location(args.project))
+            compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+            run_compare_hooks(
+                resolved.plugins,
+                baseline,
+                resolved.dictionary,
+                bag,
+                resolved.locate,
+                Location(args.project),
+            )
     _report(bag, args.format)
     if args.format == "json":
         return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -415,7 +504,20 @@ def _command_compare(args: argparse.Namespace) -> int:
         _report(bag, args.format)
         return EXIT_FINDINGS
 
-    paired = compare(baseline, candidate, bag, location=Location(args.candidate))
+    plugins = candidate.plugins
+    if args.plugin:
+        if candidate.from_description:
+            msg = (
+                "--plugin names the plugins of an archived dictionary; a project description "
+                "names its own"
+            )
+            raise ValueError(msg)
+        plugins = _plugins_from_arguments(args.plugin, bag)
+    bag.policy.verify(bag.registered)
+
+    location = Location(args.candidate)
+    paired = compare(baseline, candidate.dictionary, bag, location=location)
+    run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
@@ -476,10 +578,12 @@ def _listed(names: list[str]) -> str:
 
 
 def _command_generate(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
+    assert resolved is not None  # dictionary is only set from resolved; narrows it for mypy
 
     addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
     if args.render_a2l and args.address_map is not None:
@@ -502,6 +606,17 @@ def _command_generate(args: argparse.Namespace) -> int:
                 GENERATOR,
             )
         )
+    name = getattr(args, "plugin_artefact", None)
+    if name is not None:
+        plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
+        if plugin is None:
+            provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
+            msg = (
+                f"'{name}' is not an artefact of this project; it provides: "
+                f"{provided or 'no plugin artefact'}"
+            )
+            raise ValueError(msg)
+        backends.append(backend_of(plugin, dictionary, GENERATOR))
     files = render(dictionary, backends, args.output_dir)
     try:
         results = write(files, dry_run=args.dry_run)
@@ -532,7 +647,8 @@ def _command_generate(args: argparse.Namespace) -> int:
 
 
 def _command_list(args: argparse.Namespace) -> int:
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
@@ -565,7 +681,8 @@ def _command_dump(args: argparse.Namespace) -> int:
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
     stderr - where they also stay out of the way of a pipe.
     """
-    dictionary, bag = _analyze(args)
+    resolved, bag = _analyze(args)
+    dictionary = resolved.dictionary if resolved is not None else None
     if dictionary is not None:
         print(dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
@@ -608,18 +725,63 @@ SCHEMA_FILENAME = "ddd_{kind}.schema.json"
 """How ``all`` names each file, so that a ``$schema`` path is predictable and stable."""
 
 
-def schema_text(kind: str) -> str:
+def schema_text(kind: str, plugins: Sequence[Plugin] = ()) -> str:
     """The json schema of one file format, as it is written out.
 
     One function so that a file on disk and the answer to ``ddd schema`` can never differ -
-    which is what lets a test tell a project its committed schemas have gone stale.
+    which is what lets a test tell a project its committed schemas have gone stale. With
+    plugins, the ``extensions`` property of a definition and of the project closes over their
+    models; the dictionary schema stays open, a dump being a produced document.
     """
     # by_alias so that the key is '$schema' rather than the python attribute name, and
     # PublishedSchema so that what an editor shows is documentation rather than python.
     published = _SCHEMA_MODELS[kind].model_json_schema(
         by_alias=True, schema_generator=PublishedSchema
     )
+    if plugins and kind in ("component", "project"):
+        _close_extensions(published, plugins, on_project=kind == "project")
     return json.dumps(published, indent=2) + "\n"
+
+
+def _close_extensions(
+    schema: dict[str, Any], plugins: Sequence[Plugin], *, on_project: bool
+) -> None:
+    """Replace every open ``extensions`` property by one closed over the plugins' models.
+
+    Each plugin's model is rendered by the same generator that documents the built-in
+    models, its nested definitions hoisted into the root ``$defs`` under the plugin's name so
+    that two plugins declaring an ``Entry`` cannot collide. A plugin declaring no model for
+    this kind is left out, which is what makes a block for it invalid in the editor - the
+    same answer the loader gives. The nodes to close are collected before any hoisting, so a
+    plugin's own model - however nested - may freely declare a field named ``extensions`` of
+    its own without that field being mistaken for the block it is itself contributing to.
+    """
+    definitions: dict[str, Any] = schema.setdefault("$defs", {})
+    targets = [
+        node
+        for node in (schema, *definitions.values())
+        if "extensions" in node.get("properties", {})
+    ]
+    properties: dict[str, Any] = {}
+    for plugin in plugins:
+        model = plugin.project_model if on_project else plugin.object_model
+        if model is None:
+            continue
+        rendered = model.model_json_schema(
+            ref_template=f"#/$defs/{plugin.name}.{{model}}", schema_generator=PublishedSchema
+        )
+        rendered.pop("$schema", None)
+        for name, definition in rendered.pop("$defs", {}).items():
+            definitions[f"{plugin.name}.{name}"] = definition
+        properties[plugin.name] = rendered
+    for node in targets:
+        extensions = node["properties"]["extensions"]
+        node["properties"]["extensions"] = {
+            "type": "object",
+            "description": extensions.get("description", ""),
+            "properties": properties,
+            "additionalProperties": False,
+        }
 
 
 def _command_lsp(args: argparse.Namespace) -> int:
@@ -651,16 +813,17 @@ def _command_build_info(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _write_schema(path: Path, kind: str) -> None:
+def _write_schema(path: Path, kind: str, plugins: Sequence[Plugin] = ()) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # newline="" keeps the line endings as written on every platform, the same discipline the
     # generated sources follow: a schema committed from Windows must not differ from the same
     # schema committed from linux.
-    path.write_text(schema_text(kind), encoding="utf-8", newline="")
+    path.write_text(schema_text(kind, plugins), encoding="utf-8", newline="")
     print(f"wrote {path.as_posix()}", file=sys.stderr)
 
 
 def _command_schema(args: argparse.Namespace) -> int:
+    plugins = _plugins_from_arguments(args.plugin)
     if args.kind == SCHEMA_ALL:
         if args.output is None:
             msg = (
@@ -669,13 +832,13 @@ def _command_schema(args: argparse.Namespace) -> int:
             )
             raise ValueError(msg)
         for kind in sorted(_SCHEMA_MODELS):
-            _write_schema(args.output / SCHEMA_FILENAME.format(kind=kind), kind)
+            _write_schema(args.output / SCHEMA_FILENAME.format(kind=kind), kind, plugins)
         return EXIT_OK
 
     if args.output:
-        _write_schema(args.output, args.kind)
+        _write_schema(args.output, args.kind, plugins)
     else:
-        print(schema_text(args.kind), end="")
+        print(schema_text(args.kind, plugins), end="")
     return EXIT_OK
 
 
@@ -727,6 +890,8 @@ def _command_sources(args: argparse.Namespace) -> int:
 
 
 def _command_checks(args: argparse.Namespace) -> int:
+    plugins = _plugins_from_arguments(args.plugin)
+    infos = [*CHECKS.values(), *(info for plugin in plugins for info in plugin.checks)]
     if args.format == "json":
         print(
             json.dumps(
@@ -737,14 +902,14 @@ def _command_checks(args: argparse.Namespace) -> int:
                         "description": info.description,
                         "overridable": info.overridable,
                     }
-                    for info in CHECKS.values()
+                    for info in infos
                 ],
                 indent=2,
             )
         )
         return EXIT_OK
-    width = max(len(name) for name in CHECKS)
-    for info in CHECKS.values():
+    width = max(len(info.identifier) for info in infos)
+    for info in infos:
         fixed = "" if info.overridable else " (fixed)"
         print(
             f"{info.identifier:<{width}}  {info.default_severity.value:<7}  "
@@ -753,16 +918,33 @@ def _command_checks(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _analyze(args: argparse.Namespace) -> tuple[DataDictionary | None, DiagnosticBag]:
+@dataclass(frozen=True, slots=True)
+class Resolved:
+    """A dictionary and what a plugin's hook needs beside it.
+
+    A description resolved on the spot keeps its plugins and can point a finding at a
+    declaration; an archived dump has neither, so its plugins come from ``--plugin`` and a
+    finding points at the file.
+    """
+
+    dictionary: DataDictionary
+    plugins: tuple[Plugin, ...]
+    locate: Callable[[str], Location | None]
+    from_description: bool
+
+
+def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
         return None, bag
-    return analyze(workspace, bag), bag
+    bag.policy.verify(bag.registered)
+    dictionary = analyze(workspace, bag)
+    return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
 
 
-def _read_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
+def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
     """A dumped dictionary, or a project/component description resolved into one.
 
     Accepting both is what makes the command usable in a pipeline: the baseline is normally
@@ -772,8 +954,11 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
         workspace = load_workspace(path, bag)
         if workspace is None or bag.has_errors:
             return None
-        return analyze(workspace, bag)
-    return load_dictionary(path, bag)
+        return Resolved(analyze(workspace, bag), workspace.plugins, workspace.locate, True)
+    dictionary = load_dictionary(path, bag)
+    if dictionary is None:
+        return None
+    return Resolved(dictionary, (), lambda _: Location(path), False)
 
 
 def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -787,9 +972,9 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     being read at all are carried over, because those explain a comparison that cannot happen.
     """
     own = DiagnosticBag(bag.policy)
-    dictionary = _read_dictionary(path, own)
-    if dictionary is not None and not own.has_errors:
-        return dictionary
+    resolved = _read_dictionary(path, own)
+    if resolved is not None and not own.has_errors:
+        return resolved.dictionary
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(

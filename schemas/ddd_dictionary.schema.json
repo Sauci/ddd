@@ -399,6 +399,15 @@
           "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.",
           "title": "Id"
         },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "The blocks of the project's plugins, keyed by plugin name, in resolved form.\n\nEach validated against its plugin's model and dumped back, defaults filled in, so two\ndumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded\nnone, and empty for an object nothing stamped.",
+          "title": "Extensions",
+          "type": "object"
+        },
         "type": {
           "description": "Name of the structure it is, which is the c type of the declaration.",
           "title": "Type",
@@ -883,6 +892,15 @@
           "description": "Identity the producer gave this object, which survives a rename of it.\n\nEmpty in a dictionary from format 5 or older, which recorded none: an object that pairs\non nothing pairs on its name, exactly as it did then.",
           "title": "Id"
         },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "The blocks of the project's plugins, keyed by plugin name, in resolved form.\n\nEach validated against its plugin's model and dumped back, defaults filled in, so two\ndumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded\nnone, and empty for an object nothing stamped.",
+          "title": "Extensions",
+          "type": "object"
+        },
         "kind": {
           "$ref": "#/$defs/ObjectKind",
           "description": "Which sort of object this is, taken from the definition that produced it."
@@ -1181,7 +1199,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 6,
+      "default": 7,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"
@@ -1277,6 +1295,24 @@
       },
       "title": "Leaves",
       "type": "array"
+    },
+    "plugins": {
+      "default": [],
+      "description": "The names of the plugins that interpreted this dictionary, sorted.\n\nNames rather than module spellings: a path is relative to a project file the dump no\nlonger has, and the name is what the blocks are keyed by. Empty in a dictionary from\nformat 6 or older, and what ``missing-plugin`` reads when a comparison runs without one\nof them.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Plugins",
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "description": "The settings of each plugin, in resolved form, keyed by plugin name.\n\nRecorded so that a comparison over an archived dump can rebuild what the plugin's hooks\nwere given, without the project file that stated them.",
+      "title": "Extensions",
+      "type": "object"
     }
   },
   "required": [

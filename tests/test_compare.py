@@ -1085,7 +1085,7 @@ def test_a_dumped_baseline_survives_a_rename_end_to_end(tree, capsys):
     baseline = tree / "baseline.json"
     assert main(["dump", str(tree / "before.ddd.json")]) == EXIT_OK
     baseline.write_text(capsys.readouterr().out, encoding="utf-8")
-    assert json.loads(baseline.read_text(encoding="utf-8"))["format"] == 6
+    assert json.loads(baseline.read_text(encoding="utf-8"))["format"] == 7
 
     write_tree(
         tree,

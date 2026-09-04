@@ -25,10 +25,11 @@ from typing import Any, Final
 
 from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Severity, SeverityPolicy
+from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Location, Severity, SeverityPolicy
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import containing_projects
 from ddd.lsp.ranges import Document, read
+from ddd.plugins import PluginError
 
 SOURCE: Final = "ddd"
 """What the editor shows next to each finding, so its origin is never in doubt."""
@@ -83,7 +84,13 @@ def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]
         return bag, frozenset({root})
     sources = frozenset(workspace.sources())
     if not bag.has_errors:
-        analyze(workspace, bag)
+        try:
+            analyze(workspace, bag)
+        except PluginError as error:
+            # A hook raising is a defect of the plugin, not of the project: ``ddd check``
+            # reports it as a usage error, but the server promises findings and never an
+            # exception, so it is turned into one here, on the project file itself.
+            bag.add("plugin-invalid", str(error), Location(root))
     return bag, sources
 
 

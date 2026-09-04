@@ -34,7 +34,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 4,
+     "format": 7,
      "name": "DemoDevice",
      "description": "Demonstration project showing every DDD feature",
      "source": "demo.ddd.json",
@@ -153,6 +153,14 @@ in which the project included them, and the declarations of a component keep the
 author wrote them in, because that order is information: it is how the interface of a
 component reads in its own file, and it is how it reads in its generated header.
 
+The **plugin blocks are resolved too.** Every object, every structured instance and the
+dictionary itself carry ``extensions``, validated and dumped back with each plugin's own
+defaults filled in, and the dictionary names the plugins in play under ``plugins``. That is
+what keeps a plugin's questions answerable from the dictionary alone, long after the project
+that named the plugin has moved on: the archived dump is what ``ddd compare --plugin`` reads
+back a plugin's comparison rules against, and what ``ddd generate <name>`` hands to a
+plugin's own backend. See :doc:`plugins` for what a plugin does with them.
+
 .. note::
    ``owner`` may be ``null``, but only for a project that is already known to be
    inconsistent and is being generated anyway with ``ddd generate --force``. Every other
@@ -163,7 +171,7 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``4`` - and changes only when that shape changes, not with every release of the
+- currently ``7`` - and changes only when that shape changes, not with every release of the
 tool.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
@@ -173,7 +181,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 5, and this DDD understands up to 4; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 8, and this DDD understands up to 7; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -215,7 +223,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 5,
+         "default": 7,
          "title": "Format",
          "type": "integer"
        },

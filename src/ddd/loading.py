@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from ddd.models import (
     UnitsFile,
     discriminator_tags,
 )
+from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
 
 DDD_SUFFIX = ".ddd.json"
 """Every project and component description file carries this extension.
@@ -268,6 +269,15 @@ class LoadedConstant:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedPlugin:
+    """A plugin together with where the project named it, for the note on a clash."""
+
+    plugin: Plugin
+    spelling: str
+    origin: Location
+
+
+@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything DDD knows after reading the file tree."""
 
@@ -328,6 +338,17 @@ class Workspace:
     a build system ends up never noticing the fix.
     """
 
+    plugins: tuple[Plugin, ...] = ()
+    """The plugins the project files name, in project order, each once.
+
+    Empty for a component read on its own: only a project names plugins, which is why a
+    block in such a run is reported by ``unknown-extension``, a check the editor's
+    standalone mode holds back for exactly that reason.
+    """
+
+    project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """The settings block of each plugin, as the project files wrote it, by plugin name."""
+
     def sources(self) -> tuple[Path, ...]:
         """Every file that was read to build this workspace, sorted and without duplicates.
 
@@ -335,6 +356,24 @@ class Workspace:
         alone is not enough, because a project pulls its components in through ``includes``.
         """
         return tuple(sorted({self.root, *self.read_paths}))
+
+    def locate(self, name: str) -> Location | None:
+        """Where a plugin's finding about the object ``name`` belongs.
+
+        The declaration that produces it, and failing that the first one naming it: a
+        consumer's declaration is still where a reader looks for the object. ``None`` when no
+        component names it - a leaf, or a name the plugin made up.
+        """
+        fallback: Location | None = None
+        for loaded in self.components:
+            for index, declaration in enumerate(loaded.component.interface):
+                if declaration.definition.name != name:
+                    continue
+                location = loaded.declaration_location(index)
+                if declaration.scope.is_producer:
+                    return location
+                fallback = fallback or location
+        return fallback
 
 
 def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -411,6 +450,9 @@ class _Loader:
         self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
+        self._plugins: list[Plugin] = []
+        self._plugins_by_name: dict[str, LoadedPlugin] = {}
+        self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
     def load(self, path: Path) -> Workspace | None:
         root = _resolve(path)
@@ -435,6 +477,7 @@ class _Loader:
             # component alone, which is what makes a self-contained library file listable
             # and checkable by itself. Standalone vocabularies cannot reach such a run - only
             # a project lists them - so those registries are left at their empty defaults.
+            self._validate_blocks(root)
             return Workspace(
                 root=root,
                 name=component.name,
@@ -446,11 +489,16 @@ class _Loader:
                     sorted(self._constants_by_name.values(), key=lambda entry: entry.name)
                 ),
                 read_paths=tuple(sorted(self._read_paths)),
+                plugins=tuple(self._plugins),
+                project_extensions={
+                    name: block for name, (block, _) in self._project_blocks.items()
+                },
             )
 
         project = self._load_project(root, data, parents=(), stack=())
         if project is None:
             return None
+        self._validate_blocks(root)
         return Workspace(
             root=root,
             name=project.name,
@@ -465,6 +513,8 @@ class _Loader:
             rasters=tuple(sorted(self._rasters_by_name.values(), key=lambda entry: entry.raster)),
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
+            plugins=tuple(self._plugins),
+            project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
         )
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
@@ -763,6 +813,11 @@ class _Loader:
         loaded = LoadedProject(path=path, project=model.project, parents=parents)
         self._projects.append(loaded)
 
+        for index, spelling in enumerate(model.project.plugins):
+            self._load_plugin(spelling, Location(path, f"project.plugins[{index}]"), path.parent)
+        for name, block in model.project.extensions.items():
+            self._register_settings(name, block, Location(path, f"project.extensions.{name}"))
+
         child_parents = (*parents, loaded.name)
         child_stack = (*stack, path)
         for index, pattern in enumerate(model.project.includes):
@@ -770,6 +825,101 @@ class _Loader:
             for included in self._expand(path, pattern, origin, {path}):
                 self._load_include(included, origin, child_parents, child_stack)
         return loaded
+
+    def _load_plugin(self, spelling: str, origin: Location, base: Path) -> None:
+        """Import one plugin the project names, or report why it could not be.
+
+        Both failures have a fixed severity, like ``file-not-found`` and ``schema``: a project
+        cannot be interpreted without the plugins it names, so there is nothing to relax.
+        """
+        try:
+            plugin = load_plugin(spelling, base)
+        except PluginNotFoundError as error:
+            self._bag.add("plugin-not-found", str(error), origin)
+            return
+        except PluginInvalidError as error:
+            self._bag.add("plugin-invalid", str(error), origin)
+            return
+        previous = self._plugins_by_name.get(plugin.name)
+        if previous is not None:
+            # The same module named twice loads to one object and is nothing; a different
+            # module claiming a name in use is the second of two plugins, refused.
+            if previous.plugin is not plugin:
+                self._bag.add(
+                    "plugin-invalid",
+                    f"plugin '{plugin.name}' is already provided by '{previous.spelling}'",
+                    origin,
+                    notes=[("first named here", previous.origin)],
+                )
+            return
+        self._plugins_by_name[plugin.name] = LoadedPlugin(plugin, spelling, origin)
+        self._plugins.append(plugin)
+        self._bag.register(plugin.checks)
+
+    def _register_settings(self, name: str, block: dict[str, Any], location: Location) -> None:
+        previous = self._project_blocks.get(name)
+        if previous is not None:
+            self._bag.add(
+                "schema",
+                f"the settings of plugin '{name}' are already stated",
+                location,
+                notes=[("first stated here", previous[1])],
+            )
+            return
+        self._project_blocks[name] = (block, location)
+
+    def _validate_blocks(self, root: Path) -> None:
+        """Every extension block against the model of the plugin that owns it.
+
+        One pass at the end rather than at each file, because a component included before
+        the sub-project that names its plugin would otherwise be refused for a block that is
+        about to become valid. A block on a consumer is validated too: whose claim it is comes
+        later, in the analysis, and a typo is a typo either way.
+        """
+        plugins = {name: loaded.plugin for name, loaded in self._plugins_by_name.items()}
+        for name, (block, location) in sorted(self._project_blocks.items()):
+            self._validate_block(plugins.get(name), name, block, location, on_project=True)
+        for plugin in self._plugins:
+            # A plugin whose settings have a required field, in a project stating none: the
+            # finding belongs where the block would be written.
+            if plugin.project_model is not None and plugin.name not in self._project_blocks:
+                location = Location(root, f"project.extensions.{plugin.name}")
+                self._validate_block(plugin, plugin.name, {}, location, on_project=True)
+        for loaded in self._components:
+            for index, declaration in enumerate(loaded.component.interface):
+                for name, block in declaration.definition.extensions.items():
+                    suffix = f"definition.extensions.{name}"
+                    location = loaded.declaration_location(index, suffix)
+                    self._validate_block(plugins.get(name), name, block, location, on_project=False)
+
+    def _validate_block(
+        self,
+        plugin: Plugin | None,
+        name: str,
+        block: dict[str, Any],
+        location: Location,
+        *,
+        on_project: bool,
+    ) -> None:
+        if plugin is None:
+            self._bag.add(
+                "unknown-extension",
+                f"'{name}' names no plugin this project loads; a block only means something "
+                f"to the plugin that owns it",
+                location,
+            )
+            return
+        model = plugin.project_model if on_project else plugin.object_model
+        if model is None:
+            where = "the project" if on_project else "a definition"
+            self._bag.add(
+                "schema", f"plugin '{name}' takes no 'extensions' block on {where}", location
+            )
+            return
+        try:
+            model.model_validate(block)
+        except ValidationError as error:
+            _report_validation_error(location.path, error, self._bag, prefix=location.pointer)
 
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]
@@ -883,12 +1033,16 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
     return None
 
 
-def _report_validation_error(path: Path, error: ValidationError, bag: DiagnosticBag) -> None:
+def _report_validation_error(
+    path: Path, error: ValidationError, bag: DiagnosticBag, prefix: str = ""
+) -> None:
+    """One ``schema`` finding per place; ``prefix`` is the pointer of a nested document."""
     for item in _one_per_place(_meaningful(error.errors(include_url=False))):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
-        bag.add("schema", message, Location(path, _pointer(item["loc"])))
+        pointer = ".".join(part for part in (prefix, _pointer(item["loc"])) if part)
+        bag.add("schema", message, Location(path, pointer))
 
 
 def _one_per_place(items: list[Any]) -> list[Any]:

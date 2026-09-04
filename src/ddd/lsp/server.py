@@ -7,9 +7,9 @@ somewhere that can be tested directly.
 
 There is no net around the analysis, and that is not an oversight. The front end reports
 through a diagnostic bag rather than raising - the developer documentation states it as a
-rule - so a project that cannot be read produces findings, not an exception. A server that
-wrapped it in a catch-all would be insuring against a thing the design already prevents, and
-would hide it if that ever stopped being true.
+rule - so a project that cannot be read, or whose plugin raises out of a hook, produces
+findings, not an exception. A server that wrapped it in a catch-all would be insuring against
+a thing the design already prevents, and would hide it if that ever stopped being true.
 
 Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the files are
 read from disk, so the editor and the server agree exactly at the moment of a save, and a

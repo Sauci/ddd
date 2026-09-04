@@ -78,6 +78,15 @@
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
         },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -417,6 +426,15 @@
           "default": null,
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
         },
         "datatype": {
           "anyOf": [
@@ -898,6 +916,15 @@
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
         },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -1091,6 +1118,15 @@
           "default": null,
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
         },
         "datatype": {
           "anyOf": [
@@ -1451,6 +1487,15 @@
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
         },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
+        },
         "datatype": {
           "anyOf": [
             {
@@ -1762,6 +1807,15 @@
           "default": null,
           "description": "Identity of this object, which survives its name.\n\nWritten by the component that produces the object and by nothing else: a consumer stating\none is refused as ``consumer-identity``, on the reasoning that makes ``section`` and\n``init`` producer keys. It links this object to itself in an earlier delivery, so that\n``ddd compare`` reports a rename as a rename rather than as a removal and an unrelated\naddition, and so that a name freed by a rename cannot be quietly claimed by something\nelse.\n\nNothing inside a project reads it: the producer and its consumers go on binding by name,\nand the generated c and a2l never mention it. Optional, so that a project adopts it one\ncomponent at a time; ``missing-id`` says where it has not.",
           "title": "Id"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Blocks owned by the project's plugins, keyed by plugin name.\n\n``{\"layout\": {\"key\": 12, \"version\": 3}}``: what a plugin the project names needs to know\nabout this object and DDD does not. Each block is validated against the model of the\nplugin that owns it and carried into the dictionary in resolved form; a block naming no\nloaded plugin is ``unknown-extension``. Only the producing declaration states one - a\nconsumer stating one is ``consumer-extension``, on the reasoning that makes ``section``\nand ``id`` producer keys: a block says what the object *is*.",
+          "title": "Extensions",
+          "type": "object"
         },
         "datatype": {
           "anyOf": [

@@ -10,6 +10,21 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **Plugins.**  A project names python modules under `plugins`, each owning an `extensions`
+  block on a definition and on the project that DDD validates against the plugin's own
+  pydantic model, carries into the dictionary in resolved form and never interprets.  A plugin
+  contributes checks, reported and policed like the built-in ones under identifiers spelled
+  `<plugin>/<check>`; comparison rules, run after the built-in comparison; and an artefact,
+  selected as `ddd generate <name>`.  Five built-in checks arrive with it: `plugin-not-found`
+  and `plugin-invalid`, with a fixed severity, `unknown-extension`, `consumer-extension`,
+  and `missing-plugin`, which says when a compared dictionary was produced with a plugin the
+  run has not loaded.  `ddd schema --plugin` publishes a schema closed over a project's
+  plugins, `ddd compare --plugin` loads them for an archived candidate, and
+  `ddd checks --plugin` lists their checks.  `examples/plugins/ddd_layout.py` is a worked
+  example.  **Migration:** none for an existing project - no key is required and nothing is
+  stamped.  The dictionary format moves from 6 to 7: every object, every instance and the
+  dictionary itself carry `extensions`, and the dictionary records `plugins`; a dictionary
+  dumped by an older DDD reads back with all of them empty.
 * **`id` on a producing declaration: the identity of a data object, which survives a
   rename.**  Twelve lowercase base32 characters, opaque, written by `ddd id --assign` rather
   than typed by hand.  `duplicate-id` refuses two objects of one project sharing one, and

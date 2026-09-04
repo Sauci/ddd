@@ -1,8 +1,8 @@
 # Object identity across deliveries
 
 - **Date:** 2026-09-03
-- **Status:** design approved, not implemented
-- **Touches:** the models, the loader, the data dictionary, the comparison, the cli, the a2l backend
+- **Status:** implemented and merged to master; sections 8, 9 and 10 amended in flight
+- **Touches:** the models, the data dictionary, the comparison, the cli, the language server's ranges
 
 ## 1 What this adds
 
@@ -257,36 +257,28 @@ that cannot be accepted still needs its renames listed, so that whoever fixes it
 moved. An empty comparison writes `[]` rather than no file, so a build step can tell "no
 renames" from "compare never ran".
 
-## 8 The a2l - specified, not planned
+## 8 The a2l - withdrawn
 
-**This section is gated on a question nobody has answered yet, and must not be implemented
-until it is:** does the calibration tool in use resolve a dataset label through an `ANNOTATION`?
-If it ignores annotations, this section is wasted work and should be deleted rather than built.
+This section specified an `ANNOTATION` carrying an object's previous name into the generated
+a2l, reached by `ddd generate a2l --baseline`. It was gated on a question: does the calibration
+tool in use resolve a dataset label through an `ANNOTATION`? It said that if the tool ignores
+annotations, the section is wasted work and should be deleted rather than built.
 
-The difficulty is structural. A dictionary at version N holds no trace of an old name - the id
-pairs objects only when both versions are in hand - so a generator running on one dictionary
-cannot know a previous spelling. The a2l consumer therefore takes a baseline:
+The question has been answered and the section is withdrawn. The tools in use are Vector CANape
+and ETAS INCA. `ANNOTATION` is a documentation container in ASAP2 - a label, an origin and free
+text - and nothing in the standard gives it a linking or aliasing meaning. A tool may well show
+the text in an object's properties; neither tool resolves a dataset label through it, because
+dataset matching goes by name and memory layout and no standard mechanism says otherwise. The
+annotation would therefore have produced a remark for a human to read, not the automatic
+migration it was meant to enable.
 
-```bash
-ddd generate a2l project.ddd.json -o build/gen -t templates --baseline baseline.json
-```
+What the section was reaching for is built and lives elsewhere: `ddd compare --renames` writes
+the old-to-new pairs a migration script or a tool's own mapping import consumes
+([section 7](#7-the-migration-map)). That is the functional path; the annotation was only ever
+going to be the decorative one.
 
-which is a flag over plumbing that already exists for `ddd check --baseline`, not a subsystem.
-Where a baseline pairs an object by id under a different name, its record gains an annotation:
-
-```text
-/begin ANNOTATION
-  ANNOTATION_LABEL "ddd.previous_names"
-  ANNOTATION_ORIGIN "DDD"
-  /begin ANNOTATION_TEXT "FiltGain" /end ANNOTATION_TEXT
-/end ANNOTATION
-```
-
-Not `DISPLAY_IDENTIFIER`: it holds a single identifier and is already an author-settable key on
-the `a2l` block, so writing a previous name there would overwrite whatever the producer chose,
-and could carry only one. `ANNOTATION` is free-form in ASAP2 1.6.1, carries a list, and is
-ignored by a tool that does not want it. The a2l template ships with DDD - only the c templates
-belong to the project - so this is a template change DDD is free to make.
+Nothing here was implemented, so there is nothing to remove from the code. The a2l backend is
+untouched by this design.
 
 ## 9 History in git
 
@@ -375,9 +367,9 @@ The published `ddd schema dictionary` and the per-kind schemas grow the key, and
 2. **Comparison** - pairing, `renamed-object`, `reused-name`, references by id, the note. The
    payload.
 3. **The migration map and the git recipe** - `--renames` and the documentation of section 9.
-4. **The a2l** - only after section 8's question is answered.
+4. ~~**The a2l**~~ - withdrawn; see [section 8](#8-the-a2l---withdrawn).
 
-The implementation plan covers 1 to 3. Section 8 stays specified and unplanned.
+The implementation plan covered 1 to 3, which is the whole of what shipped.
 
 ## 14 Deferred
 

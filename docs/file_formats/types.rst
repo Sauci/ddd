@@ -179,8 +179,11 @@ Scalar types
      - ``""``
      - The physical unit, as free text: ``rpm``, ``degC``, ``%``.
    * - ``conversion``
-     - identity
-     - How the stored number maps to the physical one; see :doc:`conversions`.
+     - required
+     - How the stored number maps to the physical one; see :doc:`conversions`. Required
+       even when it is the identity, because fixing what a value means is the one job a
+       scalar type has, and the identity is part of the answer rather than a silence to
+       interpret.
    * - ``limits``
      - derived
      - ``min`` and ``max`` in physical units, derived from the datatype and the conversion when

@@ -139,9 +139,11 @@ def value_documentation(enum_type: type[Enum]) -> dict[str, str]:
 class PublishedSchema(GenerateJsonSchema):
     """The json schema generator behind ``ddd schema``.
 
-    Everything it adds is documentation or metadata: no keyword it writes narrows or widens
-    what a validator accepts, so the published schema and the loader cannot disagree about
-    whether a file is valid because of anything in here.
+    What it adds is documentation and metadata, and the one thing it changes about validation
+    it changes towards the loader: the conversion union is published as ``anyOf`` rather than
+    ``oneOf``, because its ``kind`` may be left out and an empty block then matches more than
+    one variant. The loader reads that block as the identity, so a validator has to accept it
+    too; the published schema and the loader cannot disagree about whether a file is valid.
     """
 
     def generate(
@@ -152,6 +154,19 @@ class PublishedSchema(GenerateJsonSchema):
         # The dialect leads the document, the way a reader expects to find it, and the title
         # follows: what an editor puts at the top of the hover before anything else.
         return {"$schema": self.schema_dialect, **published}
+
+    def tagged_union_schema(self, schema: core_schema.TaggedUnionSchema) -> JsonSchemaValue:
+        """Publish a union whose tag may be omitted as ``anyOf``.
+
+        A data object states its ``kind``, so its variants never overlap and ``oneOf`` says
+        exactly that. A conversion may leave ``kind`` out, and ``{}`` - the identity - then
+        satisfies the identity variant and the linear one alike, which ``oneOf`` refuses and
+        the loader accepts.
+        """
+        result = super().tagged_union_schema(schema)
+        if "oneOf" in result and set(schema["choices"]) == {"identity", "linear", "enum"}:
+            result["anyOf"] = result.pop("oneOf")
+        return result
 
     def enum_schema(self, schema: core_schema.EnumSchema) -> JsonSchemaValue:
         """Record what each individual value means, not just which values are allowed.

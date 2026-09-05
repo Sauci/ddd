@@ -44,7 +44,16 @@
     "units": {
       "description": "The units this project spells, in any order; an empty vocabulary is no file at all.",
       "items": {
-        "$ref": "#/$defs/UnitDeclaration"
+        "anyOf": [
+          {
+            "description": "A spelling on its own, for a unit that needs no description.",
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/UnitDeclaration"
+          }
+        ]
       },
       "minItems": 1,
       "title": "Units",

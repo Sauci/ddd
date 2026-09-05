@@ -311,6 +311,7 @@ unchanged, and any component may name them
 | `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |
+| `raster` | the component's | the measurement raster the producer updates the object in, written into the a2l as the DAQ event a tool preselects; stated by the producer only, on a measurement only, and defaulting to what its component declares |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |

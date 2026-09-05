@@ -270,10 +270,12 @@ definition that leaves it out is a ``schema`` finding like any other missing fie
 Conversions
 ~~~~~~~~~~~
 
-The ``conversion`` of a data object is a second tagged union, again discriminated on
-``kind``, and again ``kind`` may be left out when the shape of the block makes it
+The ``conversion`` of a data object is a second tagged union, also discriminated on
+``kind`` - but here ``kind`` may be left out when the shape of the block makes it
 unambiguous: a block carrying ``enumerators`` or a ``name`` is an enum, one carrying
-``factor`` or ``offset`` is linear, and an empty one is the identity.
+``factor`` or ``offset`` is linear, and an empty one is the identity. The published schema
+says so too: the conversion is the one union it publishes as ``anyOf``, since an empty block
+would otherwise match two variants at once.
 
 .. autopydantic_model:: ddd.models.IdentityConversion
 

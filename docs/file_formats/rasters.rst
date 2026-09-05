@@ -19,18 +19,21 @@ guess which task moves the signal.
      ]
    }
 
-``raster`` is the name a definition refers to, and it is also the short name the a2l gives the
-event - a field eight characters wide, which is where the limit comes from. It is not a
+``raster`` is the name a definition refers to, one word without whitespace, and it is also
+the short name the a2l gives the event - a field eight characters wide, which is where the
+limit comes from. It is not a
 protocol limit: XCP itself length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened, because two names shortened to the same eight
 would collide in a calibration tool rather than here, where the author can still do something
 about it. No file DDD writes carries an event name today, and the limit applies anyway, so
-that a rasters file written now still loads once the module level ``DAQ`` block does. ``event`` is the event
-channel number the target's XCP configuration assigned, distinct across the project.
-``cycle`` is the period, a whole number and a unit - ``100us``, ``10ms``, ``1s``, and
-``1500us`` rather than ``1.5ms``. It is optional: an event with no period is not cyclic,
-which is what a crank synchronous or an on-change raster is, and that is a description rather
-than an omission. ``description`` is free text.
+that a rasters file written now still loads once the module level ``DAQ`` block does.
+``event`` is the event channel number the target's XCP configuration assigned, 0 to 65535 and
+distinct across the project. ``cycle`` is the period, spelled the way an XCP event period is
+carried: a count from 1 to 255 times a decade from 1 ns to 1 s - ``100us``, ``10ms``, ``1s``,
+``1500us`` rather than ``1.5ms``, ``2s`` but not ``300s``, and ``255ms`` but not ``256ms``.
+It is optional: an event with no period is not cyclic, which is what a crank synchronous or
+an on-change raster is, and that is a description rather than an omission. ``description`` is
+free text.
 
 The file is project wide, listed in the ``includes`` of a project like any other description;
 ``ddd schema rasters`` prints its published contract. It has no place inside a component, for

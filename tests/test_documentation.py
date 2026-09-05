@@ -23,7 +23,7 @@ from ddd import __version__
 from ddd.cli import _SCHEMA_MODELS, _build_parser
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
-from ddd.models import Datatype, ObjectKind
+from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -344,6 +344,50 @@ class TestTheDocumentationSite:
             if version == "latest" and path:
                 target = ROOT / "docs" / path.split("#", 1)[0].replace(".html", ".rst")
                 assert target.is_file(), f"{page} links {link}, and {target.name} does not exist"
+
+
+def table_rows(page: str, heading: str) -> dict[str, str]:
+    """The rows of the key table under a heading, as key to default cell.
+
+    The reference pages write their key tables as list tables whose first cell is the key in
+    double backticks and whose second is what it defaults to; the section runs from the
+    heading to the next underlined title.
+    """
+    section = PAGES[page].split(heading, 1)[1]
+    section = re.split(r"\n[^\n]+\n[-~=]{4,}\n", section, maxsplit=1)[0]
+    return dict(re.findall(r"   \* - ``([a-z0-9_]+)``\n     - (.+)\n", section))
+
+
+class TestTheKeyTables:
+    """A key table that claims to list every key is held to the model that owns them.
+
+    ``id`` and ``raster`` reached the definitions and the component over two releases and
+    reached none of the tables, which tell a reader that an unknown key is refused.
+    """
+
+    @pytest.mark.parametrize("key", sorted(DataObject.model_fields))
+    def test_every_common_key_of_a_definition_has_a_row(self, key: str) -> None:
+        rows = table_rows("docs/file_formats/variable_definition.rst", "The common attributes\n")
+        assert key in rows, f"the common attributes table lists {sorted(rows)}"
+
+    @pytest.mark.parametrize("key", sorted(DataObject.model_fields))
+    def test_every_common_key_of_a_definition_is_in_the_readme(self, key: str) -> None:
+        assert f"\n| `{key}` |" in README
+
+    @pytest.mark.parametrize("key", sorted(Component.model_fields))
+    def test_every_key_of_a_component_has_a_row(self, key: str) -> None:
+        rows = table_rows("docs/file_formats/component.rst", "Component description\n")
+        assert key in rows, f"the component table lists {sorted(rows)}"
+
+    @pytest.mark.parametrize("key", sorted(ScalarType.model_fields))
+    def test_a_scalar_type_key_is_shown_as_required_when_the_model_requires_it(
+        self, key: str
+    ) -> None:
+        """A cell saying "identity" where the model says required costs a whole project load."""
+        rows = table_rows("docs/file_formats/types.rst", "Scalar types\n")
+        assert key in rows, f"the scalar type table lists {sorted(rows)}"
+        if key != "type" and ScalarType.model_fields[key].is_required():
+            assert rows[key] == "required", f"{key} is required, the table says {rows[key]!r}"
 
 
 class TestConcepts:
@@ -780,6 +824,70 @@ class TestPublishedSchemas:
         """Whoever reads these writes json; a dotted module path is an answer to nobody."""
         offenders = [text for text in descriptions_in(published(kind)) if "ddd.models" in text]
         assert not offenders, f"{kind} refers the reader to python: {offenders}"
+
+
+class TestTheShorthandsThePagesRecommend:
+    """What the loader accepts, the published schema has to accept as well.
+
+    The pages recommend ``"conversion": {}``, the mapping form of the enumerators and a bare
+    unit spelling, and tell the reader to bind an editor to the schema; a schema that refused
+    them underlined every recommended spelling in red while ``ddd check`` passed the file.
+    """
+
+    @staticmethod
+    def accepted(kind: str, document: dict[str, Any]) -> None:
+        jsonschema.validate(document, published(kind))
+
+    def test_an_empty_conversion_is_the_identity(self) -> None:
+        self.accepted(
+            "component",
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Raw",
+                                "kind": "measurement",
+                                "datatype": "uint16",
+                                "conversion": {},
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_enumerators_may_be_written_as_a_mapping(self) -> None:
+        self.accepted(
+            "component",
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Mode",
+                                "kind": "measurement",
+                                "datatype": "uint8",
+                                "conversion": {
+                                    "kind": "enum",
+                                    "name": "Mode_t",
+                                    "enumerators": {"MODE_OFF": 0, "MODE_RUN": 1},
+                                },
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_a_unit_may_be_a_bare_spelling(self) -> None:
+        self.accepted("units", {"units": ["Nm", "rpm", {"unit": "degC", "description": "x"}]})
 
 
 class Undocumented(StrEnum):

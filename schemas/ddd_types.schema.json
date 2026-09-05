@@ -102,13 +102,25 @@
           "type": "string"
         },
         "enumerators": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Enumerator"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "description": "The enumerators as a ``{\"NAME\": value}`` mapping.",
+              "minProperties": 1,
+              "type": "object"
+            }
+          ],
           "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
-          "items": {
-            "$ref": "#/$defs/Enumerator"
-          },
-          "minItems": 1,
-          "title": "Enumerators",
-          "type": "array"
+          "title": "Enumerators"
         }
       },
       "required": [
@@ -357,15 +369,7 @@
         "conversion": {
           "anyOf": [
             {
-              "discriminator": {
-                "mapping": {
-                  "enum": "#/$defs/EnumConversion",
-                  "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
+              "anyOf": [
                 {
                   "$ref": "#/$defs/IdentityConversion"
                 },
@@ -375,7 +379,15 @@
                 {
                   "$ref": "#/$defs/EnumConversion"
                 }
-              ]
+              ],
+              "discriminator": {
+                "mapping": {
+                  "enum": "#/$defs/EnumConversion",
+                  "identity": "#/$defs/IdentityConversion",
+                  "linear": "#/$defs/LinearConversion"
+                },
+                "propertyName": "kind"
+              }
             },
             {
               "type": "null"
@@ -462,16 +474,7 @@
           "type": "string"
         },
         "conversion": {
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "#/$defs/IdentityConversion"
             },
@@ -482,6 +485,15 @@
               "$ref": "#/$defs/EnumConversion"
             }
           ],
+          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
           "title": "Conversion"
         },
         "limits": {

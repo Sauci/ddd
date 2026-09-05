@@ -573,6 +573,13 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
 
+[examples/pressure](examples/pressure) ships the three deliveries of the documentation's worked
+example - the release that went out, a working tree with five changes to it and an older tree -
+so `ddd compare examples/pressure/release/pressure.ddd.json examples/pressure/work/pressure.ddd.json`
+can be tried from a checkout; the
+[documentation](https://sauci.github.io/ddd/latest/comparing_deliveries.html) walks through
+what it reports.
+
 Three details worth knowing. **Widening a limit is silent** - every value the baseline allowed
 still fits - while narrowing it is a warning; and when the interface already changed, the
 narrowed limits that follow from it are not reported separately, so the cause is not buried

@@ -53,7 +53,7 @@ checkout or an unpacked sdist, the package runs directly out of ``src``:
 
 .. code-block:: text
 
-   $ PYTHONPATH=src python -m ddd --version
+   $ PYTHONPATH=src python -m ddd --version  # from a checkout of the sources
    ddd 0.8.0
 
 ``PYTHONPATH=src python -m ddd`` and ``ddd`` are the same program invoked in two ways, and
@@ -91,8 +91,9 @@ prescribed; it merely lets the project file collect its members with a single pa
 The project description
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-A project is a name and a list of members. It carries no data of its own, because the data
-belongs to the components, and it is the file a build script points DDD at.
+``thermostat.ddd.json``, the project, is a name and a list of members. It carries no data of
+its own, because the data belongs to the components, and it is the file a build script points
+DDD at.
 
 .. code-block:: json
 
@@ -540,7 +541,7 @@ told - and check the project again:
 
 .. code-block:: text
 
-   $ ddd check thermostat.ddd.json
+   $ ddd check thermostat.ddd.json  # after the edit
    components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
@@ -573,7 +574,7 @@ agreed on are worse than no sources:
 
 .. code-block:: text
 
-   $ ddd generate all thermostat.ddd.json -o gen2 -t templates
+   $ ddd generate all thermostat.ddd.json -o gen2 -t templates  # after the edit
    components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion

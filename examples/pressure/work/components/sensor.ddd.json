@@ -1,0 +1,85 @@
+{
+  "$schema": "../../../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Sensor",
+    "interface": [
+      {
+        "scope": "output",
+        "definition": {
+          "name": "PressureRaw",
+          "id": "jh24xz65w9hs",
+          "kind": "measurement",
+          "description": "Manifold pressure",
+          "datatype": "uint32",
+          "unit": "kPa",
+          "conversion": {
+            "factor": 0.1
+          },
+          "limits": {
+            "min": 0,
+            "max": 400
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "SupplyVoltage",
+          "id": "wcvef190n8h6",
+          "kind": "measurement",
+          "description": "Sensor supply voltage",
+          "datatype": "uint16",
+          "unit": "V",
+          "conversion": {
+            "factor": 0.001
+          },
+          "limits": {
+            "min": 0,
+            "max": 18
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "FilterGain",
+          "id": "cxf129crsj6e",
+          "kind": "parameter",
+          "description": "Low pass gain of the pressure signal",
+          "datatype": "uint8",
+          "conversion": {
+            "factor": 0.01
+          },
+          "limits": {
+            "min": 0,
+            "max": 1
+          },
+          "init": 50,
+          "volatile": false
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "AmbientPressure",
+          "id": "1cfkhwv366ct",
+          "kind": "measurement",
+          "description": "Ambient pressure",
+          "datatype": "uint16",
+          "unit": "kPa",
+          "conversion": {
+            "factor": 0.1
+          },
+          "limits": {
+            "min": 0,
+            "max": 120
+          },
+          "volatile": false
+        }
+      }
+    ],
+    "description": "Reads the manifold sensors"
+  }
+}

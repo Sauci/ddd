@@ -205,11 +205,14 @@ the build applies.  Point it at an out-of-tree build with `-b DIR`; without it t
 directory names next to the workspace are searched.
 
 A file no build claims is still checked, on its own, but only for what one file can decide.
-Read alone a component has inputs nobody writes, outputs nobody reads and axes declared in
-files nobody handed over, so `missing-producer`, `unused-output` and `unknown-reference` are
-left out rather than reported about every declaration in it.  Everything a single file settles
-by itself - an initial value that does not fit, a name c reserves, a duplicate declaration -
-is reported as usual.
+Read alone a component has inputs nobody writes, outputs nobody reads and types, units,
+sections, constants and axes declared in files nobody handed over, so the ten checks that need
+every component of a project - `unknown-type`, `unknown-unit`, `unknown-section`,
+`unknown-constant`, `unknown-raster`, `unknown-extension`, `missing-producer`,
+`unknown-reference`, `unused-output` and `incomplete-project` - are left out rather than
+reported about every declaration in it.  Everything a single file settles by itself - an
+initial value that does not fit, a name c reserves, a duplicate declaration - is reported as
+usual.  `ddd check --standalone` is the same policy on the command line.
 
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:
@@ -688,7 +691,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 
 | command | purpose |
 | --- | --- |
-| `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares |
+| `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
 | `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
@@ -703,8 +706,8 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 
 `FILE` may be a project or a single component file, which makes it possible to check a
-component on its own before integrating it - add `-W missing-producer=ignore` in that case,
-because the components producing the inputs are by definition not part of the file.
+component on its own before integrating it - add `--standalone` in that case, which holds
+back the checks that need the components the file does not contain.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and

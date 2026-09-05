@@ -48,6 +48,7 @@ PAGES["README.md"] = README
 
 PROJECT_WIDE_DOCUMENTS = {
     "SPEC.md": (SPEC, "`"),
+    "README.md": (README, "`"),
     "docs/editor_integration.rst": (EDITOR_INTEGRATION, "``"),
 }
 """The documents stating how many checks need every component, each with its own quoting.
@@ -986,6 +987,34 @@ class TestTheTemplateReference:
     )
     def test_every_attribute_of_a_view_is_documented(self, name: str) -> None:
         assert f"``.{name}" in self.TEMPLATES
+
+
+class TestTheBuildIntegrationPage:
+    """The cmake module is what a build runs, so the page and the module are held together."""
+
+    CMAKE_MODULE = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+
+    def test_the_component_target_holds_back_what_the_registry_says(self) -> None:
+        """A hand-kept list of two checks silenced two of the ten; the flag derives them."""
+        command = re.search(
+            r"\$\{DDD_EXECUTABLE\} check \"\$\{description\}\"(.*?)\n", self.CMAKE_MODULE
+        )
+        assert command is not None, "the module no longer checks a component on its own"
+        assert "--standalone" in command.group(1), command.group(1)
+        assert "-W" not in command.group(1), "a check named by hand beside the derived flag"
+
+    def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
+        """The page calls its block the shipped file minus comments, so that is what it is."""
+        shipped = (ROOT / "examples" / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
+        expected = [line for line in shipped.splitlines() if not line.lstrip().startswith("#")]
+        page = PAGES["docs/build_integration.rst"]
+        block = re.search(
+            r"with its\ncomments removed[^\n]*\n\n\.\. code-block:: cmake\n\n((?:   .*\n|\n)+)",
+            page,
+        )
+        assert block is not None, "the page no longer shows the example after that sentence"
+        shown = [line[3:] for line in block.group(1).rstrip("\n").splitlines()]
+        assert shown == expected
 
 
 class Undocumented(StrEnum):

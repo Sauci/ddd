@@ -12,6 +12,7 @@ import pytest
 
 from conftest import (
     DEMO,
+    EXAMPLES,
     INCONSISTENT,
     TEMPLATES,
     component,
@@ -23,6 +24,47 @@ from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
+
+
+class TestStandalone:
+    """A component checked on its own is judged by what one file can decide.
+
+    Ten checks need every component of a project; the language server holds them back for a
+    file no build claims, and a build's per-component target has to do the same instead of
+    hand-listing two of them.
+    """
+
+    PUMP = EXAMPLES / "vocabulary" / "pump.ddd.json"
+
+    def test_a_component_naming_shared_vocabulary_checks_clean_alone(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["check", str(self.PUMP)]) == EXIT_FINDINGS
+        assert "unknown-section" in capsys.readouterr().err
+        assert main(["check", str(self.PUMP), "--standalone"]) == EXIT_OK
+        assert "are consistent" in capsys.readouterr().err
+
+    def test_it_holds_back_exactly_the_checks_that_need_the_project(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the flag silences is what the registry says, not a list kept beside it."""
+        from ddd.diagnostics import CHECKS
+
+        held_back = {name for name, info in CHECKS.items() if info.needs_every_component}
+        main(["check", str(self.PUMP), "--format", "json"])
+        reported = {entry["check"] for entry in json.loads(capsys.readouterr().out)["diagnostics"]}
+        assert reported & held_back, "the fixture no longer trips a project-wide check"
+        main(["check", str(self.PUMP), "--standalone", "--format", "json"])
+        remaining = {entry["check"] for entry in json.loads(capsys.readouterr().out)["diagnostics"]}
+        assert not remaining & held_back
+        assert remaining == reported - held_back
+
+    def test_an_explicit_override_still_wins(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``--standalone`` sets the floor; ``-W`` on the same run says what the caller wants."""
+        code = main(["check", str(self.PUMP), "--standalone", "-W", "unknown-section=warning"])
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK
+        assert "warning[unknown-section]" in captured
 
 
 class TestCheck:
@@ -516,6 +558,34 @@ class TestGenerate:
         """
         wanted = [["/begin", kind] for kind in ("MEASUREMENT", "CHARACTERISTIC", "AXIS_PTS")]
         return [line.split()[2] for line in written.splitlines() if line.split()[:2] in wanted]
+
+    def test_an_empty_address_map_is_a_first_run_and_not_a_hole(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The two-run flow seeds ``{}`` before anything has linked, and STRICT rides along.
+
+        A map that names some objects and not others has a hole in it; a map that names
+        nothing is the run a build makes before it has addresses, and a strict first build
+        that failed on it could never reach the second run that fills the map.
+        """
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("{}", encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "address-missing" not in captured
+        assert (tmp_path / "gen" / "DemoDevice.a2l").is_file()
 
     def test_a_complete_address_map_is_not_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

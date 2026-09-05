@@ -112,8 +112,9 @@ listing a single component anywhere.
    ``ddd generate`` accepts a single component description as well as a project. In that
    case the component name is used where a project name would be, so a component called
    ``Controller`` generates ``Controller.h`` next to the shared files and an a2l file called
-   ``Controller.a2l``. Add ``-W missing-producer=ignore``, since the components producing the
-   inputs are by definition not part of the file.
+   ``Controller.a2l``. Check it with ``ddd check --standalone`` first, or relax
+   ``missing-producer`` for the run, since the components producing the inputs are by
+   definition not part of the file.
 
 The type header
 ~~~~~~~~~~~~~~~

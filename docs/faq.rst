@@ -60,11 +60,12 @@ writes a component should not have to assemble the whole device to find out that
 description is malformed. ``ddd check``, ``ddd list`` and ``ddd generate`` all take one
 component file just as happily as a project.
 
-Two checks then fire for a reason that is not a defect, because a component read on its own
+Some checks then fire for a reason that is not a defect, because a component read on its own
 has no peers. Its inputs are produced by components that are, by definition, not in the file,
-which is what ``missing-producer`` reports - an error, so the run fails; and its outputs are
-read by components that are not there either, which ``unused-output`` reports as a warning.
-Ignoring both is what makes the result meaningful:
+which is what ``missing-producer`` reports - an error, so the run fails; its outputs are read
+by components that are not there either, which ``unused-output`` reports as a warning; and a
+type, unit, section, constant or raster it takes from the project's vocabulary is declared in
+a file that is not there. Holding those back is what makes the result meaningful:
 
 .. code-block:: text
 
@@ -78,7 +79,7 @@ Ignoring both is what makes the result meaningful:
    examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    2 errors, 5 warnings
 
-   $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   $ ddd check examples/demo/components/controller.ddd.json --standalone
    ok: 12 variables in 1 component are consistent
 
 What remains is everything a component can get wrong on its own: reserved and colliding

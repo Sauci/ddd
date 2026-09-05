@@ -212,9 +212,9 @@ function(ddd_add_component target)
     set_property(GLOBAL APPEND PROPERTY DDD_COMPONENT_TARGETS ${target})
 
     # On-demand convenience target (for example `ninja sensor_hub.ddd`) checking this component on its own, before it
-    # is integrated into any image. A lone component has no counterpart, so the two checks about the other side of
-    # the interface are switched off; everything else - datatypes, conversions, limits, initial values, axis
-    # references, reserved names - is verified.
+    # is integrated into any image. A lone component has no counterpart and no shared vocabulary, so --standalone
+    # holds back the checks that need every component of the project - the registry says which ones - and
+    # everything else - datatypes, conversions, limits, initial values, bitfields, reserved names - is verified.
     if(NOT TARGET ${target}.ddd)
         if(NOT DDD_EXECUTABLE)
             message(STATUS "ddd_add_component: not creating the ${target}.ddd check target (the ddd tool was not "
@@ -238,8 +238,7 @@ function(ddd_add_component target)
                 continue()
             endif()
             add_custom_command(TARGET ${check_target} POST_BUILD
-                               COMMAND ${DDD_EXECUTABLE} check "${description}"
-                                       -W missing-producer=ignore -W unused-output=ignore
+                               COMMAND ${DDD_EXECUTABLE} check "${description}" --standalone
                                VERBATIM)
         endforeach()
     endif()

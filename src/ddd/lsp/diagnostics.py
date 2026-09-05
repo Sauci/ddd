@@ -25,7 +25,14 @@ from typing import Any, Final
 
 from ddd.analysis import analyze
 from ddd.build_info import BuildInfo
-from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Location, Severity, SeverityPolicy
+from ddd.diagnostics import (
+    STANDALONE_POLICY,
+    Diagnostic,
+    DiagnosticBag,
+    Location,
+    Severity,
+    SeverityPolicy,
+)
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import containing_projects
 from ddd.lsp.ranges import Document, read
@@ -39,24 +46,6 @@ _LSP_SEVERITY: Final[dict[Severity, int]] = {
     Severity.WARNING: 2,
     Severity.INFO: 3,
 }
-
-STANDALONE_POLICY: Final = tuple(
-    f"{identifier}=ignore"
-    for identifier, check in sorted(CHECKS.items())
-    if check.needs_every_component
-)
-"""What is silenced for a file that belongs to no configured build.
-
-A component read on its own has inputs nobody produces, outputs nobody reads and axes declared
-in files nobody handed over - all by construction rather than by mistake. Reporting those fills
-the editor with findings whose only cause is what the run was not shown, and buries the ones
-about the file in front of the reader.
-
-Derived from the registry rather than listed here, because listing it here is how this went
-wrong once already: ``missing-producer`` was silenced and ``unused-output``, which is the same
-mistake seen from the other end, was not. A check that needs the whole project now says so
-where it is defined, and is covered without anyone remembering this file exists.
-"""
 
 
 def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:

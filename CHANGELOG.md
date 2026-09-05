@@ -10,6 +10,14 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **Checking a component on its own.**  `ddd check --standalone` holds back the checks that
+  need every component of a project, derived from the registry the way the language server
+  derives them, and an explicit `-W` on the same run still wins.  The CMake module's
+  per-component target uses it instead of naming two checks by hand, so a component that
+  takes a type, a unit, a section, a constant or a raster from the project's vocabulary checks
+  clean alone.  An empty address map is a first run rather than a map with holes: it raises no
+  `address-missing`, so a strict two-run flow passes the seeded first build.
+
 * **Fixes from a whole-project review.**  A section name is spelled with letters, digits,
   `.`, `_` and `$`, since the generated C writes it into a string literal; an enumerator
   value, a raster event and a section alignment are integers rather than quoted numbers, as

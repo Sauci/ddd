@@ -247,6 +247,27 @@ CHECKS: Final[dict[str, CheckInfo]] = {
     )
 }  # fmt: skip
 
+STANDALONE_POLICY: Final = tuple(
+    f"{identifier}=ignore"
+    for identifier, check in sorted(CHECKS.items())
+    if check.needs_every_component
+)
+"""What is silenced for a component read on its own.
+
+The editor applies it to a file no build claims, and ``ddd check --standalone`` - which a
+build's per-component target runs - applies it under whatever ``-W`` the caller adds. A
+component read on its own has inputs nobody produces, outputs nobody reads and types, units,
+sections, constants and axes declared in files nobody handed over - all by construction rather
+than by mistake. Reporting those fills the run with findings whose only cause is what it was
+not shown, and buries the ones about the file in front of the reader.
+
+Derived from the registry rather than listed anywhere, because listing it is how this went
+wrong twice already: ``missing-producer`` was silenced and ``unused-output``, which is the same
+mistake seen from the other end, was not; then a build integration named two checks by hand
+where ten were needed. A check that needs the whole project says so where it is defined, and
+is covered without anyone remembering this tuple exists.
+"""
+
 
 def _pointer_order(pointer: str) -> tuple[tuple[bool, int | str], ...]:
     """Sort key for a json pointer, with the indices ordered as numbers.

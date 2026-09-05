@@ -89,7 +89,8 @@ The commands
    * - ``ddd check FILE``
      - run every consistency check on a project or on a single component; with ``--baseline``
        also answer whether that project can still replace a published delivery, so that one
-       command and one exit code cover both questions.
+       command and one exit code cover both questions, and with ``--standalone`` judge a
+       component on its own, holding back the checks that need the rest of the project.
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
        an archived dictionary or a project description; ``--plugin`` loads the plugins of an

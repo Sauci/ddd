@@ -22,7 +22,7 @@ import json
 import os
 import shutil
 import subprocess
-import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -30,7 +30,8 @@ import pytest
 from conftest import EXAMPLES
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = Path(sys.executable).parent
+SCRIPTS = Path(sysconfig.get_path("scripts"))
+"""Where this interpreter's console scripts live: the venv's bin, or Scripts beside python.exe."""
 CMAKE = shutil.which("cmake", path=str(SCRIPTS)) or shutil.which("cmake") or str(SCRIPTS / "cmake")
 NINJA = shutil.which("ninja", path=str(SCRIPTS)) or shutil.which("ninja") or str(SCRIPTS / "ninja")
 DDD = SCRIPTS / ("ddd.exe" if os.name == "nt" else "ddd")

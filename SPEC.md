@@ -94,14 +94,17 @@ scaling and the other interface properties ([section 4](#4-consistency-checks)).
 ### 1.4 Source code generation
 
 In order to enforce the access rules specified for each component, the global data objects
-**shall** be defined and declared by DDD. The tool generates the C code defining every
-global data object of the project. The example templates emit these definitions as a single
-file, for the reasons given in [section 5.1](#51-c-code), and that file is compiled and
-linked into the firmware exactly once.
+**shall** be defined and declared by code DDD renders rather than by hand. DDD renders that
+code from templates the project provides ([section 5.1](#51-c-code)), offering them every
+global data object of the project; the example templates emit the definitions as a single
+file, for the reasons given there, and that file is compiled and linked into the firmware
+exactly once.
 
-DDD **shall** also generate a declaration C header for each software component. This header
-**shall** contain declarations only for the data objects specified in the interface
-description of the component.
+DDD **shall** also offer each component's data separately, so that a template renders a
+declaration header per component containing declarations only for the data objects
+specified in the interface description of that component. The example templates render
+that header, and the build integration of
+[section 7.1](#71-build-system-integration) expects it.
 
 ### 1.5 Calibration tool support
 
@@ -150,7 +153,7 @@ run.
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
 | **declared type** | a scalar, structure or external type declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where storage is stated |
 | **constant** | a named integer declared by a constants file ([section 3.9](#39-constant-vocabulary)); a shape names it where it would state a number |
-| **access path** | the C expression that reads a member of a structured object, for example `Inlet.cell[2].raw`; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
+| **access path** | the C expression that reads a member of a structured object, for example `Inlet.latest`, or `Inlet[2].raw` for an element of an array of structures; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
 | **check** | one consistency rule, with a stable identifier and a default severity ([section 4](#4-consistency-checks)) |
 | **finding** | one reported violation of a check, located where it is written; findings reported as errors fail the run ([section 7](#7-tool-interface)) |
@@ -162,8 +165,8 @@ run.
 | scope | meaning |
 | --- | --- |
 | `input` | the component reads the object; another component has to produce it |
-| `output` | the component owns the object; exactly one component **may** do so |
-| `local` | the component owns the object exclusively; no other component **may** use it |
+| `output` | the component owns the object; a second component **must not** produce it (`multiple-producers`) |
+| `local` | the component owns the object exclusively; another component **must not** use it (`local-conflict`) |
 
 For measurements, `output` means that the component writes the variable. For calibration
 objects, which the software never writes, `output` means that the component provides the
@@ -203,7 +206,8 @@ because the kind of a description is stated in its content, not in its name.
 ### 3.1 Project description
 
 Contains a list of components, types files, units files, sections files, constants files,
-rasters files and/or other (sub-)projects.
+rasters files and/or other (sub-)projects, and names the plugins the project runs with
+([section 3.11](#311-plugins)).
 
 ```json
 {
@@ -225,6 +229,10 @@ rasters files and/or other (sub-)projects.
   file reached through several paths is loaded once; file identity is the resolved path,
   that is the absolute path with symbolic links followed, compared as the platform compares
   paths. Include cycles are an error.
+- `"plugins"` (optional): python modules that extend DDD for this project
+  ([section 3.11](#311-plugins)).
+- `"extensions"` (optional): the settings of those plugins, keyed by plugin name
+  ([section 3.11](#311-plugins)).
 
 An entry of `includes` containing one of `*`, `?` or `[` is a wildcard pattern, expanded
 with the usual shell rules: `*` and `?` match within one path component, `[...]` is a
@@ -239,7 +247,7 @@ cannot expand counts as matching nothing. An entry without a wildcard
 character is a literal path naming exactly one file, and if that file does not exist, or
 names a directory, the
 finding is `file-not-found` rather than `include-empty`: a pattern **may** legitimately be
-empty, while a named file **may** not be missing.
+empty, while a named file **must not** be missing.
 
 ### 3.2 Software component description
 
@@ -249,6 +257,9 @@ The top level key `"component"` is required, and it contains the following eleme
   the name of a generated header and of an A2L group, and every component of a project
   needs a distinct one.
 - `"description"` (optional): free text.
+- `"raster"` (optional): the measurement raster every measurement this component produces
+  is updated in, unless its definition states one of its own
+  ([section 3.10](#310-measurement-rasters)); it applies to nothing the component reads.
 - `"interface"` (required): the data interface, a list of declarations, each declaring one
   data object. The key is required with no default, so that a component with nothing to
   declare states an empty list rather than omitting a key that might merely have been
@@ -292,7 +303,7 @@ Attributes common to every kind:
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | required | C identifier of the object |
-| `id` | none | identity of the object, twelve lowercase base32 characters, stated by the producer only; survives a rename and is compared by nothing |
+| `id` | none | identity of the object, twelve characters written by `ddd id --assign` ([section 7](#7-tool-interface)), stated by the producer only; it survives a rename, takes no part in any definition comparison, and is what a delivery comparison pairs objects on ([section 4.1](#41-comparing-two-deliveries)) |
 | `kind` | required | `measurement`, `parameter`, `value_block`, `curve`, `map` or `axis` |
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
@@ -302,7 +313,9 @@ Attributes common to every kind:
 | `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
+| `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
 | `a2l` | export | `export`, `format`, `display_identifier` |
+| `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
 `volatile` has no default because there is nothing to derive one from. Unlike `limits`,
@@ -319,6 +332,13 @@ written as `%`, an optional total width, `.` and the number of decimals, for exa
 `"%5.2"` or `"%.3"`. `display_identifier` is an alternative display name, a C identifier.
 The latter two are emitted as the A2L keywords of the same names when stated, and left out
 of the A2L when not stated.
+
+An `id` is twelve characters drawn from the lowercase letters without `i`, `l`, `o` and `u`
+and the ten digits, a base32 alphabet chosen so that an id read off a screen or a review
+comment can be typed back without ambiguity; a value outside it is refused (`schema`). The
+key is written by `ddd id --assign` ([section 7](#7-tool-interface)) rather than typed, and
+it is one object's alone: two objects sharing one is `duplicate-id`
+([section 4](#4-consistency-checks)).
 
 The datatypes map to C and to the A2L as follows, and their raw ranges are the starting
 point of derived limits:
@@ -425,7 +445,8 @@ Kind specific attributes:
 #### 3.3.1 One object, several declarations
 
 Several components declare the same object, and the keys of a definition do not all mean
-the same thing on each of those declarations. They fall into three groups.
+the same thing on each of those declarations. They fall into three groups, interface,
+storage and presentation, and two keys, `description` and `condition`, stand outside them.
 
 A project that relaxes `missing-producer` can hold objects that no component produces
 ([section 5.1](#51-c-code)). Wherever the rules below say "the producer", such an object
@@ -459,7 +480,11 @@ a declaration whose scope is `input` **must not** state either key (`consumer-st
 This is not an opinion to be outvoted: it is a claim over storage the component does not
 own, and it is reported where it is written rather than where it is overruled. `id` is
 decided by the same component for the same reason, so a declaration whose scope is `input`
-**must not** state it either (`consumer-identity`).
+**must not** state it either (`consumer-identity`). The measurement raster
+([section 3.10](#310-measurement-rasters)) and a plugin's `extensions` block
+([section 3.11](#311-plugins)) are the producer's on the same reasoning, reported as
+`consumer-raster` and `consumer-extension`: this group holds exactly the keys a consumer
+**must not** state.
 
 ##### 3.3.1.3 Presentation
 
@@ -542,10 +567,11 @@ member ([section 5.2](#52-a2l)).
   lists, and the name of the A2L `COMPU_VTAB`. `enumerators` is required and non-empty;
   it **may** also be given as a list of `{"name", "value", "description"}` objects. An
   enumerator name **must not** repeat within one conversion (`schema`), and every
-  enumerator value **must** fit a 32 bit C `int`, the type C gives an enumerator, whatever
-  the object's datatype would hold (`init-invalid`). An enum
-  converts nothing: physical and raw value coincide, so the limits of an enum object,
-  stated or derived, are enumerator values.
+  enumerator value **must** fit the datatype of the object naming the conversion and, even
+  where that datatype would hold more, a 32 bit C `int`, the type C gives an enumerator
+  (`init-invalid`); a value outside the datatype earns one finding, against the datatype.
+  An enum converts nothing: physical and raw value coincide, so the limits of an enum
+  object, stated or derived, are enumerator values.
 - `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys
   decide it: a conversion stating `enumerators` or `name` is an `enum`, one stating
   `factor` or `offset` is `linear`, and one stating nothing, `{}`, is the identity. Unknown
@@ -631,9 +657,9 @@ per object, the dictionary records it, and the templates receive both the name o
 placed object and the objects grouped per section, ordered strictest alignment first with
 names breaking ties, so that data of one section packs without padding. The example
 templates spell the GCC attribute. Describing the layout in the A2L with `MEMORY_SEGMENT`
-is *planned*: a segment's address and size exist only after linking, so
-they **shall** arrive with the address information rather than being restated in the
-vocabulary, because the linker script already owns them and a copy would drift. The
+is *planned*: a segment's address and size exist only after linking, so they will arrive
+with the address information rather than being restated in the vocabulary, because the
+linker script already owns them and a copy would drift. The
 `MOD_PAR` block that will carry them already exists for the constant vocabulary
 ([section 5.2](#52-a2l)).
 
@@ -659,8 +685,8 @@ project rather than a description of one.
 | key | meaning |
 | --- | --- |
 | `format` | version of this document format, raised only when its shape changes; today `1` |
-| `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project **may** not |
-| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it |
+| `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
+| `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and empty when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
 
@@ -881,17 +907,18 @@ preselects it.
 ```
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
-most eight characters - the width of that field in the a2l, not a limit of the protocol, which
-length-prefixes an event channel name and carries far more. A longer one is refused rather
-than shortened, because two names shortened to the same eight would collide in a calibration
-tool instead of here. No file DDD writes carries an event name yet; the limit applies anyway,
-so that a rasters file written today still loads once the module level `DAQ` block does. `event` is
+most eight characters, and contains no whitespace - the width of that field in the a2l, not a
+limit of the protocol, which length-prefixes an event channel name and carries far more. A
+longer one is refused rather than shortened (`schema`), because two names shortened to the
+same eight would collide in a calibration tool instead of here. No file DDD writes carries an
+event name yet; the limit applies anyway, so that a rasters file written today still loads
+once the module level `DAQ` block does. `event` is
 the event channel number the target's XCP configuration assigned, in `0 .. 0xFFFF` and
 distinct across the project: two rasters claiming one number is `duplicate-event`. `cycle` is
-the period, a whole number and one of the units `ns`, `us`, `ms`, `s`, and it has to be a
-period XCP carries - a count of 1 to 255 times a decade from 1 ns to 1 s, so `1500us` is one
-and `1234ms` is not. It is optional, and an event without one is not cyclic. Declaring a
-raster twice, in one file or across files, is `duplicate-raster`.
+the period, a whole number and one of the units `ns`, `us`, `ms`, `s`, and it **must** be a
+period XCP carries (`schema`) - a count of 1 to 255 times a decade from 1 ns to 1 s, so
+`1500us` is one and `1234ms` is not. It is optional, and an event without one is not cyclic.
+Declaring a raster twice, in one file or across files, is `duplicate-raster`.
 
 Like a memory section ([section 3.5](#35-memory-placement)) and unlike a unit, a raster is a
 reference rather than a spelling: naming one no file declares is `unknown-raster` whether or
@@ -935,13 +962,19 @@ one on the project, and contributing checks, comparison rules and an artefact of
   dotted module name imported from the environment. A plugin acts on a project because the
   project names it, never because it is installed. A sub-project **may** name plugins too;
   the set in play is the union, because the blocks a plugin interprets may sit in any
-  component. A module that cannot be found is `plugin-not-found`; one that raises on
+  component, and the hooks run in the order the project files name the plugins, a module
+  named twice keeping its first place. A module that cannot be found is
+  `plugin-not-found`; one that raises on
   import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another plugin
   already has is `plugin-invalid`. Both have a fixed severity, because a project cannot be
   interpreted without the plugins it names.
 - `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
-  against the plugin's project model with defaults filled in. Stated by one project file;
-  a second file stating a plugin's settings is `schema`, with a note at the first.
+  against the plugin's project model with defaults filled in. A plugin with a project model
+  and no stated settings is validated as if the project stated `{}`, so a setting the plugin
+  requires and the project omits is `schema`, located where the block would be written; a
+  block stated for a plugin that declares no project model is `schema` as well, as any
+  unknown key is. Stated by one project file; a second file stating a plugin's settings is
+  `schema`, with a note at the first.
 
 A definition states its block under the same key, `"extensions": {"layout": {"key": 12,
 "version": 3}}`, on any kind, and therefore on an instance of a declared type. Only the
@@ -949,7 +982,8 @@ producing declaration states one: an `input` stating a block is `consumer-extens
 the reasoning that makes `init`, `section` and `id` producer keys, and this is what keeps
 `definition-mismatch` out of it, since there is never a second block to disagree with. A
 block is validated against the model of the plugin that owns it, in one pass once every file
-is read, and a failure is `schema` at the failing key inside the block. A block naming no
+is read, and a failure is `schema` at the failing key inside the block, as is a block for a
+loaded plugin that declares no model for a definition. A block naming no
 loaded plugin is `unknown-extension`, an error; relaxing it is how a project carries a block
 no installed plugin interprets, which then reaches the dictionary as written. The check
 needs every component, because a component read on its own sees no plugin list.
@@ -961,11 +995,15 @@ targets it as `-W layout/duplicate-key=warning` - and three optional hooks, each
 one context object: `check`, run at the end of every analysis over the resolved dictionary
 with the settings, the diagnostic bag and a locator that answers where an object's producing
 declaration is written; `compare`, run after the built-in comparison with both dictionaries;
-and `backend`, returning a backend selected as `ddd generate <name>`. A hook reports through
-the bag exactly as a built-in check does, and a hook that raises is a usage error naming the
-plugin and the hook. Plugin checks are registered per run rather than in the built-in
-registry, and an override naming a plugin check is accepted provisionally and held, once the
-project is read, to the checks the loaded plugins registered.
+and `backend`, returning a backend selected as `ddd generate <name>`, and by that name
+alone ([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
+built-in check does, and a hook that raises is a usage error naming the plugin and the
+hook; the language server, which has no usage error to give and does not stop, reports the
+same failure as a `plugin-invalid` finding at the project file
+([section 7.2](#72-editor-integration)). Plugin checks are registered per run rather than
+in the built-in registry, and an override naming a plugin check is accepted provisionally
+and held, once the project is read, to the checks the loaded plugins registered: one that
+no loaded plugin registers is then the usage error an unknown built-in check is.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
@@ -974,7 +1012,8 @@ instance carries one for the whole structure. `ddd schema --plugin` publishes a 
 schema with the `extensions` property closed over the named plugins' models, so that an
 editor validates a block as it is typed; the dictionary schema stays open. A comparison whose
 candidate is a project runs that project's plugins, and one whose candidate is an archived
-dump loads them with `ddd compare --plugin`; a compared dictionary recording a plugin the
+dump loads them with `ddd compare --plugin`, which beside a project candidate is a usage
+error, because the project names its own; a compared dictionary recording a plugin the
 run has not loaded is `missing-plugin` ([section 4.1](#41-comparing-two-deliveries)). The
 api is documented in the plugins page of the documentation; `examples/plugins/ddd_layout.py`
 is a worked example, and `examples/layout` a project that names it.
@@ -985,8 +1024,9 @@ Every check has a stable identifier and a default severity. The identifiers are 
 tool interface, because a build script pins them in its severity overrides, so they **shall
 not** change once published. The severity of a check can be changed per project run, so
 that a team can fine tune its error management policy; the checks that make a file
-unreadable cannot be relaxed. The authoritative list is the one the tool prints itself
-(`ddd checks`).
+unreadable, and the two that make a project uninterpretable
+([section 3.11](#311-plugins)), cannot be relaxed. The authoritative list is the one the
+tool prints itself (`ddd checks`).
 
 An override is written `check=severity` (`ddd check -W unused-output=info`), with `error`,
 `warning`, `info` and `ignore` as the severities; `ignore` drops the finding entirely. The
@@ -1101,18 +1141,23 @@ Errors:
   as unresolvable is not reported a second time: the finding at the declaration is the one
   to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
-  `<stdbool.h>` declares, or with an identifier the C standard reserves for the
-  implementation, that is a double underscore anywhere, or a leading underscore followed by
-  a capital letter. The set is fixed by the standard rather than read out of any header, so
-  the verdict does not depend on a toolchain.
+  `<stdbool.h>` declares, or with one of two families the C standard reserves for the
+  implementation everywhere: a double underscore anywhere, or a leading underscore followed
+  by a capital letter. The third family of the same clause, every other leading underscore,
+  which the standard reserves at file scope only, is not refused and is left to the
+  project's naming rules. The set is fixed by the standard rather than read out of any
+  header, so the verdict does not depend on a toolchain.
 - `name-collision`: two names that are distinct in the description files become the same
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
   or of a declared type, a declared constant and a data object, an enum, an enumerator or
-  a declared type, and two component names differing only in case.
+  a declared type, and two component names differing only in case. Two pairs that share
+  the same C namespace in the types header are not compared yet: an enum and a declared
+  type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
 - `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`: the file tree
-  cannot be read. These five are the checks whose severity cannot be changed.
+  cannot be read. These five, with `plugin-not-found` and `plugin-invalid` above, are the
+  seven checks whose severity cannot be changed.
 - `include-empty`: a wildcard include matches no file. It is relaxable, because a pattern
   that is empty in one variant of a project is legitimate. A
   literal include naming a missing file is `file-not-found` instead
@@ -1179,6 +1224,16 @@ analysed in its own right, and only its error findings are carried into the repo
 prefixed with "in the baseline:", so that a broken baseline is visible without drowning
 the comparison.
 
+In plain text the report closes with a verdict line naming the two files and saying whether
+the candidate can replace the baseline. `ddd compare --renames <file>` writes beside it the
+old-to-new name pairs the comparison established, one entry per paired object whose name
+changed, as its `id`, its old name and its new name, sorted by the new name, so that a
+calibration dataset, a recording or a test script keyed by the old spelling can be migrated
+without parsing the findings; a member of a structured object is listed under its
+instance's `id` followed by its member path. The file is written whether or not the
+comparison found errors, because a delivery that cannot be accepted still needs its renames
+listed.
+
 A change **shall** be graded by what it costs the consumers.
 
 Errors, because the consumers of the object become wrong, whether or not they still
@@ -1214,10 +1269,12 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
 - `removed-unused-object`: an object is gone that no component read.
-- `changed-storage`: the initial value, the volatility or the section changed. On a
-  calibration object the volatility also decides whether a tool can still change the value
-  in a running target, and the section says literally which memory the object ends up in.
-- `narrowed-limits`: the physical limits got tighter, so calibrated data **may** no longer
+- `changed-storage`: the initial value, the volatility, the section or the measurement
+  raster ([section 3.10](#310-measurement-rasters)) changed. On a calibration object the
+  volatility also decides whether a tool can still change the value in a running target,
+  the section says literally which memory the object ends up in, and the raster which event
+  a measuring tool receives the value in.
+- `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
   fit.
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
@@ -1238,12 +1295,19 @@ Information:
 
 - `added-object`: the candidate declares an object the baseline did not.
 
-A `removed-object` or `removed-unused-object` finding **may** carry a note when exactly one
+A `removed-object` or `removed-unused-object` finding carries a note when exactly one
 addition in the candidate is identical to it in every compared field, references included, and
 under a different name: `'X' was added with an identical interface; if that was a rename, the
-id did not travel with it`. It asserts nothing and pairs nothing - the two **may** simply be
+id did not travel with it`. It asserts nothing and pairs nothing - the two may simply be
 different objects - and stays silent the moment more than one addition matches equally well.
 This is the only part of the feature that helps a project which never adopts `id` at all.
+
+A member of a structured object ([section 3.7](#37-type-description)) has no declaration
+of its own to carry an `id`: it is paired by the `id` of its instance together with its
+path below the instance. Renaming the instance therefore keeps every member paired and is
+one `renamed-object`, while renaming a member of the *type* changes the path and is
+reported as a removal and an addition, exactly as an object without an `id` is. The gap is
+known; closing it would mean an identity on a type's member.
 
 Widening a limit **shall** be silent, because every value the baseline allowed still fits.
 Limits that got tighter **shall not** be reported on an object whose interface changed as
@@ -1362,6 +1426,11 @@ ASAM MCD-2 MC output containing:
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion and unit, `COMPU_VTAB`
   per enum.
+- `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
+  ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
+  `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
+  and an engineer can still pick another; a measurement resolving to no raster carries no
+  `IF_DATA`.
 - one `GROUP` per component that contributes at least one exported object, referencing
   the measurements and characteristics it declares; a component contributing none gets no
   empty `GROUP`.
@@ -1411,33 +1480,35 @@ A record whose object is declared under a preprocessor condition is preceded by 
 naming that condition, because the format has no conditional construct of its own.
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
-object per value-holding member, named by its C access path, for example
-`Inlet.latest.value` or `Inlet.cell[2].raw`, which is at once the A2L name, the
-`SYMBOL_LINK` symbol and the key of the address map
+object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
+of [section 3.7](#37-type-description) contributes `Inlet.latest` and `Inlet.raw`, and a
+member that is itself a structure contributes its members beneath its own name. The path
+is at once the A2L name, the `SYMBOL_LINK` symbol and the key of the address map
 ([section 6](#6-address-information)). A member of a measurement-kind object becomes a
 `MEASUREMENT`, and a member of a parameter-kind object becomes a `CHARACTERISTIC`, as
 `VALUE` when scalar and as `VAL_BLK` with `MATRIX_DIM` when an array. An array of
-structures is expanded element by element instead, one set of members per `[index]`.
-Members use the ordinary per-datatype `RECORD_LAYOUT`, the structure itself getting no
-record of its own, and the
-component's `GROUP` references the member paths. A member of an external type
+structures is expanded element by element instead, one set of members per `[index]`,
+`Inlet[2].raw` for the third element. Members use the ordinary per-datatype
+`RECORD_LAYOUT`, the structure itself getting no record of its own, and the component's
+`GROUP` references the member paths. A member of an external type
 ([section 3.7](#37-type-description)) reaches no A2L: the format cannot describe storage
 whose layout DDD does not know. A `bits` member reaches no A2L at all:
 `SYMBOL_LINK` can carry a byte offset but not a bit position, so a bitfield waits for a
 build to report both the word and the bits *(planned)*.
 
-Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, `IF_DATA` for
-CCP, the XCP transport, and A2L *import* for migration and merging are *planned*.
+Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, the module
+level `IF_DATA XCP` block describing the protocol layer, the transport and the `DAQ` events
+themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *planned*.
 
 ## 6 Address information
 
 The addresses of the generated objects are only known after linking. DDD accepts a symbol
 to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
 each symbol to its address. The key is the C identifier of an object or, for the member of
-a structured object, its access path, for example `Inlet.cell[2].raw`, exactly as the A2L
-names it ([section 5.2](#52-a2l)). The address is a JSON number, or a string read as
-hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an unsigned
-32 bit `ECU_ADDRESS`. A key the project does not know is ignored, and an object the map
+a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
+as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON number, or a string
+read as hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an
+unsigned 32 bit `ECU_ADDRESS`. A key the project does not know is ignored, and an object the map
 does not cover keeps address `0x00000000` rather than failing the run: a map extracted from
 a linker output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK`
 lets a downstream tool resolve those it cares about. `ddd generate a2l` writes the A2L
@@ -1452,24 +1523,28 @@ DDD is a command line tool, so that it can be driven from make, batch and CI job
 offers at least: checking a project (`ddd check`, [section 4](#4-consistency-checks));
 comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 `ddd check --baseline` for both questions in one exit code; `--plugin` loading the plugins
-of an archived candidate; [section 4.1](#41-comparing-two-deliveries)); generating the
-artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all`, or the
-name of a plugin providing an artefact, each carrying only the options of what it produces;
+of an archived candidate, `--renames` writing the old-to-new name pairs to a file;
+[section 4.1](#41-comparing-two-deliveries)); generating the
+artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all` for
+the two built-in artefacts in one run, or the name of a plugin providing an artefact, which
+`all` does not cover, each carrying only the options of what it produces;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
 writing out the data dictionary itself (`ddd dump`); writing an identity into every
-producing declaration that has none (`ddd id --assign`), so that a later `ddd compare`
+producing declaration that has none (`ddd id --assign FILE...`, editing the named
+description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing; printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
 closing the extension blocks over the named plugins' models); listing
-the files a project description
-depends on (`ddd sources`, which lets a build system re-run its configure step when one
-changes; in JSON the paths are a `sources` list beside the findings); recording how a
+the description files a project is built out of
+(`ddd sources`, which lets a build system re-run its configure step when one changes; in
+JSON the paths are a `sources` list beside the findings; the plugin modules the project
+names ([section 3.11](#311-plugins)) are not yet among them); recording how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
@@ -1491,9 +1566,10 @@ counting by severity. In plain text, a finding is written
 as far as they are known and its notes indented beneath it; findings are ordered by
 severity, then path, then location, numeric parts of a pointer compared as numbers; and a
 clean `ddd check` closes with an `ok:` line counting the objects and components it found
-consistent. `generate` adds the files it wrote with their status (`created`, `updated` or
-`unchanged`), and `dump`
-keeps its stdout for the dictionary, reporting findings on stderr. The exit code
+consistent, and `compare` with a verdict line saying whether the candidate file can replace
+the baseline file ([section 4.1](#41-comparing-two-deliveries)). `generate` adds the files
+it wrote with their status (`created`, `updated` or `unchanged`), and `dump` keeps its
+stdout for the dictionary, reporting findings on stderr. The exit code
 distinguishes clean runs (0), findings (1) and usage errors (2). A findings exit is
 reserved for findings reported *as errors*: a run whose findings are all warnings is a
 clean run unless `--strict` says otherwise. `ddd generate` with error findings writes
@@ -1513,10 +1589,12 @@ formats up to its own it validates strictly.
 
 DDD ships a CMake module with two calls: `ddd_add_component(<target> JSON <file>...)`
 registers descriptions, component and types files alike, on their target, and
-`ddd_generate(<image> ...)` generates for an image. It generates into the build tree,
-exposes the generated headers to the components through an interface library and compiles
-the generated definition sources into the image as an object library of their own, so that
-an object no compiled code references is not dropped ([section 5.1](#51-c-code)).
+`ddd_generate(<image> ...)` generates the built-in artefacts for an image, a plugin's
+artefact ([section 3.11](#311-plugins)) not yet among them. It generates into the build
+tree, exposes the generated headers to the components through an interface library and
+compiles the generated definition sources into the image as an object library of their
+own, so that an object no compiled code references is not dropped
+([section 5.1](#51-c-code)).
 
 `ddd_generate` knows two modes. In the collected mode, which is the default, the registered
 descriptions travel the link graph as a transitive target property, and the project
@@ -1545,7 +1623,14 @@ The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the
 build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for
 extra generation dependencies, and `NO_PROPAGATE_HEADERS` to stop the generated headers
-being linked into every registered component.
+being linked into every registered component. `SCHEMA_DIRECTORY <dir>` writes the JSON
+schemas of [section 3](#3-file-formats) into that directory at configure time, so that
+they describe the installed DDD rather than a version that is no longer there; it writes
+the open schemas, so a project with plugins that wants the closed ones runs
+`ddd schema all --plugin` itself ([section 3.11](#311-plugins)). Beside the generation
+step, the call defines a `<stem>_ddd_check` target, named after the image without its
+extension, that runs `ddd check` under the same severity policy, so that a CI job can
+check without generating.
 
 In the collected mode the generated definition sources are compiled with the interface
 include directories of every registered target, include paths and not link edges, so that
@@ -1556,9 +1641,9 @@ headers the link graph does not carry.
 ### 7.2 Editor integration
 
 The checks **shall** also be served over the Language Server Protocol (`ddd lsp`), so that
-a project is checked while it is written rather than when it is built. The same loader, the
-same analysis and the same severity policy answer both, because an editor that disagrees
-with the build about what is wrong is worse than an editor that says nothing.
+a project is checked as its files are saved rather than when it is built. The same loader,
+the same analysis and the same severity policy answer both, because an editor that
+disagrees with the build about what is wrong is worse than an editor that says nothing.
 
 The server offers, from a description file: the findings of
 [section 4](#4-consistency-checks), drawn over the key they are about rather than over the
@@ -1592,10 +1677,14 @@ rather than by mistake, and reporting those buries the findings that are about t
 front of the reader. Each check declares whether it needs the whole project, so the two
 modes cannot drift apart.
 
-The server re-reads a file from disk when it is opened or saved. Each finding is also
-published at the locations of its notes, so that both sides of a conflict carry a mark.
-The build records a search discovers are announced as log messages, and a record that
-cannot be read is skipped.
+The server re-reads a file from disk when it is opened or saved, and analyses nothing per
+keystroke: read from disk, the editor and the server agree exactly at the moment of a save,
+and a half-typed document never produces a screenful of findings about a mistake nobody has
+finished making. Each finding is also published at the locations of its notes, so that both
+sides of a conflict carry a mark. The build records a search discovers are announced as log
+messages, and a record that cannot be read is skipped. A plugin hook that raises while a
+file is checked is reported as a `plugin-invalid` finding at the project file rather than
+ending the session ([section 3.11](#311-plugins)).
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server; a corrupted frame header, after which

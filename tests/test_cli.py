@@ -67,6 +67,10 @@ class TestStandalone:
         assert "warning[unknown-section]" in captured
 
 
+LAYOUT = EXAMPLES / "layout" / "project.ddd.json"
+PLUGIN_FILE = (EXAMPLES / "plugins" / "ddd_layout.py").resolve()
+
+
 class TestCheck:
     def test_consistent_project(self, capsys: pytest.CaptureFixture[str]) -> None:
         # The demo has not adopted ids, so 'missing-id' is silenced here; it is an adoption
@@ -175,6 +179,34 @@ class TestCheck:
         assert main(["dump", target]) == EXIT_FINDINGS
         assert main(["list", target]) == EXIT_FINDINGS
         capsys.readouterr()
+
+
+class TestGenerateAll:
+    """``all`` means everything the project produces, the plugins' artefacts included."""
+
+    def run(self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> list[str]:
+        templates = ["-t", str(EXAMPLES / "templates")] if artefact != "a2l" else []
+        arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates]
+        assert main([*arguments, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
+        return [
+            Path(entry["path"]).name for entry in json.loads(capsys.readouterr().out)["generated"]
+        ]
+
+    def test_all_produces_the_plugins_artefact_after_the_built_in_ones(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        written = self.run("all", tmp_path, capsys)
+        assert written[-1] == "ddd_layout.h"
+        assert "ddd_globals.c" in written and "LayoutDevice.a2l" in written
+        assert (tmp_path / "ddd_layout.h").is_file()
+
+    @pytest.mark.parametrize("artefact", ["c", "a2l"])
+    def test_a_single_built_in_artefact_runs_no_plugin(
+        self, tmp_path: Path, artefact: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        written = self.run(artefact, tmp_path, capsys)
+        assert "ddd_layout.h" not in written
+        assert not (tmp_path / "ddd_layout.h").exists()
 
 
 class TestGenerate:
@@ -982,6 +1014,29 @@ class TestSources:
         # The components are the point: the project file alone would never go out of date.
         assert any(name.endswith("controller.ddd.json") for name in listed)
         assert any(name.endswith("event_logger.ddd.json") for name in listed)
+
+    def test_the_plugin_modules_are_among_the_sources(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A build that does not re-run when a plugin changes generates with yesterday's rules."""
+        assert main(["sources", str(LAYOUT)]) == EXIT_OK
+        listed = capsys.readouterr().out.splitlines()
+        assert PLUGIN_FILE.as_posix() in listed
+        assert listed == sorted(listed)
+
+    def test_the_plugin_modules_are_in_the_json_list_too(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["sources", str(LAYOUT), "--format", "json"]) == EXIT_OK
+        assert PLUGIN_FILE.as_posix() in json.loads(capsys.readouterr().out)["sources"]
+
+    def test_a_plugin_that_did_not_load_contributes_no_source(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The finding says why; the list stays what a build can watch."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["missing.py"])})
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        assert not any(line.endswith(".py") for line in capsys.readouterr().out.splitlines())
 
     def test_an_unreadable_root_is_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

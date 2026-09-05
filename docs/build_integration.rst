@@ -62,8 +62,11 @@ Generating an image
 ~~~~~~~~~~~~~~~~~~~
 
 ``ddd_generate(<image> ...)`` collects the descriptions of every component in the link closure
-of the image, writes the project description tying them together, runs the generator, and
-links the result back into the image. It has to be called in the ``CMakeLists.txt`` that
+of the image, writes the project description tying them together, runs the generator - ``ddd
+generate all``, so the artefact of every plugin named with ``PLUGINS`` arrives beside the
+built-in files - and links the result back into the image. A plugin's file names are its own
+and are not declared as outputs, so a target that consumes one depends on
+``<image>_ddd_generation``. It has to be called in the ``CMakeLists.txt`` that
 defines the image, and after the components have been added, because it hands the generated
 headers to the components registered up to that point.
 
@@ -190,8 +193,8 @@ A hand written project description
 
 A project that already maintains its own project description - because it is also built with
 another build system, because it deliberately lists more than the image links, or because it
-names plugins or carries project-level extensions, which the generated description cannot,
-being a name, a description and the list of files - passes it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
+carries project-level ``extensions``, the one key the generated description does not - passes
+it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
 is enough) nor ``ddd_add_component``, and the
 a2l is then named after the project name inside the description, so a ``NAME`` given as well
 is ignored with a status message.
@@ -200,7 +203,8 @@ A hand written project pulls its components in through ``includes``, possibly wi
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with ``ddd sources`` (see
 :doc:`command_line_interface`), and uses the answer twice: as the dependencies of the
-generation step, so that editing a component regenerates the globals and the a2l, and as
+generation step, so that editing a component - or a plugin the project names, whose module
+the answer lists too - regenerates the globals and the a2l, and as
 ``CMAKE_CONFIGURE_DEPENDS``, so that adding a file matching an ``includes`` wildcard re-runs
 configure and picks the new component up. If the tool cannot resolve the project yet, the
 module says so and falls back to depending on the project file alone rather than refusing to
@@ -315,6 +319,12 @@ Options
      - meaning
    * - ``PROJECT <file>``
      - use this project description instead of collecting the link closure.
+   * - ``PLUGINS <spec>...``
+     - the plugins of the collected project: a ``.py`` path relative to the current source
+       directory, which has to exist, or a dotted module name passed through as written. They
+       are written into the ``plugins`` of the generated project description in this order,
+       the schemas are closed over them, and a path among them is a dependency of the
+       generation. Refused together with ``PROJECT``, whose file names its own.
    * - ``NAME <name>``
      - project name, and therefore the name of the a2l file. Defaults to the image name
        without its extension, with anything that is not a c identifier replaced, because the
@@ -328,7 +338,9 @@ Options
    * - ``SCHEMA_DIRECTORY <dir>``
      - write the json schemas of the file formats into this directory at configure time, for
        editor validation; they are rewritten on every configure, so they cannot describe a
-       version of DDD that is no longer installed.
+       version of DDD that is no longer installed. They are closed over the project's plugins
+       - the ``PLUGINS`` given here, or the ones a ``PROJECT`` file names - so an editor
+       validates a plugin's block as it is typed.
    * - ``ADDRESS_MAP <file>``
      - the symbol to address map filling the addresses into the a2l. A map inside the build
        tree that does not exist at configure time is seeded with an empty map (``{}``), so

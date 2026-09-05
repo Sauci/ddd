@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import types
 from pathlib import Path
 
 import jsonschema
@@ -252,6 +253,110 @@ class TestLoading:
         write_plugin(tmp_path, "wrong.py", "PLUGIN = object()\n")
         with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("wrong.py", tmp_path)
+
+
+class TestTheSourcesOfAProject:
+    """A plugin is a file the project is built out of, whichever spelling reached it."""
+
+    def test_a_module_named_by_dotted_name_lists_its_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path / "site", "tag_plugin.py")
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["tag_plugin"])})
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        listed = capsys.readouterr().out.splitlines()
+        assert (tmp_path / "site" / "tag_plugin.py").resolve().as_posix() in listed
+
+    def test_a_module_without_a_file_contributes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only a module planted without a file; nothing importlib loads from disk lacks one."""
+        module = types.ModuleType("planted_plugin")
+        module.PLUGIN = Plugin(name="planted")  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "planted_plugin", module)
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["planted_plugin"])})
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        assert ".py" not in capsys.readouterr().out
+
+
+COLLIDING_PLUGIN = """
+from pathlib import Path
+
+from ddd.backends import GeneratedFile
+from ddd.ir import DataDictionary
+from ddd.plugins import GenerateContext, Plugin
+
+
+class Backend:
+    name = "clash"
+
+    def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+        return [GeneratedFile(output_dir / "ddd_globals.c", "// mine\\n")]
+
+
+PLUGIN = Plugin(name="clash", backend=lambda context: Backend())
+"""
+
+
+class TestGenerateAllWithPlugins:
+    """``all`` runs the plugins' backends after the built-in ones, in the project's order."""
+
+    def generate_all(self, tmp_path: Path, plugins: list[str]) -> tuple[int, str, str]:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "c.ddd.json", plugins=plugins),
+                "c.ddd.json": component("C", declare("output", "V")),
+            },
+        )
+        code = main(
+            [
+                "generate",
+                "all",
+                str(tmp_path / "p.ddd.json"),
+                "-o",
+                str(tmp_path / "gen"),
+                "-t",
+                str(TEMPLATES),
+                "-W",
+                "missing-id=ignore",
+                "--format",
+                "json",
+            ]
+        )
+        return code
+
+    def test_the_plugins_artefacts_follow_the_project_order(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path, "tag_plugin.py")
+        write_plugin(
+            tmp_path,
+            "tug_plugin.py",
+            TAG_PLUGIN.replace('"tag"', '"tug"')
+            .replace("tags.txt", "tugs.txt")
+            .replace("tag/", "tug/"),
+        )
+        assert self.generate_all(tmp_path, ["tug_plugin.py", "tag_plugin.py"]) == EXIT_OK
+        written = [
+            Path(entry["path"]).name for entry in json.loads(capsys.readouterr().out)["generated"]
+        ]
+        assert written[-2:] == ["tugs.txt", "tags.txt"]
+        assert written.index("ddd_globals.c") < written.index("P.a2l") < written.index("tugs.txt")
+
+    def test_a_plugin_file_colliding_with_a_built_in_one_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The renderer refuses two backends claiming one path before anything is written."""
+        write_plugin(tmp_path, "clash_plugin.py", COLLIDING_PLUGIN)
+        assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert (
+            "clash" in captured.err
+            and "c backends would both write 'ddd_globals.c'" in captured.err
+        )
+        assert not (tmp_path / "gen").exists()
 
 
 class TestTheKeys:
@@ -1209,21 +1314,16 @@ class TestGenerate:
         arguments = ["generate", "tag", root, "-o", str(tree / "out")]
         assert main(arguments) == EXIT_FINDINGS
 
-    def test_the_built_in_pair_does_not_run_plugin_backends(self, tree: Path) -> None:
+    @pytest.mark.parametrize("artefact", ["c", "a2l"])
+    def test_a_single_built_in_artefact_runs_no_plugin_backend(
+        self, tree: Path, artefact: str
+    ) -> None:
+        """Only ``all`` means everything; ``c`` and ``a2l`` name one artefact and produce it."""
         root = self.project_with_tags(tree)
         out = tree / "out"
-        arguments = [
-            "generate",
-            "all",
-            root,
-            "-o",
-            str(out),
-            "-t",
-            str(TEMPLATES),
-            "-W",
-            "missing-id=ignore",
-        ]
-        assert main(arguments) == EXIT_OK
+        templates = ["-t", str(TEMPLATES)] if artefact == "c" else []
+        arguments = ["generate", artefact, root, "-o", str(out), *templates]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
         assert not (out / "tags.txt").exists()
 
     def test_a_path_collision_with_the_c_backend_is_refused(self, tree: Path) -> None:

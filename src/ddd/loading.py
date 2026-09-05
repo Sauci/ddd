@@ -33,7 +33,13 @@ from ddd.models import (
     UnitsFile,
     discriminator_tags,
 )
-from ddd.plugins import Plugin, PluginInvalidError, PluginNotFoundError, load_plugin
+from ddd.plugins import (
+    Plugin,
+    PluginInvalidError,
+    PluginNotFoundError,
+    load_plugin,
+    plugin_source,
+)
 
 DDD_SUFFIX = ".ddd.json"
 """Every project and component description file carries this extension.
@@ -281,6 +287,8 @@ class LoadedPlugin:
     plugin: Plugin
     spelling: str
     origin: Location
+    source: Path | None = None
+    """The file the module came from, or ``None`` for a module that has none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +352,14 @@ class Workspace:
     a build system ends up never noticing the fix.
     """
 
+    plugin_paths: tuple[Path, ...] = ()
+    """The files of the plugins the project loaded, in project order, each once.
+
+    A plugin decides what the generated artefacts say as much as a component does, so a
+    build has to run DDD again when one changes; ``sources()`` lists them for that reason. A
+    module with no file - one planted into ``sys.modules`` - is not here.
+    """
+
     plugins: tuple[Plugin, ...] = ()
     """The plugins the project files name, in project order, each once.
 
@@ -365,7 +381,7 @@ class Workspace:
         What a build system needs in order to know when to run DDD again: the root file
         alone is not enough, because a project pulls its components in through ``includes``.
         """
-        return tuple(sorted({self.root, *self.read_paths}))
+        return tuple(sorted({self.root, *self.read_paths, *self.plugin_paths}))
 
     def __hash__(self) -> int:
         """Every field but the two mappings, which cannot be hashed."""
@@ -496,6 +512,7 @@ class _Loader:
                 ),
                 read_paths=tuple(sorted(self._read_paths)),
                 plugins=self._loaded_plugins,
+                plugin_paths=self._plugin_paths,
                 project_extensions={
                     name: block for name, (block, _) in self._project_blocks.items()
                 },
@@ -521,6 +538,7 @@ class _Loader:
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
             plugins=self._loaded_plugins,
+            plugin_paths=self._plugin_paths,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
             locations=self._locations(),
         )
@@ -839,6 +857,13 @@ class _Loader:
         """The plugins in the order the project files named them, each once."""
         return tuple(loaded.plugin for loaded in self._plugins_by_name.values())
 
+    @property
+    def _plugin_paths(self) -> tuple[Path, ...]:
+        """The files of the loaded plugins, in the same order, without the ones that have none."""
+        return tuple(
+            loaded.source for loaded in self._plugins_by_name.values() if loaded.source is not None
+        )
+
     def _load_plugin(self, spelling: str, origin: Location, base: Path) -> None:
         """Import one plugin the project names, or report why it could not be.
 
@@ -865,7 +890,9 @@ class _Loader:
                     notes=[("first named here", previous.origin)],
                 )
             return
-        self._plugins_by_name[plugin.name] = LoadedPlugin(plugin, spelling, origin)
+        self._plugins_by_name[plugin.name] = LoadedPlugin(
+            plugin, spelling, origin, plugin_source(spelling, base)
+        )
         self._bag.register(plugin.checks)
 
     def _register_settings(self, name: str, block: dict[str, Any], location: Location) -> None:

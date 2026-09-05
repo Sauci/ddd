@@ -995,8 +995,10 @@ targets it as `-W layout/duplicate-key=warning` - and three optional hooks, each
 one context object: `check`, run at the end of every analysis over the resolved dictionary
 with the settings, the diagnostic bag and a locator that answers where an object's producing
 declaration is written; `compare`, run after the built-in comparison with both dictionaries;
-and `backend`, returning a backend selected as `ddd generate <name>`, and by that name
-alone ([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
+and `backend`, returning a backend selected as `ddd generate <name>` and run by
+`ddd generate all` after the built-in backends, in the order the project names the plugins,
+two artefacts claiming one path being refused before anything is written
+([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
 built-in check does, and a hook that raises is a usage error naming the plugin and the
 hook; the language server, which has no usage error to give and does not stop, reports the
 same failure as a `plugin-invalid` finding at the project file
@@ -1526,8 +1528,9 @@ comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 of an archived candidate, `--renames` writing the old-to-new name pairs to a file;
 [section 4.1](#41-comparing-two-deliveries)); generating the
 artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all` for
-the two built-in artefacts in one run, or the name of a plugin providing an artefact, which
-`all` does not cover, each carrying only the options of what it produces;
+the two built-in artefacts and the artefact of every plugin the project names that provides
+one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
+options of what it produces;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
@@ -1544,7 +1547,9 @@ closing the extension blocks over the named plugins' models); listing
 the description files a project is built out of
 (`ddd sources`, which lets a build system re-run its configure step when one changes; in
 JSON the paths are a `sources` list beside the findings; the plugin modules the project
-names ([section 3.11](#311-plugins)) are not yet among them); recording how a
+names ([section 3.11](#311-plugins)) are among them, each by the file it was imported
+from, so that an edited plugin re-runs the generation as an edited component does); recording
+how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
@@ -1589,8 +1594,10 @@ formats up to its own it validates strictly.
 
 DDD ships a CMake module with two calls: `ddd_add_component(<target> JSON <file>...)`
 registers descriptions, component and types files alike, on their target, and
-`ddd_generate(<image> ...)` generates the built-in artefacts for an image, a plugin's
-artefact ([section 3.11](#311-plugins)) not yet among them. It generates into the build
+`ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
+those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
+writes into the collected project description; a plugin's files are produced beside the
+built-in ones without being declared as outputs. It generates into the build
 tree, exposes the generated headers to the components through an interface library and
 compiles the generated definition sources into the image as an object library of their
 own, so that an object no compiled code references is not dropped
@@ -1622,12 +1629,15 @@ The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `CONST_INPUTS`, `NO_A2L`, `STRICT` and repeatable `SEVERITY` entries written
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the
 build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for
-extra generation dependencies, and `NO_PROPAGATE_HEADERS` to stop the generated headers
-being linked into every registered component. `SCHEMA_DIRECTORY <dir>` writes the JSON
-schemas of [section 3](#3-file-formats) into that directory at configure time, so that
-they describe the installed DDD rather than a version that is no longer there; it writes
-the open schemas, so a project with plugins that wants the closed ones runs
-`ddd schema all --plugin` itself ([section 3.11](#311-plugins)). Beside the generation
+extra generation dependencies, `PLUGINS <spec>...` for the plugins of a collected project -
+a `.py` spec resolved against the calling directory and depended on, any other passed
+through as a module name; refused beside `PROJECT`, whose file names its own - and
+`NO_PROPAGATE_HEADERS` to stop the generated headers being linked into every registered
+component. `SCHEMA_DIRECTORY <dir>` writes the JSON schemas of
+[section 3](#3-file-formats) into that directory at configure time, so that they describe
+the installed DDD rather than a version that is no longer there, closed over the project's
+plugins - from `PLUGINS`, or from the `PROJECT` file - so that an editor validates a
+plugin's block as it is typed ([section 3.11](#311-plugins)). Beside the generation
 step, the call defines a `<stem>_ddd_check` target, named after the image without its
 extension, that runs `ddd check` under the same severity policy, so that a CI job can
 check without generating.

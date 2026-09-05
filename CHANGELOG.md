@@ -8,6 +8,18 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
+## Unreleased
+
+* **Plugins in the build.**  `ddd sources` lists the modules of the plugins a project names
+  beside its description files, each by the file it was imported from, so a build re-runs the
+  generation when a plugin changes.  `ddd generate all` produces the artefact of every plugin
+  the project names that provides one, after the built-in artefacts and in the order the
+  project names the plugins; a path two backends claim is refused before anything is written.
+  `ddd_generate` takes `PLUGINS <spec>...`, writes them into the project description it
+  generates, closes the schemas of `SCHEMA_DIRECTORY` over them - or over the plugins a
+  `PROJECT` file names - and depends on the ones that are files; the plugins' artefacts
+  arrive beside the built-in ones.
+
 ## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that

@@ -650,8 +650,9 @@ opt-in.
 
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
-build, once the linker has decided the addresses - and `ddd generate all` produces both in
-one run.  Each artefact takes only its own options.  Useful ones: `--dry-run`
+build, once the linker has decided the addresses - and `ddd generate all` produces both, and
+the artefact of every plugin the project names that provides one, in one run.  Each artefact
+takes only its own options.  Useful ones: `--dry-run`
 (reports what would be written and exits `0` either way, so it is not a staleness gate on
 its own), `--force` (generate despite errors - the files are written using the producing
 component's definition, but the command still reports every finding and still exits `1`),
@@ -700,7 +701,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
-| `ddd sources FILE` | list every description file the project is built out of, for a build system |
+| `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
 | `ddd checks` | list the checks and their default severity; `--plugin` lists a plugin's checks after the built-in ones |
@@ -782,7 +783,8 @@ Nothing in the build reads it; it is there so that an editor can report what the
 reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
-`ADDRESS_MAP`, `BYTE_ORDER`,
+`PLUGINS` (the collected project's plugins, written into the generated description and closing
+the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so only one image may hand its headers

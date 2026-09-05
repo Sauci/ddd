@@ -42,7 +42,7 @@ class Enumerator(_Frozen):
     name: Identifier
     """C identifier of the enumerator; enumerators of all enums share one c namespace."""
 
-    value: int
+    value: Annotated[int, Field(strict=True)]
     """The raw value; every enumerator of one enum needs a value of its own."""
 
     description: str = ""

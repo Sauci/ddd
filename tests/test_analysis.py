@@ -494,3 +494,20 @@ class TestSeverityPolicy:
             "missing-producer",
             "local-conflict",
         }
+
+
+class TestConsumerOrder:
+    def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "p.ddd.json", "z.ddd.json", "a.ddd.json"),
+                "p.ddd.json": component("Prod", declare("output", "S")),
+                "z.ddd.json": component("Zeta", declare("input", "S")),
+                "a.ddd.json": component("Alpha", declare("input", "S")),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert dictionary.by_name["S"].consumers == ("Alpha", "Zeta")

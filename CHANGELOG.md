@@ -10,6 +10,28 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **Fixes from a whole-project review.**  A section name is spelled with letters, digits,
+  `.`, `_` and `$`, since the generated C writes it into a string literal; an enumerator
+  value, a raster event and a section alignment are integers rather than quoted numbers, as
+  the published schemas already said; a raster `cycle` is matched whole.  Findings at one
+  place are listed in the order they were reported, so `reused-name` precedes the removal
+  it explains; a plain object's consumers are sorted, as the dictionary documents; a spelled
+  dimension has to agree with the numeric one in an archived dictionary.  `ddd id --assign`
+  fills an explicit `"id": null` and keeps each line's own ending.  In `--renames`, a member
+  of a renamed structured variable is listed under the instance's id followed by its member
+  path.  A baseline is analysed without `--strict` and the comparison runs on whatever
+  resolved.  The a2l keeps one `COMPU_METHOD` per display format, caps every synthesised
+  identifier at 128 characters, leaves out a curve whose axis is unknown rather than writing
+  it incomplete, and `a2l-unrepresentable` follows the file's own export closure; a
+  structure member's enumerators and limits are held to its storage like a declaration's.
+  The language server survives a plugin that raises during a hover, keeps its wire clean of
+  whatever a plugin prints, refuses a negative `Content-Length`, matches a symlinked
+  document to its build, keeps every workspace folder, and keeps the host of a `file://`
+  uri.  The CMake module passes the a2l options only when the a2l is generated.  A plugin
+  cannot be named `c`, `a2l` or `all`, and two plugin files whose paths differ only in
+  punctuation are two plugins.  The example plugin reports a key claimed twice in an
+  archived baseline and honours an object's condition in the header it writes.
+
 * **Plugins.**  A project names python modules under `plugins`, each owning an `extensions`
   block on a definition and on the project that DDD validates against the plugin's own
   pydantic model, carries into the dictionary in resolved form and never interprets.  A plugin

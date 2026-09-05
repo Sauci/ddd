@@ -1103,3 +1103,88 @@ def test_a_dumped_baseline_survives_a_rename_end_to_end(tree, capsys):
     assert exit_code == EXIT_OK, err
     assert "renamed-object" in err and "'Curve'" in err and "'CurveX'" in err
     assert "changed-interface" not in err
+
+
+class TestReportOrder:
+    def test_reused_name_is_reported_above_the_removal_it_accompanies(self, tree: Path) -> None:
+        """SPEC 4.1: the finding that explains the removal and the addition comes first."""
+        for name, identity in (("old", "aaaaaaaaaaaa"), ("new", "bbbbbbbbbbbb")):
+            write_tree(
+                tree,
+                {
+                    f"{name}.ddd.json": project("P", f"{name}-a.ddd.json", f"{name}-b.ddd.json"),
+                    f"{name}-a.ddd.json": component("A", declare("output", "Foo", id=identity)),
+                    f"{name}-b.ddd.json": component("B", declare("input", "Foo")),
+                },
+            )
+        bag = verdict(resolve(tree, "old.ddd.json"), resolve(tree, "new.ddd.json"))
+        listed = [diagnostic.check for diagnostic in bag.sorted]
+        assert listed.index("reused-name") < listed.index("removed-object")
+
+
+class TestTheDictionaryContract:
+    def test_a_spelled_dimension_has_to_agree_with_the_numeric_one(self) -> None:
+        from pydantic import ValidationError
+
+        from ddd.ir import ResolvedObject
+        from ddd.models import Datatype, IdentityConversion, Limits, ObjectKind
+
+        with pytest.raises(ValidationError, match="agree"):
+            ResolvedObject(
+                name="X",
+                kind=ObjectKind.MEASUREMENT,
+                datatype=Datatype.UINT8,
+                conversion=IdentityConversion(),
+                limits=Limits(min=0, max=255),
+                shape=(4,),
+                dimensions=(5,),
+            )
+
+
+class TestRenamesOfStructuredVariables:
+    def test_each_member_of_a_renamed_structure_gets_an_id_of_its_own(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One id per row, or a migration tool keying on it keeps one member and drops the rest."""
+        types = {
+            "types": [
+                {
+                    "type": "struct",
+                    "name": "Pair_t",
+                    "members": [
+                        {
+                            "name": member,
+                            "member": "value",
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                        }
+                        for member in ("x", "y")
+                    ],
+                }
+            ]
+        }
+        for delivery, name in (("old", "Old"), ("new", "New")):
+            write_tree(
+                tree,
+                {
+                    f"{delivery}.ddd.json": project(
+                        "P", f"{delivery}-t.ddd.json", f"{delivery}-a.ddd.json"
+                    ),
+                    f"{delivery}-t.ddd.json": types,
+                    f"{delivery}-a.ddd.json": component(
+                        "A", declare("local", name, typename="Pair_t", id="abcdefghjkmn")
+                    ),
+                },
+            )
+        renamed = tree / "renames.json"
+        arguments = [
+            "compare",
+            str(tree / "old.ddd.json"),
+            str(tree / "new.ddd.json"),
+            "--renames",
+            str(renamed),
+        ]
+        main(arguments)
+        rows = json.loads(renamed.read_text(encoding="utf-8"))
+        assert [row["to"] for row in rows] == ["New.x", "New.y"]
+        assert [row["id"] for row in rows] == ["abcdefghjkmn.x", "abcdefghjkmn.y"]

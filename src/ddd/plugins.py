@@ -15,6 +15,7 @@ loader, not the analysis, not a backend - so a plugin sees exactly what a backen
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.util
 import re
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
 
 PLUGIN_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 """A plugin name is the key of its block, so it is a lowercase identifier."""
+
+BUILT_IN_ARTEFACTS: Final = ("c", "a2l", "all")
+"""What ``ddd generate`` produces on its own; a plugin's artefact is asked for by the plugin's
+name, so a plugin cannot be called any of these."""
 
 _CHECK_PATTERN: Final = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 """The grammar of the part after the separator: the grammar of a built-in identifier."""
@@ -102,6 +107,9 @@ class Plugin:
         if not PLUGIN_NAME_PATTERN.match(self.name):
             msg = f"plugin name '{self.name}' is not a lowercase identifier"
             raise ValueError(msg)
+        if self.name in BUILT_IN_ARTEFACTS:
+            msg = f"plugin name '{self.name}' is the name of a built-in artefact of ddd generate"
+            raise ValueError(msg)
         prefix = f"{self.name}{PLUGIN_CHECK_SEPARATOR}"
         seen: set[str] = set()
         for info in self.checks:
@@ -150,7 +158,10 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     # One module object per file, whatever spelling reached it: a second project naming the
     # same file gets the same PLUGIN, which is what lets the loader tell "named twice" from
     # "two plugins claiming one name".
-    name = "ddd_plugin_" + re.sub(r"\W", "_", path.as_posix())
+    # Keyed on a digest of the path rather than on a sanitised spelling of it, which folded
+    # 'my-plugin.py' and 'my_plugin.py' into one name and handed the second the first's module.
+    digest = hashlib.sha256(path.as_posix().encode("utf-8")).hexdigest()[:16]
+    name = f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
     cached = sys.modules.get(name)
     if cached is not None:
         return cached
@@ -196,20 +207,33 @@ def resolve_blocks(
     Validated against the plugin's model and dumped back to json, so defaults are filled in
     and two dumps compare on one shape. A block no loaded plugin owns, or one the plugin
     declares no model for, is carried as written: the loader has already reported it, and a
-    project that relaxed ``unknown-extension`` asked for exactly that.
+    project that relaxed ``unknown-extension`` asked for exactly that. On the project, every
+    plugin that declares a project model appears, with its defaults, whether or not the
+    project stated a block for it: the dictionary carries each plugin's settings.
     """
     resolved: dict[str, dict[str, Any]] = {}
-    for name in sorted(blocks):
-        plugin = plugins.get(name)
-        model = None if plugin is None else _model_of(plugin, on_project=on_project)
-        if model is None:
-            resolved[name] = dict(blocks[name])
-        else:
-            resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
-    return resolved
+    try:
+        for name in blocks:
+            plugin = plugins.get(name)
+            model = None if plugin is None else block_model(plugin, on_project=on_project)
+            if model is None:
+                resolved[name] = dict(blocks[name])
+            else:
+                resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+        if on_project:
+            for name, plugin in plugins.items():
+                if name not in resolved and plugin.project_model is not None:
+                    resolved[name] = plugin.project_model.model_validate({}).model_dump(mode="json")
+    except ValidationError as error:
+        # The loader has validated every block a run of the checks reaches; a hover resolves
+        # a project that did not read cleanly, and its blocks are then the plugin's problem.
+        msg = f"a block of plugin '{name}' does not validate: {error}"
+        raise PluginError(msg) from error
+    return dict(sorted(resolved.items()))
 
 
-def _model_of(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
+def block_model(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
+    """The model a plugin validates a block with: the project's, or a definition's."""
     return plugin.project_model if on_project else plugin.object_model
 
 

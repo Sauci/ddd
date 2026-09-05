@@ -116,7 +116,7 @@ def collect(
         covered |= sources
         _group(bag, Path(info.project), grouped)
     for document in documents:
-        if document in covered:
+        if document.resolve() in covered:
             continue
         containing = containing_projects(document, root)
         if containing:

@@ -6,6 +6,7 @@ import codecs
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -758,7 +759,7 @@ class TestList:
         out = capsys.readouterr().out
         assert "VARIABLE" in out
         assert "ValueE" in out
-        assert "UserInterface, EventLogger" in out
+        assert "EventLogger, UserInterface" in out
 
     def test_table_states_the_physical_reading_of_a_scalar_init(
         self, capsys: pytest.CaptureFixture[str]
@@ -840,7 +841,7 @@ class TestList:
         assert payload["project"] == "DemoDevice"
         entry = next(v for v in payload["variables"] if v["name"] == "ValueE")
         assert entry["owner"] == "Controller"
-        assert entry["consumers"] == ["UserInterface", "EventLogger"]
+        assert entry["consumers"] == ["EventLogger", "UserInterface"]
         assert entry["conversion"] == {"kind": "linear", "factor": 0.25, "offset": 0.0}
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
@@ -1382,3 +1383,122 @@ def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
     assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original
     assert "wrote 0 ids" in capsys.readouterr().err
+
+
+class TestBaselineUnderStrict:
+    def test_a_warning_in_the_baseline_does_not_abort_a_strict_comparison(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A past delivery's warnings are nobody's problem now, however strict this run is:
+        the comparison still runs and the renames are still written."""
+
+        def delivery(alignment: int) -> dict[str, Any]:
+            return {
+                "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+                "s.ddd.json": {
+                    "sections": [
+                        {"section": ".slow", "access": "read-write", "alignment": alignment}
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "X", "uint32", section=".slow")),
+            }
+
+        write_tree(tmp_path / "old", delivery(1))
+        write_tree(tmp_path / "new", delivery(4))
+        renames = tmp_path / "renames.json"
+        arguments = [
+            "compare",
+            "--strict",
+            str(tmp_path / "old" / "p.ddd.json"),
+            str(tmp_path / "new" / "p.ddd.json"),
+            "--renames",
+            str(renames),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "can replace" in capsys.readouterr().err
+        assert renames.read_text(encoding="utf-8") == "[]\n"
+
+
+class TestCmakeModule:
+    def test_the_a2l_options_are_not_passed_to_a_c_only_generation(self) -> None:
+        """``ddd generate c`` has neither option; a rule carrying them fails on every build."""
+        from ddd.cli import cmake_module_directory
+
+        directory = cmake_module_directory()
+        assert directory is not None
+        text = (directory / "Ddd.cmake").read_text(encoding="utf-8")
+        for option in ("--byte-order", "--address-map"):
+            appended = text.index(f"list(APPEND generate_options {option}")
+            guard = text[:appended].rsplit("if(", 1)[1]
+            assert "NOT arg_NO_A2L" in guard, f"{option} is appended without a NO_A2L guard"
+
+
+def test_assigning_ids_fills_an_explicit_null(tree, capsys):
+    """``"id": null`` is what the dump writes for an unstamped object; a description carrying
+    it is as unstamped as one without the key, and the check says so."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("output", "X", id=None))})
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 1 id" in capsys.readouterr().err
+    stamped = json.loads(path.read_text(encoding="utf-8"))
+    assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_keeps_mixed_line_endings(tree):
+    """A file with one stray CRLF line keeps exactly that one; the rest stays LF."""
+    text = json.dumps(component("A", declare("output", "X")), indent=2)
+    first, rest = text.split("\n", 1)
+    path = tree / "a.ddd.json"
+    path.write_bytes((first + "\r\n" + rest + "\n").encode("utf-8"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    after = path.read_bytes()
+    assert after.count(b"\r\n") == 1
+    assert after.count(b"\n") == text.count("\n") + 2  # the final newline and one line added
+
+
+def test_the_renames_file_is_written_with_the_line_endings_ddd_always_writes(tree, monkeypatch):
+    """Every file DDD writes passes ``newline=""``: the same bytes on Windows as anywhere."""
+    written: dict[str, object] = {}
+    original = Path.write_text
+
+    def spy(self: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        written[self.name] = kwargs.get("newline", "unset")
+        return original(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy)
+    for name in ("old", "new"):
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-a.ddd.json"),
+                f"{name}-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+    renames = tree / "renames.json"
+    arguments = ["compare", str(tree / "old.ddd.json"), str(tree / "new.ddd.json"), "--renames"]
+    assert main([*arguments, str(renames), "-W", "missing-id=ignore"]) == EXIT_OK
+    assert written["renames.json"] == ""
+
+
+def test_assigning_ids_to_a_missing_file_says_so(tree, capsys):
+    assert main(["id", "--assign", str(tree / "missing.ddd.json")]) == EXIT_FINDINGS
+    assert "not readable as json, skipped" in capsys.readouterr().err
+
+
+def test_assigning_ids_skips_a_definition_without_a_name(tree, capsys):
+    """Nothing to hang an id on; the loader is what has something to say about the file."""
+    path = tree / "a.ddd.json"
+    write_tree(
+        tree,
+        {
+            "a.ddd.json": {
+                "component": {"name": "A", "interface": [{"scope": "output", "definition": {}}]}
+            }
+        },
+    )
+    before = path.read_bytes()
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 0 ids" in capsys.readouterr().err
+    assert path.read_bytes() == before

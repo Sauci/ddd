@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -268,6 +268,12 @@ class LoadedConstant:
         return Location(self.path, pointer)
 
 
+class _Located(Protocol):
+    """A loaded entry that knows where it was declared."""
+
+    def location(self) -> Location: ...
+
+
 @dataclass(frozen=True, slots=True)
 class LoadedPlugin:
     """A plugin together with where the project named it, for the note on a clash."""
@@ -349,6 +355,10 @@ class Workspace:
     project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The settings block of each plugin, as the project files wrote it, by plugin name."""
 
+    locations: dict[str, Location] = field(default_factory=dict)
+    """Where each declared name is written: its producing declaration, else the first one
+    naming it, since a consumer's declaration is still where a reader looks for the object."""
+
     def sources(self) -> tuple[Path, ...]:
         """Every file that was read to build this workspace, sorted and without duplicates.
 
@@ -357,23 +367,20 @@ class Workspace:
         """
         return tuple(sorted({self.root, *self.read_paths}))
 
-    def locate(self, name: str) -> Location | None:
-        """Where a plugin's finding about the object ``name`` belongs.
+    def __hash__(self) -> int:
+        """Every field but the two mappings, which cannot be hashed."""
+        return hash(
+            tuple(
+                getattr(self, entry.name)
+                for entry in fields(self)
+                if entry.name not in ("project_extensions", "locations")
+            )
+        )
 
-        The declaration that produces it, and failing that the first one naming it: a
-        consumer's declaration is still where a reader looks for the object. ``None`` when no
-        component names it - a leaf, or a name the plugin made up.
-        """
-        fallback: Location | None = None
-        for loaded in self.components:
-            for index, declaration in enumerate(loaded.component.interface):
-                if declaration.definition.name != name:
-                    continue
-                location = loaded.declaration_location(index)
-                if declaration.scope.is_producer:
-                    return location
-                fallback = fallback or location
-        return fallback
+    def locate(self, name: str) -> Location | None:
+        """Where a plugin's finding about the object ``name`` belongs, or ``None`` when no
+        component names it - a leaf, or a name the plugin made up."""
+        return self.locations.get(name)
 
 
 def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -450,7 +457,6 @@ class _Loader:
         self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
-        self._plugins: list[Plugin] = []
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
@@ -489,10 +495,11 @@ class _Loader:
                     sorted(self._constants_by_name.values(), key=lambda entry: entry.name)
                 ),
                 read_paths=tuple(sorted(self._read_paths)),
-                plugins=tuple(self._plugins),
+                plugins=self._loaded_plugins,
                 project_extensions={
                     name: block for name, (block, _) in self._project_blocks.items()
                 },
+                locations=self._locations(),
             )
 
         project = self._load_project(root, data, parents=(), stack=())
@@ -513,8 +520,9 @@ class _Loader:
             rasters=tuple(sorted(self._rasters_by_name.values(), key=lambda entry: entry.raster)),
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
-            plugins=tuple(self._plugins),
+            plugins=self._loaded_plugins,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
+            locations=self._locations(),
         )
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
@@ -592,7 +600,7 @@ class _Loader:
         try:
             model = ComponentFile.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return None
 
         loaded = LoadedComponent(path=path, component=model.component, parents=parents)
@@ -624,7 +632,6 @@ class _Loader:
             self._register(
                 LoadedType(loaded.path, index, declared_type, container="component.types"),
                 key=lambda entry: entry.name,
-                location=lambda entry: entry.location(),
                 registry=self._types_by_name,
                 noun="type",
             )
@@ -634,12 +641,11 @@ class _Loader:
                     loaded.path, index, declared_constant, container="component.constants"
                 ),
                 key=lambda entry: entry.name,
-                location=lambda entry: entry.location(),
                 registry=self._constants_by_name,
                 noun="constant",
             )
 
-    def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT](
+    def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT: _Located](
         self,
         path: Path,
         data: dict[str, Any],
@@ -648,7 +654,6 @@ class _Loader:
         entries: Callable[[ModelT], tuple[EntryT, ...]],
         wrap: Callable[[Path, int, EntryT], LoadedT],
         key: Callable[[LoadedT], str],
-        location: Callable[[LoadedT], Location],
         registry: dict[str, LoadedT],
         noun: str,
     ) -> None:
@@ -662,24 +667,17 @@ class _Loader:
         try:
             model = file_model.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return
 
         for index, declared in enumerate(entries(model)):
-            self._register(
-                wrap(path, index, declared),
-                key=key,
-                location=location,
-                registry=registry,
-                noun=noun,
-            )
+            self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
 
-    def _register[LoadedT](
+    def _register[LoadedT: _Located](
         self,
         loaded: LoadedT,
         *,
         key: Callable[[LoadedT], str],
-        location: Callable[[LoadedT], Location],
         registry: dict[str, LoadedT],
         noun: str,
     ) -> None:
@@ -694,8 +692,8 @@ class _Loader:
             self._bag.add(
                 f"duplicate-{noun}",
                 f"{noun} '{key(loaded)}' is already declared",
-                location(loaded),
-                notes=[("first declared here", location(previous))],
+                loaded.location(),
+                notes=[("first declared here", previous.location())],
             )
             return
         registry[key(loaded)] = loaded
@@ -714,7 +712,6 @@ class _Loader:
             entries=lambda model: model.types,
             wrap=LoadedType,
             key=lambda loaded: loaded.name,
-            location=lambda loaded: loaded.location(),
             registry=self._types_by_name,
             noun="type",
         )
@@ -733,7 +730,6 @@ class _Loader:
             entries=lambda model: model.units,
             wrap=LoadedUnit,
             key=lambda loaded: loaded.unit,
-            location=lambda loaded: loaded.location(),
             registry=self._units_by_name,
             noun="unit",
         )
@@ -753,7 +749,6 @@ class _Loader:
             entries=lambda model: model.sections,
             wrap=LoadedSection,
             key=lambda loaded: loaded.section,
-            location=lambda loaded: loaded.location(),
             registry=self._sections_by_name,
             noun="section",
         )
@@ -772,7 +767,6 @@ class _Loader:
             entries=lambda model: model.rasters,
             wrap=LoadedRaster,
             key=lambda loaded: loaded.raster,
-            location=lambda loaded: loaded.location(),
             registry=self._rasters_by_name,
             noun="raster",
         )
@@ -792,7 +786,6 @@ class _Loader:
             entries=lambda model: model.constants,
             wrap=LoadedConstant,
             key=lambda loaded: loaded.name,
-            location=lambda loaded: loaded.location(),
             registry=self._constants_by_name,
             noun="constant",
         )
@@ -807,7 +800,7 @@ class _Loader:
         try:
             model = ProjectFile.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return None
 
         loaded = LoadedProject(path=path, project=model.project, parents=parents)
@@ -825,6 +818,26 @@ class _Loader:
             for included in self._expand(path, pattern, origin, {path}):
                 self._load_include(included, origin, child_parents, child_stack)
         return loaded
+
+    def _locations(self) -> dict[str, Location]:
+        """Where each declared name is written, a producer's declaration winning over a
+        consumer's, and the first of either otherwise."""
+        found: dict[str, Location] = {}
+        produced: set[str] = set()
+        for loaded in self._components:
+            for index, declaration in enumerate(loaded.component.interface):
+                name = declaration.definition.name
+                if declaration.scope.is_producer and name not in produced:
+                    produced.add(name)
+                    found[name] = loaded.declaration_location(index)
+                elif name not in found:
+                    found[name] = loaded.declaration_location(index)
+        return found
+
+    @property
+    def _loaded_plugins(self) -> tuple[Plugin, ...]:
+        """The plugins in the order the project files named them, each once."""
+        return tuple(loaded.plugin for loaded in self._plugins_by_name.values())
 
     def _load_plugin(self, spelling: str, origin: Location, base: Path) -> None:
         """Import one plugin the project names, or report why it could not be.
@@ -853,7 +866,6 @@ class _Loader:
                 )
             return
         self._plugins_by_name[plugin.name] = LoadedPlugin(plugin, spelling, origin)
-        self._plugins.append(plugin)
         self._bag.register(plugin.checks)
 
     def _register_settings(self, name: str, block: dict[str, Any], location: Location) -> None:
@@ -879,7 +891,7 @@ class _Loader:
         plugins = {name: loaded.plugin for name, loaded in self._plugins_by_name.items()}
         for name, (block, location) in sorted(self._project_blocks.items()):
             self._validate_block(plugins.get(name), name, block, location, on_project=True)
-        for plugin in self._plugins:
+        for plugin in self._loaded_plugins:
             # A plugin whose settings have a required field, in a project stating none: the
             # finding belongs where the block would be written.
             if plugin.project_model is not None and plugin.name not in self._project_blocks:
@@ -919,7 +931,9 @@ class _Loader:
         try:
             model.model_validate(block)
         except ValidationError as error:
-            _report_validation_error(location.path, error, self._bag, prefix=location.pointer)
+            _report_validation_error(
+                location.path, error, self._bag, prefix=location.pointer, document=block
+            )
 
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]
@@ -987,8 +1001,10 @@ class _Loader:
         elif kind == "constants":
             self._load_constants(path, data)
 
-    def _report_validation_error(self, path: Path, error: ValidationError) -> None:
-        _report_validation_error(path, error, self._bag)
+    def _report_validation_error(
+        self, path: Path, error: ValidationError, document: Any = None
+    ) -> None:
+        _report_validation_error(path, error, self._bag, document=document)
 
 
 def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str | None:
@@ -1034,14 +1050,22 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
 
 
 def _report_validation_error(
-    path: Path, error: ValidationError, bag: DiagnosticBag, prefix: str = ""
+    path: Path,
+    error: ValidationError,
+    bag: DiagnosticBag,
+    prefix: str = "",
+    document: Any = None,
 ) -> None:
-    """One ``schema`` finding per place; ``prefix`` is the pointer of a nested document."""
+    """One ``schema`` finding per place; ``prefix`` is the pointer of a nested document.
+
+    ``document`` is the data that was validated, so that the pointer can tell a key of it
+    from the name of a union branch; without it the shape of each segment decides.
+    """
     for item in _one_per_place(_meaningful(error.errors(include_url=False))):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
-        pointer = ".".join(part for part in (prefix, _pointer(item["loc"])) if part)
+        pointer = ".".join(part for part in (prefix, _pointer(item["loc"], document)) if part)
         bag.add("schema", message, Location(path, pointer))
 
 
@@ -1102,13 +1126,23 @@ def _resolve(path: Path) -> Path:
         return Path(path)
 
 
-def _pointer(loc: tuple[int | str, ...]) -> str:
+def _pointer(loc: tuple[int | str, ...], document: Any = None) -> str:
+    """The dotted pointer of a validation error's location.
+
+    Walked against the document where one is given: a segment that is a key of the object
+    reached so far, or an index into the list reached so far, is part of the path however it
+    is spelled - ``my-plugin`` is a key, not a branch tag - and only a segment the document
+    does not have is judged by its shape.
+    """
     parts: list[str] = []
+    node = document
     for item in loc:
-        if item in _UNION_TAGS or _is_branch_tag(item):
-            # pydantic reports the selected variant of a tagged union as a path segment, and
-            # the tried branch of a plain one the same way; 'definition.measurement.datatype'
-            # and 'datatype.str-enum[Datatype]' would both only confuse the reader.
+        present, node = _child(node, item)
+        if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
+            # pydantic reports the selected variant of a tagged union as a path segment,
+            # and the tried branch of a plain one the same way;
+            # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
+            # both only confuse the reader.
             continue
         if isinstance(item, int):
             parts.append(f"[{item}]")
@@ -1119,14 +1153,36 @@ def _pointer(loc: tuple[int | str, ...]) -> str:
     return "".join(parts)
 
 
+_BARE_TYPE_TAGS = frozenset({"bool", "int", "float", "str", "none", "bytes"})
+"""How pydantic names the branch of a union that is a plain python type.
+
+The branches of an ``init`` value are spelled ``bool``, ``int`` and ``float``, which look like
+keys and are not: no key of any file format is called that, while a finding located at
+``init.bool`` names a place the document does not have.
+"""
+
+
+def _child(node: Any, item: int | str) -> tuple[bool, Any]:
+    """The child ``item`` names in ``node`` - a key of an object or an index into a list -
+    and whether there is one; nothing is a child of a node that is neither."""
+    if isinstance(node, dict) and isinstance(item, str) and item in node:
+        return True, node[item]
+    if isinstance(node, list) and isinstance(item, int) and 0 <= item < len(node):
+        return True, node[item]
+    return False, None
+
+
 def _is_branch_tag(item: int | str) -> bool:
     """Whether a path segment names a union branch rather than a key of the document.
 
-    pydantic spells those as ``str-enum[Datatype]`` or ``constrained-str``, neither of which
-    can be a key: a key is an identifier, and these are not. Recognised by shape rather than
-    by a list of names, so a new branch needs nothing added here.
+    pydantic spells most of those as ``str-enum[Datatype]`` or ``constrained-str``, neither of
+    which can be a key: a key is an identifier, and these are not. Recognised by shape rather
+    than by a list of names, so a new branch needs nothing added here - except a branch that
+    is a bare python type, which is spelled as one word and listed above.
     """
-    return isinstance(item, str) and not item.replace("_", "").replace("$", "").isalnum()
+    if not isinstance(item, str):
+        return False
+    return item in _BARE_TYPE_TAGS or not item.replace("_", "").replace("$", "").isalnum()
 
 
 def _short(value: Any, limit: int = 60) -> str:

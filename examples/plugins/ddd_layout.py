@@ -132,9 +132,37 @@ def check(context: CheckContext) -> None:
         )
 
 
+def _by_key(
+    context: CompareContext, dictionary: DataDictionary, side: str
+) -> dict[int, tuple[Stamped, Entry]]:
+    """One side's entries by key, refusing a key claimed twice.
+
+    A dump is read back rather than re-checked, so an archived baseline can carry the
+    collision ``layout/duplicate-key`` would have refused in a live project. Keeping one of
+    the two would silently drop the other from the comparison; both are reported and left
+    out instead.
+    """
+    found: dict[int, tuple[Stamped, Entry]] = {}
+    collided: dict[int, list[str]] = {}
+    for entry, stamp in _stamped(dictionary):
+        if stamp.key in found:
+            collided.setdefault(stamp.key, [found[stamp.key][0].name]).append(entry.name)
+        else:
+            found[stamp.key] = (entry, stamp)
+    for key, names in sorted(collided.items()):
+        listed = ", ".join(f"'{name}'" for name in names)
+        context.bag.add(
+            "layout/duplicate-key",
+            f"in the {side}: key {key} is claimed by {listed}; none of them is compared",
+            context.locate(names[0]),
+        )
+        del found[key]
+    return found
+
+
 def compare(context: CompareContext) -> None:
-    was = {stamp.key: (entry, stamp) for entry, stamp in _stamped(context.baseline)}
-    now = {stamp.key: (entry, stamp) for entry, stamp in _stamped(context.candidate)}
+    was = _by_key(context, context.baseline, "baseline")
+    now = _by_key(context, context.candidate, "candidate")
 
     # One object, paired on the DDD id, under a different key: its entry is orphaned.
     old_key_by_id = {entry.id: stamp.key for entry, stamp in was.values() if entry.id}
@@ -191,7 +219,11 @@ def compare(context: CompareContext) -> None:
 
 
 class LayoutBackend:
-    """One header, one table entry per stamped object, sorted by key."""
+    """One header, one table entry per stamped object, sorted by key.
+
+    An entry follows the condition of its object: the c templates compile the object out
+    under ``#if``, and a table naming it then would not compile at all.
+    """
 
     name = "layout"
 
@@ -205,14 +237,27 @@ class LayoutBackend:
             "#ifndef DDD_LAYOUT_H",
             "#define DDD_LAYOUT_H",
             "",
+            "#include <stddef.h>",
+            "#include <stdint.h>",
+            "",
             f"#define DDD_LAYOUT_MAX_KEY {self._settings.max_key}u",
-            "#define DDD_LAYOUT_ENTRIES \\",
+            "",
+            "typedef struct {",
+            "    uint16_t key;",
+            "    uint16_t version;",
+            "    size_t size;",
+            "    const void *address;",
+            "} ddd_layout_entry_t;",
+            "",
+            "static const ddd_layout_entry_t ddd_layout_entries[] = {",
         ]
-        lines.extend(
-            f"    {{ {stamp.key}u, {stamp.version}u, sizeof({entry.name}), &{entry.name} }}, \\"
-            for entry, stamp in _stamped(dictionary)
-        )
-        lines.extend(["", "#endif /* DDD_LAYOUT_H */"])
+        for entry, stamp in _stamped(dictionary):
+            row = f"    {{ {stamp.key}u, {stamp.version}u, sizeof({entry.name}), &{entry.name} }},"
+            if entry.condition:
+                lines.extend([f"#if {entry.condition}", row, f"#endif /* {entry.condition} */"])
+            else:
+                lines.append(row)
+        lines.extend(["};", "", "#endif /* DDD_LAYOUT_H */"])
         return [GeneratedFile(output_dir / "ddd_layout.h", "\n".join(lines) + "\n")]
 
 

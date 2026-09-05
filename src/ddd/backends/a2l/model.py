@@ -25,6 +25,7 @@ from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.a2l.types import A2L_TYPE
 from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
+    IDENTIFIER_MAX_LENGTH,
     Conversion,
     Datatype,
     EnumConversion,
@@ -240,8 +241,8 @@ class _A2lModelBuilder:
                 measurements.append(self._measurement(entry))
             elif entry.kind is ObjectKind.AXIS:
                 axis_pts.append(self._axis_pts(entry))
-            else:
-                characteristics.append(self._characteristic(entry))
+            elif (characteristic := self._characteristic(entry)) is not None:
+                characteristics.append(characteristic)
 
         for leaf in dictionary.leaves:
             if not self._carries(leaf):
@@ -355,9 +356,14 @@ class _A2lModelBuilder:
             condition=entry.condition,
         )
 
-    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
+    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView | None:
         references = entry.references
         axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
+        if any(name not in self._by_name for name in axes):
+            # An axis the analysis could not resolve, reached under --force: a CURVE without
+            # its AXIS_DESCR is not a smaller record but an invalid file, so the record is
+            # left out, the way an object nothing exports is.
+            return None
         return CharacteristicView(
             name=entry.name,
             description=entry.description or entry.name,
@@ -370,17 +376,11 @@ class _A2lModelBuilder:
             matrix_dim=_matrix_dim(entry) if entry.kind is ObjectKind.VALUE_BLOCK else None,
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
-            axis_descrs=tuple(
-                descr
-                for name in axes
-                if (descr := self._axis_descr(self._by_name.get(name), name)) is not None
-            ),
+            axis_descrs=tuple(self._axis_descr(self._by_name[name], name) for name in axes),
             condition=entry.condition,
         )
 
-    def _axis_descr(self, axis: ResolvedObject | None, name: str) -> AxisDescrView | None:
-        if axis is None:
-            return None
+    def _axis_descr(self, axis: ResolvedObject, name: str) -> AxisDescrView:
         return AxisDescrView(
             attribute="COM_AXIS",
             input_quantity=axis.references.get("input") or NO_INPUT_QUANTITY,
@@ -477,7 +477,7 @@ class _RecordLayoutBuilder:
 
 
 class _CompuMethodBuilder:
-    """Creates one COMPU_METHOD per distinct (conversion, unit) combination."""
+    """Creates one COMPU_METHOD per distinct (conversion, unit, display format) combination."""
 
     def __init__(self) -> None:
         self._methods: dict[object, CompuMethodView] = {}
@@ -490,7 +490,9 @@ class _CompuMethodBuilder:
         if isinstance(conversion, IdentityConversion) and not unit:
             return NO_COMPU_METHOD
 
-        key = _conversion_key(conversion, unit)
+        # The method's FORMAT is the fallback for every object referencing it, so an integer
+        # and a float sharing one unit and conversion get one method each, not one between them.
+        key = (_conversion_key(conversion, unit), _default_format(entry.datatype, conversion))
         existing = self._methods.get(key)
         if existing is not None:
             return existing.name
@@ -551,11 +553,17 @@ class _CompuMethodBuilder:
         return vtab
 
     def _unique(self, base: str) -> str:
-        candidate = base
+        """``base``, cut to what an a2l identifier may be long and told apart from the rest.
+
+        The prefixes are added to names that may already be as long as the cap allows, and a
+        unit is not capped at all, so the synthesised name is what has to fit.
+        """
+        candidate = base[:IDENTIFIER_MAX_LENGTH]
         index = 1
         while candidate in self._names:
             index += 1
-            candidate = f"{base}_{index}"
+            suffix = f"_{index}"
+            candidate = f"{base[: IDENTIFIER_MAX_LENGTH - len(suffix)]}{suffix}"
         self._names.add(candidate)
         return candidate
 

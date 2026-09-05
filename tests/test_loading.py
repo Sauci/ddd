@@ -283,3 +283,20 @@ class TestSchemaBinding:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert "Extra inputs are not permitted" in messages(bag)
+
+
+class TestPointersWithPunctuation:
+    def test_a_key_with_a_hyphen_is_named_in_the_pointer(self, tree: Path) -> None:
+        """A branch of a union is recognised as one; a key of the document, however spelled,
+        is not mistaken for one and dropped from the place a finding names."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": {
+                    "project": {"name": "P", "extensions": {"my-plugin": "not an object"}}
+                }
+            },
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert "project.ddd.json#project.extensions.my-plugin: error[schema]" in messages(bag)

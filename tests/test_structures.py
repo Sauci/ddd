@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from conftest import (
+    checks,
     component,
     declare,
     messages,
@@ -57,10 +58,6 @@ def load(tree: Path, files: dict[str, Any], root: str = "project.ddd.json") -> A
     return workspace, bag
 
 
-def findings(bag: DiagnosticBag) -> list[str]:
-    return [diagnostic.check for diagnostic in bag]
-
-
 def first(bag: DiagnosticBag) -> Any:
     return next(iter(bag))
 
@@ -74,7 +71,7 @@ class TestReadingTypes:
                 "types.ddd.json": types(struct("B_t"), struct("A_t")),
             },
         )
-        assert not findings(bag)
+        assert not checks(bag)
         assert workspace is not None
         # sorted by name, so the include order cannot change the generated output
         assert [entry.name for entry in workspace.types] == ["A_t", "B_t"]
@@ -100,7 +97,7 @@ class TestReadingTypes:
                 "two.ddd.json": types(struct("A_t")),
             },
         )
-        assert findings(bag) == ["duplicate-type"]
+        assert checks(bag) == ["duplicate-type"]
         assert "is already declared" in first(bag).render()
         assert first(bag).notes, "the first declaration has to be pointed at as well"
 
@@ -112,7 +109,7 @@ class TestReadingTypes:
                 "types.ddd.json": {"types": [{"name": "A_t", "members": [{"name": "x"}]}]},
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
 
     def test_an_enum_on_a_non_integer_is_refused_where_it_is_written(self, tree: Path) -> None:
         """The rule of a definition holds on a scalar type and on a structure member alike.
@@ -142,7 +139,7 @@ class TestReadingTypes:
                 ),
             },
         )
-        assert findings(bag) == ["schema", "schema"]
+        assert checks(bag) == ["schema", "schema"]
         # The union tags are not keys of the document, so the pointers carry no '.scalar' or
         # '.struct' segment - an editor resolves them against what is actually written.
         pointers = [diagnostic.location.pointer for diagnostic in bag if diagnostic.location]
@@ -154,7 +151,7 @@ class TestReadingTypes:
         """It declares no variable, so there is nothing to resolve or generate from it."""
         workspace, bag = load(tree, {"types.ddd.json": types(struct("A_t"))}, root="types.ddd.json")
         assert workspace is None
-        assert findings(bag) == ["file-kind"]
+        assert checks(bag) == ["file-kind"]
         assert "list it in the 'includes'" in first(bag).render()
 
     def test_a_file_cannot_be_two_kinds_at_once(self, tree: Path) -> None:
@@ -163,12 +160,12 @@ class TestReadingTypes:
             {"both.ddd.json": {"component": {"name": "X"}, "types": [struct("A_t")]}},
             root="both.ddd.json",
         )
-        assert findings(bag) == ["file-kind"]
+        assert checks(bag) == ["file-kind"]
         assert "'component' and 'types'" in first(bag).render()
 
     def test_a_file_of_no_known_kind_lists_what_it_should_have(self, tree: Path) -> None:
         _, bag = load(tree, {"stray.ddd.json": {"stuff": 1}}, root="stray.ddd.json")
-        assert findings(bag) == ["file-kind"]
+        assert checks(bag) == ["file-kind"]
         rendered = first(bag).render()
         assert "'project', 'component', 'types', 'units'" in rendered
         assert "found: stuff" in rendered
@@ -186,7 +183,7 @@ class TestTypeGraph:
                 ),
             },
         )
-        assert not findings(bag)
+        assert not checks(bag)
 
     def test_a_member_nesting_an_undeclared_structure(self, tree: Path) -> None:
         _, bag = run_analysis(
@@ -196,7 +193,7 @@ class TestTypeGraph:
                 "types.ddd.json": types(struct("A_t", nest("gone", "Missing_t"))),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         rendered = first(bag).render()
         assert "'Missing_t'" in rendered
         assert "types[0].members[0]" in rendered
@@ -212,7 +209,7 @@ class TestTypeGraph:
             },
         )
         # once, not once per participant: the chain names them all
-        assert findings(bag) == ["type-cycle"]
+        assert checks(bag) == ["type-cycle"]
         assert "A_t -> B_t -> A_t" in first(bag).render()
 
     def test_a_structure_nested_twice_is_not_a_cycle(self, tree: Path) -> None:
@@ -229,7 +226,7 @@ class TestTypeGraph:
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == ["X.first.v", "X.second.v"]
 
@@ -241,7 +238,7 @@ class TestTypeGraph:
                 "types.ddd.json": types(struct("A_t", nest("self", "A_t"))),
             },
         )
-        assert findings(bag) == ["type-cycle"]
+        assert checks(bag) == ["type-cycle"]
         assert "A_t -> A_t" in first(bag).render()
 
     def test_a_sound_structure_leading_to_a_cycle_is_reported_at_the_cycle(
@@ -259,7 +256,7 @@ class TestTypeGraph:
                 ),
             },
         )
-        assert findings(bag) == ["type-cycle"]
+        assert checks(bag) == ["type-cycle"]
         rendered = first(bag).render()
         assert "A_t -> B_t -> A_t" in rendered
         assert "types.ddd.json#types[1]" in rendered
@@ -289,7 +286,7 @@ class TestTypeGraph:
                 ),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         assert dictionary is not None
         assert not dictionary.instances
         assert not dictionary.leaves
@@ -320,7 +317,7 @@ class TestInfiniteDerivedLimits:
                 ),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         rendered = first(bag).render()
         assert "types[0].conversion" in rendered
         assert "the limits derived from 'float64' and this conversion are not finite" in rendered
@@ -343,7 +340,7 @@ class TestInfiniteDerivedLimits:
                 "a.ddd.json": component("A", declare("output", "V", typename="S_t")),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         rendered = first(bag).render()
         assert "types[0].members[1].conversion" in rendered
         assert dictionary is not None
@@ -397,7 +394,7 @@ class TestNamingAType:
                 "b.ddd.json": component("B", declare("input", "EngSpd", typename="Speed_t")),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (engine_speed,) = dictionary.objects
         assert engine_speed.datatype.value == "uint16"
@@ -408,7 +405,7 @@ class TestNamingAType:
     def test_a_scalar_type_may_leave_its_limits_to_be_derived(self, tree: Path) -> None:
         """A type states what it wants to state; the rest follows as it does for any object."""
         bag = self.project_with(tree, scalar("Speed_t", "uint8", unit="rpm"))
-        assert findings(bag) == []
+        assert checks(bag) == []
 
     def test_a_name_no_file_declares_is_reported_where_it_is_written(self, tree: Path) -> None:
         """Which is also where a typo in a base datatype now lands.
@@ -424,7 +421,7 @@ class TestNamingAType:
                 "a.ddd.json": component("A", declare("local", "X", typename="Nowhere_t")),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         rendered = first(bag).render()
         assert "neither a base datatype nor a type" in rendered
         assert "a.ddd.json#component.interface[0].definition.typename" in rendered
@@ -436,7 +433,7 @@ class TestNamingAType:
         same route the member shape rules take - no check identifier of its own.
         """
         bag = self.project_with(tree, scalar("Speed_t", "uint16", unit="rpm"), unit="1/min")
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         assert "already fixes what this value means" in first(bag).render()
 
     def test_a_scalar_type_nests_nothing_and_is_not_walked_for_members(self, tree: Path) -> None:
@@ -450,7 +447,7 @@ class TestNamingAType:
                 ),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
 
     def test_naming_a_structure_makes_the_variable_one(self, tree: Path) -> None:
         """The variable becomes an instance, and its members become the leaves of the a2l."""
@@ -462,7 +459,7 @@ class TestNamingAType:
                 "a.ddd.json": component("A", declare("local", "X", typename="Speed_t")),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert dictionary.objects == ()
         (instance,) = dictionary.instances
@@ -494,7 +491,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", datatype="uint166")),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         rendered = first(bag).render()
         assert "a.ddd.json#component.interface[0].definition.datatype" in rendered
         assert "Input should be" in rendered
@@ -508,7 +505,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", typename="UINT16")),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         assert "spells a base datatype" in first(bag).render()
 
     def test_storage_is_named_exactly_once_on_a_definition(self, tree: Path) -> None:
@@ -532,7 +529,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 },
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         assert "storage is named exactly once" in first(bag).render()
 
     def test_a_name_dressed_like_a_datatype_is_just_a_name(self, tree: Path) -> None:
@@ -545,7 +542,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", typename="Int16_t")),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
 
     def test_the_eleven_ways_to_fail_at_one_key_are_one_finding(self, tree: Path) -> None:
         """A union that is not discriminated fails once per branch; a reader wants it once.
@@ -560,7 +557,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", datatype="float3")),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
         assert "should match pattern" not in first(bag).render()
 
     def test_a_type_may_not_be_declared_under_a_datatype_like_name(self, tree: Path) -> None:
@@ -572,7 +569,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "types.ddd.json": types(scalar("uint16", "uint16")),
             },
         )
-        assert findings(bag) == ["schema"]
+        assert checks(bag) == ["schema"]
 
     def test_a_transposition_is_answered_with_the_nearest_name(self, tree: Path) -> None:
         """``unit16`` is not a storage stem, so the contract lets it through as a name.
@@ -587,7 +584,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", typename="unit16")),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         assert "did you mean 'uint16'" in first(bag).render()
 
     def test_a_misremembered_type_name_suggests_the_declared_one(self, tree: Path) -> None:
@@ -600,7 +597,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", typename="Sped_t")),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         assert "did you mean 'Speed_t'?" in first(bag).render()
 
     def test_a_name_close_to_nothing_is_left_without_a_guess(self, tree: Path) -> None:
@@ -612,7 +609,7 @@ class TestBaseAndDeclaredNamesAreKeptApart:
                 "a.ddd.json": component("A", declare("local", "X", typename="Quantity")),
             },
         )
-        assert findings(bag) == ["unknown-type"]
+        assert checks(bag) == ["unknown-type"]
         assert "did you mean" not in first(bag).render()
 
 
@@ -639,7 +636,7 @@ class TestDeclaringAStructure:
         strength of always being there.
         """
         dictionary, bag = self.resolve(tree, struct("S_t", val("a"), val("b", "uint32")))
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None and dictionary.objects == ()
         (instance,) = dictionary.instances
         assert instance.type == "S_t"
@@ -649,7 +646,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree, struct("Inner_t", val("v")), struct("S_t", val("inner", typename="Inner_t"))
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == ["X.inner.v"]
 
@@ -669,7 +666,7 @@ class TestDeclaringAStructure:
                 val("flat", "uint8", dimensions=[4]),
             ),
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == [
             "X.cell[0].v",
@@ -688,7 +685,7 @@ class TestDeclaringAStructure:
                 "a.ddd.json": component("A", declare("local", "X", typename="S_t", dimensions=[2])),
             },
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == ["X[0].v", "X[1].v"]
 
@@ -698,7 +695,7 @@ class TestDeclaringAStructure:
             scalar("Speed_t", "uint16", unit="rpm", conversion={"factor": 0.25}),
             struct("S_t", val("engine", typename="Speed_t")),
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
         assert (leaf.unit, leaf.datatype.value) == ("rpm", "uint16")
@@ -711,7 +708,7 @@ class TestDeclaringAStructure:
             scalar("Speed_t", "uint16", unit="rpm", limits={"min": 0, "max": 8000}),
             struct("S_t", val("engine", typename="Speed_t")),
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
         assert leaf.limits.as_tuple() == (0, 8000)
@@ -723,7 +720,7 @@ class TestDeclaringAStructure:
             scalar("Speed_t", "uint8", unit="rpm"),
             struct("S_t", val("engine", typename="Speed_t")),
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
         assert leaf.limits.as_tuple() == (0, 255)
@@ -739,7 +736,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree, struct("S_t", val("a"), val("b")), a2l={"export": False}
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.a2l.export for leaf in dictionary.leaves] == [False, False]
 
@@ -748,7 +745,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree, struct("S_t", val("a", a2l={"export": False}), val("b"))
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [(leaf.path, leaf.a2l.export) for leaf in dictionary.leaves] == [
             ("X.a", False),
@@ -758,7 +755,7 @@ class TestDeclaringAStructure:
     def test_a_leaf_knows_whether_it_is_calibration_data(self, tree: Path) -> None:
         """Taken from the variable: every member of one object has its storage class."""
         dictionary, bag = self.resolve(tree, struct("S_t", val("v")), kind="parameter")
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
         assert leaf.is_calibration
@@ -769,7 +766,7 @@ class TestDeclaringAStructure:
         dictionary, bag = self.resolve(
             tree, struct("S_t", val("t", "uint16", unit="ms", limits={"min": 0, "max": 1000}))
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (leaf,) = dictionary.leaves
         assert (leaf.unit, leaf.limits.as_tuple()) == ("ms", (0, 1000))
@@ -786,14 +783,14 @@ class TestDeclaringAStructure:
             struct("Sensor_t", val("status", typename="Status_t")),
             struct("S_t", val("sensor", typename="Sensor_t")),
         )
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [entry.name for entry in dictionary.types] == ["Status_t", "Sensor_t", "S_t"]
 
     def test_the_members_keep_the_order_they_were_written_in(self, tree: Path) -> None:
         """That order is the one the compiler lays out, so nothing may reorder it."""
         dictionary, bag = self.resolve(tree, struct("S_t", val("zulu"), val("alpha"), val("mike")))
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         (structure,) = dictionary.types
         assert [member.name for member in structure.members] == ["zulu", "alpha", "mike"]
@@ -810,7 +807,7 @@ class TestDeclaringAStructure:
     ) -> None:
         """Each refused rather than ignored, and located where it is written."""
         _, bag = self.resolve(tree, struct("S_t", val("v")), **definition)
-        assert "type-kind" in findings(bag)
+        assert "type-kind" in checks(bag)
         assert because in first(bag).render()
 
     def test_a_datatype_the_project_declares_is_compared_by_name(self, tree: Path) -> None:
@@ -824,7 +821,7 @@ class TestDeclaringAStructure:
                 "b.ddd.json": component("B", declare("input", "X", typename="B_t")),
             },
         )
-        assert "definition-mismatch" in findings(bag)
+        assert "definition-mismatch" in checks(bag)
         assert "datatype: B_t != A_t" in messages(bag)
 
 
@@ -1064,7 +1061,7 @@ class TestGeneratingAStructure:
                 "a.ddd.json": component("A", declare("output", "X", typename="S_t")),
             },
         )
-        assert findings(bag) == ["unused-output"]
+        assert checks(bag) == ["unused-output"]
 
     def test_the_stdint_include_counts_the_members(self, tree: Path) -> None:
         """A project whose only integer sits inside a structure still needs the header.
@@ -1088,7 +1085,7 @@ class TestTypeNamesInTheCNamespace:
                 "types.ddd.json": types(struct("register", val("v"))),
             },
         )
-        assert findings(bag) == ["reserved-identifier"]
+        assert checks(bag) == ["reserved-identifier"]
         assert "reserved by the c language" in first(bag).render()
 
     def test_a_variable_may_not_share_a_name_with_a_type(self, tree: Path) -> None:
@@ -1101,7 +1098,7 @@ class TestTypeNamesInTheCNamespace:
                 "a.ddd.json": component("A", declare("local", "Speed", "uint16")),
             },
         )
-        assert "name-collision" in findings(bag)
+        assert "name-collision" in checks(bag)
         assert "type declared here" in first(bag).render()
 
     def test_a_member_named_after_a_c_keyword_is_refused(self, tree: Path) -> None:
@@ -1113,7 +1110,7 @@ class TestTypeNamesInTheCNamespace:
                 "types.ddd.json": types(struct("S_t", val("int"))),
             },
         )
-        assert findings(bag) == ["reserved-identifier"]
+        assert checks(bag) == ["reserved-identifier"]
         finding = first(bag)
         assert "member 'int' of structure 'S_t' is reserved by the c language" in finding.render()
         assert finding.location.pointer == "types[0].members[0].name"
@@ -1134,7 +1131,7 @@ class TestTypeNamesInTheCNamespace:
                 ),
             },
         )
-        assert findings(bag) == ["reserved-identifier"]
+        assert checks(bag) == ["reserved-identifier"]
         finding = first(bag)
         assert "member '__x' of structure 'Inner_t'" in finding.render()
         assert finding.location.pointer == "types[1].members[0].name"
@@ -1176,7 +1173,7 @@ class TestStructuresReachEverythingElse:
         project takes; a member's enum used to reach the a2l and nothing else.
         """
         dictionary, bag = self.project(tree)
-        assert findings(bag) == []
+        assert checks(bag) == []
         assert dictionary is not None
         assert [enum.name for enum in dictionary.enums] == ["Mode_t"]
 
@@ -1195,7 +1192,7 @@ class TestStructuresReachEverythingElse:
                 ),
             },
         )
-        assert findings(bag) == ["name-similar"]
+        assert checks(bag) == ["name-similar"]
         assert "'sensor' and 'Sensor' differ only in upper/lower case" in messages(bag)
 
     def test_two_structured_objects_differing_only_in_case_are_reported(self, tree: Path) -> None:
@@ -1211,7 +1208,7 @@ class TestStructuresReachEverythingElse:
                 ),
             },
         )
-        assert findings(bag) == ["name-similar"]
+        assert checks(bag) == ["name-similar"]
         assert "'inlet' and 'Inlet' differ only in upper/lower case" in messages(bag)
 
     def test_the_members_are_counted_and_listed_as_objects(self, tree: Path) -> None:
@@ -1341,3 +1338,52 @@ def test_the_dump_carries_and_nulls_instance_and_leaf_identity(tree: Path) -> No
     assert leaves["Inlet.value"]["instance_id"] == "k7m2q9xr4t8w"
     assert instances["Outlet"]["id"] is None
     assert leaves["Outlet.value"]["instance_id"] is None
+
+
+class TestMemberStorageChecks:
+    def enum_member(self) -> dict[str, Any]:
+        return {
+            "name": "mode",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {
+                "kind": "enum",
+                "name": "Mode_t",
+                "enumerators": {"OFF": 0, "HUGE_ONE": 300},
+            },
+        }
+
+    def wide_member(self) -> dict[str, Any]:
+        return {
+            "name": "wide",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+            "limits": {"min": 0, "max": 1000},
+        }
+
+    def test_an_enumerator_that_does_not_fit_the_member_is_refused(self, tree: Path) -> None:
+        """The check a plain declaration gets; a member is storage of the same width."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(struct("S_t", self.enum_member())),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "init-invalid" in checks(bag)
+        assert "HUGE_ONE=300" in messages(bag)
+        assert "uint8" in messages(bag)
+
+    def test_member_limits_beyond_the_datatype_are_reported(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(struct("S_t", self.wide_member())),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "limits-out-of-range" in checks(bag)
+        assert "[0, 1000] exceed the range [0, 255]" in messages(bag)

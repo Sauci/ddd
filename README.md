@@ -540,7 +540,8 @@ ddd compare baseline.json project.ddd.json --renames renames.json   # ...and lis
 ddd check project.ddd.json --baseline baseline.json   # both questions, one exit code
 ```
 
-`--renames` writes the old-to-new name pairs of the comparison - each object's `id`, its old
+`--renames` writes the old-to-new name pairs of the comparison - each object's `id` (a member
+of a renamed structure under the instance's id followed by its member path), its old
 name and its new name - to a json file, so a migration tool can update the calibration
 datasets, recordings, test scripts and requirement documents that key on the old spelling
 without having to parse the findings above.

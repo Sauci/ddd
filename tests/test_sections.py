@@ -369,3 +369,19 @@ class TestPlacementReachesTheOutputs:
         compare(before, after, bag)
         assert "changed-storage" in checks(bag)
         assert "section" in messages(bag)
+
+
+class TestSectionSpelling:
+    def test_a_name_that_would_end_a_c_string_literal_is_refused(self) -> None:
+        """The name is spliced into ``__attribute__((section("...")))`` by the templates."""
+        with pytest.raises(ValidationError):
+            SectionsFile.model_validate(sections(section('.calib")x')))
+
+    def test_a_name_with_a_dollar_or_a_dot_is_a_section_name(self) -> None:
+        SectionsFile.model_validate(sections(section(".CRT$XCU")))
+
+    def test_a_definition_naming_a_section_is_held_to_the_same_spelling(self) -> None:
+        from ddd.models import ComponentFile
+
+        with pytest.raises(ValidationError):
+            ComponentFile.model_validate(component("A", declare("local", "X", section='.x"')))

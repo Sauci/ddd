@@ -56,11 +56,13 @@ from ddd.models import (
 )
 from ddd.models.schema import PublishedSchema
 from ddd.plugins import (
+    BUILT_IN_ARTEFACTS,
     PLUGIN_NAME_PATTERN,
     Plugin,
     PluginInvalidError,
     PluginNotFoundError,
     backend_of,
+    block_model,
     load_plugin,
     run_compare_hooks,
 )
@@ -70,7 +72,6 @@ EXIT_FINDINGS = 1
 EXIT_USAGE = 2
 
 GENERATOR = f"ddd {__version__}"
-BUILT_IN_ARTEFACTS = ("c", "a2l", "all")
 
 
 def cmake_module_directory() -> Path | None:
@@ -521,7 +522,9 @@ def _command_compare(args: argparse.Namespace) -> int:
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        args.renames.write_text(json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8")
+        args.renames.write_text(
+            json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
+        )
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
@@ -579,11 +582,10 @@ def _listed(names: list[str]) -> str:
 
 def _command_generate(args: argparse.Namespace) -> int:
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is None:
+    if resolved is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
-    assert resolved is not None  # dictionary is only set from resolved; narrows it for mypy
+    dictionary = resolved.dictionary
 
     addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
     if args.render_a2l and args.address_map is not None:
@@ -648,10 +650,10 @@ def _command_generate(args: argparse.Namespace) -> int:
 
 def _command_list(args: argparse.Namespace) -> int:
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is None:
+    if resolved is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
+    dictionary = resolved.dictionary
 
     if args.format == "json":
         print(
@@ -682,11 +684,10 @@ def _command_dump(args: argparse.Namespace) -> int:
     stderr - where they also stay out of the way of a pipe.
     """
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is not None:
-        print(dictionary.model_dump_json(indent=2))
+    if resolved is not None:
+        print(resolved.dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
-    if dictionary is None:
+    if resolved is None:
         return EXIT_FINDINGS
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
@@ -764,7 +765,7 @@ def _close_extensions(
     ]
     properties: dict[str, Any] = {}
     for plugin in plugins:
-        model = plugin.project_model if on_project else plugin.object_model
+        model = block_model(plugin, on_project=on_project)
         if model is None:
             continue
         rendered = model.model_json_schema(
@@ -968,13 +969,13 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     that analysis produces findings about *that* delivery: files that are not part of the
     project under check, an output nobody read two releases ago. Reported here they would be
     attributed to this run, printed twice when both sides are the same tree, and would fail a
-    clean project because of its predecessor. Only the errors that stop the baseline from
-    being read at all are carried over, because those explain a comparison that cannot happen.
+    clean project because of its predecessor. Its warnings are its own, however strict this
+    run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
+    prefixed, so that a broken baseline is visible - and the comparison still runs on whatever
+    resolved, because a delivery that cannot be accepted still needs its differences listed.
     """
-    own = DiagnosticBag(bag.policy)
+    own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
     resolved = _read_dictionary(path, own)
-    if resolved is not None and not own.has_errors:
-        return resolved.dictionary
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(
@@ -983,7 +984,7 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
                 diagnostic.location,
                 diagnostic.notes,
             )
-    return None
+    return resolved.dictionary if resolved is not None else None
 
 
 def _holds_a_description(path: Path) -> bool:

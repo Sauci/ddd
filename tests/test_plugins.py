@@ -1274,3 +1274,159 @@ class TestChecksCommand:
         assert main(["checks", "--plugin", "tools/tag_plugin.py", "--format", "json"]) == EXIT_OK
         listed = json.loads(capsys.readouterr().out)
         assert listed[-1]["check"] == "tag/retagged"
+
+
+class TestTheLanguageServerAndPlugins:
+    def test_hover_resolution_survives_a_hook_that_raises(self, tree: Path) -> None:
+        from ddd.lsp.hover import resolve
+
+        write_plugin(tree / "tools", source=RAISING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        workspace = load_workspace(tree / "project.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        assert resolve([workspace]) is None
+
+    def test_hover_resolution_survives_settings_that_do_not_validate(self, tree: Path) -> None:
+        """A hover resolves a project that did not read cleanly; its settings may be wrong."""
+        from ddd.lsp.hover import resolve
+
+        workspace, bag = tagged(tree, declare("local", "X"), settings={"prefix": 3})
+        assert workspace is not None and bag.has_errors
+        assert resolve([workspace]) is None
+
+    def test_a_plugin_printing_during_a_request_does_not_reach_the_wire(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """stdout is the json-rpc wire; whatever a plugin prints has to go somewhere else."""
+        import io
+        from types import SimpleNamespace
+
+        from ddd.lsp.protocol import write_message
+        from ddd.lsp.server import serve
+
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            "def check(context: CheckContext) -> None:\n"
+            '    print("progress: 100%\\n\\ndone", flush=True)\n',
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        requests = io.BytesIO()
+        for message in (
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tree.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": (tree / "project.ddd.json").as_uri(),
+                        "languageId": "json",
+                        "version": 1,
+                        "text": "",
+                    }
+                },
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        ):
+            write_message(requests, message)
+        requests.seek(0)
+        wire = io.BytesIO()
+        fake_stdout = io.TextIOWrapper(wire, encoding="utf-8", write_through=True)
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=requests))
+        monkeypatch.setattr(sys, "stdout", fake_stdout)
+        assert serve() == 0
+        written = wire.getvalue()
+        assert b"progress" not in written
+        assert b'"id": 2' in written
+        assert "progress" in capsys.readouterr().err
+
+
+class TestPluginFilesWithSimilarNames:
+    def test_two_files_whose_paths_differ_only_in_punctuation_are_two_plugins(
+        self, tmp_path: Path
+    ) -> None:
+        write_plugin(
+            tmp_path, "my-plugin.py", BARE_PLUGIN.replace('name="bare"', 'name="plugin_a"')
+        )
+        write_plugin(
+            tmp_path, "my_plugin.py", BARE_PLUGIN.replace('name="bare"', 'name="plugin_b"')
+        )
+        assert load_plugin("my-plugin.py", tmp_path).name == "plugin_a"
+        assert load_plugin("my_plugin.py", tmp_path).name == "plugin_b"
+
+
+class TestHashingTheResolvedForms:
+    def test_the_dictionary_and_its_objects_hash_despite_the_blocks(self, tree: Path) -> None:
+        workspace, bag = tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        assert workspace is not None and not bag.has_errors, messages(bag)
+        dictionary = analyze(workspace, bag)
+        assert len({*dictionary.objects}) == 1
+        assert isinstance(hash(dictionary), int)
+        assert isinstance(hash(workspace), int)
+
+    def test_a_structured_variable_hashes_too(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Pair_t",
+                            "members": [
+                                {
+                                    "name": "a",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "P", typename="Pair_t")),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert len({*dictionary.instances}) == 1
+
+
+class TestPluginNamesAndArtefacts:
+    @pytest.mark.parametrize("name", ["c", "a2l", "all"])
+    def test_a_built_in_artefact_name_is_not_a_plugin_name(self, name: str) -> None:
+        """``ddd generate c`` is the c backend; a plugin so named could never be reached."""
+        with pytest.raises(ValueError, match="built-in artefact"):
+            Plugin(name=name)
+
+
+class TestResolvedSettings:
+    def test_every_plugin_with_a_project_model_appears_with_its_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        """The dictionary carries each plugin's settings whether or not the project stated any."""
+        from ddd.plugins import resolve_blocks
+
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        assert resolve_blocks({"tag": plugin}, {}, on_project=True) == {"tag": {"prefix": ""}}
+        stated = resolve_blocks({"tag": plugin}, {"tag": {"prefix": "p"}}, on_project=True)
+        assert stated == {"tag": {"prefix": "p"}}
+        assert resolve_blocks({"tag": plugin}, {}, on_project=False) == {}

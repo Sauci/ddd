@@ -403,10 +403,11 @@ function(ddd_generate image)
     if(arg_CONST_INPUTS)
         list(APPEND generate_options --const-inputs)
     endif()
-    if(arg_BYTE_ORDER)
+    # The two options belong to the a2l artefact alone; the c artefact refuses them.
+    if(arg_BYTE_ORDER AND NOT arg_NO_A2L)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
     endif()
-    if(arg_ADDRESS_MAP)
+    if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)
         list(APPEND generate_options --address-map "${arg_ADDRESS_MAP}")
     endif()
 

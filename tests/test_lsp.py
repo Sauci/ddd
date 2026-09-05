@@ -3113,3 +3113,129 @@ class TestOfferingAnIdentity:
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         assert [entry for entry in offered if "id" in entry["title"]] == []
+
+
+class TestFrameLengths:
+    def test_a_negative_length_cannot_be_followed(self) -> None:
+        """``read(-1)`` reads to the end of the stream, which on a live pipe is never."""
+        stream = io.BytesIO(b"Content-Length: -1\r\n\r\n{}")
+        with pytest.raises(ProtocolError, match="-1"):
+            read_message(stream)
+
+
+class TestSymlinkedWorkspace:
+    def test_a_document_opened_through_a_symlink_is_covered_by_its_build(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader resolves every path it reads; the client's path may be a symlink to it."""
+        from ddd.build_info import BuildInfo
+
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        link = tmp_path / "link"
+        link.symlink_to(real, target_is_directory=True)
+        info = BuildInfo(project=(real / "p.ddd.json").as_posix())
+        found = navigation.workspaces([info], link / "a.ddd.json")
+        assert [len(workspace.components) for workspace in found] == [2]
+
+
+class TestWorkspaceFolders:
+    def test_the_folder_containing_the_document_bounds_the_search(self, tmp_path: Path) -> None:
+        """A multi-root workspace: the project lives in the second folder, not the first."""
+        other = tmp_path / "other"
+        other.mkdir()
+        home = tmp_path / "home"
+        write_tree(
+            home,
+            {
+                "p.ddd.json": project("P", "components/a.ddd.json"),
+                "components/a.ddd.json": component("A", declare("local", "Deep")),
+            },
+        )
+        server = server_module.Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        server._initialise({"workspaceFolders": [{"uri": other.as_uri()}, {"uri": home.as_uri()}]})
+        found = server._projects_of(home / "components" / "a.ddd.json")
+        assert [workspace.name for workspace in found] == ["P"]
+        # A document under no folder at all falls back to the first, as before.
+        assert server._root_for(Path("/nowhere/x.ddd.json")) == other
+
+
+class TestUriHosts:
+    def test_a_host_is_kept(self) -> None:
+        """``file://server/share/...`` is how a client spells a network share."""
+        found = server_module.uri_to_path("file://myserver/share/p.ddd.json")
+        assert found == Path("//myserver/share/p.ddd.json")
+
+    def test_localhost_is_no_host(self) -> None:
+        found = server_module.uri_to_path("file://localhost/tmp/p.ddd.json")
+        assert found == Path("/tmp/p.ddd.json")
+
+
+class TestErasingADuplicatedKey:
+    def test_a_key_stated_twice_is_cut_where_it_is_written(self) -> None:
+        """The parsed object keeps a key's first position; the text keeps its last. The
+        neighbours have to be read off the text, or the cut runs backwards."""
+        from ddd.lsp.edits import _erase
+        from ddd.lsp.ranges import Document
+
+        text = (
+            '{"component": {"name": "A", "interface": [{"scope": "output", "definition": '
+            '{"name": "Foo", "kind": "measurement", "unit": "V", "datatype": "uint8", '
+            '"unit": "Hz"}}]}}'
+        )
+        edit = _erase(Document(text), "component.interface[0].definition", "unit")
+        assert edit is not None
+        start, end = edit["range"]["start"], edit["range"]["end"]
+        assert (start["line"], start["character"]) < (end["line"], end["character"])
+
+
+class TestWhatAReconcileActionSettles:
+    def test_a_storage_mismatch_is_not_claimed_by_an_interface_fix(self, tmp_path: Path) -> None:
+        """The reconcile actions carry interface keys; a disagreement about the a2l
+        presentation is not settled by any of them and must not be marked as if it were."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", a2l={"format": "%5.2"})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="1/min", a2l={"format": "%8.0"})
+                ),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        consumer = tmp_path / "b.ddd.json"
+        span = Document(consumer.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition"
+        )
+        reported = [{"code": "definition-mismatch"}, {"code": "storage-mismatch"}]
+        writer = io.BytesIO()
+        server_module.Server(
+            framed(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 14,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": consumer.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": reported},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"], "the unit disagreement is still offered a fix"
+        for action in answer["result"]:
+            assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]

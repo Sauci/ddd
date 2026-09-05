@@ -951,3 +951,48 @@ class TestDiagnosticPlumbing:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.severity is Severity.ERROR
         assert diagnostic.notes == (("why", None),)
+
+
+class TestBrokenInitPointers:
+    def test_a_wrong_typed_element_of_a_nested_init_is_reported_without_crashing(
+        self, tree: Path
+    ) -> None:
+        """pydantic tries every branch of the init union and names each one in the location;
+        those names are not keys of the document, and a sort key built from them must not
+        compare a list index with a branch name."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "V", kind="value_block", dimensions=[1, 2], init=[[1, "bad"]]),
+                ),
+            },
+        )
+        listed = bag.sorted
+        assert listed and {diagnostic.check for diagnostic in listed} == {"schema"}
+        pointers = [diagnostic.location.pointer for diagnostic in listed if diagnostic.location]
+        assert pointers
+        assert not any(pointer.endswith((".bool", ".int", ".float")) for pointer in pointers)
+
+
+class TestTheA2lClosure:
+    def test_an_object_pulled_into_the_a2l_by_a_reference_is_checked_for_dimensions(
+        self, tree: Path
+    ) -> None:
+        """The a2l backend pulls an axis's input into the file whatever its own export says;
+        the dimension warning has to follow the same closure, not the object's own flag."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "M2", "uint8", dimensions=[2, 2, 2, 2], a2l={"export": False}),
+                    declare("local", "Ax2", "uint16", kind="axis", size=4, input="M2"),
+                ),
+            },
+        )
+        assert "a2l-unrepresentable" in checks(bag)
+        assert "'M2' has 4 dimensions" in messages(bag)

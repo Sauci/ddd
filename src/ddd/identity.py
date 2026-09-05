@@ -57,8 +57,10 @@ def new_id() -> str:
     return "".join(secrets.choice(OBJECT_ID_ALPHABET) for _ in range(OBJECT_ID_LENGTH))
 
 
-def _pointers_needing_an_id(document: Document) -> list[str]:
-    """The ``...definition.name`` pointer of every producing declaration that has no id.
+def _unstamped(document: Document) -> list[tuple[str, bool]]:
+    """Every producing declaration without an id: its ``...definition`` pointer, and whether
+    it states the key as ``null`` - which the dump writes for an unstamped object, and which
+    ``missing-id`` reports exactly as it reports the key's absence.
 
     A component file is the only kind that declares data objects, so a file of any other kind
     yields nothing and is left untouched rather than reported: ``ddd id`` is pointed at a
@@ -78,10 +80,18 @@ def _pointers_needing_an_id(document: Document) -> list[str]:
         if not isinstance(entry, dict) or entry.get("scope") not in _PRODUCING:
             continue
         definition = entry.get("definition")
-        if not isinstance(definition, dict) or "id" in definition or "name" not in definition:
+        if not isinstance(definition, dict) or "name" not in definition:
             continue
-        wanted.append(f"component.interface[{index}].definition.name")
+        if "id" in definition and definition["id"] is not None:
+            continue
+        wanted.append((f"component.interface[{index}].definition", "id" in definition))
     return wanted
+
+
+def _newline_at(text: str, offset: int) -> str:
+    """How the line ``offset`` sits on ends, so a line added after it ends the same way."""
+    end = text.find("\n", offset)
+    return "\r\n" if end > 0 and text[end - 1] == "\r" else "\n"
 
 
 def _indent_of_line_at(text: str, offset: int) -> str:
@@ -105,13 +115,18 @@ class Insertion:
     """
 
     pointer: str
-    """The ``...definition.name`` pointer the new key follows."""
+    """The ``...definition.name`` pointer the new key follows, or the ``...definition.id``
+    pointer of the ``null`` the new value replaces."""
 
     offset: int
     """Where it goes in the document's text, for a caller rewriting the whole file."""
 
     text: str
-    """The key itself, with the comma and the indent of the line it joins."""
+    """The key itself, with the comma and the indent of the line it joins - or, replacing a
+    ``null``, the quoted id alone."""
+
+    length: int = 0
+    """How many characters at ``offset`` the text replaces: the ``null``, or nothing."""
 
 
 def insertions(document: Document) -> list[Insertion]:
@@ -121,12 +136,17 @@ def insertions(document: Document) -> list[Insertion]:
     is why a caller applies the answer it was given rather than asking again.
     """
     found = []
-    for pointer in _pointers_needing_an_id(document):
-        span = document.value_span_of(pointer)
+    for definition, stated_null in _unstamped(document):
+        target = f"{definition}.id" if stated_null else f"{definition}.name"
+        span = document.value_span_of(target)
         if span is None:
             continue
-        indent = _indent_of_line_at(document.text, span[1])
-        found.append(Insertion(pointer, span[1], f',\n{indent}"id": "{new_id()}"'))
+        if stated_null:
+            found.append(Insertion(target, span[0], f'"{new_id()}"', span[1] - span[0]))
+        else:
+            indent = _indent_of_line_at(document.text, span[1])
+            newline = _newline_at(document.text, span[1])
+            found.append(Insertion(target, span[1], f',{newline}{indent}"id": "{new_id()}"'))
     return found
 
 
@@ -138,24 +158,26 @@ def assign(path: Path) -> int:
     loader is what has something to say about a description, and this command must not
     rewrite one it could not read.
     """
-    from ddd.lsp.ranges import read
+    from ddd.lsp.ranges import Document
 
-    document = read(path, {})
+    # The bytes as they are, not the text ``read`` would normalise them into: the document is
+    # scanned with every line ending as written, so an edit lands between the same bytes it
+    # was computed against, and writing the rest back unchanged is what turns a command that
+    # edits hand-authored sources into a one line diff per object.
+    try:
+        raw = path.read_bytes()
+        text = raw.decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return UNREADABLE
+    document = Document(text)
     if document.data is None:
         return UNREADABLE
     wanted = insertions(document)
     if not wanted:
         return 0
-    text = document.text
     # Back to front, so an insertion never moves the offset of the one before it.
     for entry in reversed(wanted):
-        text = f"{text[: entry.offset]}{entry.text}{text[entry.offset :]}"
-    # What the file was encoded and ended with, which ``read`` has already normalised away:
-    # it decodes with utf-8-sig and with universal newlines, so by the time the text is here
-    # a byte order mark is gone and every line ends in "\n". Writing the defaults back would
-    # drop the mark and rewrite every line ending - turning a one line diff into a whole file
-    # one, which is the only thing making a command that edits hand-authored sources safe.
-    raw = path.read_bytes()
-    encoding = "utf-8-sig" if raw.startswith(codecs.BOM_UTF8) else "utf-8"
-    path.write_text(text, encoding=encoding, newline="\r\n" if b"\r\n" in raw else "\n")
+        text = f"{text[: entry.offset]}{entry.text}{text[entry.offset + entry.length :]}"
+    mark = codecs.BOM_UTF8 if raw.startswith(codecs.BOM_UTF8) else b""
+    path.write_bytes(mark + text.encode("utf-8"))
     return len(wanted)

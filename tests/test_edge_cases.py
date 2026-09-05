@@ -320,8 +320,9 @@ class TestMismatchMessages:
 
 
 class TestBackendEdges:
-    def test_a_curve_whose_axis_is_missing_gets_no_axis_descr(self, tree: Path) -> None:
-        """Only reachable with a relaxed severity, but the backend must not crash."""
+    def test_a_curve_whose_axis_is_missing_is_left_out(self, tree: Path) -> None:
+        """Only reachable with a relaxed severity: a CURVE without its AXIS_DESCR would be an
+        invalid file rather than a smaller one, so the record is not written at all."""
         dictionary, _ = run_analysis(
             tree,
             {
@@ -334,7 +335,7 @@ class TestBackendEdges:
         )
         assert dictionary is not None
         model = build_a2l_model(dictionary, A2lOptions(), "test")
-        assert model.characteristics[0].axis_descrs == ()
+        assert model.characteristics == ()
 
     def test_one_enum_with_two_units_shares_its_value_table(self, tree: Path) -> None:
         enum = {"kind": "enum", "name": "E", "enumerators": {"A": 0, "B": 1}}

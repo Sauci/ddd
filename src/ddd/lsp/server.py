@@ -19,6 +19,7 @@ making yet.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -81,7 +82,12 @@ def uri_to_path(uri: str) -> Path:
     document called ``a%20b.ddd.json`` came back as ``a b.ddd.json``, and the diagnostics
     published for it went out under a uri the client could match to nothing on screen.
     """
-    return Path(url2pathname(urlparse(uri).path))
+    parsed = urlparse(uri)
+    path = url2pathname(parsed.path)
+    if parsed.netloc and parsed.netloc != "localhost":
+        # file://server/share/...: a network share, whose host is the start of the path.
+        path = f"//{parsed.netloc}{path}"
+    return Path(path)
 
 
 def _field[T](value: Any, wanted: type[T], named: str) -> T:
@@ -111,7 +117,8 @@ class Server:
     ) -> None:
         self.reader = reader
         self.writer = writer
-        self.root = root or Path.cwd()
+        self.roots: list[Path] = [root or Path.cwd()]
+        """The workspace folders, first one first; a multi-root workspace has several."""
         self.build_directories = list(build_directories)
         self._published: set[Path] = set()
         self._announced: tuple[tuple[str, str], ...] | None = None
@@ -221,14 +228,33 @@ class Server:
     def _builds_now(self) -> list[BuildInfo]:
         """The build records, found once per refresh rather than once per keypress."""
         if self._builds is None:
-            self._builds = discover(self.root, self.build_directories)
+            self._builds = [
+                info for root in self.roots for info in discover(root, self.build_directories)
+            ]
         return self._builds
+
+    @property
+    def root(self) -> Path:
+        """The first workspace folder: where the build records are looked for by default."""
+        return self.roots[0]
+
+    def _root_for(self, document: Path) -> Path:
+        """The workspace folder the document is under, else the first one.
+
+        What bounds the search for a project above the document: with several folders open,
+        the one that does not contain the file would stop that search at its first step.
+        """
+        resolved = document.resolve()
+        for root in self.roots:
+            if root.resolve() in resolved.parents:
+                return root
+        return self.roots[0]
 
     def _projects_of(self, document: Path) -> list[Workspace]:
         """The projects containing a document, loaded once per refresh."""
         found = self._projects.get(document)
         if found is None:
-            found = workspaces(self._builds_now(), document, self.root)
+            found = workspaces(self._builds_now(), document, self._root_for(document))
             self._projects[document] = found
         return found
 
@@ -255,7 +281,9 @@ class Server:
         # it produces one finding, "file does not exist", published against a file nobody can
         # open - and the thing actually wrong is the record, which the log has just said.
         reports = collect(
-            [info for info in builds if Path(info.project).is_file()], [document], self.root
+            [info for info in builds if Path(info.project).is_file()],
+            [document],
+            self._root_for(document),
         )
         # Only files with something to say, plus the ones that had something to say last time
         # and no longer do - those need an empty list to withdraw what is on screen.
@@ -428,12 +456,12 @@ class Server:
         return offered
 
     def _initialise(self, params: dict[str, Any]) -> None:
-        """Take the workspace root from whichever of the two ways the client offers it."""
+        """Take the workspace folders from whichever of the two ways the client offers them."""
         folders = params.get("workspaceFolders") or []
         if folders:
-            self.root = uri_to_path(folders[0]["uri"])
+            self.roots = [uri_to_path(folder["uri"]) for folder in folders]
         elif params.get("rootUri"):
-            self.root = uri_to_path(params["rootUri"])
+            self.roots = [uri_to_path(params["rootUri"])]
 
     def _capabilities(self) -> dict[str, Any]:
         return {
@@ -464,6 +492,10 @@ def serve(build_directories: Sequence[Path] = ()) -> int:
     """Run a server on this process's stdin and stdout.
 
     The binary buffers, because the protocol counts bytes; and stdout is the wire, which is
-    why nothing in DDD prints there except through :func:`write_message`.
+    why nothing in DDD prints there except through :func:`write_message`. A plugin, or a
+    library it imports, is under no such discipline, so the wire is taken before anything
+    else can write to it and ``sys.stdout`` points at stderr for the rest of the process.
     """
-    return Server(sys.stdin.buffer, sys.stdout.buffer, build_directories=build_directories).run()
+    wire = sys.stdout.buffer
+    with contextlib.redirect_stdout(sys.stderr):
+        return Server(sys.stdin.buffer, wire, build_directories=build_directories).run()

@@ -30,6 +30,7 @@ from ddd.models.common import format_number
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
 from ddd.models.types import ExternalType
+from ddd.plugins import PluginError
 
 BARS: Final = "▁▂▃▄▅▆▇█"
 """Eight levels, which is as much as a proportional font renders evenly."""
@@ -87,7 +88,12 @@ def resolve(projects: Sequence[Workspace]) -> DataDictionary | None:
     variable is on top of that helps nobody.
     """
     for workspace in projects:
-        return analyze(workspace, DiagnosticBag())
+        try:
+            return analyze(workspace, DiagnosticBag())
+        except PluginError:
+            # A plugin that raises, or settings that do not validate: the findings of the last
+            # save already say so, and a hover that answers nothing beats a server that exits.
+            return None
     return None
 
 

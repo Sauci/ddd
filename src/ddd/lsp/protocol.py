@@ -72,6 +72,10 @@ def read_message(stream: IO[bytes]) -> dict[str, Any] | None:
             f"the stream cannot be re-synchronised"
         )
         raise ProtocolError(msg) from None
+    if length < 0:
+        # read(-1) reads to the end of the stream, which on a live pipe is never.
+        msg = f"Content-Length is negative: {length}; the stream cannot be re-synchronised"
+        raise ProtocolError(msg)
     body = stream.read(length)
     try:
         decoded = json.loads(body.decode("utf-8"))

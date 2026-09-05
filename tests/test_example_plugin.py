@@ -294,4 +294,39 @@ class TestTheHeader:
         assert header.index("{ 3u, 1u, sizeof(X), &X }") < header.index(
             "{ 20u, 2u, sizeof(Y), &Y }"
         )
-        assert "Z" not in header.split("DDD_LAYOUT_ENTRIES")[1]
+        assert "Z" not in header.split("ddd_layout_entries[] = {")[1]
+
+
+class TestArchivedBaselines:
+    def test_two_objects_sharing_a_key_in_a_baseline_dump_are_reported_not_collapsed(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A dump is read back, not re-checked; a collision in it must not drop an object."""
+        old = delivery(tree, "old", stamped("X", 3, 1), stamped("Y", 3, 1, datatype="uint16"))
+        quiet = ["-W", "layout/duplicate-key=ignore", "-W", "missing-id=ignore"]
+        assert main(["dump", old, *quiet]) == EXIT_OK
+        baseline = tree / "baseline.json"
+        baseline.write_text(capsys.readouterr().out, encoding="utf-8")
+        new = delivery(tree, "new", stamped("Y", 3, 1, datatype="uint32"))
+        main(["compare", str(baseline), new, "-W", "missing-id=ignore"])
+        err = capsys.readouterr().err
+        assert "layout/duplicate-key" in err
+        assert "'X'" in err and "'Y'" in err
+        assert "baseline" in err
+
+
+class TestConditionalEntries:
+    def test_an_entry_follows_the_condition_of_its_object(self, tree: Path) -> None:
+        """The c templates compile the object out; the table must not name it then."""
+        root = delivery(
+            tree, "p", stamped("X", 3, 1, condition="defined(FEAT_X)"), stamped("Y", 4, 1)
+        )
+        out = tree / "out"
+        assert (
+            main(["generate", "layout", root, "-o", str(out), "-W", "missing-id=ignore"]) == EXIT_OK
+        )
+        header = (out / "ddd_layout.h").read_text(encoding="utf-8")
+        entry = header.index("sizeof(X)")
+        assert "#if defined(FEAT_X)" in header[:entry]
+        assert "#endif" in header[entry:]
+        assert header.index("#endif", entry) < header.index("sizeof(Y)")

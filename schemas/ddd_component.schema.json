@@ -130,6 +130,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {
@@ -479,6 +480,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {
@@ -968,6 +970,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {
@@ -1171,6 +1174,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {
@@ -1539,6 +1543,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {
@@ -1860,6 +1865,7 @@
         "section": {
           "anyOf": [
             {
+              "pattern": "^[A-Za-z0-9_.$]+$",
               "type": "string"
             },
             {

@@ -13,7 +13,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Final
 
 from ddd.compare import ComparedField, differing, spell_out
 from ddd.diagnostics import DiagnosticBag, Location
@@ -269,7 +269,9 @@ class Variable:
 
     @property
     def consumers(self) -> tuple[str, ...]:
-        return tuple(ref.component_name for ref in self.declarations if ref.scope is Scope.INPUT)
+        return tuple(
+            sorted(ref.component_name for ref in self.declarations if ref.scope is Scope.INPUT)
+        )
 
     @property
     def exported(self) -> bool:
@@ -499,8 +501,16 @@ class _Analysis:
 
         structured = [(name, refs) for name, refs in resolved if self._is_structured(name)]
         plain = [(name, refs) for name, refs in resolved if not self._is_structured(name)]
+        reaching_a2l = self._a2l_closure(resolved)
         variables = [
-            self._build_variable(name, refs, owners[name], self._effective[name], shapes[name])
+            self._build_variable(
+                name,
+                refs,
+                owners[name],
+                self._effective[name],
+                shapes[name],
+                reaches_a2l=name in reaching_a2l,
+            )
             for name, refs in plain
         ]
         instances = [
@@ -514,24 +524,7 @@ class _Analysis:
         kept = {(ref.component_name, ref.index) for _, refs in resolved for ref in refs}
         known = self._enums.by_name
 
-        # The first mapping keeps a relaxed unknown block as written; the second adds every
-        # plugin's settings with their defaults, so that a plugin whose settings the project
-        # did not state still reaches the dictionary with them.
-        settings = {
-            name: plugin.project_model.model_validate(
-                workspace.project_extensions.get(name, {})
-            ).model_dump(mode="json")
-            for name, plugin in sorted(self._plugins.items())
-            if plugin.project_model is not None
-        }
-        extensions = dict(
-            sorted(
-                {
-                    **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
-                    **settings,
-                }.items()
-            )
-        )
+        extensions = resolve_blocks(self._plugins, workspace.project_extensions, on_project=True)
         dictionary = DataDictionary(
             name=workspace.name,
             description=workspace.description,
@@ -564,6 +557,28 @@ class _Analysis:
         run_check_hooks(workspace.plugins, dictionary, self._bag, workspace.locate)
         return dictionary
 
+    def _a2l_closure(self, resolved: list[tuple[str, list[DeclarationRef]]]) -> set[str]:
+        """The objects the a2l carries: the exported ones and, transitively, what they refer to.
+
+        The closure the a2l backend takes over the dictionary - an exported curve pulls its
+        axis in, and the axis the measurement it is indexed by, whatever their own ``export``
+        says, because a reference to an absent object would be an invalid file rather than a
+        smaller one - computed here so that a finding about reaching the file asks the question
+        the backend answers.
+        """
+        reached = {
+            name
+            for name, refs in resolved
+            if resolve_export(ref.definition.a2l.export for ref in refs)
+        }
+        pending = list(reached)
+        while pending:
+            for referenced in self._effective[pending.pop()].references.values():
+                if referenced not in reached and referenced in self._effective:
+                    reached.add(referenced)
+                    pending.append(referenced)
+        return reached
+
     def _register_member_enums(self, entry: LoadedType) -> None:
         """An enumeration a member names is one the types header has to declare.
 
@@ -576,8 +591,37 @@ class _Analysis:
             return
         for index, member in enumerate(structure.members):
             if isinstance(member.conversion, EnumConversion):
-                self._register_enum(
-                    member.conversion, entry.location(f"members[{index}].conversion")
+                assert member.datatype is not None
+                location = entry.location(f"members[{index}].conversion")
+                self._register_enum(member.conversion, location, member.datatype)
+                raw_min, raw_max = _member_raw_range(member)
+                self._check_enum_fits(
+                    member.conversion, raw_min, raw_max, member.datatype.value, location
+                )
+
+    def _check_member_limits(self, entry: LoadedType) -> None:
+        """A member's stated limits are held to its storage, as a declaration's are.
+
+        The same finding ``_check_limits`` reports on a definition: limits wider than the
+        datatype and the conversion can represent reach the a2l as a range the calibration
+        tool offers and the storage cannot hold.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for index, member in enumerate(structure.members):
+            if member.limits is None or member.datatype is None:
+                continue
+            assert member.conversion is not None
+            low, high = physical_range(member.conversion, *_member_raw_range(member))
+            if _below(member.limits.min, low) or _above(member.limits.max, high):
+                self._bag.add(
+                    "limits-out-of-range",
+                    f"limits [{format_number(member.limits.min)}, "
+                    f"{format_number(member.limits.max)}] exceed the range "
+                    f"[{format_number(low)}, {format_number(high)}] that "
+                    f"{member.datatype.value} can represent with this conversion",
+                    entry.location(f"members[{index}].limits"),
                 )
 
     def _is_structure(self, named: str) -> bool:
@@ -850,6 +894,7 @@ class _Analysis:
             self._check_member_dimensions(entry)
             self._check_opaque_members(entry)
             self._register_member_enums(entry)
+            self._check_member_limits(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
@@ -1473,48 +1518,17 @@ class _Analysis:
                 ref.location("definition.name"),
             )
 
-        if not ref.scope.is_producer and definition.init is not None:
+        if not ref.scope.is_producer:
             # Reported where the claim is written rather than where it is overruled: the
             # producer may be in a file this author has never opened, and the fix is here.
-            self._bag.add(
-                "consumer-storage",
-                f"'{definition.name}': the initial value is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.init"),
-            )
-
-        if not ref.scope.is_producer and definition.section is not None:
-            self._bag.add(
-                "consumer-storage",
-                f"'{definition.name}': the memory section is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.section"),
-            )
-
-        if not ref.scope.is_producer and definition.raster is not None:
-            self._bag.add(
-                "consumer-raster",
-                f"'{definition.name}': the measurement raster is decided by the component "
-                f"that produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.raster"),
-            )
-
-        if not ref.scope.is_producer and definition.id is not None:
-            self._bag.add(
-                "consumer-identity",
-                f"'{definition.name}': the identity is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.id"),
-            )
-
-        if not ref.scope.is_producer and definition.extensions:
-            self._bag.add(
-                "consumer-extension",
-                f"'{definition.name}': what a plugin knows about the variable is decided by "
-                f"the component that produces the variable, not by '{ref.component_name}', "
-                f"which reads it",
-                ref.location("definition.extensions"),
-            )
+            for key, check, what in _PRODUCER_KEYS:
+                if getattr(definition, key) not in (None, {}):
+                    self._bag.add(
+                        check,
+                        f"'{definition.name}': {what} is decided by the component that "
+                        f"produces the variable, not by '{ref.component_name}', which reads it",
+                        ref.location(f"definition.{key}"),
+                    )
 
         if ref.scope.is_producer and definition.id is None:
             # Info, and optional, because the key is an adoption: a project that has migrated
@@ -1612,7 +1626,7 @@ class _Analysis:
             self._check_enum_values(conversion, location, storage)
             return
         previous, previous_location = known
-        if _enum_key(previous) != _enum_key(conversion):
+        if conversion_identity(previous) != conversion_identity(conversion):
             self._bag.add(
                 "enum-conflict",
                 f"enum '{conversion.name}' is defined with different enumerators",
@@ -2008,6 +2022,8 @@ class _Analysis:
         producer: DeclarationRef | None,
         definition: DataObject,
         shapes: tuple[Shape, WrittenShape],
+        *,
+        reaches_a2l: bool,
     ) -> Variable:
         shape, dimensions = shapes
         reference = producer or refs[0]
@@ -2022,12 +2038,10 @@ class _Analysis:
 
         self._check_unused(name, producer, [ref for ref in refs if ref.scope is Scope.INPUT])
 
-        # Asked of every declaration, not of the producer's: an object the producer kept out
-        # of the a2l is still in it if a consumer asked for it, and it is then still too many
-        # dimensions for a MATRIX_DIM. Reading definition.a2l.export here would say "unstated"
-        # is "not exported", which is backwards.
-        exported = resolve_export(ref.definition.a2l.export for ref in refs)
-        if len(shape) > _A2L_MAX_DIMENSIONS and exported:
+        # Asked of the a2l's own closure rather than of this object's export: an object kept
+        # out of the file is still in it when an exported curve or axis refers to it, and it
+        # is then still too many dimensions for a MATRIX_DIM.
+        if len(shape) > _A2L_MAX_DIMENSIONS and reaches_a2l:
             self._bag.add(
                 "a2l-unrepresentable",
                 f"'{name}' has {len(shape)} dimensions, but the MATRIX_DIM of ASAP2 1.6.1 "
@@ -2178,6 +2192,27 @@ class _Analysis:
                 )
 
 
+_PRODUCER_KEYS: Final = (
+    ("init", "consumer-storage", "the initial value"),
+    ("section", "consumer-storage", "the memory section"),
+    ("raster", "consumer-raster", "the measurement raster"),
+    ("id", "consumer-identity", "the identity"),
+    ("extensions", "consumer-extension", "what a plugin knows about the variable"),
+)
+"""The keys only a producing declaration may state, with the check a consumer stating one
+earns and how the finding names the key. One rule, five keys: what an object starts as,
+where it lives, which event updates it, which earlier delivery it continues, and what a
+plugin knows about it are all decided by the component that produces it."""
+
+
+def _member_raw_range(member: Member) -> tuple[float, float]:
+    """The raw values a member's storage holds: its bitfield's, or its datatype's."""
+    assert member.datatype is not None
+    if member.bits is not None:
+        return bitfield_range(member.datatype, member.bits)
+    return (member.datatype.raw_min, member.datatype.raw_max)
+
+
 def _did_you_mean(name: str, candidates: Sequence[str], *, cutoff: float) -> str:
     """`` - did you mean 'Nm'?``: the suggestion suffix, empty when nothing is close enough.
 
@@ -2195,10 +2230,6 @@ def _or_list(values: tuple[str, ...]) -> str:
 
 def _condition(condition: str | None) -> str:
     return f"'{condition}'" if condition else "no condition"
-
-
-def _enum_key(conversion: EnumConversion) -> tuple[tuple[str, int], ...]:
-    return tuple((e.name, e.value) for e in conversion.enumerators)
 
 
 def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...]]:

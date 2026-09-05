@@ -8,7 +8,6 @@ from typing import Any
 
 from ddd.backends.c.literals import (
     c_type,
-    declarator_suffix,
     doc_comment,
     guard_name,
     initializer_of,
@@ -24,7 +23,7 @@ from ddd.ir import (
     ResolvedObject,
     ResolvedStruct,
 )
-from ddd.models import Datatype, EnumConversion, ObjectKind, Scope
+from ddd.models import Datatype, EnumConversion, ObjectKind, Scope, format_shape
 
 UNRESOLVED_GROUP = "<unresolved>"
 
@@ -422,7 +421,7 @@ def _struct_view(entry: ResolvedStruct) -> StructView:
                 name=member.name,
                 c_type=_member_type(member, C_TYPE.__getitem__),
                 datatype=_member_type(member, lambda datatype: datatype.value),
-                array_suffix=declarator_suffix(member.dimensions),
+                array_suffix=format_shape(member.dimensions),
                 bits=member.bits,
                 comment=sanitize_comment(member.description) or None,
             )
@@ -472,38 +471,47 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
     It has no initialiser: what a structure starts as is written by the code that starts it,
     which is why the contract refuses ``init`` on one.
     """
-    return ObjectView(
-        name=entry.name,
-        kind=entry.kind,
+    return _view(
+        entry,
         c_type=entry.type,
         datatype=entry.type,
-        # The spelled shape, so an array dimensioned by a constant is declared by its name.
-        array_suffix=declarator_suffix(entry.spelled_shape),
-        constant=entry.is_calibration,
-        volatile=entry.volatile,
         initializer=None,
         comment=sanitize_comment(entry.description) or None,
-        condition=entry.condition,
-        owner=entry.owner or UNRESOLVED_GROUP,
-        consumers=entry.consumers,
-        section=entry.section,
-        extensions=entry.extensions,
     )
 
 
 def _object_view(entry: ResolvedObject) -> ObjectView:
+    # The initialiser lays its braces out over the numeric shape, whatever the spelling.
+    return _view(
+        entry,
+        c_type=c_type(entry),
+        datatype=entry.datatype.value,
+        initializer=initializer_of(entry),
+        comment=doc_comment(entry),
+    )
+
+
+def _view(
+    entry: ResolvedObject | ResolvedInstance,
+    *,
+    c_type: str,
+    datatype: str,
+    initializer: str | None,
+    comment: str | None,
+) -> ObjectView:
+    """What a plain object and a structured variable share, which is everything but the four
+    values that say what the thing is."""
     return ObjectView(
         name=entry.name,
         kind=entry.kind,
-        c_type=c_type(entry),
-        datatype=entry.datatype.value,
-        # The spelled shape, so an array dimensioned by a constant is declared by its name;
-        # the initialiser below still lays its braces out over the numeric shape.
-        array_suffix=declarator_suffix(entry.spelled_shape),
+        c_type=c_type,
+        datatype=datatype,
+        # The spelled shape, so an array dimensioned by a constant is declared by its name.
+        array_suffix=format_shape(entry.spelled_shape),
         constant=entry.is_calibration,
         volatile=entry.volatile,
-        initializer=initializer_of(entry),
-        comment=doc_comment(entry),
+        initializer=initializer,
+        comment=comment,
         condition=entry.condition,
         owner=entry.owner or UNRESOLVED_GROUP,
         consumers=entry.consumers,

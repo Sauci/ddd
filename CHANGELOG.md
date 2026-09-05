@@ -8,7 +8,7 @@ The check identifiers, the command names and the json file formats are the tool'
 interface; anything else - the layout of the generated c, the wording of a diagnostic - is
 not, and the templates a project provides are its own.
 
-## Unreleased
+## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that
   need every component of a project, derived from the registry the way the language server

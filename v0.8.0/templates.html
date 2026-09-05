@@ -1,0 +1,866 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Templates &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=486e5634"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Command line interface" href="command_line_interface.html" />
+    <link rel="prev" title="Generated artefacts" href="generated_artefacts.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Templates</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-templates-belong-to-the-project">Why the templates belong to the project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-a2l-file-is-not-templated">The a2l file is not templated</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-jinja2">Why jinja2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-template-directory-is-read">How the template directory is read</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-template-receives">What a template receives</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-model">The model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-variable">A variable</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-component-header">A component header</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#helpers-and-what-a-subdirectory-is-for">Helpers, and what a subdirectory is for</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-mistake-in-a-template-stops-the-run">A mistake in a template stops the run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-files-reach-the-disk">How the files reach the disk</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-example-templates">The example templates</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Templates</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/templates.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="templates">
+<h1>Templates<a class="headerlink" href="#templates" title="Link to this heading"></a></h1>
+<p>The c code DDD generates is rendered from templates the <em>project</em> provides. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span>
+<span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">all</span></code> therefore take a required <code class="docutils literal notranslate"><span class="pre">-t/--template-dir</span></code>: there is no
+built-in default and there is no fallback, so a run that leaves the option out is a usage
+mistake rather than a run that silently produces somebody else’s idea of c code. Only <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">generate</span> <span class="pre">a2l</span></code> goes without, because it renders no c at all.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
+usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
+                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
+                        [--const-inputs] [--byte-order {little,big}]
+                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        project
+ddd generate all: error: the following arguments are required: -t/--template-dir
+</pre></div>
+</div>
+<section id="why-the-templates-belong-to-the-project">
+<h2>Why the templates belong to the project<a class="headerlink" href="#why-the-templates-belong-to-the-project" title="Link to this heading"></a></h2>
+<p>What a variable is called, what type it has, which component owns it and which components
+read it - all of that follows from the description files, and DDD resolves and checks it.
+None of what a c file <em>looks like</em> follows from it. Whether the file opens with a banner and
+what that banner says, what a comment above a declaration looks like, whether the
+include guard is <code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code> or a name your coding standard derives from the module
+number, whether the file is called <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> or <code class="docutils literal notranslate"><span class="pre">proj_data.c</span></code>, in which order the
+sections appear, how deep the indentation is - every one of those is a house style, settled
+per project, usually by a coding standard that is older than DDD and applies to the
+hand-written code as well.</p>
+<p>A generator that decided them would impose the habits of the project it was first written
+for on every project after it. The consequence is familiar: either the generated files are
+patched after each run, which makes regeneration unsafe, or the generator grows one option
+per habit until it carries a flag for the guard, one for the comment style, one for the
+banner text and one for each file name. DDD instead supplies the resolved data and lets the
+project write the file, so a project that wants a particular documentation convention writes
+it, a project that wants its MISRA deviation record above every <code class="docutils literal notranslate"><span class="pre">volatile</span></code> writes that, and
+neither has to argue
+with the tool or with the other.</p>
+<p>What stays with DDD is everything that is not a matter of taste: reading and validating the
+descriptions, resolving producers against consumers, computing shapes and limits, ordering
+the objects so that a diff stays readable, and defusing any text that ends up inside a
+comment. The templates only spell out the result. This is also why there is no option for
+naming the generated files: a project renames one by renaming its template, which is one
+mechanism instead of a second one bolted on top of it.</p>
+</section>
+<section id="the-a2l-file-is-not-templated">
+<h2>The a2l file is not templated<a class="headerlink" href="#the-a2l-file-is-not-templated" title="Link to this heading"></a></h2>
+<p>Only the c backend takes a template directory. The a2l generator is internal and has no
+template option at all, because the structure of an ASAP2 file is dictated by ASAM rather
+than by a project: its readers are measurement and calibration tools that implement the
+standard, and a house style in that file is not a preference, it is a file the tool refuses.
+The distinction is the whole argument on this page in one line - the c code is read by your
+developers, so your project decides how it reads; the a2l file is read by a program, so the
+standard decides. See <a class="reference internal" href="generated_artefacts.html"><span class="doc">generated artefacts</span></a> for what the a2l
+backend produces.</p>
+</section>
+<section id="why-jinja2">
+<h2>Why jinja2<a class="headerlink" href="#why-jinja2" title="Link to this heading"></a></h2>
+<p>The templates are <a class="reference external" href="https://jinja.palletsprojects.com/">jinja2</a> templates. It is the
+template engine most people who will edit them have already met, it is documented well
+enough that nobody has to read DDD’s source to use it, and it is text-oriented rather than
+markup-oriented: a template is the c file you want, with holes in it, which is what makes a
+template reviewable by the same people who review the c code.</p>
+<p>The environment DDD renders in is set up for source files rather than for web pages.
+Autoescaping is off, since escaping html entities into c would corrupt it; <code class="docutils literal notranslate"><span class="pre">trim_blocks</span></code>
+and <code class="docutils literal notranslate"><span class="pre">lstrip_blocks</span></code> are on, so a <code class="docutils literal notranslate"><span class="pre">{%</span> <span class="pre">for</span> <span class="pre">%}</span></code> on a line of its own does not leave a blank
+line and an indented <code class="docutils literal notranslate"><span class="pre">{%</span> <span class="pre">if</span> <span class="pre">%}</span></code> does not leave its indentation behind; the trailing newline
+of a template is kept, and a rendered file that does not end in one gets one added.
+Undefined values are strict, which is the subject of a section of its own below.</p>
+</section>
+<section id="how-the-template-directory-is-read">
+<h2>How the template directory is read<a class="headerlink" href="#how-the-template-directory-is-read" title="Link to this heading"></a></h2>
+<p>Four rules decide what is rendered and what the result is called. They are deliberately
+mechanical, because a build system has to derive the set of generated files from the template
+directory alone, without running the tool first - which is what lets <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> in the
+<a class="reference internal" href="build_integration.html"><span class="doc">cmake integration</span></a> declare the outputs of the generation step
+before it has ever run.</p>
+<ol class="arabic simple">
+<li><p>Every <code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> file directly inside the template directory is rendered.</p></li>
+<li><p>The generated file is named like its template without the <code class="docutils literal notranslate"><span class="pre">.jinja2</span></code> extension, so
+<code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> produces <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>. The template a given file came out of
+is therefore always identifiable from the file name alone.</p></li>
+<li><p>A template whose name starts with an underscore is a <strong>helper</strong>: it produces no file of
+its own and exists to be imported by the others.</p></li>
+<li><p>A template whose name contains <code class="docutils literal notranslate"><span class="pre">{component}</span></code> is rendered <strong>once per component</strong>, with
+the placeholder replaced by the component name.</p></li>
+</ol>
+<p>The example directory shipped with DDD contains one template of each kind:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>templates/
+    _macros.jinja2
+    ddd_globals.c.jinja2
+    ddd_globals.h.jinja2
+    ddd_types.h.jinja2
+    {component}.h.jinja2
+</pre></div>
+</div>
+<p>Applied to the demonstration project in <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>, which is made of the four
+components <code class="docutils literal notranslate"><span class="pre">Controller</span></code>, <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code>, <code class="docutils literal notranslate"><span class="pre">UserInterface</span></code> and <code class="docutils literal notranslate"><span class="pre">EventLogger</span></code>, those five
+templates produce the following:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 32.0%" />
+<col style="width: 68.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>template</p></th>
+<th class="head"><p>generated file</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code></p></td>
+<td><p>nothing - a helper, imported by the four others</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.h.jinja2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h.jinja2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{component}.h.jinja2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Controller.h</span></code>, <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code>, <code class="docutils literal notranslate"><span class="pre">UserInterface.h</span></code>, <code class="docutils literal notranslate"><span class="pre">EventLogger.h</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+wrote       build/gen/ddd_globals.c (created)
+wrote       build/gen/ddd_globals.h (created)
+wrote       build/gen/ddd_types.h (created)
+wrote       build/gen/Controller.h (created)
+wrote       build/gen/SensorHub.h (created)
+wrote       build/gen/UserInterface.h (created)
+wrote       build/gen/EventLogger.h (created)
+wrote       build/gen/DemoDevice.a2l (created)
+</pre></div>
+</div>
+<p>The a2l file at the end comes from the other backend and is unaffected by the templates. A
+directory in which nothing is left to render - one holding only helpers, for instance - is
+refused with a message saying so, rather than quietly producing no c code at all.</p>
+</section>
+<section id="what-a-template-receives">
+<h2>What a template receives<a class="headerlink" href="#what-a-template-receives" title="Link to this heading"></a></h2>
+<p>A template is rendered with a small, fixed context, and everything else is reached by
+traversing it. All of it is a c-shaped view of the resolved <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> - the same data <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> publishes, with the resolving already
+done: producers matched, limits derived, conditions validated, objects ordered. A template
+reads answers, it never computes them; a tool that wants the data without the c slant
+reads the dictionary itself.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">model</span></code></dt><dd><p>The whole project, prepared for c. Always present.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">filename</span></code></dt><dd><p>The name of the file this rendering produces, relative to the output directory:
+<code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>, or <code class="docutils literal notranslate"><span class="pre">Controller.h</span></code> for a per-component rendering. It is passed in
+rather than left to the template to reconstruct, so that a banner can print the name of
+the file it is in without knowing which of the two rules produced it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">header</span></code></dt><dd><p>Present <strong>only</strong> in a <code class="docutils literal notranslate"><span class="pre">{component}</span></code> template: the component being rendered. A template
+without the placeholder never sees it, which is what makes the mistake of iterating over
+the components inside a per-component template fail immediately instead of silently
+writing every component into every file.</p>
+</dd>
+</dl>
+<section id="the-model">
+<h3>The model<a class="headerlink" href="#the-model" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">model</span></code> carries the project as flat sequences, already ordered and already safe to print:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>attribute</p></th>
+<th class="head"><p>what it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.project</span></code></p></td>
+<td><p>The project name, or the component name when a single component is generated.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.source</span></code></p></td>
+<td><p>The name of the description file the dictionary was read from, for the banner.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.generator</span></code></p></td>
+<td><p>The tool and version that produced the file, such as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">0.8.0</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.constants</span></code></p></td>
+<td><p>One entry per <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a>, in name order, each
+with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>; empty when the project declares
+none. Offered so the template can emit them however the house style spells one - the
+example templates write each as a <code class="docutils literal notranslate"><span class="pre">#define</span></code> in the types header - because an array
+dimensioned by a constant renders its <code class="docutils literal notranslate"><span class="pre">array_suffix</span></code> with the constant’s <em>name</em>,
+which therefore has to be declared before the first array that uses it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
+<td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
+enumerator has <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.structures</span></code></p></td>
+<td><p>One entry per <a class="reference internal" href="file_formats/types.html"><span class="doc">declared structure</span></a>, each after every
+structure it nests, with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.comment</span></code> and <code class="docutils literal notranslate"><span class="pre">.members</span></code>. A member has
+<code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.bits</span></code> - the width of a
+bitfield, or nothing - <code class="docutils literal notranslate"><span class="pre">.comment</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration</span></code>, the last being the member as
+it goes into a <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">struct</span></code>, <code class="docutils literal notranslate"><span class="pre">uint16_t</span> <span class="pre">value</span></code> or <code class="docutils literal notranslate"><span class="pre">uint8_t</span> <span class="pre">ready</span> <span class="pre">:</span> <span class="pre">1</span></code>,
+without the semicolon. Empty when the project declares no structure; the example
+templates emit each as a <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">struct</span></code> in the types header, after the enums.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.groups</span></code></p></td>
+<td><p>The objects to be <em>defined</em>, grouped by owning component: <code class="docutils literal notranslate"><span class="pre">.name</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.description</span></code>, <code class="docutils literal notranslate"><span class="pre">.measurements</span></code>, <code class="docutils literal notranslate"><span class="pre">.calibration</span></code> and <code class="docutils literal notranslate"><span class="pre">.variables</span></code>, the last
+being the two lists one after the other. A component owning nothing has no group, and
+objects no component declares as an output end up in a final group called
+<code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
+<td><p>The placed objects grouped per <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a>, one
+entry per section with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.objects</span></code>, strictest alignment first so that
+data of one section packs without padding. Objects without a <code class="docutils literal notranslate"><span class="pre">section</span></code> are not
+here - they stay in their component’s group and the toolchain’s default placement -
+and the sequence is empty when the project places nothing.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
+<td><p>One entry per component, in project order, whether or not the component declares
+anything. These are the interfaces, described below.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
+<td><p>Whether any datatype of the project needs that standard header, so that the generated
+type header includes it only when something uses it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.external_includes</span></code></p></td>
+<td><p>The headers of the <a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use, deduplicated and
+sorted by spelling, each ready to paste after <code class="docutils literal notranslate"><span class="pre">#include</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;my_driver.h&quot;</span></code> with its
+quotes for the quoted form, <code class="docutils literal notranslate"><span class="pre">&lt;os_types.h&gt;</span></code> as written for the angle form. Empty when
+no structure has an external member; the example templates emit them in the types
+header after the standard includes, before the first structure that needs them.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
+<td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
+<code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
+a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
+Offered rather than imposed - a template that has its own convention writes it out.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
+<td><p>What the command line let the caller decide, which for the c backend is
+<code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
+property of the template you write.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The two groupings answer two different questions, which is why both exist. <code class="docutils literal notranslate"><span class="pre">model.groups</span></code>
+is about <em>ownership</em> and drives the file that allocates the memory; <code class="docutils literal notranslate"><span class="pre">model.headers</span></code> is
+about <em>visibility</em> and drives the file each component includes.</p>
+</section>
+<section id="a-variable">
+<h3>A variable<a class="headerlink" href="#a-variable" title="Link to this heading"></a></h3>
+<p>The entries of <code class="docutils literal notranslate"><span class="pre">.measurements</span></code>, <code class="docutils literal notranslate"><span class="pre">.calibration</span></code> and <code class="docutils literal notranslate"><span class="pre">.variables</span></code> are the objects
+themselves:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>attribute</p></th>
+<th class="head"><p>what it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.name</span></code></p></td>
+<td><p>The object name, exactly as it appears in the description.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.definition</span></code></p></td>
+<td><p>The complete definition without the trailing semicolon, qualifier, type, declarator
+and initialiser included: <code class="docutils literal notranslate"><span class="pre">volatile</span> <span class="pre">uint16_t</span> <span class="pre">Speed[4]</span> <span class="pre">=</span> <span class="pre">{</span> <span class="pre">...</span> <span class="pre">}</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span> <span class="pre">uint16_t</span> <span class="pre">Gain</span> <span class="pre">=</span> <span class="pre">3U</span></code> for calibration data the description declares
+volatile. The template adds the semicolon, which is what lets it put something between
+the two.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.declaration(const=...)</span></code></p></td>
+<td><p>The matching <code class="docutils literal notranslate"><span class="pre">extern</span></code> declaration, again without the semicolon, carrying the same
+qualifier the definition does. <code class="docutils literal notranslate"><span class="pre">const=true</span></code> adds a <code class="docutils literal notranslate"><span class="pre">const</span></code> unless the object
+already carries one, so asking for it on calibration data does not produce the
+<code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">const</span></code> that no compiler accepts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.comment</span></code></p></td>
+<td><p>The description, the unit in square brackets and, for calibration data, a note saying
+what the object is and what it is dimensioned by - or nothing at all if the
+description says nothing. It is plain text without comment markers, already collapsed
+to one line and already defused, so that a <code class="docutils literal notranslate"><span class="pre">*/</span></code> in a description cannot end the
+comment the template opens around it.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.condition</span></code></p></td>
+<td><p>The preprocessor condition the object is guarded by, or nothing. It is validated on
+the way in so that it is safe to emit verbatim into both <code class="docutils literal notranslate"><span class="pre">#if</span></code> and the <code class="docutils literal notranslate"><span class="pre">#endif</span></code>
+trailer.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.section</span></code></p></td>
+<td><p>The name of the <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a> the producing
+declaration placed the object in - the name alone, as the linker script spells it -
+or nothing when the object is unplaced. How a placement is spelled in c, an
+<code class="docutils literal notranslate"><span class="pre">__attribute__</span></code> or a pragma, is the template’s decision; the example templates
+write the GCC attribute between the declarator and the initialiser.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.owner</span></code>, <code class="docutils literal notranslate"><span class="pre">.consumers</span></code></p></td>
+<td><p>The component that produces the object and the components that read it, for a comment
+that says where a value comes from.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code>, <code class="docutils literal notranslate"><span class="pre">.initializer</span></code>
+and <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> are there as well, for a template that would rather lay the declaration
+out itself than take <code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole - <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> being the resolved block of
+every <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> the project loads, keyed by plugin name, for a template that
+renders what a plugin decided. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the same type in two
+vocabularies:
+the ISO spelling (<code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>) that <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and the example templates use, and the
+description’s own (<code class="docutils literal notranslate"><span class="pre">uint16</span></code>). A project whose platform header already provides the
+description’s names - AUTOSAR’s <code class="docutils literal notranslate"><span class="pre">Platform_Types.h</span></code> spells them exactly - renders
+<code class="docutils literal notranslate"><span class="pre">.datatype</span></code> and needs no mapping in its templates; for a structured variable, and for a
+structure member of another structure or of an external type, the two fields agree, because
+that spelling was the project’s own to begin with. <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code> spells each dimension as the project spells it - a
+dimension stated as a <a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> renders as that
+name, <code class="docutils literal notranslate"><span class="pre">[PRESSURE_CELLS]</span></code>, in <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration(...)</span></code> alike - while
+<code class="docutils literal notranslate"><span class="pre">.initializer</span></code> lays its braces out over the resolved numeric shape. <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is derived rather than stored, from the two answers a
+declaration can give about who writes the object: <code class="docutils literal notranslate"><span class="pre">.constant</span></code> is true for calibration data,
+which the software never writes and which is therefore generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and <code class="docutils literal notranslate"><span class="pre">.volatile</span></code>
+is what the description states on the definition, on every kind, to say that something
+outside the compiled code - an interrupt, another core, a calibration tool - changes the
+value while it runs. Either, both or neither may hold, and <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> is simply the one
+or two keywords that follow, with their trailing space. A template that composes its own
+declaration is better off testing the two booleans than matching text against the string they
+produce, and they are also what a MISRA deviation record above every <code class="docutils literal notranslate"><span class="pre">volatile</span></code> object, or
+a section attribute on the tunable data alone, is written from.</p>
+</section>
+<section id="a-component-header">
+<h3>A component header<a class="headerlink" href="#a-component-header" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">header</span></code>, and every entry of <code class="docutils literal notranslate"><span class="pre">model.headers</span></code>, describes the interface of one component:
+<code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.description</span></code> and <code class="docutils literal notranslate"><span class="pre">.guard</span></code>, plus the three lists <code class="docutils literal notranslate"><span class="pre">.outputs</span></code>, <code class="docutils literal notranslate"><span class="pre">.inputs</span></code>
+and <code class="docutils literal notranslate"><span class="pre">.locals</span></code> and the convenience <code class="docutils literal notranslate"><span class="pre">.is_empty</span></code>, which is true when the component declares
+nothing and lets the template say so rather than emit a header that is only a guard.</p>
+<p><code class="docutils literal notranslate"><span class="pre">.guard</span></code> is <code class="docutils literal notranslate"><span class="pre">DDD_COMPONENT_CONTROLLER_H</span></code> for a component called <code class="docutils literal notranslate"><span class="pre">Controller</span></code>. The word
+<code class="docutils literal notranslate"><span class="pre">component</span></code> in the middle is deliberate: without it a component named <code class="docutils literal notranslate"><span class="pre">types</span></code> would
+define <code class="docutils literal notranslate"><span class="pre">DDD_TYPES_H</span></code> before <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> was ever included, and the whole type header
+would preprocess away.</p>
+<p>Each entry of the three lists is a declaration rather than a bare object, because the same
+variable is declared differently in different headers:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>attribute</p></th>
+<th class="head"><p>what it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.line</span></code></p></td>
+<td><p>The complete declaration, semicolon included, with <code class="docutils literal notranslate"><span class="pre">const</span></code> already applied where it
+belongs. Most templates need nothing else.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.condition</span></code></p></td>
+<td><p>The preprocessor condition of this declaration, or nothing.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.const</span></code></p></td>
+<td><p>Whether <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> added a <code class="docutils literal notranslate"><span class="pre">const</span></code> to this declaration, for a template that
+builds the line itself. It says nothing about the object’s own qualifiers, which are
+<code class="docutils literal notranslate"><span class="pre">.variable.constant</span></code> and <code class="docutils literal notranslate"><span class="pre">.variable.volatile</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.variable</span></code></p></td>
+<td><p>The object behind the declaration, with everything the previous table lists - which is
+how a header comments a declaration with <code class="docutils literal notranslate"><span class="pre">.variable.comment</span></code> or names its producer
+with <code class="docutils literal notranslate"><span class="pre">.variable.owner</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="helpers-and-what-a-subdirectory-is-for">
+<h2>Helpers, and what a subdirectory is for<a class="headerlink" href="#helpers-and-what-a-subdirectory-is-for" title="Link to this heading"></a></h2>
+<p>Four generated files that all begin with the same banner should describe that banner once.
+That is what a helper template is for: a name starting with an underscore renders nothing on
+its own and exists to be imported. The example set keeps its banner in <code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code>,
+and every other template opens with:</p>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
+</pre></div>
+</div>
+<p>The macro takes what it needs as arguments, which is why the plain <code class="docutils literal notranslate"><span class="pre">import</span></code> is enough here.
+A helper that reads <code class="docutils literal notranslate"><span class="pre">model</span></code> or <code class="docutils literal notranslate"><span class="pre">filename</span></code> directly instead of receiving them has to be
+imported <code class="docutils literal notranslate"><span class="pre">with</span> <span class="pre">context</span></code>, the standard jinja2 rule: an import without it gives the imported
+template a context of its own, in which those names do not exist.</p>
+<p>A template in a <em>subdirectory</em> of the template directory is never rendered, but it can still
+be imported and included. Only the top level is scanned, so a project is free to keep
+fragments, per-target variants or a vendor’s original copies below the directory without
+each of them turning into a generated file it has to explain.</p>
+</section>
+<section id="a-mistake-in-a-template-stops-the-run">
+<h2>A mistake in a template stops the run<a class="headerlink" href="#a-mistake-in-a-template-stops-the-run" title="Link to this heading"></a></h2>
+<p>Undefined names are strict. Reading an attribute that does not exist - <code class="docutils literal notranslate"><span class="pre">model.grops</span></code> for
+<code class="docutils literal notranslate"><span class="pre">model.groups</span></code>, <code class="docutils literal notranslate"><span class="pre">variable.commment</span></code> for <code class="docutils literal notranslate"><span class="pre">variable.comment</span></code> - raises instead of
+rendering as an empty string, and the run ends with one line naming the template, the line
+and the attribute, and exit status 2 - a usage error, since the template is the caller’s:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>ddd: cannot render template 'ddd_globals.c.jinja2', line 14: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
+</pre></div>
+</div>
+<p>This is worth the noise. The alternative, which is jinja2’s default, is that the typo
+produces nothing at all: the loop body disappears, the file is generated, the build succeeds,
+and a variable is missing from a header that everybody trusts. A failure at generation time
+is read by the person who just edited the template; a variable silently missing from an
+interface is found much later by somebody else.</p>
+</section>
+<section id="how-the-files-reach-the-disk">
+<h2>How the files reach the disk<a class="headerlink" href="#how-the-files-reach-the-disk" title="Link to this heading"></a></h2>
+<p>Every generated file is written as utf-8 with LF line endings, on every platform. Descriptions
+carry units and prose in any language, so utf-8 is the only sane choice, and fixed line
+endings mean that a file generated on Windows and the same file generated in a linux
+container are byte for byte identical - which matters as soon as generated code is compared
+across machines or checked in.</p>
+<p>A file whose content has not changed is left untouched rather than rewritten, so its
+timestamp does not move and the compilation of everything that includes it is not triggered
+again. Regenerating a project that has not changed therefore reports:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+unchanged   build/gen/ddd_globals.c
+unchanged   build/gen/ddd_globals.h
+unchanged   build/gen/ddd_types.h
+unchanged   build/gen/Controller.h
+unchanged   build/gen/SensorHub.h
+unchanged   build/gen/UserInterface.h
+unchanged   build/gen/EventLogger.h
+unchanged   build/gen/DemoDevice.a2l
+</pre></div>
+</div>
+</section>
+<section id="getting-started">
+<h2>Getting started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
+<p>Start from the example templates rather than from an empty directory. They are shipped with
+the tool, and their location is printed by the tool itself rather than guessed, because a
+project may be built against several installations:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd templates-dir
+/home/you/.venv/lib/python3.13/site-packages/ddd/templates
+</pre></div>
+</div>
+<p>Copy that directory into the project, next to the description files or wherever the coding
+standard says generated-code templates live, and check it in - it is source code of the
+project now:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cp<span class="w"> </span>-r<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>ddd<span class="w"> </span>templates-dir<span class="k">)</span><span class="s2">"</span><span class="w"> </span>tools/ddd_templates
+ddd<span class="w"> </span>generate<span class="w"> </span>all<span class="w"> </span>project.ddd.json<span class="w"> </span>-o<span class="w"> </span>build/gen<span class="w"> </span>-t<span class="w"> </span>tools/ddd_templates
+</pre></div>
+</div>
+<p>Then adapt. Rename a template to rename the file it produces, edit the banner, change the
+comment markers, replace <code class="docutils literal notranslate"><span class="pre">model.guard(...)</span></code> with whatever your standard asks for, delete a
+template whose output the project does not want and add one for output it does. Nothing
+refers back to the copy that was taken: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code> is a starting point, never a
+fallback. In a cmake build the directory is passed to <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> as its required
+<code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>; see <a class="reference internal" href="build_integration.html"><span class="doc">build integration</span></a>.</p>
+</section>
+<section id="the-example-templates">
+<h2>The example templates<a class="headerlink" href="#the-example-templates" title="Link to this heading"></a></h2>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">_macros.jinja2 - the shared banner, imported by every other template</span><a class="headerlink" href="#id1" title="Link to this code"></a></div>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">macro</span> <span class="nv">banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> -<span class="cp">%}</span>
+<span class="x">/*</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">filename</span> <span class="cp">}}</span>
+<span class="x"> *</span>
+<span class="x"> * Global variable data dictionary of project '</span><span class="cp">{{</span> <span class="nv">model.project</span> <span class="cp">}}</span><span class="x">'.</span>
+<span class="x"> * Generated from '</span><span class="cp">{{</span> <span class="nv">model.source</span> <span class="cp">}}</span><span class="x">' by </span><span class="cp">{{</span> <span class="nv">model.generator</span> <span class="cp">}}</span><span class="x">.</span>
+<span class="x"> *</span>
+<span class="x"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
+<span class="x"> */</span>
+<span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id2">
+<div class="code-block-caption"><span class="caption-text">ddd_types.h.jinja2 - the standard includes, the constants, the enum and structure typedefs</span><a class="headerlink" href="#id2" title="Link to this code"></a></div>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>
+
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdint</span> <span class="cp">%}</span>
+<span class="x">#include &lt;stdint.h&gt;</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.needs_stdbool</span> <span class="cp">%}</span>
+<span class="x">#include &lt;stdbool.h&gt;</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.external_includes</span> <span class="cp">%}</span>
+
+<span class="x">/* headers defining the external types */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">include</span> <span class="k">in</span> <span class="nv">model.external_includes</span> <span class="cp">%}</span>
+<span class="x">#include </span><span class="cp">{{</span> <span class="nv">include</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
+
+<span class="x">/* named constants of the data dictionary */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">constant</span> <span class="k">in</span> <span class="nv">model.constants</span> <span class="cp">%}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">constant.name</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">constant.value</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">constant.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">constant.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">enum</span> <span class="k">in</span> <span class="nv">model.enums</span> <span class="cp">%}</span>
+
+<span class="x">/* </span><span class="cp">{{</span> <span class="nv">enum.name</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="x">typedef enum</span>
+<span class="x">{</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">enumerator</span> <span class="k">in</span> <span class="nv">enum.enumerators</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span> <span class="nv">enumerator.name</span> <span class="cp">}}</span><span class="x"> = </span><span class="cp">{{</span> <span class="nv">enumerator.value</span> <span class="cp">}}{{</span> <span class="s2">","</span> <span class="k">if</span> <span class="k">not</span> <span class="nb">loop</span><span class="nv">.last</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">enumerator.description</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">enumerator.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">} </span><span class="cp">{{</span> <span class="nv">enum.name</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">structure</span> <span class="k">in</span> <span class="nv">model.structures</span> <span class="cp">%}</span>
+
+<span class="x">/* </span><span class="cp">{{</span> <span class="nv">structure.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">structure.comment</span> <span class="k">if</span> <span class="nv">structure.comment</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="x">typedef struct</span>
+<span class="x">{</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">member</span> <span class="k">in</span> <span class="nv">structure.members</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span> <span class="nv">member.declaration</span> <span class="cp">}}</span><span class="x">;</span><span class="cp">{{</span> <span class="o">(</span><span class="s2">" /**&lt; "</span> <span class="o">~</span> <span class="nv">member.comment</span> <span class="o">~</span> <span class="s2">" */"</span><span class="o">)</span> <span class="k">if</span> <span class="nv">member.comment</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">} </span><span class="cp">{{</span> <span class="nv">structure.name</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id3">
+<div class="code-block-caption"><span class="caption-text">ddd_globals.c.jinja2 - the single definition of every global variable</span><a class="headerlink" href="#id3" title="Link to this code"></a></div>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">macro</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> -<span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">variable.qualifier</span> <span class="cp">}}{{</span> <span class="nv">variable.c_type</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}{{</span> <span class="nv">variable.array_suffix</span> -<span class="cp">}}</span>
+<span class="cp">{{</span> <span class="s1">' __attribute__((section("'</span> <span class="o">~</span> <span class="nv">variable.section</span> <span class="o">~</span> <span class="s1">'")))'</span> <span class="k">if</span> <span class="nv">variable.section</span> <span class="k">else</span> <span class="s1">''</span> -<span class="cp">}}</span>
+<span class="cp">{{</span> <span class="s1">' = '</span> <span class="o">~</span> <span class="nv">variable.initializer</span> <span class="k">if</span> <span class="nv">variable.initializer</span> <span class="k">is</span> <span class="k">not</span> <span class="nf">none</span> <span class="k">else</span> <span class="s1">''</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
+<span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#include "ddd_globals.h"</span>
+
+<span class="x">/*</span>
+<span class="x"> * Definition of every global variable of the project.  Compile and link this</span>
+<span class="x"> * file exactly once; DDD is the only owner of these storage locations.</span>
+<span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">group</span> <span class="k">in</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
+
+<span class="x">/* ---------------------------------------------------------------------------</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="x"> * ------------------------------------------------------------------------ */</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">group.measurements</span> <span class="k">and</span> <span class="nv">group.calibration</span> <span class="cp">%}</span>
+
+<span class="x">/* measurements */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">variable</span> <span class="k">in</span> <span class="nv">group.measurements</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">group.measurements</span> <span class="k">and</span> <span class="nv">group.calibration</span> <span class="cp">%}</span>
+
+<span class="x">/* calibration data */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">variable</span> <span class="k">in</span> <span class="nv">group.calibration</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="k">not</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
+
+<span class="x">/* This project does not define any global variable. */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id4">
+<div class="code-block-caption"><span class="caption-text">ddd_globals.h.jinja2 - the declarations that definition file is compiled against</span><a class="headerlink" href="#id4" title="Link to this code"></a></div>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span>
+
+<span class="x">#include "ddd_types.h"</span>
+
+<span class="x">/*</span>
+<span class="x"> * Declarations of every global variable of the project.  Software components</span>
+<span class="x"> * shall include their own interface header instead of this file; it exists so</span>
+<span class="x"> * that ddd_globals.c can be compiled with full prototype checking.</span>
+<span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">group</span> <span class="k">in</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
+
+<span class="x">/* ---------------------------------------------------------------------------</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">group.name</span> <span class="cp">}}{{</span> <span class="s2">" - "</span> <span class="o">~</span> <span class="nv">group.description</span> <span class="k">if</span> <span class="nv">group.description</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="x"> * ------------------------------------------------------------------------ */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">variable</span> <span class="k">in</span> <span class="nv">group.variables</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">variable.declaration</span><span class="o">()</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">variable.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"globals"</span><span class="o">)</span> <span class="cp">}}</span><span class="x"> */</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id5">
+<div class="code-block-caption"><span class="caption-text">{component}.h.jinja2 - the interface header, rendered once per component</span><a class="headerlink" href="#id5" title="Link to this code"></a></div>
+<div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
+<span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
+<span class="x">/*</span>
+<span class="x"> * Interface of software component '</span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x">'.</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.description</span> <span class="cp">%}</span>
+<span class="x"> *</span>
+<span class="x"> * </span><span class="cp">{{</span> <span class="nv">header.description</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x"> *</span>
+<span class="x"> * Only the variables declared in the DDD description of this component are</span>
+<span class="x"> * visible here; everything else is intentionally out of reach.</span>
+<span class="x"> */</span>
+<span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">header.guard</span> <span class="cp">}}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">header.guard</span> <span class="cp">}}</span>
+
+<span class="x">#include "ddd_types.h"</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.outputs</span> <span class="cp">%}</span>
+
+<span class="x">/* outputs - written by </span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x">, read by other components */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">entry</span> <span class="k">in</span> <span class="nv">header.outputs</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.inputs</span> <span class="cp">%}</span>
+
+<span class="x">/* inputs - produced elsewhere, </span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x"> may only read them */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">entry</span> <span class="k">in</span> <span class="nv">header.inputs</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}{{</span> <span class="s2">"  /* produced by "</span> <span class="o">~</span> <span class="nv">entry.variable.owner</span> <span class="o">~</span> <span class="s2">" */"</span> <span class="k">if</span> <span class="nv">entry.variable.owner</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.locals</span> <span class="cp">%}</span>
+
+<span class="x">/* locals - owned exclusively by </span><span class="cp">{{</span> <span class="nv">header.name</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">for</span> <span class="nv">entry</span> <span class="k">in</span> <span class="nv">header.locals</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#if </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.variable.comment</span> <span class="cp">%}</span>
+<span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">header.is_empty</span> <span class="cp">%}</span>
+
+<span class="x">/* This component declares no global variable. */</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
+
+<span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">header.guard</span> <span class="cp">}}</span><span class="x"> */</span>
+</pre></div>
+</div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>How these examples comment the generated code is not a recommendation. A different
+documentation convention, a MISRA deviation record, a traceability tag or no comment at
+all is exactly the kind of decision the
+templates exist to leave to the project.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generated_artefacts.html" class="btn btn-neutral float-left" title="Generated artefacts" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="command_line_interface.html" class="btn btn-neutral float-right" title="Command line interface" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

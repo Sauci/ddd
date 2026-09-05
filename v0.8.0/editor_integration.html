@@ -1,0 +1,296 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editor integration &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=486e5634"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/js/versions.js?v=a915def3"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Data contracts" href="data_contracts.html" />
+    <link rel="prev" title="Build integration" href="build_integration.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DDD
+              <img src="_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="build_integration.html">Build integration</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Editor integration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-server-offers">What the server offers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#which-project-a-file-belongs-to">Which project a file belongs to</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#vs-code">VS Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Editor integration</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/editor_integration.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="editor-integration">
+<h1>Editor integration<a class="headerlink" href="#editor-integration" title="Link to this heading"></a></h1>
+<p>A json schema validates one file, statically, and that is where its usefulness ends: whether
+an <code class="docutils literal notranslate"><span class="pre">axis</span></code> names an axis some component declares, whether exactly one component produces a
+variable, whether two components agree on a unit - none of that is visible from a single
+file. Those questions need the whole project resolved, which is what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code> brings into
+the editor: a language server that runs the same loader, the same analysis and the same
+severity policy as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code>, so the editor never disagrees with the build about what is
+wrong.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd lsp --help
+usage: ddd lsp [-h] [-b DIR]
+
+Speaks the Language Server Protocol on stdin and stdout. It reports the
+consistency checks while a description file is being written, which a json
+schema cannot do: whether an axis names a declared axis, whether exactly one
+component produces a name, whether two components agree on a unit. Which
+project a file belongs to is read from the 'ddd-build.json' that ddd_generate
+writes, so the editor and the build apply the same severities.
+
+options:
+  -h, --help            show this help message and exit
+  -b, --build-directory DIR
+                        directory holding a build of this project; repeatable.
+                        Without it the usual build directory names next to the
+                        workspace are searched
+</pre></div>
+</div>
+<p>The command is not meant to be run by hand: it speaks the Language Server Protocol on stdin
+and stdout and expects an editor on the other end. Editors that launch language servers
+themselves - Neovim, Helix, Emacs - need only the command; VS Code needs the extension
+described at the bottom of this page.</p>
+<section id="what-the-server-offers">
+<h2>What the server offers<a class="headerlink" href="#what-the-server-offers" title="Link to this heading"></a></h2>
+<p><strong>Diagnostics.</strong> The findings of the <a class="reference internal" href="consistency_checks.html"><span class="doc">consistency checks</span></a>, reported
+on open and on save, each drawn over the key it is about rather than over the whole file. The
+server publishes for <strong>every</strong> file of the project rather than only the one on screen,
+because half of a disagreement is always in the other component, and each finding is also
+published at the locations of its notes - of two components declaring the same output,
+neither is the innocent one, so both carry a mark.</p>
+<p><strong>Hover.</strong> A summary of the data object under the cursor, resolved against the whole
+project rather than read off the file: the shape a curve took from its axis, the limits
+derived from a datatype and a conversion nobody wrote down, its producer and its consumers,
+what an enum’s numbers are called, the physical reading of a scalar <code class="docutils literal notranslate"><span class="pre">init</span></code> beside the raw
+value the file states, and the initial values as a sparkline. Those are the <em>initial</em>
+values - DDD describes an interface, and what an engineer calibrates lives in the
+calibration tool. A dimension spelled as the name of a
+<a class="reference internal" href="file_formats/constants.html"><span class="doc">declared constant</span></a> hovers as the constant itself - its value
+and its description - because the number is declared somewhere else, next to the one
+statement of what is being counted.</p>
+<p><strong>Go to definition and find references.</strong> From anywhere in a declaration - or from an
+<code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> reference - go to definition lands on the
+declaration that <em>writes</em> the object, in whichever component that is, and find references
+lists every declaration of it. The same works from a type name to the structure it names and
+back, from a dimension spelled as a constant name to the entry that declares it - in a
+constants file, or inside the component that publishes it - and back to every shape that
+spells it, and from an <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry to the files it matches, wildcards included.</p>
+<p><strong>Rename.</strong> <code class="docutils literal notranslate"><span class="pre">F2</span></code> on a variable renames it in every declaration and in every reference that
+names it, across as many files as that takes. A name c reserves, one that is not a usable
+identifier, or one the project already uses - for another object, an enum, an enumerator, a
+type or a declared constant - is refused with the reason before anything is written, because
+a rename that silently merges two objects compiles, links, and shares storage nobody
+intended to share. Renaming starts from a variable and stops there: a type or a constant is
+not renamed by the server, because its name lives in every file that spells it - the one
+declaring it and every <code class="docutils literal notranslate"><span class="pre">typename</span></code> or <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> naming it - and a hand edit of the
+declaration alone leaves those references pointing at nothing until the next check says so.
+Only the characters between the quotes are replaced, so formatting survives and free text is
+left alone.</p>
+<p><strong>Quick fixes.</strong> On a key the declarations of one object have to agree on - a <code class="docutils literal notranslate"><span class="pre">unit</span></code>, a
+<code class="docutils literal notranslate"><span class="pre">conversion</span></code>, a <code class="docutils literal notranslate"><span class="pre">datatype</span></code> - a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> offers every way of reconciling
+it: take the producing component’s value, spread this one to the others, or, when nobody
+else states the key, remove it. <code class="docutils literal notranslate"><span class="pre">limits</span></code> are the exception to the last: a declaration that
+leaves them out defers to the one that states them, which the checker counts as agreement, so
+only two stated ranges that differ are offered a fix. The value is copied as source text
+rather than re-serialised, so the project’s formatting survives the fix.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> offers one fix of its own: give this object an identity. It writes the same
+key <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> would write, in the same place, decided by the same code - the command
+stamps a whole file, the fix stamps the declaration you are looking at. It is offered only
+where the finding is: a project that has silenced <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> has said it is not adopting
+ids yet, and the editor does not argue with that.</p>
+</section>
+<section id="which-project-a-file-belongs-to">
+<h2>Which project a file belongs to<a class="headerlink" href="#which-project-a-file-belongs-to" title="Link to this heading"></a></h2>
+<p>A description file cannot say which project it belongs to - in the collected CMake mode the
+project description exists only in the build tree - so the server reads the
+<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> record that <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> writes at configure time (see
+<a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>), and applies the severities the build applies. The search runs in
+three stages:</p>
+<ul class="simple">
+<li><p><strong>Build records.</strong> The directories named with <code class="docutils literal notranslate"><span class="pre">-b</span></code> are searched recursively for
+<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>; unconfigured, the conventional directories <code class="docutils literal notranslate"><span class="pre">build</span></code>, <code class="docutils literal notranslate"><span class="pre">out</span></code> and
+<code class="docutils literal notranslate"><span class="pre">cmake-build-*</span></code> under the workspace are. A file claimed by several builds is checked
+under each of them and the findings are published together - a component linked into two
+images is in two projects, and the answer to which one the reader cares about is both.
+The records a search discovers are announced as log messages, and a record that cannot be
+read is skipped.</p></li>
+<li><p><strong>A containing project.</strong> A file no build record claims is looked for in a containing
+project instead: the server walks from the file’s directory up to the workspace root and
+checks the file under the project descriptions of the nearest directory that include it.</p></li>
+<li><p><strong>Standalone.</strong> A file belonging to no build and to no such project is still checked, on
+its own, but only for what one file can decide. The ten checks that need every component
+of a project - <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
+<code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>,
+<code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>, <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - are held back,
+because a component read alone has inputs nobody produces and outputs nobody reads by
+construction rather than by mistake. Each check declares whether it needs the whole
+project, so the two modes cannot drift apart.</p></li>
+</ul>
+</section>
+<section id="vs-code">
+<h2>VS Code<a class="headerlink" href="#vs-code" title="Link to this heading"></a></h2>
+<p>VS Code cannot start a language server without an extension, so one is shipped in
+<code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code>. It is a launcher and deliberately nothing more - everything a reader
+sees is the server’s answer, so an editor DDD ships nothing for is not at a disadvantage.
+It contributes two settings and one command:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>setting</p></th>
+<th class="head"><p>meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd.executable</span></code></p></td>
+<td><p>the <code class="docutils literal notranslate"><span class="pre">ddd</span></code> command to run the server with. Left as the bare name it is looked up on
+the <code class="docutils literal notranslate"><span class="pre">PATH</span></code>; set it to an absolute path to use the interpreter of a virtual
+environment.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd.buildDirectories</span></code></p></td>
+<td><p>the directories handed to the server as <code class="docutils literal notranslate"><span class="pre">-b</span></code>, each searched for a
+<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>. Left empty, the conventional build directory names next to the
+workspace are searched.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The command is <strong>DDD: Restart Language Server</strong>, for picking up a newly installed tool
+without reloading the window.</p>
+<p>Every release attaches a <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to its <a class="reference external" href="https://github.com/Sauci/ddd/releases">GitHub release</a>, which is a permanent link needing no account and
+no network policy exception. That installs with <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">--install-extension</span>
+<span class="pre">ddd-&lt;version&gt;.vsix</span></code> or through <strong>Install from VSIX…</strong> in the Extensions view, and updates
+no more automatically than any other file, so reinstall it when the python package is
+upgraded - the extension and the python package share a version number, and an update to one
+is worth the other.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="build_integration.html" class="btn btn-neutral float-left" title="Build integration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="data_contracts.html" class="btn btn-neutral float-right" title="Data contracts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="./../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

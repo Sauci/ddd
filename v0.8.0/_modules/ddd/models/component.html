@@ -1,0 +1,300 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.models.component &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=486e5634"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.models.component</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.models.component</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Contract for the software component description file."""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstantDeclaration</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyDataObject</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">AnyType</span><span class="p">,</span> <span class="n">check_distinct_type_names</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Scope</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Direction of a variable with respect to the declaring component."""</span>
+
+    <span class="n">INPUT</span> <span class="o">=</span> <span class="s2">"input"</span>
+<span class="w">    </span><span class="sd">"""The component reads the variable; another component has to produce it."""</span>
+
+    <span class="n">OUTPUT</span> <span class="o">=</span> <span class="s2">"output"</span>
+<span class="w">    </span><span class="sd">"""The component writes the variable; exactly one component may do so."""</span>
+
+    <span class="n">LOCAL</span> <span class="o">=</span> <span class="s2">"local"</span>
+<span class="w">    </span><span class="sd">"""The component owns the variable exclusively; no other component may use it."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_producer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span> <span class="ow">is</span> <span class="n">Scope</span><span class="o">.</span><span class="n">OUTPUT</span> <span class="ow">or</span> <span class="bp">self</span> <span class="ow">is</span> <span class="n">Scope</span><span class="o">.</span><span class="n">LOCAL</span>
+
+
+<div class="viewcode-block" id="Declaration">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Declaration">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Declaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One entry of the ``interface`` list of a component."""</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">scope</span><span class="p">:</span> <span class="n">Scope</span>
+<span class="w">    </span><span class="sd">"""Direction of the declaration, which is what makes the interfaces check each other.</span>
+
+<span class="sd">    Exactly one component may produce a name - declare it ``output`` or ``local`` - and that</span>
+<span class="sd">    component's definition is the one the project uses. Every ``input`` declaring the same</span>
+<span class="sd">    name has to agree with it on datatype, unit, conversion, limits and shape.</span>
+<span class="sd">    """</span>
+
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.</span>
+
+<span class="sd">    One expression, written as it would appear after ``#if``. It is emitted verbatim into the</span>
+<span class="sd">    generated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or</span>
+<span class="sd">    ``*/`` - each of which would let a description file put arbitrary directives, or live</span>
+<span class="sd">    code, into somebody else's build.</span>
+<span class="sd">    """</span>
+
+    <span class="n">definition</span><span class="p">:</span> <span class="n">AnyDataObject</span>
+<span class="w">    </span><span class="sd">"""The data object being declared; its ``kind`` decides which keys it carries."""</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"condition"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_condition_is_a_single_expression</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""One preprocessor expression, and nothing that could end or start something else.</span>
+
+<span class="sd">        The text is emitted verbatim into ``#if &lt;condition&gt;`` and into the trailing</span>
+<span class="sd">        ``#endif /* &lt;condition&gt; */`` of every generated file, and into a comment in the a2l.</span>
+<span class="sd">        A line break would put arbitrary directives inside the guarded region, and a comment</span>
+<span class="sd">        marker would close the trailer early and leave whatever follows as live code -</span>
+<span class="sd">        neither of which the author of a description file should be able to do to somebody</span>
+<span class="sd">        else's build.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">stripped</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">stripped</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">stripped</span> <span class="ow">or</span> <span class="s2">"</span><span class="se">\r</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a condition is a single expression and cannot contain a line break"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"/*"</span><span class="p">,</span> <span class="s2">"*/"</span><span class="p">,</span> <span class="s2">"//"</span><span class="p">,</span> <span class="s2">"#"</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">stripped</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a condition cannot contain '</span><span class="si">{</span><span class="n">token</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">stripped</span></div>
+
+
+
+<div class="viewcode-block" id="Component">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Component">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Component</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""The interface specification of one software component."""</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
+<span class="w">    </span><span class="sd">"""Name of the component; every component of a project needs a distinct one."""</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text describing the component, offered to the c templates."""</span>
+
+    <span class="n">raster</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Default measurement raster for every variable this component produces.</span>
+
+<span class="sd">    The common case stated once: a component updates nearly all of its measurements in one</span>
+<span class="sd">    task, and repeating that on several hundred definitions would bury the handful of</span>
+<span class="sd">    exceptions, which state their own ``raster``. It applies to what this component</span>
+<span class="sd">    produces and to nothing it reads - the raster follows the producer - and it reaches no</span>
+<span class="sd">    calibration object, since no daq list carries one.</span>
+<span class="sd">    """</span>
+
+    <span class="n">interface</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Declaration</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The data interface: everything the component produces, consumes or keeps to itself.</span>
+
+<span class="sd">    Required with no default, so that a component with nothing to declare says so with an</span>
+<span class="sd">    empty list rather than by a key that might merely have been forgotten - the same</span>
+<span class="sd">    reasoning that makes ``volatile`` and ``kind`` required on a definition.</span>
+<span class="sd">    """</span>
+
+    <span class="n">types</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">AnyType</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Declared types this component publishes, each entry exactly as a types file writes it.</span>
+
+<span class="sd">    Declaring them here co-locates a library's contract in one file; it does not scope it.</span>
+<span class="sd">    The names join the same project wide namespace as the types of the standalone files,</span>
+<span class="sd">    every consistency check applies to them unchanged, and any component of the project may</span>
+<span class="sd">    name them. Types shared between several components, with no single owner to live inside,</span>
+<span class="sd">    stay in a standalone types file.</span>
+<span class="sd">    """</span>
+
+    <span class="n">constants</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">ConstantDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""Declared constants this component publishes, each entry exactly as a constants file</span>
+<span class="sd">    writes it.</span>
+
+<span class="sd">    Co-located for the reason ``types`` may be, and no more scoped than they are: the names</span>
+<span class="sd">    join the same project wide namespace as the constants of the standalone files, and any</span>
+<span class="sd">    shape of any component names one where it would state a number. ``units`` and</span>
+<span class="sd">    ``sections`` remain project wide vocabularies and have no place inside a component.</span>
+<span class="sd">    """</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_type_names_are_distinct</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Component</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">types</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check_distinct_type_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">types</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<div class="viewcode-block" id="ComponentFile">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ComponentFile">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ComponentFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` software component description.</span>
+
+<span class="sd">    ``component`` is the top level key that makes this a component file rather than a project</span>
+<span class="sd">    or a types file; DDD decides what a file is from that key alone, so exactly one of them</span>
+<span class="sd">    appears here.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD component description"</span><span class="p">)</span>
+
+    <span class="n">component</span><span class="p">:</span> <span class="n">Component</span>
+<span class="w">    </span><span class="sd">"""The component this file describes; the key that identifies the file as a component."""</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

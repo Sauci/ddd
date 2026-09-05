@@ -249,8 +249,8 @@ what a value is *for*, not what it controls.
        name the calibration engineer sees.
    * - component
      - a software unit with an explicitly declared data interface, described by a file whose
-       top level key is ``component``. One component corresponds to one generated header and
-       to one a2l ``GROUP``.
+       top level key is ``component``. One component corresponds to one generated header
+       and, once it exports anything, to one a2l ``GROUP``.
    * - declaration
      - one entry of a component interface: a scope, an optional c preprocessor condition and a
        definition. A component takes part in a variable by declaring it, and only by
@@ -344,7 +344,7 @@ controller and nothing else:
    ValueB      measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
    ValueC      measurement  float32   degC  -       -                  SensorHub              UserInterface
    ValueD      measurement  uint16    -     [8]     -                  SensorHub (local)      -
-   ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             UserInterface, EventLogger
+   ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             EventLogger, UserInterface
    ValueF      measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
    ValueG      measurement  uint16    V     -       1000 (= 1 V)       Controller             UserInterface
    ValueH      measurement  sint16    %     -       0 (= 0 %)          Controller (local)     -
@@ -406,6 +406,8 @@ with the addresses written in decimal or hexadecimal:
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
+   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'FlagA', 'MapA' and 10 others; they reach the a2l at address 0
+   1 warning
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it
@@ -417,7 +419,9 @@ unchanged inputs produces a byte identical result, which is what makes a deliver
 reproducible.
 
 Before the address map is applied every address in the a2l is ``0x00000000``; afterwards the
-objects named in the map carry their real address, and the ones that are not named keep zero.
+objects named in the map carry their real address, and the ones that are not named keep zero
+and are reported once, as the ``address-missing`` warning above - which ``--strict`` turns
+into an error, so that a post-link build cannot ship an a2l with a hole in it.
 ``SYMBOL_LINK`` is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:
@@ -463,9 +467,8 @@ have the symbol names in the file:
    image --> address_map: symbol addresses taken\nfrom the linker output
 
    project_file --> ddd_second
-   templates --> ddd_second
    address_map --> ddd_second
-   ddd_second --> final_a2l: the c sources are\nregenerated unchanged
+   ddd_second --> final_a2l: the a2l alone is rewritten;\nthe c sources are not touched
    final_a2l --> mc_tool: measure and calibrate\nthe built software
 
 Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
@@ -534,10 +537,10 @@ as json and ``ddd schema dictionary`` prints its schema, so a generator DDD does
 header for another language, a csv for a test bench, an ARXML - can consume the resolved data
 of a project without depending on anything inside the tool. And a backend is nothing more than
 an object with a ``name`` and a ``generate(dictionary, output_dir)`` method
-(the ``Backend`` protocol of ``ddd.backends.base``), so adding an output format means adding a
-package next
-to the two existing ones and listing it where the generate command assembles its backends,
-and changing nothing else.
+(the ``Backend`` protocol of ``ddd.backends.base``), so an output format DDD does not ship is
+a :doc:`plugin's <plugins>` backend, which touches nothing inside the tool, and a built-in one
+is a package next to the two existing ones, registered as an artefact of the generate command
+the way :doc:`developer_documentation` describes.
 
 The boundary is not a matter of intent. The test suite walks the import graph and fails the
 build if the front end imports a backend, if a backend reaches into the loader or the analysis,

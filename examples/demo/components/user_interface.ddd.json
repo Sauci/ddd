@@ -150,6 +150,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueI",
+          "id": "kc9adjc1092d",
           "kind": "measurement",
           "description": "Bit coded measurement written by the user interface",
           "datatype": "uint32",
@@ -185,6 +186,7 @@
         "definition": {
           "kind": "curve",
           "name": "CurveB",
+          "id": "3j9p335cx4t3",
           "description": "Second calibratable curve over the same shared axis",
           "datatype": "uint8",
           "unit": "%",
@@ -201,6 +203,7 @@
         "definition": {
           "kind": "value_block",
           "name": "BlockA",
+          "id": "nmyf0xhxm7qp",
           "description": "Calibratable array of constants",
           "datatype": "uint8",
           "conversion": {

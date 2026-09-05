@@ -78,6 +78,17 @@ describing different objects under one name, and the edit that settles it is not
 time.
 """
 
+DEFERRED_KEYS: Final = frozenset({"limits"})
+"""Keys a declaration may leave to whoever states them, which the checker counts as agreement.
+
+The one exception to silence being a value: ``definition-mismatch`` compares limits only where
+both sides state them, and a consumer that leaves them out defers to the producer. Offering to
+spread a range into a declaration that deferred, or to strip the one range anybody stated,
+would be a fix on a declaration the checker calls clean - and taking it would change the range
+the a2l publishes without a finding before or after. Two stated ranges that differ are still
+reconciled both ways.
+"""
+
 QUICK_FIX: Final = "quickfix"
 
 RECONCILED: Final = frozenset({"definition-mismatch"})
@@ -270,7 +281,8 @@ def _missing(
         if site.path == path and site.pointer == definition:
             continue
         absent.update(interface_keys(read(site.path, cache).value_at(site.pointer)))
-    return sorted(absent - mine)
+    # A key this declaration may defer on is not missing from it.
+    return sorted(absent - mine - DEFERRED_KEYS)
 
 
 def _adopt(
@@ -284,7 +296,7 @@ def _adopt(
     Written through :func:`_assign` rather than straight into the text, so that this direction
     is refused for a key the target's own kind does not have on the same terms as every other.
     """
-    if document.raw_at(f"{here.pointer}.{key}") is not None:
+    if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
     stated = {
         raw
@@ -320,7 +332,8 @@ def _from_producer(
         return None
     producer = producers[0]
     raw = read(producer.path, cache).raw_at(f"{producer.pointer}.{key}")
-    if raw is None or raw == document.raw_at(f"{here.pointer}.{key}"):
+    mine = document.raw_at(f"{here.pointer}.{key}")
+    if raw is None or raw == mine or (key in DEFERRED_KEYS and mine is None):
         return None
     edit = _assign(document, here.pointer, key, raw)
     if edit is None:
@@ -343,7 +356,7 @@ def _remove_here(
     wants is not something to decide for them. Only offered when no other declaration has one,
     because otherwise removing it settles nothing.
     """
-    if document.raw_at(f"{here.pointer}.{key}") is None:
+    if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
         return None
     if key in _keys_of(document, here.pointer)[1]:
         # Offering to remove a key the kind requires is offering to break the file: it would
@@ -382,7 +395,7 @@ def _remove_elsewhere(
     ``unit`` could take one from the others but never say "none of you should have one
     either". Both are ways of agreeing, and which one is meant is the author's to choose.
     """
-    if document.raw_at(f"{here.pointer}.{key}") is not None:
+    if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
     changes: dict[str, list[dict[str, Any]]] = {}
     for site in built.declarations.get(name, ()):
@@ -454,7 +467,10 @@ def _propagate(
     for site in built.declarations.get(name, ()):
         if site == here:
             continue
-        edit = _assign(read(site.path, cache), site.pointer, key, raw)
+        target = read(site.path, cache)
+        if key in DEFERRED_KEYS and target.raw_at(f"{site.pointer}.{key}") is None:
+            continue  # it deferred to us; there is nothing to reconcile
+        edit = _assign(target, site.pointer, key, raw)
         if edit is not None:
             changes.setdefault(site.path.as_uri(), []).append(edit)
     if not changes:

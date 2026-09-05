@@ -55,6 +55,24 @@ def _string_shorthand(value: Any) -> Any:
 Unit = Annotated[UnitDeclaration, BeforeValidator(_string_shorthand)]
 
 
+def _publish_bare_spellings(schema: dict[str, Any]) -> None:
+    """Let the schema accept the bare string ``_string_shorthand`` turns into an entry.
+
+    The entry object is what the model holds, so it is what pydantic publishes; the spelling
+    on its own is what the loader accepts, so an editor validating a file has to accept it.
+    """
+    schema["items"] = {
+        "anyOf": [
+            {
+                "type": "string",
+                "minLength": 1,
+                "description": "A spelling on its own, for a unit that needs no description.",
+            },
+            schema["items"],
+        ]
+    }
+
+
 class UnitsFile(FileRoot):
     """Root object of a ``*.ddd.json`` unit vocabulary description.
 
@@ -65,5 +83,7 @@ class UnitsFile(FileRoot):
 
     model_config = ConfigDict(title="DDD unit vocabulary")
 
-    units: Annotated[tuple[Unit, ...], Field(min_length=1)]
+    units: Annotated[
+        tuple[Unit, ...], Field(min_length=1, json_schema_extra=_publish_bare_spellings)
+    ]
     """The units this project spells, in any order; an empty vocabulary is no file at all."""

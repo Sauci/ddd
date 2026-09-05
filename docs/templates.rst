@@ -193,6 +193,14 @@ The model
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
+   * - ``model.structures``
+     - One entry per :doc:`declared structure <file_formats/types>`, each after every
+       structure it nests, with ``.name``, ``.comment`` and ``.members``. A member has
+       ``.name``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.bits`` - the width of a
+       bitfield, or nothing - ``.comment`` and ``.declaration``, the last being the member as
+       it goes into a ``typedef struct``, ``uint16_t value`` or ``uint8_t ready : 1``,
+       without the semicolon. Empty when the project declares no structure; the example
+       templates emit each as a ``typedef struct`` in the types header, after the enums.
    * - ``model.groups``
      - The objects to be *defined*, grouped by owning component: ``.name``,
        ``.description``, ``.measurements``, ``.calibration`` and ``.variables``, the last
@@ -276,10 +284,12 @@ themselves:
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.
 
-``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier`` and
-``.initializer`` are there as
-well, for a template that would rather lay the declaration out itself than take
-``.definition`` whole. ``.c_type`` and ``.datatype`` are the same type in two vocabularies:
+``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier``, ``.initializer``
+and ``.extensions`` are there as well, for a template that would rather lay the declaration
+out itself than take ``.definition`` whole - ``.extensions`` being the resolved block of
+every :doc:`plugin <plugins>` the project loads, keyed by plugin name, for a template that
+renders what a plugin decided. ``.c_type`` and ``.datatype`` are the same type in two
+vocabularies:
 the ISO spelling (``uint16_t``) that ``.definition`` and the example templates use, and the
 description's own (``uint16``). A project whose platform header already provides the
 description's names - AUTOSAR's ``Platform_Types.h`` spells them exactly - renders
@@ -363,12 +373,12 @@ A mistake in a template stops the run
 
 Undefined names are strict. Reading an attribute that does not exist - ``model.grops`` for
 ``model.groups``, ``variable.commment`` for ``variable.comment`` - raises instead of
-rendering as an empty string, and the run ends with a traceback naming the template, the line
-and the attribute:
+rendering as an empty string, and the run ends with one line naming the template, the line
+and the attribute, and exit status 2 - a usage error, since the template is the caller's:
 
 .. code-block:: text
 
-   jinja2.exceptions.UndefinedError: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
+   ddd: cannot render template 'ddd_globals.c.jinja2', line 14: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
 
 This is worth the noise. The alternative, which is jinja2's default, is that the typo
 produces nothing at all: the loop body disappears, the file is generated, the build succeeds,
@@ -438,7 +448,7 @@ The example templates
 
 .. literalinclude:: ../examples/templates/ddd_types.h.jinja2
    :language: jinja
-   :caption: ddd_types.h.jinja2 - the standard includes and the enum typedefs
+   :caption: ddd_types.h.jinja2 - the standard includes, the constants, the enum and structure typedefs
 
 .. literalinclude:: ../examples/templates/ddd_globals.c.jinja2
    :language: jinja

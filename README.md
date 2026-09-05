@@ -32,9 +32,10 @@ Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes
 
 The **full documentation is at <https://sauci.github.io/ddd/>** - a guided introduction, the
 reference for every command, every check and every json field, and the reasoning behind the
-design. It is generated from these sources and published on every change to `master`, so it
-describes the current release rather than whatever was true when somebody last wrote it down.
-This README is the short version.
+design. It is generated from these sources: the root of the site lands on the newest release,
+and <https://sauci.github.io/ddd/latest/> follows `master`, which is what the links below
+point into, so that they describe the tree this README sits in rather than whatever was true
+when somebody last wrote it down. This README is the short version.
 
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
@@ -177,7 +178,7 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | from | go to definition | find references |
 | --- | --- | --- |
 | anywhere in a declaration - the name, the datatype, a number | the declaration that **writes** that object, in whichever component that is | every declaration of it |
-| a structure name in a `type` | where the structure is declared | every member nesting it |
+| a structure name in a `typename` | where the structure is declared | every member nesting it |
 | an `includes` entry | the file - wildcards land on every match | |
 
 **Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
@@ -188,7 +189,9 @@ is shown the producer's value first, the producer its own.  A key nobody else st
 and which way to settle it is yours.  The value is copied as you wrote it rather than
 re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives looking like itself; a
 declaration that never mentioned the key gets it inserted, on one line or its own depending on
-how that file is written.  Nothing is offered when everybody already agrees.
+how that file is written.  Nothing is offered when everybody already agrees - and `limits`
+nobody else states are agreement, since a declaration that leaves them out defers to the one
+that states them, exactly as the checker reads it.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it.  A name c reserves, one that is
@@ -204,11 +207,14 @@ the build applies.  Point it at an out-of-tree build with `-b DIR`; without it t
 directory names next to the workspace are searched.
 
 A file no build claims is still checked, on its own, but only for what one file can decide.
-Read alone a component has inputs nobody writes, outputs nobody reads and axes declared in
-files nobody handed over, so `missing-producer`, `unused-output` and `unknown-reference` are
-left out rather than reported about every declaration in it.  Everything a single file settles
-by itself - an initial value that does not fit, a name c reserves, a duplicate declaration -
-is reported as usual.
+Read alone a component has inputs nobody writes, outputs nobody reads and types, units,
+sections, constants and axes declared in files nobody handed over, so the ten checks that need
+every component of a project - `unknown-type`, `unknown-unit`, `unknown-section`,
+`unknown-constant`, `unknown-raster`, `unknown-extension`, `missing-producer`,
+`unknown-reference`, `unused-output` and `incomplete-project` - are left out rather than
+reported about every declaration in it.  Everything a single file settles by itself - an
+initial value that does not fit, a name c reserves, a duplicate declaration - is reported as
+usual.  `ddd check --standalone` is the same policy on the command line.
 
 There are two ways to keep the schemas there, and the choice is about *when* they have to
 exist:
@@ -278,7 +284,7 @@ description, in two optional keys - `types` and `constants` - whose entries are 
 those of the standalone files below.  That co-locates a library's contract in one file
 without scoping it: the names join the same project wide namespace, every check applies
 unchanged, and any component may name them
-([documentation](https://sauci.github.io/ddd/file_formats/component.html)).
+([documentation](https://sauci.github.io/ddd/latest/file_formats/component.html)).
 
 ### Variable definition object
 
@@ -310,6 +316,7 @@ unchanged, and any component may name them
 | `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |
+| `raster` | the component's | the measurement raster the producer updates the object in, written into the a2l as the DAQ event a tool preselects; stated by the producer only, on a measurement only, and defaulting to what its component declares |
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
@@ -420,25 +427,25 @@ project's `includes` like a component and each with its own page in the document
   fixes the datatype, unit, conversion and limits, and there is nothing left for two
   components to disagree about; an external type names a c type a hand written header
   defines, which a structure member carries verbatim
-  ([documentation](https://sauci.github.io/ddd/file_formats/types.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/types.html));
 * a **units** file pins the unit spellings the project allows, so `Nm` here and
   `newton_meter` there is an `unknown-unit` finding instead of two quiet spellings of one
   quantity; declaring one is opt-in
-  ([documentation](https://sauci.github.io/ddd/file_formats/units.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/units.html));
 * a **sections** file declares the linker sections of the project - the name, whether the
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
-  ([documentation](https://sauci.github.io/ddd/file_formats/sections.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/sections.html));
 * a **constants** file declares named integer constants, and a shape names one where it
   would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
   the generated c declares the array by the name, and the a2l records it as a
   `SYSTEM_CONSTANT`
-  ([documentation](https://sauci.github.io/ddd/file_formats/constants.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/constants.html));
 * a **rasters** file declares the DAQ events a target's XCP configuration offers - a short
   name (eight characters at most), an event channel number and, optionally, a cyclic period -
   and a definition or its producing component names the one a measurement is updated in, so
   the generated a2l preselects the right event for a calibration tool
-  ([documentation](https://sauci.github.io/ddd/file_formats/rasters.html)).
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/rasters.html)).
 
 Types and constants have a second home: the component that publishes them may declare them
 inside its own description, with entries exactly as the standalone files write them, and the
@@ -459,7 +466,7 @@ owns an `extensions` block on a definition and on the project, validates it with
 model of its own, and contributes checks (`-W layout/duplicate-key=warning` targets one),
 comparison rules and an artefact (`ddd generate layout`). DDD carries the block into the
 dictionary and never interprets it. The api is documented at
-<https://sauci.github.io/ddd/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
+<https://sauci.github.io/ddd/latest/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
 is a worked example and [examples/layout](examples/layout) a project that names it.
 
 ## Consistency checks
@@ -597,7 +604,7 @@ actually changed, so unchanged output does not trigger a rebuild:
 
 | file | from | content |
 | --- | --- | --- |
-| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>` and one `typedef enum` per enum conversion |
+| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
 | `ddd_globals.h` | `ddd_globals.h.jinja2` | `extern` declaration of every variable, for `ddd_globals.c` only |
 | `ddd_globals.c` | `ddd_globals.c.jinja2` | the single definition of every global variable, grouped by owner |
 | `<Component>.h` | `{component}.h.jinja2` | the interface of one component: nothing else is visible |
@@ -654,8 +661,8 @@ component's definition, but the command still reports every finding and still ex
 
 The a2l file is ASAP2 1.6.1 and contains a `MEASUREMENT` per measurement, a `CHARACTERISTIC`
 per parameter, value block, curve and map, an `AXIS_PTS` per axis, the `RECORD_LAYOUT`s they
-deposit into, `COMPU_METHOD`s shared between objects with the same conversion and unit, a
-`COMPU_VTAB` per enum and one `GROUP` per component.
+deposit into, `COMPU_METHOD`s shared between objects with the same conversion, unit and
+display format, a `COMPU_VTAB` per enum and one `GROUP` per component that exports anything.
 
 * a linear conversion becomes `RAT_FUNC` with `COEFFS 0 1 -offset 0 0 factor`, which is the
   a2l way of writing `raw = (physical - offset) / factor`
@@ -686,13 +693,13 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 
 | command | purpose |
 | --- | --- |
-| `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares |
+| `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
 | `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
-| `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
+| `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
@@ -701,8 +708,8 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 
 `FILE` may be a project or a single component file, which makes it possible to check a
-component on its own before integrating it - add `-W missing-producer=ignore` in that case,
-because the components producing the inputs are by definition not part of the file.
+component on its own before integrating it - add `--standalone` in that case, which holds
+back the checks that need the components the file does not contain.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
@@ -823,7 +830,7 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 5. compares `nm` against `ddd list --format json` so that every variable DDD promised is
    defined exactly once and nothing else is ([docker/verify_symbols.py](docker/verify_symbols.py)).
 
-Steps 3 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
+Steps 2 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
 declarations are covered in both states:
 
 ```text
@@ -866,11 +873,15 @@ knowing:
   severities, odd float literals - live together in
   [tests/test_edge_cases.py](tests/test_edge_cases.py).
 
-Two more suites guard things a type checker cannot:
+Three more suites guard things a type checker cannot:
 [tests/test_backends.py](tests/test_backends.py) walks the import graph so the layering
-cannot rot, and [tests/test_documentation.py](tests/test_documentation.py) asserts that every
-check, command, object kind and datatype is named in the README and the SPEC, and that no
-link in either points at a file that no longer exists.
+cannot rot, [tests/test_hardening.py](tests/test_hardening.py) holds one test per defect that
+once reached a customer-facing artefact or verdict, and
+[tests/test_documentation.py](tests/test_documentation.py) with
+[tests/test_transcripts.py](tests/test_transcripts.py) hold the documentation to the tool:
+every check, command, object kind and datatype is named where it should be, no link points at
+a file that no longer exists, and every command a page runs over the examples prints what the
+page shows.
 
 `docker compose run --rm coverage` writes a browsable report to `build/htmlcov/index.html`.
 
@@ -887,8 +898,10 @@ link in either points at a file that no longer exists.
 | [backends/a2l/](src/ddd/backends/a2l/) | `UWORD`, compu methods, record layouts, templates | c, the loader |
 
 A backend is anything with a `name` and a `generate(dictionary, output_dir)` method
-([backends/base.py](src/ddd/backends/base.py)); adding an output format means adding a
-package and listing it, and changing nothing else.  `tests/test_backends.py` enforces the
+([backends/base.py](src/ddd/backends/base.py)); an output format DDD does not ship is a
+[plugin](#plugins)'s backend, which touches nothing inside the tool, and a built-in one is a
+package next to the two existing ones, registered as an artefact of `ddd generate`, as the
+developer documentation describes.  `tests/test_backends.py` enforces the
 layering by walking the import graph, so the split cannot rot silently.
 
 Diagnostics never raise: the loader and the analysis collect as many findings as possible in

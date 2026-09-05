@@ -8,6 +8,7 @@
         "scope": "output",
         "definition": {
           "name": "SharedValue",
+          "id": "dtbzsv10ybp5",
           "kind": "measurement",
           "description": "Value shared between components",
           "datatype": "sint16",
@@ -22,6 +23,7 @@
         "scope": "output",
         "definition": {
           "name": "UnusedSignal",
+          "id": "qq44pqr2mfqy",
           "kind": "measurement",
           "datatype": "uint8",
           "conversion": {
@@ -34,6 +36,7 @@
         "scope": "local",
         "definition": {
           "name": "Scratch",
+          "id": "dtmtz7m8rvvt",
           "kind": "measurement",
           "datatype": "uint8",
           "conversion": {

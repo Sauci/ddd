@@ -91,6 +91,24 @@ class LinearConversion(_Frozen):
         return f"linear(factor={format_number(self.factor)}, offset={format_number(self.offset)})"
 
 
+def _publish_mapping_form(schema: dict[str, Any]) -> None:
+    """Let the schema accept the mapping ``_expand_mapping`` turns into the list.
+
+    The list is what the model holds, so it is what pydantic publishes; the shorthand is what
+    the loader accepts, so an editor validating a file has to accept it as well.
+    """
+    listed = {key: schema.pop(key) for key in ("type", "items", "minItems") if key in schema}
+    schema["anyOf"] = [
+        listed,
+        {
+            "type": "object",
+            "additionalProperties": {"type": "integer"},
+            "minProperties": 1,
+            "description": 'The enumerators as a ``{"NAME": value}`` mapping.',
+        },
+    ]
+
+
 class EnumConversion(_Frozen):
     """A verbal conversion table; the raw value *is* the physical value.
 
@@ -108,7 +126,9 @@ class EnumConversion(_Frozen):
     name: Identifier
     """C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""
 
-    enumerators: Annotated[tuple[Enumerator, ...], Field(min_length=1)]
+    enumerators: Annotated[
+        tuple[Enumerator, ...], Field(min_length=1, json_schema_extra=_publish_mapping_form)
+    ]
     """The named values, either as objects or as a ``{"NAME": value}`` mapping."""
 
     @model_validator(mode="before")

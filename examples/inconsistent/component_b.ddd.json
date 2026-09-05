@@ -8,6 +8,7 @@
         "scope": "output",
         "definition": {
           "name": "SharedValue",
+          "id": "pmytqj034bsb",
           "kind": "measurement",
           "description": "Value shared between components",
           "datatype": "sint16",

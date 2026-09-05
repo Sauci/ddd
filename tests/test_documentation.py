@@ -8,6 +8,9 @@ README and the SPEC describing a previous version of DDD.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import dataclasses
+import io
 import json
 import re
 import tomllib
@@ -20,9 +23,11 @@ import pytest
 from pydantic import BaseModel
 
 from ddd import __version__
-from ddd.cli import _build_parser
+from ddd.backends.c.model import CodeModel, MemberView, ObjectView
+from ddd.cli import _SCHEMA_MODELS, _build_parser
 from ddd.diagnostics import CHECKS
-from ddd.models import Datatype, ObjectKind
+from ddd.loading import FILE_KINDS
+from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -31,9 +36,19 @@ EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encodi
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
 PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
 DOCS_URL = "https://sauci.github.io/ddd/"
+CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
+COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
+PAGES = {
+    page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
+    for page in sorted((ROOT / "docs").rglob("*.rst"))
+    if "superpowers" not in page.parts
+}
+PAGES["README.md"] = README
+"""Every page a reader can reach, by its path, for the claims that may be made on any of them."""
 
 PROJECT_WIDE_DOCUMENTS = {
     "SPEC.md": (SPEC, "`"),
+    "README.md": (README, "`"),
     "docs/editor_integration.rst": (EDITOR_INTEGRATION, "``"),
 }
 """The documents stating how many checks need every component, each with its own quoting.
@@ -173,6 +188,71 @@ class TestChecks:
         )
 
 
+class TestTheCheckReference:
+    """The reference page promises the registry in one place, so the registry is what it is held to.
+
+    Seven checks were added to the registry over three releases and none reached the tables;
+    a reader who met one of them in a build log found nothing to look up.
+    """
+
+    @pytest.mark.parametrize("check", sorted(CHECKS))
+    def test_every_check_has_a_row_on_the_reference_page(self, check: str) -> None:
+        assert f"``{check}``" in CONSISTENCY_CHECKS
+
+    @pytest.mark.parametrize(
+        "check", sorted(name for name, info in CHECKS.items() if info.comparison)
+    )
+    def test_every_comparison_check_is_in_the_comparison_table(self, check: str) -> None:
+        """The comparison page grades every difference; one it does not list cannot be looked up."""
+        rows = re.findall(
+            r"\* - (?:error|warning|info)\n\s+- ``([a-z0-9-]+)``", COMPARING_DELIVERIES
+        )
+        assert check in rows, f"the comparison table lists {sorted(rows)}"
+
+    def test_the_registry_describes_changed_storage_as_the_pages_do(self) -> None:
+        """``ddd checks`` prints the registry's one-liner; the raster joined the comparison
+        without joining it, so the tool and the pages disagreed on what the check covers."""
+        assert "raster" in CHECKS["changed-storage"].description
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
+        """ "The five checks whose severity cannot be changed" went stale when two more joined.
+
+        Any page may count them, so every page is read; a sentence that counts them in words
+        has to count what the registry marks as not overridable.
+        """
+        expected = sum(1 for info in CHECKS.values() if not info.overridable)
+        text = flattened(PAGES[page])
+        counted = re.findall(
+            r"\b(\w+) (?:load time )?(?:checks )?whose severity\b", text, flags=re.I
+        ) + re.findall(r"\b(\w+) checks cannot be relaxed", text, flags=re.I)
+        for word in counted:
+            if word.lower() in NUMBER_WORDS:
+                assert NUMBER_WORDS[word.lower()] == expected, (
+                    f"{page} counts {word} checks with a fixed severity; "
+                    f"the registry has {expected}"
+                )
+
+
+class TestTheFileKinds:
+    """A seventh file kind was added, and the lists of them written in prose stayed at six."""
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_the_description_kinds_are_counted_as_the_loader_counts_them(self, page: str) -> None:
+        for word in re.findall(r"\b(\w+) description kinds", flattened(PAGES[page]), flags=re.I):
+            if word.lower() in NUMBER_WORDS:
+                assert NUMBER_WORDS[word.lower()] == len(FILE_KINDS), (
+                    f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
+                )
+
+    def test_the_file_kind_row_names_every_kind(self) -> None:
+        """The row explaining the check enumerates what a top level key may be, in full."""
+        row = re.search(r"\* - ``file-kind``\n(.*?)\n   \* - ``", CONSISTENCY_CHECKS, flags=re.S)
+        assert row is not None
+        for kind in FILE_KINDS:
+            assert f"``{kind}``" in row.group(1), f"the file-kind row does not name {kind}"
+
+
 class TestCommands:
     @pytest.mark.parametrize("command", commands())
     def test_every_command_is_documented_in_the_readme(self, command: str) -> None:
@@ -194,6 +274,130 @@ class TestCommands:
             "templates-dir",
             "sources",
         }
+
+
+def commands_with(option: str) -> list[str]:
+    """The subcommands offering an option, an artefact of ``generate`` counting for it."""
+    parser = _build_parser()
+    action = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+
+    def offers(sub: argparse.ArgumentParser) -> bool:
+        for candidate in sub._actions:
+            if option in candidate.option_strings:
+                return True
+            if isinstance(candidate, argparse._SubParsersAction):
+                return any(offers(nested) for nested in candidate.choices.values())
+        return False
+
+    return sorted(name for name, sub in action.choices.items() if offers(sub))
+
+
+class TestTheCommandPage:
+    """The hand-written half of the command reference, held to the parser as the other half is."""
+
+    COMMAND_PAGE = PAGES["docs/command_line_interface.rst"]
+
+    @pytest.mark.parametrize("command", commands())
+    def test_every_command_has_a_row_in_the_command_table(self, command: str) -> None:
+        assert f"``ddd {command}" in self.COMMAND_PAGE
+
+    def test_the_schema_kinds_are_the_ones_the_parser_offers(self) -> None:
+        """A kind added to ``ddd schema`` has to reach the sentence that lists them."""
+        listed = re.search(
+            r"print the json schema of ((?:``[a-z]+``(?:, | or )?)+)", flattened(self.COMMAND_PAGE)
+        )
+        assert listed is not None
+        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(_SCHEMA_MODELS)
+
+    def test_the_readme_lists_the_same_schema_kinds(self) -> None:
+        listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
+        assert listed is not None
+        assert set(listed.group(1).replace("\\", "").split("|")) == {*_SCHEMA_MODELS, "all"}
+
+    def test_the_commands_said_to_take_format_json_are_the_ones_that_do(self) -> None:
+        """Both pages enumerate them, and the command page counts them in words as well."""
+        expected = commands_with("--format")
+        counted = re.search(
+            r"(\w+) commands understand ``--format json``: ((?:``[a-z-]+``(?:, | and )?)+)",
+            flattened(self.COMMAND_PAGE),
+        )
+        assert counted is not None, "the command page no longer says which commands take it"
+        assert NUMBER_WORDS[counted.group(1).lower()] == len(expected)
+        assert sorted(re.findall(r"``([a-z-]+)``", counted.group(2))) == expected
+        listed = re.search(
+            r"available on every command that produces findings - ((?:`[a-z-]+`(?:, | and )?)+)",
+            flattened(README),
+        )
+        assert listed is not None, "the readme no longer says which commands take it"
+        assert sorted(re.findall(r"`([a-z-]+)`", listed.group(1))) == expected
+
+
+class TestTheDocumentationSite:
+    """The site serves every version under its own directory, so a link without one is a 404.
+
+    The root redirects to the newest release; ``latest/`` follows master, which is this tree,
+    so a page a link names under it has to exist here.
+    """
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_every_link_into_the_site_names_a_version_and_a_page(self, page: str) -> None:
+        for link in re.findall(r"https://sauci\.github\.io/ddd/([^\s)>`\"]*)", PAGES[page]):
+            if not link:
+                continue  # the root, which redirects to the newest release
+            version, _, path = link.partition("/")
+            assert version == "latest" or re.fullmatch(r"v\d+(?:\.\d+)*", version), (
+                f"{page} links {link}, which the site does not serve: pages live under "
+                f"latest/ or v<tag>/"
+            )
+            if version == "latest" and path:
+                target = ROOT / "docs" / path.split("#", 1)[0].replace(".html", ".rst")
+                assert target.is_file(), f"{page} links {link}, and {target.name} does not exist"
+
+
+def table_rows(page: str, heading: str) -> dict[str, str]:
+    """The rows of the key table under a heading, as key to default cell.
+
+    The reference pages write their key tables as list tables whose first cell is the key in
+    double backticks and whose second is what it defaults to; the section runs from the
+    heading to the next underlined title.
+    """
+    section = PAGES[page].split(heading, 1)[1]
+    section = re.split(r"\n[^\n]+\n[-~=]{4,}\n", section, maxsplit=1)[0]
+    return dict(re.findall(r"   \* - ``([a-z0-9_]+)``\n     - (.+)\n", section))
+
+
+class TestTheKeyTables:
+    """A key table that claims to list every key is held to the model that owns them.
+
+    ``id`` and ``raster`` reached the definitions and the component over two releases and
+    reached none of the tables, which tell a reader that an unknown key is refused.
+    """
+
+    @pytest.mark.parametrize("key", sorted(DataObject.model_fields))
+    def test_every_common_key_of_a_definition_has_a_row(self, key: str) -> None:
+        rows = table_rows("docs/file_formats/variable_definition.rst", "The common attributes\n")
+        assert key in rows, f"the common attributes table lists {sorted(rows)}"
+
+    @pytest.mark.parametrize("key", sorted(DataObject.model_fields))
+    def test_every_common_key_of_a_definition_is_in_the_readme(self, key: str) -> None:
+        assert f"\n| `{key}` |" in README
+
+    @pytest.mark.parametrize("key", sorted(Component.model_fields))
+    def test_every_key_of_a_component_has_a_row(self, key: str) -> None:
+        rows = table_rows("docs/file_formats/component.rst", "Component description\n")
+        assert key in rows, f"the component table lists {sorted(rows)}"
+
+    @pytest.mark.parametrize("key", sorted(ScalarType.model_fields))
+    def test_a_scalar_type_key_is_shown_as_required_when_the_model_requires_it(
+        self, key: str
+    ) -> None:
+        """A cell saying "identity" where the model says required costs a whole project load."""
+        rows = table_rows("docs/file_formats/types.rst", "Scalar types\n")
+        assert key in rows, f"the scalar type table lists {sorted(rows)}"
+        if key != "type" and ScalarType.model_fields[key].is_required():
+            assert rows[key] == "required", f"{key} is required, the table says {rows[key]!r}"
 
 
 class TestConcepts:
@@ -632,6 +836,192 @@ class TestPublishedSchemas:
         assert not offenders, f"{kind} refers the reader to python: {offenders}"
 
 
+class TestTheShorthandsThePagesRecommend:
+    """What the loader accepts, the published schema has to accept as well.
+
+    The pages recommend ``"conversion": {}``, the mapping form of the enumerators and a bare
+    unit spelling, and tell the reader to bind an editor to the schema; a schema that refused
+    them underlined every recommended spelling in red while ``ddd check`` passed the file.
+    """
+
+    @staticmethod
+    def accepted(kind: str, document: dict[str, Any]) -> None:
+        jsonschema.validate(document, published(kind))
+
+    def test_an_empty_conversion_is_the_identity(self) -> None:
+        self.accepted(
+            "component",
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Raw",
+                                "kind": "measurement",
+                                "datatype": "uint16",
+                                "conversion": {},
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_enumerators_may_be_written_as_a_mapping(self) -> None:
+        self.accepted(
+            "component",
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Mode",
+                                "kind": "measurement",
+                                "datatype": "uint8",
+                                "conversion": {
+                                    "kind": "enum",
+                                    "name": "Mode_t",
+                                    "enumerators": {"MODE_OFF": 0, "MODE_RUN": 1},
+                                },
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_a_unit_may_be_a_bare_spelling(self) -> None:
+        self.accepted("units", {"units": ["Nm", "rpm", {"unit": "degC", "description": "x"}]})
+
+
+def json_blocks(page: str) -> list[Any]:
+    """Every json code block of a page that parses, as the value it holds."""
+    found: list[Any] = []
+    for match in re.finditer(r"\.\. code-block:: json\n\n((?:   .*\n|\n)+)", PAGES[page]):
+        text = "\n".join(line[3:] for line in match.group(1).splitlines())
+        try:
+            found.append(json.loads(text))
+        except json.JSONDecodeError:
+            continue  # a fragment, shown for one key
+    return found
+
+
+def without_descriptions(node: Any) -> Any:
+    """A schema with its documentation elided, which is how the page shows one.
+
+    Only the prose goes: a property that happens to be called ``description`` stays.
+    """
+    if isinstance(node, dict):
+        return {
+            key: without_descriptions(value)
+            for key, value in node.items()
+            if not (key == "description" and isinstance(value, str))
+        }
+    if isinstance(node, list):
+        return [without_descriptions(value) for value in node]
+    return node
+
+
+class TestTheDictionaryPage:
+    """The page shows the dictionary "exactly" as the dump writes it, so it is compared with one.
+
+    Three format bumps added keys to every object and to the top level, and the excerpts
+    stayed at the shape of format 4 while claiming to be exact.
+    """
+
+    def test_the_curve_is_shown_as_the_dump_writes_it(self) -> None:
+        from ddd.cli import main
+
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            assert main(["dump", str(ROOT / "examples" / "demo" / "demo.ddd.json")]) == 0
+        dumped = next(
+            entry for entry in json.loads(stream.getvalue())["objects"] if entry["name"] == "CurveA"
+        )
+        shown = next(
+            block
+            for block in json_blocks("docs/data_dictionary.rst")
+            if isinstance(block, dict) and block.get("name") == "CurveA" and "owner" in block
+        )
+        assert shown == dumped
+
+    def test_the_top_level_of_the_schema_is_shown_as_it_is_published(self) -> None:
+        """The dialect and the definitions are left out, and the prose is shortened."""
+        shown = next(
+            block
+            for block in json_blocks("docs/data_dictionary.rst")
+            if isinstance(block, dict) and "properties" in block and "$defs" not in block
+        )
+        expected = {key: value for key, value in published("dictionary").items() if key[0] != "$"}
+        assert without_descriptions(shown) == without_descriptions(expected)
+
+
+def view_attributes(cls: type) -> list[str]:
+    """What a template can read off a view: its fields, properties and public methods."""
+    names = [field.name for field in dataclasses.fields(cls)]
+    names += [name for name, value in vars(cls).items() if isinstance(value, property)]
+    names += [
+        name
+        for name, value in vars(cls).items()
+        if callable(value) and not name.startswith("_") and name not in names
+    ]
+    return sorted(names)
+
+
+class TestTheTemplateReference:
+    """The reference is what a project writes its own templates from, so it lists everything.
+
+    ``model.structures`` reached the model a release ago and the page never mentioned it; a
+    types header written from the page dropped every structure the definitions depend on.
+    """
+
+    TEMPLATES = PAGES["docs/templates.rst"]
+
+    @pytest.mark.parametrize("name", view_attributes(CodeModel))
+    def test_every_attribute_of_the_model_is_documented(self, name: str) -> None:
+        assert f"``model.{name}" in self.TEMPLATES
+
+    @pytest.mark.parametrize(
+        "name", sorted({*view_attributes(ObjectView), *view_attributes(MemberView)})
+    )
+    def test_every_attribute_of_a_view_is_documented(self, name: str) -> None:
+        assert f"``.{name}" in self.TEMPLATES
+
+
+class TestTheBuildIntegrationPage:
+    """The cmake module is what a build runs, so the page and the module are held together."""
+
+    CMAKE_MODULE = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+
+    def test_the_component_target_holds_back_what_the_registry_says(self) -> None:
+        """A hand-kept list of two checks silenced two of the ten; the flag derives them."""
+        command = re.search(
+            r"\$\{DDD_EXECUTABLE\} check \"\$\{description\}\"(.*?)\n", self.CMAKE_MODULE
+        )
+        assert command is not None, "the module no longer checks a component on its own"
+        assert "--standalone" in command.group(1), command.group(1)
+        assert "-W" not in command.group(1), "a check named by hand beside the derived flag"
+
+    def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
+        """The page calls its block the shipped file minus comments, so that is what it is."""
+        shipped = (ROOT / "examples" / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
+        expected = [line for line in shipped.splitlines() if not line.lstrip().startswith("#")]
+        page = PAGES["docs/build_integration.rst"]
+        block = re.search(
+            r"with its\ncomments removed[^\n]*\n\n\.\. code-block:: cmake\n\n((?:   .*\n|\n)+)",
+            page,
+        )
+        assert block is not None, "the page no longer shows the example after that sentence"
+        shown = [line[3:] for line in block.group(1).rstrip("\n").splitlines()]
+        assert shown == expected
+
+
 class Undocumented(StrEnum):
     """A set of values whose members say nothing about themselves.
 
@@ -883,24 +1273,25 @@ class TestPublishedDocumentation:
         )
 
     def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
-        """The archive branch and the served site are two publishes, and they can disagree.
+        """The branch is the site, and a push that lands is still not proof that it is served.
 
-        The branch is a git push and the site is an artifact handed to Pages, so nothing
-        makes them agree by construction. When they parted, every step of every job still
-        reported success: ``v0.6.0`` sat in the archive, named in the version index beside
-        it, while the site went on serving a build assembled before the release existed -
-        a complete set of documentation at a url that answered 404, with nothing red
-        anywhere to say so, and the version menu never offering it.
+        When the branch and the site were two publishes - a git push and an artifact handed
+        to Pages - they parted twice while every step reported success: a release sat in
+        the archive, named in the version index beside it, while the site went on serving a
+        build assembled before the release existed - a complete set of documentation at a
+        url that answered 404, with nothing red anywhere to say so. Serving the branch
+        removed the second publish; a Pages source left on the wrong setting would bring the
+        silence back.
 
         So the run ends by reading back what it just published, which is the only statement
         about the site that is made from outside the machinery that writes it.
         """
-        deploy = DOCS_WORKFLOW.split("actions/deploy-pages", 1)
-        assert len(deploy) == 2, "the workflow no longer deploys exactly once"
-        after = deploy[1]
+        pushed = DOCS_WORKFLOW.split("git -C site push origin gh-pages", 1)
+        assert len(pushed) == 2, "the workflow no longer publishes by pushing the branch once"
+        after = pushed[1]
         assert "versions.json" in after and "${SLOT}" in after, (
-            "nothing after the deployment checks that the site serves the version just "
-            "published, so a site one build behind reports success"
+            "nothing after the push checks that the site serves the version just published, "
+            "so a site one build behind reports success"
         )
         assert "cb=" in after, (
             "the read back is cacheable, so an edge answering for the previous build passes"

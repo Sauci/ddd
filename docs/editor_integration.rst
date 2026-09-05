@@ -67,15 +67,20 @@ names it, across as many files as that takes. A name c reserves, one that is not
 identifier, or one the project already uses - for another object, an enum, an enumerator, a
 type or a declared constant - is refused with the reason before anything is written, because
 a rename that silently merges two objects compiles, links, and shares storage nobody
-intended to share. Renaming starts from a variable; a type or a constant is renamed where
-it is declared, which is one file rather than a project wide rewrite. Only the characters
-between the quotes are replaced, so formatting survives and free text is left alone.
+intended to share. Renaming starts from a variable and stops there: a type or a constant is
+not renamed by the server, because its name lives in every file that spells it - the one
+declaring it and every ``typename`` or ``dimensions`` naming it - and a hand edit of the
+declaration alone leaves those references pointing at nothing until the next check says so.
+Only the characters between the quotes are replaced, so formatting survives and free text is
+left alone.
 
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
 it: take the producing component's value, spread this one to the others, or, when nobody
-else states the key, remove it. The value is copied as source text rather than
-re-serialised, so the project's formatting survives the fix.
+else states the key, remove it. ``limits`` are the exception to the last: a declaration that
+leaves them out defers to the one that states them, which the checker counts as agreement, so
+only two stated ranges that differ are offered a fix. The value is copied as source text
+rather than re-serialised, so the project's formatting survives the fix.
 
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place, decided by the same code - the command

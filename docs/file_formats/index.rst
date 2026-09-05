@@ -98,8 +98,9 @@ key the silent answer decides whether the compiler may keep a variable in a regi
 whether it may fold a calibration constant into the code that reads it.
 
 .. note::
-   ``schema`` is one of the five checks whose severity cannot be changed, along with
-   ``file-not-found``, ``json-syntax``, ``file-kind`` and ``include-cycle``. A file that
+   ``schema`` is one of the seven checks whose severity cannot be changed, along with
+   ``file-not-found``, ``json-syntax``, ``file-kind``, ``include-cycle``, ``plugin-not-found``
+   and ``plugin-invalid``. A file that
    cannot be interpreted has nothing further to say, and a component whose description failed
    to validate is not added to the project at all - so the remaining checks are never handed a
    half-read file to draw conclusions from. The full list is on the
@@ -143,7 +144,9 @@ validate the files without running DDD at all:
 The first seven describe the files you write; ``dictionary`` describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
-rejects a misspelled key at the moment it is typed rather than at the next build.
+rejects a misspelled key at the moment it is typed rather than at the next build; an
+``extensions`` block is the exception, open until ``--plugin`` closes it over the model of
+the plugin that owns it.
 
 What the schema carries
 ~~~~~~~~~~~~~~~~~~~~~~~

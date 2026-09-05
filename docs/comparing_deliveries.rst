@@ -51,6 +51,8 @@ and the conversion), the owning component and the list of components that read i
 
    {
      "name": "ValveDuty",
+     "id": "zrf3esw29w6y",
+     "extensions": {},
      "kind": "measurement",
      "datatype": "uint8",
      "description": "Commanded valve duty cycle",
@@ -68,6 +70,7 @@ and the conversion), the owning component and the list of components that read i
      "dimensions": [],
      "init": null,
      "section": null,
+     "raster": null,
      "volatile": false,
      "condition": null,
      "references": {},
@@ -221,6 +224,10 @@ them together with everything else.
    * - warning
      - ``project-mismatch``
      - the two sides of a comparison describe differently named projects
+   * - warning
+     - ``missing-plugin``
+     - a compared dictionary records a plugin this run has not loaded, so that plugin's
+       comparison rules did not run
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
@@ -281,7 +288,8 @@ project file next to a directory of components:
 The delivery that went out
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``Sensor`` publishes three measurements and keeps one calibration parameter to itself:
+``Sensor`` publishes three measurements and keeps one calibration parameter to itself - shown
+here as written, before the identities of the release were assigned:
 
 .. code-block:: json
 
@@ -347,8 +355,18 @@ The delivery that went out
 
 ``Controller`` reads ``PressureRaw`` and ``TemperatureRaw`` and produces ``ValveDuty``
 (``uint8``, ``%``, factor 0.5, limits 0 to 100); ``Actuator`` reads ``ValveDuty`` and
-``SupplyVoltage``. The project is consistent, so it is released, and its dictionary is
-archived under the name of the release:
+``SupplyVoltage``. Before the release goes out, its producing declarations are given their
+identities - once, and for good, since the identity is what lets a later delivery rename an
+object without the comparison reporting a removal and an unrelated addition (`Renames`_
+above):
+
+.. code-block:: text
+
+   $ ddd id --assign release/components/*.ddd.json
+   wrote 5 ids
+
+The project is consistent, so it is released, and its dictionary is archived under the name of
+the release:
 
 .. code-block:: text
 
@@ -360,13 +378,15 @@ archived under the name of the release:
 The delivery that wants to replace it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Development continues in ``work/``, and by the time the next delivery is prepared five things
-have changed. ``PressureRaw`` was widened from ``uint16`` to ``uint32`` to leave room for a
+Development continues in ``work/`` - a copy of ``release/``, so it carries the same
+identities - and by the time the next delivery is prepared five things have changed. ``PressureRaw`` was widened from ``uint16`` to ``uint32`` to leave room for a
 finer resolution later. ``TemperatureRaw`` was dropped, because the controller now reads the
 temperature over the bus instead. The limits of ``ValveDuty`` were tightened from 0 .. 100 to
 0 .. 80, to protect a valve that turned out not to like being driven fully open. The limits
 of ``SupplyVoltage`` were relaxed from 0 .. 16 to 0 .. 18, so that an 18 V supply variant fits.
-And a new measurement, ``AmbientPressure``, was added.
+And a new measurement, ``AmbientPressure``, was added, which ``Controller`` reads; being new,
+it was given an identity of its own by a second ``ddd id --assign``, which leaves the existing
+ones alone.
 
 Each of those is a defensible change, and the candidate passes the consistency checks exactly
 as its predecessor did, because the components were all updated together:
@@ -533,15 +553,16 @@ likely explanation is that the wrong file was picked up:
    $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
    work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
    work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
+   work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
    work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
    2 errors, 2 warnings, 1 info
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
 The comparison is carried out anyway, and it is a warning rather than an error, because
 renaming a project is a legitimate thing to do and the report is then exactly what the reader
-wants. It is a warning that should be looked at before anything below it is believed.
+wants. It is reported before any object is compared, and among the warnings it comes first,
+because it should be looked at before anything below it is believed.
 
 A baseline that cannot be read at all is a different matter, and it stops the run:
 
@@ -554,19 +575,18 @@ A baseline that cannot be read at all is a different matter, and it stops the ru
 The ``in the baseline:`` prefix is there so that a missing or malformed file on the reference
 side is never mistaken for a problem with the delivery being judged.
 
-The baseline's own findings are not findings of this run
---------------------------------------------------------
+The baseline's warnings are not findings of this run
+----------------------------------------------------
 
 When the baseline is given as a project description rather than as a dump, DDD has to analyse
 it to obtain its dictionary, and that analysis produces findings about *that* delivery: an
-output nobody read two releases ago, a component that has since been
-removed. Those findings are not this run's business. Reported
-here they would be attributed to the candidate, they would appear twice whenever both sides
-are the same tree, and a clean delivery could be failed because of the state of its
-predecessor.
+output nobody read two releases ago, an object with no identity yet. Those findings are not
+this run's business. Reported here they would be attributed to the candidate, they would
+appear twice whenever both sides are the same tree, and a clean delivery could be failed
+because of the state of its predecessor.
 
-They are therefore collected in a bag of their own and dropped. Here is an older working tree
-whose ``ValveDuty`` was read by nobody:
+Its warnings and infos are therefore collected in a bag of their own and dropped. Here is an
+older working tree whose ``ValveDuty`` was read by nobody:
 
 .. code-block:: text
 
@@ -581,9 +601,13 @@ Used as the baseline of a comparison, that warning does not reappear:
    $ ddd compare v1.3/pressure.ddd.json release/pressure.ddd.json
    pressure.ddd.json can replace pressure.ddd.json
 
-The one exception is an error that stops the baseline from being read in the first place, as
-in the missing-file example above: those are carried over, because they explain a comparison
-that could not happen at all.
+Its errors are another matter. A baseline that could not be read, as in the missing-file
+example above, or whose own components disagree has no dictionary that can be trusted, so
+every error it produces is carried over under the ``in the baseline:`` prefix, and the run
+fails on them: with a description on the candidate side the comparison is not attempted and
+no verdict is printed, and with an archived dump on the candidate side the errors are reported
+beside the comparison and the verdict is a refusal. A baseline that is to be compared against
+has to be one that checks clean of errors on its own.
 
 In a build pipeline
 -------------------

@@ -62,6 +62,15 @@ class CheckInfo:
     rather than report a finding whose only cause is what it was not shown.
     """
 
+    comparison: bool = False
+    """Whether the check grades a difference between two deliveries rather than one project.
+
+    ``ddd compare`` and ``ddd check --baseline`` are the only runs that report one, and the
+    documentation lists them apart from the consistency checks for that reason. The flag is
+    what that list is derived from, so that a comparison check added here cannot be left out
+    of it.
+    """
+
 
 def _check(
     identifier: str,
@@ -70,8 +79,11 @@ def _check(
     *,
     overridable: bool = True,
     needs_every_component: bool = False,
+    comparison: bool = False,
 ) -> CheckInfo:
-    return CheckInfo(identifier, severity, description, overridable, needs_every_component)
+    return CheckInfo(
+        identifier, severity, description, overridable, needs_every_component, comparison
+    )
 
 
 CHECKS: Final[dict[str, CheckInfo]] = {
@@ -194,33 +206,68 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("missing-id", Severity.INFO,
                "a declaration that produces a variable states no identity for it"),
         _check("renamed-object", Severity.WARNING,
-               "an object of the baseline is offered under a different name"),
+               "an object of the baseline is offered under a different name",
+               comparison=True),
         _check("removed-object", Severity.ERROR,
-               "an object of the baseline is gone and somebody read it"),
+               "an object of the baseline is gone and somebody read it",
+               comparison=True),
         _check("changed-interface", Severity.ERROR,
-               "kind, datatype, unit, scaling, shape, axes or locality of an object changed"),
+               "kind, datatype, unit, scaling, shape, axes or locality of an object changed",
+               comparison=True),
         _check("reused-name", Severity.ERROR,
-               "a name of the baseline now belongs to a different object"),
+               "a name of the baseline now belongs to a different object",
+               comparison=True),
         _check("removed-unused-object", Severity.WARNING,
-               "an object of the baseline is gone; no component read it"),
+               "an object of the baseline is gone; no component read it",
+               comparison=True),
         _check("changed-storage", Severity.WARNING,
-               "the initial value, volatility or memory section of an object changed"),
+               "the initial value, volatility, memory section or measurement raster of an "
+               "object changed",
+               comparison=True),
         _check("narrowed-limits", Severity.WARNING,
-               "the physical limits of an object got tighter, so calibrated data may not fit"),
+               "the physical limits of an object got tighter, so calibrated data may not fit",
+               comparison=True),
         _check("changed-owner", Severity.WARNING,
-               "another component produces the object now"),
+               "another component produces the object now",
+               comparison=True),
         _check("changed-condition", Severity.WARNING,
-               "the preprocessor condition of an object changed"),
-        _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed"),
+               "the preprocessor condition of an object changed",
+               comparison=True),
+        _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed",
+               comparison=True),
         _check("project-mismatch", Severity.WARNING,
-               "the two sides of a comparison describe differently named projects"),
+               "the two sides of a comparison describe differently named projects",
+               comparison=True),
         _check("missing-plugin", Severity.WARNING,
                "a compared dictionary records a plugin this run has not loaded, so that "
-               "plugin's comparison rules did not run"),
+               "plugin's comparison rules did not run",
+               comparison=True),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
-               "did not"),
+               "did not",
+               comparison=True),
     )
 }  # fmt: skip
+
+STANDALONE_POLICY: Final = tuple(
+    f"{identifier}=ignore"
+    for identifier, check in sorted(CHECKS.items())
+    if check.needs_every_component
+)
+"""What is silenced for a component read on its own.
+
+The editor applies it to a file no build claims, and ``ddd check --standalone`` - which a
+build's per-component target runs - applies it under whatever ``-W`` the caller adds. A
+component read on its own has inputs nobody produces, outputs nobody reads and types, units,
+sections, constants and axes declared in files nobody handed over - all by construction rather
+than by mistake. Reporting those fills the run with findings whose only cause is what it was
+not shown, and buries the ones about the file in front of the reader.
+
+Derived from the registry rather than listed anywhere, because listing it is how this went
+wrong twice already: ``missing-producer`` was silenced and ``unused-output``, which is the same
+mistake seen from the other end, was not; then a build integration named two checks by hand
+where ten were needed. A check that needs the whole project says so where it is defined, and
+is covered without anyone remembering this tuple exists.
+"""
 
 
 def _pointer_order(pointer: str) -> tuple[tuple[bool, int | str], ...]:

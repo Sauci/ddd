@@ -23,6 +23,7 @@
         "scope": "local",
         "definition": {
           "name": "PumpSpeed",
+          "id": "f82wjjncdzk9",
           "kind": "measurement",
           "description": "Measured pump speed, written by the speed capture interrupt",
           "datatype": "uint16",
@@ -37,6 +38,7 @@
         "scope": "local",
         "definition": {
           "name": "ManifoldPressure",
+          "id": "wypvxns00zv7",
           "kind": "measurement",
           "description": "Pressure per cell of the manifold, one entry per cell",
           "datatype": "uint16",
@@ -51,6 +53,7 @@
         "scope": "local",
         "definition": {
           "name": "PressureTrend",
+          "id": "18ap4xktgeeq",
           "kind": "measurement",
           "description": "Recent manifold pressure, averaged into one entry per sample slot",
           "datatype": "uint16",
@@ -64,6 +67,7 @@
         "scope": "local",
         "definition": {
           "name": "TorqueLimit",
+          "id": "qsgv1s32ejj9",
           "kind": "parameter",
           "description": "Torque above which the pump is derated",
           "typename": "Torque_t",

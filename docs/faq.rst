@@ -36,15 +36,21 @@ continues into the interface checks as usual:
 
    $ ddd check sensor_hub.json -W file-extension=warning
    sensor_hub.json: warning[file-extension]: 'sensor_hub.json' is a DDD description file and has to be named '*.ddd.json'
-   1 warning
+   sensor_hub.json#component.interface[0]: warning[unused-output]: 'ValueA' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[1]: warning[unused-output]: 'ValueB' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[2]: warning[unused-output]: 'ValueC' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[3]: warning[unused-output]: 'FlagA' is written by component 'SensorHub' but read by nobody
+   5 warnings
 
 .. note::
    The relaxation matters for more than the wording of one line. Reading the files and
    checking the interfaces are two phases, and the second one does not start when the first
    produced an error - a workspace that could not be read has nothing trustworthy to say
    about ownership or agreement. So as long as ``file-extension`` is an error, it is the only
-   finding you get; the reserved identifier or the duplicate declaration further down the
-   same file appears only once the file has been renamed or the check has been relaxed.
+   finding you get; the ``unused-output`` warnings above - what a component read on its own
+   has to say about outputs nobody reads - appear only once the file has been renamed or the
+   check has been relaxed, and so would a reserved identifier or a duplicate declaration
+   further down the same file.
 
 Can I check a single component before it is integrated?
 -------------------------------------------------------
@@ -54,11 +60,12 @@ writes a component should not have to assemble the whole device to find out that
 description is malformed. ``ddd check``, ``ddd list`` and ``ddd generate`` all take one
 component file just as happily as a project.
 
-Two checks then fire for a reason that is not a defect, because a component read on its own
+Some checks then fire for a reason that is not a defect, because a component read on its own
 has no peers. Its inputs are produced by components that are, by definition, not in the file,
-which is what ``missing-producer`` reports - an error, so the run fails; and its outputs are
-read by components that are not there either, which ``unused-output`` reports as a warning.
-Ignoring both is what makes the result meaningful:
+which is what ``missing-producer`` reports - an error, so the run fails; its outputs are read
+by components that are not there either, which ``unused-output`` reports as a warning; and a
+type, unit, section, constant or raster it takes from the project's vocabulary is declared in
+a file that is not there. Holding those back is what makes the result meaningful:
 
 .. code-block:: text
 
@@ -72,7 +79,7 @@ Ignoring both is what makes the result meaningful:
    examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    2 errors, 5 warnings
 
-   $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   $ ddd check examples/demo/components/controller.ddd.json --standalone
    ok: 12 variables in 1 component are consistent
 
 What remains is everything a component can get wrong on its own: reserved and colliding
@@ -497,6 +504,9 @@ from the linker output by whatever already parses it in your build:
 .. code-block:: text
 
    $ ddd generate all demo.ddd.json -o gen -t templates --address-map addresses.json
+   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'FlagA' and 10 others; they reach the a2l at address 0
+   1 warning
+   ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
          UWORD CM_LIN_HZ 0 0 0 8000
@@ -504,6 +514,9 @@ from the linker output by whatever already parses it in your build:
          SYMBOL_LINK "ValueE" 0
        /end MEASUREMENT
 
+The objects the map leaves out keep address 0 and are named once, in the ``address-missing``
+warning - a map from a linker output legitimately lacks what was not linked into this image;
+``--strict`` makes the warning an error for a post-link build that wants no hole in its a2l.
 Every entry is range checked while the map is read rather than while the a2l is written. A
 negative value would otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal,
 and either makes the whole file unreadable - from a file that a linker script or a patch tool

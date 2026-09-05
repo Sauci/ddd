@@ -171,13 +171,25 @@
           "type": "string"
         },
         "enumerators": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Enumerator"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "description": "The enumerators as a ``{\"NAME\": value}`` mapping.",
+              "minProperties": 1,
+              "type": "object"
+            }
+          ],
           "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
-          "items": {
-            "$ref": "#/$defs/Enumerator"
-          },
-          "minItems": 1,
-          "title": "Enumerators",
-          "type": "array"
+          "title": "Enumerators"
         }
       },
       "required": [
@@ -595,16 +607,7 @@
           "type": "string"
         },
         "conversion": {
-          "description": "Always present: the member's conversion, or the identity when none was given.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "#/$defs/IdentityConversion"
             },
@@ -615,6 +618,15 @@
               "$ref": "#/$defs/EnumConversion"
             }
           ],
+          "description": "Always present: the member's conversion, or the identity when none was given.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
           "title": "Conversion"
         },
         "limits": {
@@ -922,16 +934,7 @@
           "type": "string"
         },
         "conversion": {
-          "description": "Always present: the declared conversion, or the identity when none was given.",
-          "discriminator": {
-            "mapping": {
-              "enum": "#/$defs/EnumConversion",
-              "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "#/$defs/IdentityConversion"
             },
@@ -942,6 +945,15 @@
               "$ref": "#/$defs/EnumConversion"
             }
           ],
+          "description": "Always present: the declared conversion, or the identity when none was given.",
+          "discriminator": {
+            "mapping": {
+              "enum": "#/$defs/EnumConversion",
+              "identity": "#/$defs/IdentityConversion",
+              "linear": "#/$defs/LinearConversion"
+            },
+            "propertyName": "kind"
+          },
           "title": "Conversion"
         },
         "limits": {

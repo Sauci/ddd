@@ -8,6 +8,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueA",
+          "id": "rbdtf7g2eey1",
           "kind": "measurement",
           "description": "Scalar measurement with a linear conversion",
           "datatype": "uint8",
@@ -28,6 +29,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueB",
+          "id": "4kr9hsh0b448",
           "kind": "measurement",
           "description": "Array measurement with four elements",
           "datatype": "uint16",
@@ -46,6 +48,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueC",
+          "id": "3gfbryy2eavj",
           "kind": "measurement",
           "description": "Floating point measurement without a conversion",
           "datatype": "float32",
@@ -64,6 +67,7 @@
         "scope": "output",
         "definition": {
           "name": "FlagA",
+          "id": "732wfh15z2kb",
           "kind": "measurement",
           "description": "Boolean measurement",
           "datatype": "boolean",
@@ -78,6 +82,7 @@
         "scope": "local",
         "definition": {
           "name": "ValueD",
+          "id": "qyjtphycpvba",
           "kind": "measurement",
           "description": "Component local measurement, kept out of the a2l",
           "datatype": "uint16",

@@ -71,7 +71,7 @@ own json support: an editor shows every hover it is offered, so the schema expla
 Go to definition works from anywhere in a declaration - the same positions the hover answers
 from - and lands on the declaration that **writes** that object; an `axis`, `x_axis`, `y_axis`
 or `input` naming another object jumps to that one instead. Find references lists every
-declaration of it. The same works from a `type` to the structure it nests, and from an
+declaration of it. The same works from a `typename` to the structure it names, and from an
 `includes` entry to the files it names.
 
 The lightbulb on a `definition-mismatch` offers to reconcile it: put the cursor on the

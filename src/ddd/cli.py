@@ -33,6 +33,7 @@ from ddd.build_info import BuildInfo, build_info_text
 from ddd.compare import compare, renames
 from ddd.diagnostics import (
     CHECKS,
+    STANDALONE_POLICY,
     DiagnosticBag,
     Location,
     Severity,
@@ -147,6 +148,14 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         "--baseline",
         type=Path,
         help="also verify that the project can still replace this published dictionary",
+    )
+    check.add_argument(
+        "--standalone",
+        action="store_true",
+        help=(
+            "check a component on its own: hold back the checks that need every component "
+            "of a project, as the editor does for a file no build claims; -W still applies"
+        ),
     )
     check.set_defaults(handler=_command_check)
 
@@ -541,8 +550,9 @@ def _check_address_coverage(
 ) -> None:
     """Report the objects a supplied address map does not cover, and the entries nobody wants.
 
-    Only when a map was given: without one every address is zero on purpose, because that is
-    the run a build makes before it has linked anything. With one, a symbol the map does not
+    Only when a map with entries was given: without one, or with an empty one, every address
+    is zero on purpose, because that is the run a build makes before it has linked anything.
+    With entries, a symbol the map does not
     carry silently became address zero - and the map is written by a linker script or a patch
     tool against the names of one build, so a renamed variable or a stale file covers some of
     the objects and not the rest. What comes out is an a2l pointing a calibration tool at
@@ -552,6 +562,12 @@ def _check_address_coverage(
     they are usually the other half of the same mistake - the old spelling of the symbol that
     has just gone missing - and reading them together is what identifies a rename.
     """
+    if not addresses:
+        # The run a build makes before it has linked: the cmake module seeds an empty map so
+        # that the two-run flow has a file to depend on, and a strict first build that failed
+        # on it could never reach the second run that fills the map. A map that names some
+        # objects and not others is another thing, and is reported below.
+        return
     carried = addressed_symbols(dictionary)
     missing = [symbol for symbol in carried if symbol not in addresses]
     if not missing:
@@ -935,7 +951,10 @@ class Resolved:
 
 
 def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
-    policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
+    # The standalone policy goes first, so that an explicit -W on the same run overrides it:
+    # the flag sets the floor for a component read alone, the caller still has the last word.
+    standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
+    policy = SeverityPolicy.from_strings([*standalone, *args.severity], strict=args.strict)
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
@@ -971,8 +990,10 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     attributed to this run, printed twice when both sides are the same tree, and would fail a
     clean project because of its predecessor. Its warnings are its own, however strict this
     run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
-    prefixed, so that a broken baseline is visible - and the comparison still runs on whatever
-    resolved, because a delivery that cannot be accepted still needs its differences listed.
+    prefixed, so that a broken baseline is visible. A candidate given as a dump is still
+    compared against whatever resolved, because a delivery that cannot be accepted still needs
+    its differences listed; a candidate given as a description is not analysed once the shared
+    bag holds an error, so a broken baseline stops that run at the errors.
     """
     own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
     resolved = _read_dictionary(path, own)

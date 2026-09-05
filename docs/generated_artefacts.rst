@@ -520,7 +520,7 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 
 .. code-block:: text
 
-   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the edit
    wrote       build/gen/ddd_globals.c (updated)
    wrote       build/gen/ddd_globals.h (updated)
    unchanged   build/gen/ddd_types.h
@@ -1095,10 +1095,21 @@ with the map extracted from the linker output, to produce the a2l that ships. Th
 name says what the second run is there for: it renders no c - it takes no template directory
 either - so it cannot invalidate the build it was produced from.
 
-A symbol the map does not mention keeps address 0 rather than being an error, since a map
-produced from a linker output legitimately contains only the objects that ended up in the
-image - a conditional object absent from this build has no address to report. An address
-outside the range an a2l can hold, on the other hand, is refused before anything is written:
+A symbol the map does not mention keeps address 0, and the run says so: the
+``address-missing`` warning names the objects the map left out, once, and the a2l is written
+all the same. It is a warning rather than an error because a map produced from a linker
+output legitimately contains only the objects that ended up in the image - a conditional
+object absent from this build has no address to report - and it is a warning a post-link
+build can promote: under ``--strict`` (the ``STRICT`` option of ``ddd_generate``) it is an
+error, nothing is written, and the map has to be completed or the check relaxed with
+``-W address-missing=ignore``. An address outside the range an a2l can hold, on the other
+hand, is refused before anything is written. With ``bad.json`` holding
+
+.. code-block:: json
+
+   { "ValueE": 8589934591 }
+
+the run stops at the map:
 
 .. code-block:: text
 

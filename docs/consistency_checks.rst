@@ -50,6 +50,8 @@ down should be read after a DDD upgrade:
    schema                 error    a file does not match the DDD contract (fixed)
    include-cycle          error    projects include each other recursively (fixed)
    include-empty          error    an include pattern matches no file
+   plugin-not-found       error    a project names a plugin that cannot be found (fixed)
+   plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
    duplicate-component    error    two different files declare the same component name
    duplicate-type         error    two different files declare the same type name
    duplicate-unit         error    a unit is declared more than once, in one file or across files

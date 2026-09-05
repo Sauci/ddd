@@ -53,6 +53,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueJ",
+          "id": "tjqkvn2wvgdp",
           "kind": "measurement",
           "description": "Counter written by the event logger",
           "datatype": "uint8",
@@ -67,6 +68,7 @@
         "scope": "local",
         "definition": {
           "name": "ValueK",
+          "id": "gg7swrg5j7ea",
           "kind": "measurement",
           "description": "Two dimensional component local array",
           "datatype": "sint8",

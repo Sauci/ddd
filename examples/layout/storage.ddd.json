@@ -8,6 +8,7 @@
         "scope": "local",
         "definition": {
           "name": "EngineHours",
+          "id": "sjht0d10xtde",
           "kind": "parameter",
           "description": "Hours the engine has run, kept across power cycles",
           "datatype": "uint32",
@@ -21,6 +22,7 @@
         "scope": "local",
         "definition": {
           "name": "ServiceCount",
+          "id": "88cx87zf4qfn",
           "kind": "parameter",
           "description": "Services performed so far",
           "datatype": "uint16",
@@ -33,6 +35,7 @@
         "scope": "local",
         "definition": {
           "name": "CoolantTemperature",
+          "id": "e78dyngxedzr",
           "kind": "measurement",
           "description": "Not stamped: a live value the plugin has nothing to say about",
           "datatype": "sint16",

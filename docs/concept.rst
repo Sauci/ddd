@@ -344,7 +344,7 @@ controller and nothing else:
    ValueB      measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
    ValueC      measurement  float32   degC  -       -                  SensorHub              UserInterface
    ValueD      measurement  uint16    -     [8]     -                  SensorHub (local)      -
-   ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             UserInterface, EventLogger
+   ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             EventLogger, UserInterface
    ValueF      measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
    ValueG      measurement  uint16    V     -       1000 (= 1 V)       Controller             UserInterface
    ValueH      measurement  sint16    %     -       0 (= 0 %)          Controller (local)     -
@@ -406,6 +406,8 @@ with the addresses written in decimal or hexadecimal:
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
+   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'FlagA', 'MapA' and 10 others; they reach the a2l at address 0
+   1 warning
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it
@@ -417,7 +419,9 @@ unchanged inputs produces a byte identical result, which is what makes a deliver
 reproducible.
 
 Before the address map is applied every address in the a2l is ``0x00000000``; afterwards the
-objects named in the map carry their real address, and the ones that are not named keep zero.
+objects named in the map carry their real address, and the ones that are not named keep zero
+and are reported once, as the ``address-missing`` warning above - which ``--strict`` turns
+into an error, so that a post-link build cannot ship an a2l with a hole in it.
 ``SYMBOL_LINK`` is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:

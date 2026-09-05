@@ -34,6 +34,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueE",
+          "id": "0hmf7yh6cerx",
           "kind": "measurement",
           "description": "Measurement used as the input quantity of AxisA",
           "datatype": "uint16",
@@ -48,6 +49,7 @@
         "scope": "output",
         "definition": {
           "name": "ValueF",
+          "id": "tw38vetjh85f",
           "kind": "measurement",
           "description": "Signed measurement with a fixed point conversion",
           "datatype": "sint16",
@@ -62,6 +64,7 @@
         "scope": "output",
         "definition": {
           "name": "StateA",
+          "id": "pe6kn3q8ak1f",
           "kind": "measurement",
           "description": "Measurement with a verbal conversion table",
           "datatype": "uint8",
@@ -85,6 +88,7 @@
         "condition": "defined(FEATURE_X)",
         "definition": {
           "name": "ValueG",
+          "id": "843wxmhkjpy1",
           "kind": "measurement",
           "description": "Measurement that only exists when FEATURE_X is defined",
           "datatype": "uint16",
@@ -99,6 +103,7 @@
         "scope": "local",
         "definition": {
           "name": "ValueH",
+          "id": "0htxtgmf2pks",
           "kind": "measurement",
           "description": "Component local measurement of the controller",
           "datatype": "sint16",
@@ -114,6 +119,7 @@
         "definition": {
           "kind": "parameter",
           "name": "ParameterA",
+          "id": "8wg3g6bm1925",
           "description": "Single calibratable constant",
           "datatype": "uint16",
           "unit": "Hz",
@@ -128,6 +134,7 @@
         "definition": {
           "kind": "axis",
           "name": "AxisA",
+          "id": "jay122j0fvfx",
           "description": "Shared axis indexed by ValueE",
           "datatype": "uint16",
           "unit": "Hz",
@@ -144,6 +151,7 @@
         "definition": {
           "kind": "axis",
           "name": "AxisB",
+          "id": "j36cnsgn0y4g",
           "description": "Component local axis indexed by ValueA",
           "datatype": "uint8",
           "unit": "%",
@@ -160,6 +168,7 @@
         "definition": {
           "kind": "curve",
           "name": "CurveA",
+          "id": "6ywadt4ekhj3",
           "description": "Calibratable curve over AxisA",
           "datatype": "uint16",
           "unit": "ms",
@@ -174,6 +183,7 @@
         "definition": {
           "kind": "map",
           "name": "MapA",
+          "id": "zevx7vpyz9h2",
           "description": "Calibratable map over AxisA and AxisB",
           "datatype": "sint8",
           "unit": "%",

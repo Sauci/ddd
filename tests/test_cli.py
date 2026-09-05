@@ -6,6 +6,7 @@ import codecs
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -758,7 +759,7 @@ class TestList:
         out = capsys.readouterr().out
         assert "VARIABLE" in out
         assert "ValueE" in out
-        assert "UserInterface, EventLogger" in out
+        assert "EventLogger, UserInterface" in out
 
     def test_table_states_the_physical_reading_of_a_scalar_init(
         self, capsys: pytest.CaptureFixture[str]
@@ -840,7 +841,7 @@ class TestList:
         assert payload["project"] == "DemoDevice"
         entry = next(v for v in payload["variables"] if v["name"] == "ValueE")
         assert entry["owner"] == "Controller"
-        assert entry["consumers"] == ["UserInterface", "EventLogger"]
+        assert entry["consumers"] == ["EventLogger", "UserInterface"]
         assert entry["conversion"] == {"kind": "linear", "factor": 0.25, "offset": 0.0}
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
@@ -1382,3 +1383,53 @@ def test_assigning_ids_skips_a_declaration_whose_key_the_scanner_cannot_relocate
     assert main(["id", "--assign", str(tree / "a.ddd.json")]) == EXIT_OK
     assert (tree / "a.ddd.json").read_text(encoding="utf-8") == original
     assert "wrote 0 ids" in capsys.readouterr().err
+
+
+class TestBaselineUnderStrict:
+    def test_a_warning_in_the_baseline_does_not_abort_a_strict_comparison(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A past delivery's warnings are nobody's problem now, however strict this run is:
+        the comparison still runs and the renames are still written."""
+
+        def delivery(alignment: int) -> dict[str, Any]:
+            return {
+                "p.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+                "s.ddd.json": {
+                    "sections": [
+                        {"section": ".slow", "access": "read-write", "alignment": alignment}
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "X", "uint32", section=".slow")),
+            }
+
+        write_tree(tmp_path / "old", delivery(1))
+        write_tree(tmp_path / "new", delivery(4))
+        renames = tmp_path / "renames.json"
+        arguments = [
+            "compare",
+            "--strict",
+            str(tmp_path / "old" / "p.ddd.json"),
+            str(tmp_path / "new" / "p.ddd.json"),
+            "--renames",
+            str(renames),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "can replace" in capsys.readouterr().err
+        assert renames.read_text(encoding="utf-8") == "[]\n"
+
+
+class TestCmakeModule:
+    def test_the_a2l_options_are_not_passed_to_a_c_only_generation(self) -> None:
+        """``ddd generate c`` has neither option; a rule carrying them fails on every build."""
+        from ddd.cli import cmake_module_directory
+
+        directory = cmake_module_directory()
+        assert directory is not None
+        text = (directory / "Ddd.cmake").read_text(encoding="utf-8")
+        for option in ("--byte-order", "--address-map"):
+            appended = text.index(f"list(APPEND generate_options {option}")
+            guard = text[:appended].rsplit("if(", 1)[1]
+            assert "NOT arg_NO_A2L" in guard, f"{option} is appended without a NO_A2L guard"

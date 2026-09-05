@@ -592,7 +592,8 @@ A sections file declares at least one section (`schema`).
 
 - `"section"` (required): the name as the linker script spells it. It is a linker name
   rather than a C identifier, so `.calib` is a normal spelling, and it contains no
-  whitespace (`schema`). A section is declared exactly once: every declaration after the
+  whitespace, only letters, digits, `.`, `_` and `$`, because the generated C writes it
+  into a string literal (`schema`). A section is declared exactly once: every declaration after the
   first, whether it appears in the same file or in another, is `duplicate-section`, with a
   note at the first.
 - `"access"` (required): `read-write` or `read-only`, from the point of view of the running

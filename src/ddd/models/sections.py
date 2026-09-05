@@ -19,7 +19,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from ddd.models.common import FileRoot
+from ddd.models.common import SECTION_NAME_PATTERN, FileRoot
 
 
 class SectionAccess(StrEnum):
@@ -38,11 +38,12 @@ class SectionDeclaration(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
-    section: Annotated[str, StringConstraints(min_length=1, pattern=r"^\S+$")]
+    section: Annotated[str, StringConstraints(min_length=1, pattern=SECTION_NAME_PATTERN)]
     """The name as the linker script spells it: ``.calib``, ``.nvm``.
 
-    A linker name rather than a C identifier, so a leading dot is a normal spelling; only
-    whitespace is refused, which no linker accepts in a section name either.
+    A linker name rather than a C identifier, so a leading dot is a normal spelling: letters,
+    digits, ``.``, ``_`` and ``$``, and nothing that could end the string literal the generated
+    c writes it into.
     """
 
     access: SectionAccess

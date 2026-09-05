@@ -25,6 +25,7 @@ from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.a2l.types import A2L_TYPE
 from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
+    IDENTIFIER_MAX_LENGTH,
     Conversion,
     Datatype,
     EnumConversion,
@@ -477,7 +478,7 @@ class _RecordLayoutBuilder:
 
 
 class _CompuMethodBuilder:
-    """Creates one COMPU_METHOD per distinct (conversion, unit) combination."""
+    """Creates one COMPU_METHOD per distinct (conversion, unit, display format) combination."""
 
     def __init__(self) -> None:
         self._methods: dict[object, CompuMethodView] = {}
@@ -490,7 +491,9 @@ class _CompuMethodBuilder:
         if isinstance(conversion, IdentityConversion) and not unit:
             return NO_COMPU_METHOD
 
-        key = _conversion_key(conversion, unit)
+        # The method's FORMAT is the fallback for every object referencing it, so an integer
+        # and a float sharing one unit and conversion get one method each, not one between them.
+        key = (_conversion_key(conversion, unit), _default_format(entry.datatype, conversion))
         existing = self._methods.get(key)
         if existing is not None:
             return existing.name
@@ -551,11 +554,17 @@ class _CompuMethodBuilder:
         return vtab
 
     def _unique(self, base: str) -> str:
-        candidate = base
+        """``base``, cut to what an a2l identifier may be long and told apart from the rest.
+
+        The prefixes are added to names that may already be as long as the cap allows, and a
+        unit is not capped at all, so the synthesised name is what has to fit.
+        """
+        candidate = base[:IDENTIFIER_MAX_LENGTH]
         index = 1
         while candidate in self._names:
             index += 1
-            candidate = f"{base}_{index}"
+            suffix = f"_{index}"
+            candidate = f"{base[: IDENTIFIER_MAX_LENGTH - len(suffix)]}{suffix}"
         self._names.add(candidate)
         return candidate
 

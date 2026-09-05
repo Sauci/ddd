@@ -187,7 +187,7 @@ def workspaces(
     found = []
     for info in builds:
         workspace = load_workspace(Path(info.project), DiagnosticBag())
-        if workspace is not None and document in workspace.sources():
+        if workspace is not None and document.resolve() in workspace.sources():
             found.append(workspace)
     if not found:
         found.extend(
@@ -240,7 +240,7 @@ def containing_projects(document: Path, root: Path | None) -> list[Path]:
 
 def _includes(candidate: Path, document: Path) -> bool:
     workspace = load_workspace(candidate, DiagnosticBag())
-    return workspace is not None and document in workspace.sources()
+    return workspace is not None and document.resolve() in workspace.sources()
 
 
 def variable_at(document: Document, pointer: str) -> str | None:

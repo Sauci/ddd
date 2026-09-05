@@ -270,3 +270,34 @@ class TestMeasurementRasters:
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert content.count("/begin DAQ_EVENT VARIABLE") == 2
         assert content.count("/begin") == content.count("/end")
+
+
+class TestSharedCompuMethods:
+    def test_objects_of_different_datatype_classes_do_not_share_a_display_format(
+        self, tree: Path
+    ) -> None:
+        """A method's FORMAT is the fallback for every object referencing it, so an integer
+        and a float sharing one unit and conversion must not share one format."""
+        content = a2l(
+            tree,
+            declare("local", "Acount", "uint8", unit="V"),
+            declare("local", "Zvolt", "float32", unit="V"),
+        )
+        assert 'IDENTICAL "%8.0" "V"' in content
+        assert 'IDENTICAL "%8.3" "V"' in content
+
+    def test_synthesised_identifiers_stay_within_the_a2l_cap(self, tree: Path) -> None:
+        enum = {"kind": "enum", "name": "E" * 128, "enumerators": {"A": 0}}
+        content = a2l(
+            tree,
+            declare("local", "X", "uint8", conversion=enum),
+            declare("local", "Y", "uint16", unit="u" * 200),
+        )
+        identifiers = [
+            token
+            for line in content.splitlines()
+            for token in line.split()
+            if token.startswith(("CM_", "VTAB_"))
+        ]
+        assert identifiers
+        assert all(len(token) <= 128 for token in identifiers)

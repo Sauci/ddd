@@ -19,9 +19,9 @@
       "description": "One linker section, with the properties the checks need.",
       "properties": {
         "section": {
-          "description": "The name as the linker script spells it: ``.calib``, ``.nvm``.\n\nA linker name rather than a C identifier, so a leading dot is a normal spelling; only\nwhitespace is refused, which no linker accepts in a section name either.",
+          "description": "The name as the linker script spells it: ``.calib``, ``.nvm``.\n\nA linker name rather than a C identifier, so a leading dot is a normal spelling: letters,\ndigits, ``.``, ``_`` and ``$``, and nothing that could end the string literal the generated\nc writes it into.",
           "minLength": 1,
-          "pattern": "^\\S+$",
+          "pattern": "^[A-Za-z0-9_.$]+$",
           "title": "Section",
           "type": "string"
         },

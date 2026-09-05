@@ -1119,14 +1119,26 @@ def _pointer(loc: tuple[int | str, ...]) -> str:
     return "".join(parts)
 
 
+_BARE_TYPE_TAGS = frozenset({"bool", "int", "float", "str", "none", "bytes"})
+"""How pydantic names the branch of a union that is a plain python type.
+
+The branches of an ``init`` value are spelled ``bool``, ``int`` and ``float``, which look like
+keys and are not: no key of any file format is called that, while a finding located at
+``init.bool`` names a place the document does not have.
+"""
+
+
 def _is_branch_tag(item: int | str) -> bool:
     """Whether a path segment names a union branch rather than a key of the document.
 
-    pydantic spells those as ``str-enum[Datatype]`` or ``constrained-str``, neither of which
-    can be a key: a key is an identifier, and these are not. Recognised by shape rather than
-    by a list of names, so a new branch needs nothing added here.
+    pydantic spells most of those as ``str-enum[Datatype]`` or ``constrained-str``, neither of
+    which can be a key: a key is an identifier, and these are not. Recognised by shape rather
+    than by a list of names, so a new branch needs nothing added here - except a branch that
+    is a bare python type, which is spelled as one word and listed above.
     """
-    return isinstance(item, str) and not item.replace("_", "").replace("$", "").isalnum()
+    if not isinstance(item, str):
+        return False
+    return item in _BARE_TYPE_TAGS or not item.replace("_", "").replace("$", "").isalnum()
 
 
 def _short(value: Any, limit: int = 60) -> str:

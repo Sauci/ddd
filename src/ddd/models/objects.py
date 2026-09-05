@@ -6,9 +6,10 @@ from collections.abc import Container, Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from ddd.models.common import (
+    SECTION_NAME_PATTERN,
     A2lFormat,
     Datatype,
     Identifier,
@@ -298,7 +299,7 @@ class DataObject(_Frozen):
     checks that every component declaring this object spells the unit the same way.
     """
 
-    section: str | None = None
+    section: Annotated[str, StringConstraints(pattern=SECTION_NAME_PATTERN)] | None = None
     """Linker section the object is placed in, named in the project's sections file.
 
     A storage key like ``init``: the producer states it, a consumer stating one claims

@@ -3113,3 +3113,55 @@ class TestOfferingAnIdentity:
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         assert [entry for entry in offered if "id" in entry["title"]] == []
+
+
+class TestFrameLengths:
+    def test_a_negative_length_cannot_be_followed(self) -> None:
+        """``read(-1)`` reads to the end of the stream, which on a live pipe is never."""
+        stream = io.BytesIO(b"Content-Length: -1\r\n\r\n{}")
+        with pytest.raises(ProtocolError, match="-1"):
+            read_message(stream)
+
+
+class TestSymlinkedWorkspace:
+    def test_a_document_opened_through_a_symlink_is_covered_by_its_build(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader resolves every path it reads; the client's path may be a symlink to it."""
+        from ddd.build_info import BuildInfo
+
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        link = tmp_path / "link"
+        link.symlink_to(real, target_is_directory=True)
+        info = BuildInfo(project=(real / "p.ddd.json").as_posix())
+        found = navigation.workspaces([info], link / "a.ddd.json")
+        assert [len(workspace.components) for workspace in found] == [2]
+
+
+class TestWorkspaceFolders:
+    def test_the_folder_containing_the_document_bounds_the_search(self, tmp_path: Path) -> None:
+        """A multi-root workspace: the project lives in the second folder, not the first."""
+        other = tmp_path / "other"
+        other.mkdir()
+        home = tmp_path / "home"
+        write_tree(
+            home,
+            {
+                "p.ddd.json": project("P", "components/a.ddd.json"),
+                "components/a.ddd.json": component("A", declare("local", "Deep")),
+            },
+        )
+        server = server_module.Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        server._initialise({"workspaceFolders": [{"uri": other.as_uri()}, {"uri": home.as_uri()}]})
+        found = server._projects_of(home / "components" / "a.ddd.json")
+        assert [workspace.name for workspace in found] == ["P"]
+        # A document under no folder at all falls back to the first, as before.
+        assert server._root_for(Path("/nowhere/x.ddd.json")) == other

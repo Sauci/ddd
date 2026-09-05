@@ -223,14 +223,19 @@ CHECKS: Final[dict[str, CheckInfo]] = {
 }  # fmt: skip
 
 
-def _pointer_order(pointer: str) -> tuple[int | str, ...]:
+def _pointer_order(pointer: str) -> tuple[tuple[bool, int | str], ...]:
     """Sort key for a json pointer, with the indices ordered as numbers.
 
     Sorted as plain text, ``interface[10]`` comes before ``interface[2]`` and the
     findings of one file are listed in an order that has nothing to do with the file.
+    Each part carries whether it is text, so that two pointers whose shapes differ at one
+    position - an index against a key - still compare, where a bare number and a bare string
+    would not and the sort would raise instead of listing anything.
     """
     return tuple(
-        int(part) if part.isdigit() else part for part in re.split(r"\[(\d+)\]", pointer) if part
+        (False, int(part)) if part.isdigit() else (True, part)
+        for part in re.split(r"\[(\d+)\]", pointer)
+        if part
     )
 
 
@@ -280,7 +285,7 @@ class Diagnostic:
     """Additional ``(text, location)`` hints, e.g. the conflicting declaration site."""
 
     @property
-    def sort_key(self) -> tuple[int, str, tuple[int | str, ...], str]:
+    def sort_key(self) -> tuple[int, str, tuple[tuple[bool, int | str], ...], str]:
         location = self.location
         return (
             self.severity.rank,

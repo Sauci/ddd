@@ -1341,3 +1341,52 @@ def test_the_dump_carries_and_nulls_instance_and_leaf_identity(tree: Path) -> No
     assert leaves["Inlet.value"]["instance_id"] == "k7m2q9xr4t8w"
     assert instances["Outlet"]["id"] is None
     assert leaves["Outlet.value"]["instance_id"] is None
+
+
+class TestMemberStorageChecks:
+    def enum_member(self) -> dict[str, Any]:
+        return {
+            "name": "mode",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {
+                "kind": "enum",
+                "name": "Mode_t",
+                "enumerators": {"OFF": 0, "HUGE_ONE": 300},
+            },
+        }
+
+    def wide_member(self) -> dict[str, Any]:
+        return {
+            "name": "wide",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+            "limits": {"min": 0, "max": 1000},
+        }
+
+    def test_an_enumerator_that_does_not_fit_the_member_is_refused(self, tree: Path) -> None:
+        """The check a plain declaration gets; a member is storage of the same width."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(struct("S_t", self.enum_member())),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "init-invalid" in findings(bag)
+        assert "HUGE_ONE=300" in messages(bag)
+        assert "uint8" in messages(bag)
+
+    def test_member_limits_beyond_the_datatype_are_reported(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": types(struct("S_t", self.wide_member())),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert "limits-out-of-range" in findings(bag)
+        assert "[0, 1000] exceed the range [0, 255]" in messages(bag)

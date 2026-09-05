@@ -968,13 +968,13 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     that analysis produces findings about *that* delivery: files that are not part of the
     project under check, an output nobody read two releases ago. Reported here they would be
     attributed to this run, printed twice when both sides are the same tree, and would fail a
-    clean project because of its predecessor. Only the errors that stop the baseline from
-    being read at all are carried over, because those explain a comparison that cannot happen.
+    clean project because of its predecessor. Its warnings are its own, however strict this
+    run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
+    prefixed, so that a broken baseline is visible - and the comparison still runs on whatever
+    resolved, because a delivery that cannot be accepted still needs its differences listed.
     """
-    own = DiagnosticBag(bag.policy)
+    own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
     resolved = _read_dictionary(path, own)
-    if resolved is not None and not own.has_errors:
-        return resolved.dictionary
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(
@@ -983,7 +983,7 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
                 diagnostic.location,
                 diagnostic.notes,
             )
-    return None
+    return resolved.dictionary if resolved is not None else None
 
 
 def _holds_a_description(path: Path) -> bool:

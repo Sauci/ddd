@@ -109,6 +109,13 @@ moved as a whole, and the shell wildcards ``*``, ``?`` and ``**`` are expanded, 
 component is a matter of adding its file. The name of the project is not decoration: it becomes
 the name of the generated a2l file and the ``PROJECT`` and ``MODULE`` names inside it.
 
+Under the :doc:`CMake integration <build_integration>` nobody writes this file: ``ddd_generate``
+collects the descriptions of the components the image links and writes a project description
+of its own, one that lists each file explicitly. ``includes`` and its wildcards are for a project
+checked or generated without it - and for one handed to ``ddd_generate`` as ``PROJECT``, which
+is how a project that names plugins keeps a file of its own, since the generated description
+carries a name, a description and the list, and nothing else.
+
 .. note::
    Every file DDD reads must be named ``*.ddd.json``. In a repository already full of json,
    that double extension says at a glance which files belong to DDD, and it lets a build

@@ -8,6 +8,8 @@ README and the SPEC describing a previous version of DDD.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import re
 import tomllib
@@ -888,6 +890,68 @@ class TestTheShorthandsThePagesRecommend:
 
     def test_a_unit_may_be_a_bare_spelling(self) -> None:
         self.accepted("units", {"units": ["Nm", "rpm", {"unit": "degC", "description": "x"}]})
+
+
+def json_blocks(page: str) -> list[Any]:
+    """Every json code block of a page that parses, as the value it holds."""
+    found: list[Any] = []
+    for match in re.finditer(r"\.\. code-block:: json\n\n((?:   .*\n|\n)+)", PAGES[page]):
+        text = "\n".join(line[3:] for line in match.group(1).splitlines())
+        try:
+            found.append(json.loads(text))
+        except json.JSONDecodeError:
+            continue  # a fragment, shown for one key
+    return found
+
+
+def without_descriptions(node: Any) -> Any:
+    """A schema with its documentation elided, which is how the page shows one.
+
+    Only the prose goes: a property that happens to be called ``description`` stays.
+    """
+    if isinstance(node, dict):
+        return {
+            key: without_descriptions(value)
+            for key, value in node.items()
+            if not (key == "description" and isinstance(value, str))
+        }
+    if isinstance(node, list):
+        return [without_descriptions(value) for value in node]
+    return node
+
+
+class TestTheDictionaryPage:
+    """The page shows the dictionary "exactly" as the dump writes it, so it is compared with one.
+
+    Three format bumps added keys to every object and to the top level, and the excerpts
+    stayed at the shape of format 4 while claiming to be exact.
+    """
+
+    def test_the_curve_is_shown_as_the_dump_writes_it(self) -> None:
+        from ddd.cli import main
+
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            assert main(["dump", str(ROOT / "examples" / "demo" / "demo.ddd.json")]) == 0
+        dumped = next(
+            entry for entry in json.loads(stream.getvalue())["objects"] if entry["name"] == "CurveA"
+        )
+        shown = next(
+            block
+            for block in json_blocks("docs/data_dictionary.rst")
+            if isinstance(block, dict) and block.get("name") == "CurveA" and "owner" in block
+        )
+        assert shown == dumped
+
+    def test_the_top_level_of_the_schema_is_shown_as_it_is_published(self) -> None:
+        """The dialect and the definitions are left out, and the prose is shortened."""
+        shown = next(
+            block
+            for block in json_blocks("docs/data_dictionary.rst")
+            if isinstance(block, dict) and "properties" in block and "$defs" not in block
+        )
+        expected = {key: value for key, value in published("dictionary").items() if key[0] != "$"}
+        assert without_descriptions(shown) == without_descriptions(expected)
 
 
 class Undocumented(StrEnum):

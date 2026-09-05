@@ -82,6 +82,7 @@ demo project declares ``CurveA`` like this - no limits, no dimensions:
      "definition": {
        "kind": "curve",
        "name": "CurveA",
+       "id": "6ywadt4ekhj3",
        "description": "Calibratable curve over AxisA",
        "datatype": "uint16",
        "unit": "ms",
@@ -98,6 +99,8 @@ and the dictionary hands the backends this:
 
    {
      "name": "CurveA",
+     "id": "6ywadt4ekhj3",
+     "extensions": {},
      "kind": "curve",
      "datatype": "uint16",
      "description": "Calibratable curve over AxisA",
@@ -108,6 +111,7 @@ and the dictionary hands the backends this:
      "dimensions": [6],
      "init": [1200, 900, 800, 750, 700, 650],
      "section": null,
+     "raster": null,
      "volatile": false,
      "condition": null,
      "references": { "axis": "AxisA" },
@@ -162,9 +166,10 @@ back a plugin's comparison rules against, and what ``ddd generate <name>`` hands
 plugin's own backend. See :doc:`plugins` for what a plugin does with them.
 
 .. note::
-   ``owner`` may be ``null``, but only for a project that is already known to be
-   inconsistent and is being generated anyway with ``ddd generate --force``. Every other
-   field is always present.
+   ``owner`` is ``null`` for an input that no component produces, which reaches the
+   dictionary whenever ``missing-producer`` is relaxed - a component checked or dumped on its
+   own, or an inconsistent project generated with ``ddd generate --force``; the c backend
+   files such an object under ``<unresolved>``. Every other field is always present.
 
 The format field
 ----------------
@@ -307,6 +312,22 @@ elided here for space):
          },
          "title": "Leaves",
          "type": "array"
+       },
+       "plugins": {
+         "default": [],
+         "items": {
+           "type": "string"
+         },
+         "title": "Plugins",
+         "type": "array"
+       },
+       "extensions": {
+         "additionalProperties": {
+           "additionalProperties": true,
+           "type": "object"
+         },
+         "title": "Extensions",
+         "type": "object"
        }
      },
      "required": [
@@ -316,7 +337,8 @@ elided here for space):
      "type": "object"
    }
 
-``additionalProperties`` is ``false`` here as it is everywhere else in DDD, so a consumer
+``additionalProperties`` is ``false`` here, as it is on every object DDD describes - the one
+open door is ``extensions``, whose blocks belong to the plugins that own them - so a consumer
 validating against the schema finds a key it was not expecting instead of skipping it.
 ``enums`` carries the distinct enumerations the objects use, so a consumer that wants to
 emit a type per enumeration - which is what the c backend offers its templates as

@@ -144,7 +144,9 @@ validate the files without running DDD at all:
 The first seven describe the files you write; ``dictionary`` describes what DDD makes of them and
 is documented with the :doc:`data dictionary </data_dictionary>`. The closed objects described
 above appear in all of them as ``"additionalProperties": false``, so a validating editor
-rejects a misspelled key at the moment it is typed rather than at the next build.
+rejects a misspelled key at the moment it is typed rather than at the next build; an
+``extensions`` block is the exception, open until ``--plugin`` closes it over the model of
+the plugin that owns it.
 
 What the schema carries
 ~~~~~~~~~~~~~~~~~~~~~~~

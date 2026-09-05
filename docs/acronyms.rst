@@ -141,8 +141,9 @@ that the table can be read as a description of one file.
        which the x index runs fastest.
    * - ``COMPU_METHOD``
      - The rule that converts a raw value into a physical one, together with the unit and the
-       display format. DDD emits one per distinct conversion and unit and shares it, so two
-       objects scaled the same way in the same unit refer to the same method.
+       display format. DDD emits one per distinct conversion, unit and display format and
+       shares it, so two objects scaled the same way in the same unit, and displayed with the
+       same format, refer to the same method.
    * - ``RAT_FUNC``
      - The ``COMPU_METHOD`` type used for a linear conversion. Its ``COEFFS a b c d e f``
        describe ``raw = (a*phys^2 + b*phys + c) / (d*phys^2 + e*phys + f)``, so
@@ -188,5 +189,6 @@ that the table can be read as a description of one file.
        block, which describes the target's XCP implementation and which DDD does not write.
    * - ``GROUP``
      - A named collection of measurements and characteristics, used to organise the objects
-       in the calibration tool. DDD emits one per component, containing exactly the objects
-       that component declares and that are present in the file.
+       in the calibration tool. DDD emits one per component that exports at least one object,
+       containing exactly the objects that component declares and that are present in the
+       file.

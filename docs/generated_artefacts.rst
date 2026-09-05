@@ -81,8 +81,10 @@ Five templates live there, and four of them produce a file:
      - ``ddd_types.h``, the types the generated declarations are written in: ``<stdint.h>``,
        ``<stdbool.h>`` when the project declares a ``boolean``, the headers of the
        :doc:`external types <file_formats/types>` in use - deduplicated, sorted by spelling,
-       quoted or angled exactly as declared - and one ``typedef enum`` per enum
-       conversion. Every other generated header includes this one and nothing else, so a
+       quoted or angled exactly as declared - one ``#define`` per declared constant, one
+       ``typedef enum`` per enum conversion and one ``typedef struct`` per declared structure,
+       each after the structures it nests. Every other generated header includes this one and
+       nothing else, so a
        component that includes its own interface header needs no further include to compile.
    * - ``ddd_globals.h.jinja2``
      - ``ddd_globals.h``, an ``extern`` declaration of *every* object of the project, grouped
@@ -116,9 +118,11 @@ listing a single component anywhere.
 The type header
 ~~~~~~~~~~~~~~~
 
-An enum conversion is the one part of a description that has to become a c type rather than
-just a c declaration, and the example templates emit it in a header of its own so that every
-component sharing the enum sees the same definition:
+An enum conversion, a declared constant and a declared structure are the parts of a
+description that become a c type or a macro rather than a c declaration, and the example
+templates emit them in a header of their own so that every component sharing them sees one
+definition. The demo declares neither constants nor structures, so its type header holds the
+enum alone:
 
 .. code-block:: c
 
@@ -641,7 +645,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
    * - ``RECORD_LAYOUT``
      - one per datatype and storage category actually used
    * - ``COMPU_METHOD``
-     - one per distinct combination of conversion **and** unit
+     - one per distinct combination of conversion, unit **and** display format
    * - ``COMPU_VTAB``
      - one per enum conversion
    * - ``GROUP``
@@ -733,9 +737,10 @@ none - carries no ``IF_DATA`` block at all, exactly as before rasters existed.
 Conversions, and why ``COEFFS`` looks inverted
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A ``COMPU_METHOD`` is created per distinct pair of conversion and unit, and the unit is part
-of the key because two objects scaled by the same factor but measured in different units are
-not the same conversion to a calibration tool - one displays ``Hz`` and the other ``%``:
+A ``COMPU_METHOD`` is created per distinct combination of conversion, unit and display
+format. The unit is part of the key because two objects scaled by the same factor but
+measured in different units are not the same conversion to a calibration tool - one displays
+``Hz`` and the other ``%``:
 
 .. code-block:: text
 
@@ -753,7 +758,11 @@ The generated names are derived from the conversion and the unit, so ``CM_LIN_HZ
 readable in a tool rather than being a serial number, and a unit that is not a valid
 identifier is transliterated - ``%`` becomes ``PCT``, ``m/s^2`` becomes ``M_PER_S2``. When two
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
-both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1).
+both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The display format is the
+third part of the key, because a method carries exactly one: it is derived from the datatype
+and the conversion - ``%8.0`` where every physical value is whole, ``%8.3`` otherwise - so an
+integer and a float object scaled the same way in the same unit get a method each, with the
+same coefficients and the suffix telling them apart.
 
 The ``COEFFS`` line is the part that surprises everybody who reads an a2l for the first time.
 A description says ``{"kind": "linear", "factor": 0.25, "offset": 0.0}``, which means
@@ -1008,7 +1017,7 @@ One group per component
 The component structure of the project is not something the c code can carry - after
 compilation and linking there are only symbols - but it is exactly the structure a
 calibration engineer wants to navigate by, so it is preserved in the a2l as one ``GROUP`` per
-component, listing the objects that component declared:
+component that exports at least one object, listing the objects that component declared:
 
 .. code-block:: text
 

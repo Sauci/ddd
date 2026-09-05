@@ -503,6 +503,9 @@ from the linker output by whatever already parses it in your build:
 .. code-block:: text
 
    $ ddd generate all demo.ddd.json -o gen -t templates --address-map addresses.json
+   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'FlagA' and 10 others; they reach the a2l at address 0
+   1 warning
+   ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
          UWORD CM_LIN_HZ 0 0 0 8000
@@ -510,6 +513,9 @@ from the linker output by whatever already parses it in your build:
          SYMBOL_LINK "ValueE" 0
        /end MEASUREMENT
 
+The objects the map leaves out keep address 0 and are named once, in the ``address-missing``
+warning - a map from a linker output legitimately lacks what was not linked into this image;
+``--strict`` makes the warning an error for a post-link build that wants no hole in its a2l.
 Every entry is range checked while the map is read rather than while the a2l is written. A
 negative value would otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal,
 and either makes the whole file unreadable - from a file that a linker script or a patch tool

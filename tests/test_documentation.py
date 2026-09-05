@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import io
 import json
 import re
@@ -22,6 +23,7 @@ import pytest
 from pydantic import BaseModel
 
 from ddd import __version__
+from ddd.backends.c.model import CodeModel, MemberView, ObjectView
 from ddd.cli import _SCHEMA_MODELS, _build_parser
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
@@ -952,6 +954,38 @@ class TestTheDictionaryPage:
         )
         expected = {key: value for key, value in published("dictionary").items() if key[0] != "$"}
         assert without_descriptions(shown) == without_descriptions(expected)
+
+
+def view_attributes(cls: type) -> list[str]:
+    """What a template can read off a view: its fields, properties and public methods."""
+    names = [field.name for field in dataclasses.fields(cls)]
+    names += [name for name, value in vars(cls).items() if isinstance(value, property)]
+    names += [
+        name
+        for name, value in vars(cls).items()
+        if callable(value) and not name.startswith("_") and name not in names
+    ]
+    return sorted(names)
+
+
+class TestTheTemplateReference:
+    """The reference is what a project writes its own templates from, so it lists everything.
+
+    ``model.structures`` reached the model a release ago and the page never mentioned it; a
+    types header written from the page dropped every structure the definitions depend on.
+    """
+
+    TEMPLATES = PAGES["docs/templates.rst"]
+
+    @pytest.mark.parametrize("name", view_attributes(CodeModel))
+    def test_every_attribute_of_the_model_is_documented(self, name: str) -> None:
+        assert f"``model.{name}" in self.TEMPLATES
+
+    @pytest.mark.parametrize(
+        "name", sorted({*view_attributes(ObjectView), *view_attributes(MemberView)})
+    )
+    def test_every_attribute_of_a_view_is_documented(self, name: str) -> None:
+        assert f"``.{name}" in self.TEMPLATES
 
 
 class Undocumented(StrEnum):

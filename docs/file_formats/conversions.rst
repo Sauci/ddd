@@ -363,13 +363,14 @@ description file knows that.
    finding that stops a calibration engineer from entering a value the software will silently
    wrap.
 
-One compu method per conversion and unit
-----------------------------------------
+One compu method per conversion, unit and format
+------------------------------------------------
 
 Conversions are not written out once per object. Two objects with the same conversion **and**
-the same unit share one ``COMPU_METHOD``, whatever their kind and whatever their datatype, so
-the a2l stays readable and the calibration tool has one entry to configure rather than twenty
-identical ones. In the demo, ``ValueA``, ``AxisB``, ``CurveB`` and ``MapA`` all use
+the same unit share one ``COMPU_METHOD``, whatever their kind and whatever their datatype so
+long as the two derive the same display format, so the a2l stays readable and the
+calibration tool has one entry to configure rather than twenty identical ones. In the demo,
+``ValueA``, ``AxisB``, ``CurveB`` and ``MapA`` all use
 ``CM_LIN_PCT`` - a measurement, an axis, a curve and a map, over two datatypes and one
 conversion.
 
@@ -379,5 +380,7 @@ different conversions in the same unit therefore want the same name, and the sec
 numbered suffix - the demo scales one percentage by 0.5 and another by 0.1, and ends up with
 ``CM_LIN_PCT`` and ``CM_LIN_PCT_2``. The display format that goes with a method is derived from
 the datatype and the conversion, ``%8.0`` where every physical value is whole and ``%8.3``
-otherwise; a single object can override it with its own ``a2l.format``, which is described with
-the :doc:`variable definition <variable_definition>`.
+otherwise, and it is the third part of the key: an integer and a float object scaled the same
+way in the same unit derive different formats and get a method each, with the same
+coefficients and a numbered suffix. A single object can override the format with its own
+``a2l.format``, which is described with the :doc:`variable definition <variable_definition>`.

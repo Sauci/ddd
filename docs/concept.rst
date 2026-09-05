@@ -249,8 +249,8 @@ what a value is *for*, not what it controls.
        name the calibration engineer sees.
    * - component
      - a software unit with an explicitly declared data interface, described by a file whose
-       top level key is ``component``. One component corresponds to one generated header and
-       to one a2l ``GROUP``.
+       top level key is ``component``. One component corresponds to one generated header
+       and, once it exports anything, to one a2l ``GROUP``.
    * - declaration
      - one entry of a component interface: a scope, an optional c preprocessor condition and a
        definition. A component takes part in a variable by declaring it, and only by
@@ -467,9 +467,8 @@ have the symbol names in the file:
    image --> address_map: symbol addresses taken\nfrom the linker output
 
    project_file --> ddd_second
-   templates --> ddd_second
    address_map --> ddd_second
-   ddd_second --> final_a2l: the c sources are\nregenerated unchanged
+   ddd_second --> final_a2l: the a2l alone is rewritten;\nthe c sources are not touched
    final_a2l --> mc_tool: measure and calibrate\nthe built software
 
 Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
@@ -538,10 +537,10 @@ as json and ``ddd schema dictionary`` prints its schema, so a generator DDD does
 header for another language, a csv for a test bench, an ARXML - can consume the resolved data
 of a project without depending on anything inside the tool. And a backend is nothing more than
 an object with a ``name`` and a ``generate(dictionary, output_dir)`` method
-(the ``Backend`` protocol of ``ddd.backends.base``), so adding an output format means adding a
-package next
-to the two existing ones and listing it where the generate command assembles its backends,
-and changing nothing else.
+(the ``Backend`` protocol of ``ddd.backends.base``), so an output format DDD does not ship is
+a :doc:`plugin's <plugins>` backend, which touches nothing inside the tool, and a built-in one
+is a package next to the two existing ones, registered as an artefact of the generate command
+the way :doc:`developer_documentation` describes.
 
 The boundary is not a matter of intent. The test suite walks the import graph and fails the
 build if the front end imports a backend, if a backend reaches into the loader or the analysis,

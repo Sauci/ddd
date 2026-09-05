@@ -135,7 +135,8 @@ declaration was taken as the authoritative one, ``consumers`` lists the componen
 declared the object as an input, and ``local`` says whether the owner keeps it to itself.
 This is what lets the c backend group the definitions by owning component and emit a header
 per component that contains that component's interface and nothing else, and what lets the
-a2l backend build one ``GROUP`` per component - without either of them knowing anything
+a2l backend build one ``GROUP`` per component with something to export - without either of
+them knowing anything
 about scopes, ownership rules or how a disagreement between two components is settled.
 Where components disagreed, the **producing component's declaration is the one that
 survives**: the analysis reports the disagreement against the deviating consumer and puts

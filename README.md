@@ -599,7 +599,7 @@ actually changed, so unchanged output does not trigger a rebuild:
 
 | file | from | content |
 | --- | --- | --- |
-| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>` and one `typedef enum` per enum conversion |
+| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
 | `ddd_globals.h` | `ddd_globals.h.jinja2` | `extern` declaration of every variable, for `ddd_globals.c` only |
 | `ddd_globals.c` | `ddd_globals.c.jinja2` | the single definition of every global variable, grouped by owner |
 | `<Component>.h` | `{component}.h.jinja2` | the interface of one component: nothing else is visible |
@@ -656,8 +656,8 @@ component's definition, but the command still reports every finding and still ex
 
 The a2l file is ASAP2 1.6.1 and contains a `MEASUREMENT` per measurement, a `CHARACTERISTIC`
 per parameter, value block, curve and map, an `AXIS_PTS` per axis, the `RECORD_LAYOUT`s they
-deposit into, `COMPU_METHOD`s shared between objects with the same conversion and unit, a
-`COMPU_VTAB` per enum and one `GROUP` per component.
+deposit into, `COMPU_METHOD`s shared between objects with the same conversion, unit and
+display format, a `COMPU_VTAB` per enum and one `GROUP` per component that exports anything.
 
 * a linear conversion becomes `RAT_FUNC` with `COEFFS 0 1 -offset 0 0 factor`, which is the
   a2l way of writing `raw = (physical - offset) / factor`
@@ -893,8 +893,10 @@ page shows.
 | [backends/a2l/](src/ddd/backends/a2l/) | `UWORD`, compu methods, record layouts, templates | c, the loader |
 
 A backend is anything with a `name` and a `generate(dictionary, output_dir)` method
-([backends/base.py](src/ddd/backends/base.py)); adding an output format means adding a
-package and listing it, and changing nothing else.  `tests/test_backends.py` enforces the
+([backends/base.py](src/ddd/backends/base.py)); an output format DDD does not ship is a
+[plugin](#plugins)'s backend, which touches nothing inside the tool, and a built-in one is a
+package next to the two existing ones, registered as an artefact of `ddd generate`, as the
+developer documentation describes.  `tests/test_backends.py` enforces the
 layering by walking the import graph, so the split cannot rot silently.
 
 Diagnostics never raise: the loader and the analysis collect as many findings as possible in

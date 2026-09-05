@@ -521,7 +521,9 @@ def _command_compare(args: argparse.Namespace) -> int:
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        args.renames.write_text(json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8")
+        args.renames.write_text(
+            json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
+        )
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.

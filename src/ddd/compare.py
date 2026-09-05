@@ -260,8 +260,10 @@ def renames(paired: Sequence[tuple[Comparable, Comparable]]) -> list[dict[str, s
     Sorted by the new name, so two runs of one comparison produce the same file and a diff of
     two such files means something.
     """
+    # A member of a structured variable is its instance's id followed by its member path,
+    # ``k7m2q9xr4t8w.value``: one id per row, so a tool keying on it keeps every member.
     moved = [
-        {"id": key[0], "from": old.name, "to": new.name}
+        {"id": "".join(key), "from": old.name, "to": new.name}
         for old, new in paired
         if old.name != new.name and (key := _identity(old)) is not None
     ]

@@ -71,6 +71,19 @@ an editor reports it as it is typed, rather than by a check that only a run of t
 reaches. ``ddd id --assign`` is what writes one.
 """
 
+
+def hash_excluding_mappings(model: BaseModel) -> int:
+    """The hash of a frozen model, its mapping fields left out.
+
+    A frozen model hashes by default from all its fields, and a ``dict`` cannot be hashed: an
+    ``extensions`` block holds whatever a plugin put there, and a resolved object's
+    ``references`` is a mapping too. Leaving them out costs nothing a caller would notice: two
+    models equal in every field, mappings included, still hash equal, since equality is finer
+    than this - the only thing a hash has to promise.
+    """
+    return hash((type(model), *(v for v in model.__dict__.values() if not isinstance(v, dict))))
+
+
 SECTION_NAME_PATTERN: Final = r"^[A-Za-z0-9_.$]+$"
 """What a linker section name is spelled with: ``.calib``, ``.fast_ram``, ``.CRT$XCU``.
 

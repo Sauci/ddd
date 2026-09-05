@@ -80,12 +80,14 @@ time.
 
 QUICK_FIX: Final = "quickfix"
 
-RECONCILED: Final = frozenset({"definition-mismatch", "storage-mismatch"})
-"""The findings this action settles, so an editor can show it as their fix.
+RECONCILED: Final = frozenset({"definition-mismatch"})
+"""The finding these actions settle, so an editor can show them as its fix.
 
 An action carrying the diagnostic it resolves is the one a client puts a lightbulb on, right
 at the squiggle. Left unattached it is still offered, but only to somebody who already thought
-to ask - which is the wrong way round for a fix.
+to ask - which is the wrong way round for a fix. ``storage-mismatch`` is not here: it is about
+the a2l presentation keys, which none of these actions carries, and an action claiming to
+settle a finding it leaves in place is worse than one that stays quiet about it.
 """
 
 
@@ -125,7 +127,12 @@ def _give_an_identity(
     rewrites the file, this returns an edit and lets the client do it.
     """
     wanted = next(
-        (entry for entry in insertions(document) if entry.pointer == f"{definition}.name"), None
+        (
+            entry
+            for entry in insertions(document)
+            if entry.pointer in (f"{definition}.name", f"{definition}.id")
+        ),
+        None,
     )
     if wanted is None:
         return None
@@ -135,17 +142,14 @@ def _give_an_identity(
     # no test can cover and no reader can trust.
     span = document.value_range_of(wanted.pointer)
     assert span is not None
-    # A zero width range at the end of the name's value: the key is inserted after it, and
-    # nothing already written is replaced.
+    # A zero width range at the end of the name's value, so that the key is inserted after
+    # it and nothing already written is replaced - or the value of a stated ``null``, which is.
     at = span["end"]
+    replaced = {"start": span["start"] if wanted.length else at, "end": at}
     return {
         "title": f"Give '{name}' an id",
         "kind": QUICK_FIX,
-        "edit": {
-            "changes": {
-                path.as_uri(): [{"range": {"start": at, "end": at}, "newText": wanted.text}]
-            }
-        },
+        "edit": {"changes": {path.as_uri(): [{"range": replaced, "newText": wanted.text}]}},
     }
 
 
@@ -419,7 +423,15 @@ def _erase(document: Document, definition: str, key: str) -> dict[str, Any] | No
     members = document.value_at(definition)
     if not isinstance(members, dict) or key not in members or len(members) == 1:
         return None
-    keys = list(members)
+
+    # Ordered by where each member is written rather than by the parsed object, which keeps
+    # a duplicated key's first position while the text keeps its last: the cut has to agree
+    # with the span it is made from.
+    def position_of(member: str) -> tuple[int, int]:
+        start = document.range_of(f"{definition}.{member}")["start"]
+        return (start["line"], start["character"])
+
+    keys = sorted(members, key=position_of)
     position = keys.index(key)
     mine = document.range_of(f"{definition}.{key}")
     if position < len(keys) - 1:

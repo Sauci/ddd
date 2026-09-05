@@ -31,7 +31,7 @@ from pydantic import (
     model_validator,
 )
 
-from ddd.models.common import Datatype, Identifier
+from ddd.models.common import Datatype, Identifier, hash_excluding_mappings
 from ddd.models.component import Scope
 from ddd.models.constants import ConstantDeclaration
 from ddd.models.conversion import Conversion, EnumConversion
@@ -46,12 +46,21 @@ def _check_dimensions_match(shape: tuple[int, ...], dimensions: tuple[int | str,
     dictionary from format 3 or older spelled every dimension as its number and carries no
     ``dimensions`` at all.
     """
-    if dimensions and len(dimensions) != len(shape):
+    if not dimensions:
+        return
+    if len(dimensions) != len(shape):
         msg = (
             f"'dimensions' spells {len(dimensions)} dimension(s) but 'shape' has "
             f"{len(shape)}; the two describe the same shape and must agree"
         )
         raise ValueError(msg)
+    for spelled, size in zip(dimensions, shape, strict=True):
+        if isinstance(spelled, int) and spelled != size:
+            msg = (
+                f"'dimensions' spells {spelled} where 'shape' has {size}; the two describe "
+                f"the same shape and must agree"
+            )
+            raise ValueError(msg)
 
 
 class _Frozen(BaseModel):
@@ -135,6 +144,9 @@ class ResolvedObject(_Frozen):
     dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
     none, and empty for an object nothing stamped.
     """
+
+    def __hash__(self) -> int:
+        return hash_excluding_mappings(self)
 
     kind: ObjectKind
     """Which sort of object this is, taken from the definition that produced it."""
@@ -342,6 +354,9 @@ class ResolvedInstance(_Frozen):
     dumps compare on one shape. Empty in a dictionary from format 6 or older, which recorded
     none, and empty for an object nothing stamped.
     """
+
+    def __hash__(self) -> int:
+        return hash_excluding_mappings(self)
 
     type: str
     """Name of the structure it is, which is the c type of the declaration."""
@@ -646,6 +661,9 @@ class DataDictionary(_Frozen):
     Recorded so that a comparison over an archived dump can rebuild what the plugin's hooks
     were given, without the project file that stated them.
     """
+
+    def __hash__(self) -> int:
+        return hash_excluding_mappings(self)
 
     @property
     def by_name(self) -> dict[str, ResolvedObject]:

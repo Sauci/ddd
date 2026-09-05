@@ -82,7 +82,12 @@ def uri_to_path(uri: str) -> Path:
     document called ``a%20b.ddd.json`` came back as ``a b.ddd.json``, and the diagnostics
     published for it went out under a uri the client could match to nothing on screen.
     """
-    return Path(url2pathname(urlparse(uri).path))
+    parsed = urlparse(uri)
+    path = url2pathname(parsed.path)
+    if parsed.netloc and parsed.netloc != "localhost":
+        # file://server/share/...: a network share, whose host is the start of the path.
+        path = f"//{parsed.netloc}{path}"
+    return Path(path)
 
 
 def _field[T](value: Any, wanted: type[T], named: str) -> T:

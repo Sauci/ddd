@@ -1433,3 +1433,72 @@ class TestCmakeModule:
             appended = text.index(f"list(APPEND generate_options {option}")
             guard = text[:appended].rsplit("if(", 1)[1]
             assert "NOT arg_NO_A2L" in guard, f"{option} is appended without a NO_A2L guard"
+
+
+def test_assigning_ids_fills_an_explicit_null(tree, capsys):
+    """``"id": null`` is what the dump writes for an unstamped object; a description carrying
+    it is as unstamped as one without the key, and the check says so."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("output", "X", id=None))})
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 1 id" in capsys.readouterr().err
+    stamped = json.loads(path.read_text(encoding="utf-8"))
+    assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+
+
+def test_assigning_ids_keeps_mixed_line_endings(tree):
+    """A file with one stray CRLF line keeps exactly that one; the rest stays LF."""
+    text = json.dumps(component("A", declare("output", "X")), indent=2)
+    first, rest = text.split("\n", 1)
+    path = tree / "a.ddd.json"
+    path.write_bytes((first + "\r\n" + rest + "\n").encode("utf-8"))
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    after = path.read_bytes()
+    assert after.count(b"\r\n") == 1
+    assert after.count(b"\n") == text.count("\n") + 2  # the final newline and one line added
+
+
+def test_the_renames_file_is_written_with_the_line_endings_ddd_always_writes(tree, monkeypatch):
+    """Every file DDD writes passes ``newline=""``: the same bytes on Windows as anywhere."""
+    written: dict[str, object] = {}
+    original = Path.write_text
+
+    def spy(self: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        written[self.name] = kwargs.get("newline", "unset")
+        return original(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy)
+    for name in ("old", "new"):
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-a.ddd.json"),
+                f"{name}-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+    renames = tree / "renames.json"
+    arguments = ["compare", str(tree / "old.ddd.json"), str(tree / "new.ddd.json"), "--renames"]
+    assert main([*arguments, str(renames), "-W", "missing-id=ignore"]) == EXIT_OK
+    assert written["renames.json"] == ""
+
+
+def test_assigning_ids_to_a_missing_file_says_so(tree, capsys):
+    assert main(["id", "--assign", str(tree / "missing.ddd.json")]) == EXIT_FINDINGS
+    assert "not readable as json, skipped" in capsys.readouterr().err
+
+
+def test_assigning_ids_skips_a_definition_without_a_name(tree, capsys):
+    """Nothing to hang an id on; the loader is what has something to say about the file."""
+    path = tree / "a.ddd.json"
+    write_tree(
+        tree,
+        {
+            "a.ddd.json": {
+                "component": {"name": "A", "interface": [{"scope": "output", "definition": {}}]}
+            }
+        },
+    )
+    before = path.read_bytes()
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 0 ids" in capsys.readouterr().err
+    assert path.read_bytes() == before

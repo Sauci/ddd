@@ -349,3 +349,29 @@ class TestObjectIdentity:
         assert note_text == "first carries the id here"
         assert note_location is not None
         assert note_location.path.name == "a.ddd.json"
+
+
+class TestQuotedNumbers:
+    """The published schema says integer; a quoted number is refused where it is written."""
+
+    def test_an_enumerator_value_must_be_a_number(self) -> None:
+        from ddd.models import EnumConversion
+
+        with pytest.raises(ValidationError):
+            EnumConversion.model_validate(
+                {"kind": "enum", "name": "S", "enumerators": [{"name": "OFF", "value": "0"}]}
+            )
+
+    def test_a_raster_event_must_be_a_number(self) -> None:
+        from ddd.models import RastersFile
+
+        with pytest.raises(ValidationError):
+            RastersFile.model_validate({"rasters": [{"raster": "R", "event": "5"}]})
+
+    def test_a_section_alignment_must_be_a_number(self) -> None:
+        from ddd.models import SectionsFile
+
+        with pytest.raises(ValidationError):
+            SectionsFile.model_validate(
+                {"sections": [{"section": ".x", "access": "read-write", "alignment": "4"}]}
+            )

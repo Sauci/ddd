@@ -442,3 +442,15 @@ class TestTheAuthorityChecks:
         )
         assert dictionary is not None
         assert checks(bag) == []
+
+
+class TestCycleSpelling:
+    def test_a_cycle_with_a_trailing_newline_is_refused(self) -> None:
+        from pydantic import ValidationError
+
+        from ddd.models import RastersFile
+
+        with pytest.raises(ValidationError):
+            RastersFile.model_validate(
+                {"rasters": [{"raster": "R", "event": 1, "cycle": "10ms\n"}]}
+            )

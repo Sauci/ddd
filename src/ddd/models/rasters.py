@@ -47,7 +47,7 @@ _NANOSECONDS = {"ns": 1, "us": 1_000, "ms": 1_000_000, "s": 1_000_000_000}
 
 def _nanoseconds(cycle: str) -> int | None:
     """The period in nanoseconds, or nothing when it is not a count and a unit at all."""
-    match = _CYCLE.match(cycle)
+    match = _CYCLE.fullmatch(cycle)
     if match is None:
         return None
     return int(match.group(1)) * _NANOSECONDS[match.group(2)]
@@ -83,7 +83,7 @@ class RasterDeclaration(BaseModel):
     calibration tool rather than here, where the author could still do something about it.
     """
 
-    event: int = Field(ge=0, le=EVENT_MAX)
+    event: int = Field(strict=True, ge=0, le=EVENT_MAX)
     """The XCP event channel number, distinct across the project.
 
     The one field of a declaration the generated a2l carries today; the rest wait for the

@@ -284,14 +284,23 @@ class Diagnostic:
     notes: tuple[tuple[str, Location | None], ...] = ()
     """Additional ``(text, location)`` hints, e.g. the conflicting declaration site."""
 
+    sequence: int = 0
+    """Where the finding came in the run, which orders findings at one place.
+
+    Two findings of one severity at one place are listed as they were reported rather than
+    by their identifier: a checker that reports the cause before its consequences - a name
+    that now belongs to a different object, then the removal and the addition it explains -
+    is listing them in the order a reader needs, and an alphabet would undo that.
+    """
+
     @property
-    def sort_key(self) -> tuple[int, str, tuple[tuple[bool, int | str], ...], str]:
+    def sort_key(self) -> tuple[int, str, tuple[tuple[bool, int | str], ...], int]:
         location = self.location
         return (
             self.severity.rank,
             location.path.as_posix() if location else "",
             _pointer_order(location.pointer) if location else (),
-            self.check,
+            self.sequence,
         )
 
     def render(self, root: Path | None = None) -> str:
@@ -431,7 +440,7 @@ class DiagnosticBag:
         severity = self.policy.resolve(check, self._registered.get(check))
         if severity is Severity.IGNORE:
             return None
-        diagnostic = Diagnostic(check, severity, message, location, tuple(notes))
+        diagnostic = Diagnostic(check, severity, message, location, tuple(notes), len(self._items))
         self._items.append(diagnostic)
         return diagnostic
 

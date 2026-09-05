@@ -15,6 +15,7 @@ loader, not the analysis, not a backend - so a plugin sees exactly what a backen
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.util
 import re
@@ -150,7 +151,10 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     # One module object per file, whatever spelling reached it: a second project naming the
     # same file gets the same PLUGIN, which is what lets the loader tell "named twice" from
     # "two plugins claiming one name".
-    name = "ddd_plugin_" + re.sub(r"\W", "_", path.as_posix())
+    # Keyed on a digest of the path rather than on a sanitised spelling of it, which folded
+    # 'my-plugin.py' and 'my_plugin.py' into one name and handed the second the first's module.
+    digest = hashlib.sha256(path.as_posix().encode("utf-8")).hexdigest()[:16]
+    name = f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
     cached = sys.modules.get(name)
     if cached is not None:
         return cached

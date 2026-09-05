@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -357,6 +357,16 @@ class Workspace:
         """
         return tuple(sorted({self.root, *self.read_paths}))
 
+    def __hash__(self) -> int:
+        """Every field but the plugin settings, which are a dict and cannot be hashed."""
+        return hash(
+            tuple(
+                getattr(self, entry.name)
+                for entry in fields(self)
+                if entry.name != "project_extensions"
+            )
+        )
+
     def locate(self, name: str) -> Location | None:
         """Where a plugin's finding about the object ``name`` belongs.
 
@@ -592,7 +602,7 @@ class _Loader:
         try:
             model = ComponentFile.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return None
 
         loaded = LoadedComponent(path=path, component=model.component, parents=parents)
@@ -662,7 +672,7 @@ class _Loader:
         try:
             model = file_model.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return
 
         for index, declared in enumerate(entries(model)):
@@ -807,7 +817,7 @@ class _Loader:
         try:
             model = ProjectFile.model_validate(data)
         except ValidationError as error:
-            self._report_validation_error(path, error)
+            self._report_validation_error(path, error, data)
             return None
 
         loaded = LoadedProject(path=path, project=model.project, parents=parents)
@@ -919,7 +929,9 @@ class _Loader:
         try:
             model.model_validate(block)
         except ValidationError as error:
-            _report_validation_error(location.path, error, self._bag, prefix=location.pointer)
+            _report_validation_error(
+                location.path, error, self._bag, prefix=location.pointer, document=block
+            )
 
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]
@@ -987,8 +999,10 @@ class _Loader:
         elif kind == "constants":
             self._load_constants(path, data)
 
-    def _report_validation_error(self, path: Path, error: ValidationError) -> None:
-        _report_validation_error(path, error, self._bag)
+    def _report_validation_error(
+        self, path: Path, error: ValidationError, document: Any = None
+    ) -> None:
+        _report_validation_error(path, error, self._bag, document=document)
 
 
 def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str | None:
@@ -1034,14 +1048,22 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
 
 
 def _report_validation_error(
-    path: Path, error: ValidationError, bag: DiagnosticBag, prefix: str = ""
+    path: Path,
+    error: ValidationError,
+    bag: DiagnosticBag,
+    prefix: str = "",
+    document: Any = None,
 ) -> None:
-    """One ``schema`` finding per place; ``prefix`` is the pointer of a nested document."""
+    """One ``schema`` finding per place; ``prefix`` is the pointer of a nested document.
+
+    ``document`` is the data that was validated, so that the pointer can tell a key of it
+    from the name of a union branch; without it the shape of each segment decides.
+    """
     for item in _one_per_place(_meaningful(error.errors(include_url=False))):
         message = item["msg"]
         if item["type"] != "missing":
             message = f"{message} (got: {_short(item.get('input'))})"
-        pointer = ".".join(part for part in (prefix, _pointer(item["loc"])) if part)
+        pointer = ".".join(part for part in (prefix, _pointer(item["loc"], document)) if part)
         bag.add("schema", message, Location(path, pointer))
 
 
@@ -1102,13 +1124,23 @@ def _resolve(path: Path) -> Path:
         return Path(path)
 
 
-def _pointer(loc: tuple[int | str, ...]) -> str:
+def _pointer(loc: tuple[int | str, ...], document: Any = None) -> str:
+    """The dotted pointer of a validation error's location.
+
+    Walked against the document where one is given: a segment that is a key of the object
+    reached so far, or an index into the list reached so far, is part of the path however it
+    is spelled - ``my-plugin`` is a key, not a branch tag - and only a segment the document
+    does not have is judged by its shape.
+    """
     parts: list[str] = []
+    node = document
     for item in loc:
-        if item in _UNION_TAGS or _is_branch_tag(item):
-            # pydantic reports the selected variant of a tagged union as a path segment, and
-            # the tried branch of a plain one the same way; 'definition.measurement.datatype'
-            # and 'datatype.str-enum[Datatype]' would both only confuse the reader.
+        present, node = _child(node, item)
+        if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
+            # pydantic reports the selected variant of a tagged union as a path segment,
+            # and the tried branch of a plain one the same way;
+            # 'definition.measurement.datatype' and 'datatype.str-enum[Datatype]' would
+            # both only confuse the reader.
             continue
         if isinstance(item, int):
             parts.append(f"[{item}]")
@@ -1126,6 +1158,16 @@ The branches of an ``init`` value are spelled ``bool``, ``int`` and ``float``, w
 keys and are not: no key of any file format is called that, while a finding located at
 ``init.bool`` names a place the document does not have.
 """
+
+
+def _child(node: Any, item: int | str) -> tuple[bool, Any]:
+    """The child ``item`` names in ``node`` - a key of an object or an index into a list -
+    and whether there is one; nothing is a child of a node that is neither."""
+    if isinstance(node, dict) and isinstance(item, str) and item in node:
+        return True, node[item]
+    if isinstance(node, list) and isinstance(item, int) and 0 <= item < len(node):
+        return True, node[item]
+    return False, None
 
 
 def _is_branch_tag(item: int | str) -> bool:

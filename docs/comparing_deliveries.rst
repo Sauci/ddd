@@ -151,7 +151,9 @@ the workflow above into:
    ddd compare baseline.json project.ddd.json --renames renames.json  # later, for the next delivery
 
 ``renames.json`` holds one entry per renamed object - its ``id``, its old name under ``from``
-and its new one under ``to``:
+and its new one under ``to``; a member of a renamed structured variable is listed under the
+instance's id followed by its member path, ``k7m2q9xr4t8w.value``, so that every entry has an
+id of its own:
 
 .. code-block:: json
 

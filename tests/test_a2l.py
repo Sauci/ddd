@@ -301,3 +301,12 @@ class TestSharedCompuMethods:
         ]
         assert identifiers
         assert all(len(token) <= 128 for token in identifiers)
+
+
+class TestForcedOutput:
+    def test_a_curve_whose_axis_is_unknown_is_left_out_rather_than_written_incomplete(
+        self, tree: Path
+    ) -> None:
+        """A CURVE without its AXIS_DESCR is not a smaller record but an invalid file."""
+        content = a2l(tree, declare("local", "Cv", "uint16", kind="curve", axis="NoSuchAxis"))
+        assert "CHARACTERISTIC Cv" not in content

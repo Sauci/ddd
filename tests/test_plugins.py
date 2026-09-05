@@ -1357,3 +1357,54 @@ class TestTheLanguageServerAndPlugins:
         assert b"progress" not in written
         assert b'"id": 2' in written
         assert "progress" in capsys.readouterr().err
+
+
+class TestPluginFilesWithSimilarNames:
+    def test_two_files_whose_paths_differ_only_in_punctuation_are_two_plugins(
+        self, tmp_path: Path
+    ) -> None:
+        write_plugin(
+            tmp_path, "my-plugin.py", BARE_PLUGIN.replace('name="bare"', 'name="plugin_a"')
+        )
+        write_plugin(
+            tmp_path, "my_plugin.py", BARE_PLUGIN.replace('name="bare"', 'name="plugin_b"')
+        )
+        assert load_plugin("my-plugin.py", tmp_path).name == "plugin_a"
+        assert load_plugin("my_plugin.py", tmp_path).name == "plugin_b"
+
+
+class TestHashingTheResolvedForms:
+    def test_the_dictionary_and_its_objects_hash_despite_the_blocks(self, tree: Path) -> None:
+        workspace, bag = tagged(tree, declare("local", "X", extensions={"tag": {"tag": "t"}}))
+        assert workspace is not None and not bag.has_errors, messages(bag)
+        dictionary = analyze(workspace, bag)
+        assert len({*dictionary.objects}) == 1
+        assert isinstance(hash(dictionary), int)
+        assert isinstance(hash(workspace), int)
+
+    def test_a_structured_variable_hashes_too(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Pair_t",
+                            "members": [
+                                {
+                                    "name": "a",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "P", typename="Pair_t")),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        assert len({*dictionary.instances}) == 1

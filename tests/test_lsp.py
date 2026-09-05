@@ -3165,3 +3165,77 @@ class TestWorkspaceFolders:
         assert [workspace.name for workspace in found] == ["P"]
         # A document under no folder at all falls back to the first, as before.
         assert server._root_for(Path("/nowhere/x.ddd.json")) == other
+
+
+class TestUriHosts:
+    def test_a_host_is_kept(self) -> None:
+        """``file://server/share/...`` is how a client spells a network share."""
+        found = server_module.uri_to_path("file://myserver/share/p.ddd.json")
+        assert found == Path("//myserver/share/p.ddd.json")
+
+    def test_localhost_is_no_host(self) -> None:
+        found = server_module.uri_to_path("file://localhost/tmp/p.ddd.json")
+        assert found == Path("/tmp/p.ddd.json")
+
+
+class TestErasingADuplicatedKey:
+    def test_a_key_stated_twice_is_cut_where_it_is_written(self) -> None:
+        """The parsed object keeps a key's first position; the text keeps its last. The
+        neighbours have to be read off the text, or the cut runs backwards."""
+        from ddd.lsp.edits import _erase
+        from ddd.lsp.ranges import Document
+
+        text = (
+            '{"component": {"name": "A", "interface": [{"scope": "output", "definition": '
+            '{"name": "Foo", "kind": "measurement", "unit": "V", "datatype": "uint8", '
+            '"unit": "Hz"}}]}}'
+        )
+        edit = _erase(Document(text), "component.interface[0].definition", "unit")
+        assert edit is not None
+        start, end = edit["range"]["start"], edit["range"]["end"]
+        assert (start["line"], start["character"]) < (end["line"], end["character"])
+
+
+class TestWhatAReconcileActionSettles:
+    def test_a_storage_mismatch_is_not_claimed_by_an_interface_fix(self, tmp_path: Path) -> None:
+        """The reconcile actions carry interface keys; a disagreement about the a2l
+        presentation is not settled by any of them and must not be marked as if it were."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", a2l={"format": "%5.2"})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="1/min", a2l={"format": "%8.0"})
+                ),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        consumer = tmp_path / "b.ddd.json"
+        span = Document(consumer.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition"
+        )
+        reported = [{"code": "definition-mismatch"}, {"code": "storage-mismatch"}]
+        writer = io.BytesIO()
+        server_module.Server(
+            framed(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 14,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": consumer.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": reported},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"], "the unit disagreement is still offered a fix"
+        for action in answer["result"]:
+            assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]

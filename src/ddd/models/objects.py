@@ -18,6 +18,7 @@ from ddd.models.common import (
     Real,
     TypeName,
     format_number,
+    hash_excluding_mappings,
 )
 from ddd.models.conversion import Conversion, EnumConversion, conversion_range
 
@@ -451,16 +452,7 @@ class DataObject(_Frozen):
         return self
 
     def __hash__(self) -> int:
-        """A frozen model hashes by default from all its fields, and ``extensions`` may hold
-        whatever a plugin put there - a list inside a block, say - which pydantic cannot hash.
-
-        Leaving it out of the hash costs nothing a caller would notice: two definitions equal
-        in every field, ``extensions`` included, still hash equal, since equality is coarser
-        than this - the only thing a hash has to promise.
-        """
-        return hash(
-            (type(self), *(value for key, value in self.__dict__.items() if key != "extensions"))
-        )
+        return hash_excluding_mappings(self)
 
     # The shape of a stated ``init`` is deliberately not validated here. Only part of the
     # answer is written in the file - a curve or a map takes its shape from axes another

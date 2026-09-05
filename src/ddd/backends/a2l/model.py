@@ -241,8 +241,8 @@ class _A2lModelBuilder:
                 measurements.append(self._measurement(entry))
             elif entry.kind is ObjectKind.AXIS:
                 axis_pts.append(self._axis_pts(entry))
-            else:
-                characteristics.append(self._characteristic(entry))
+            elif (characteristic := self._characteristic(entry)) is not None:
+                characteristics.append(characteristic)
 
         for leaf in dictionary.leaves:
             if not self._carries(leaf):
@@ -356,9 +356,14 @@ class _A2lModelBuilder:
             condition=entry.condition,
         )
 
-    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
+    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView | None:
         references = entry.references
         axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
+        if any(name not in self._by_name for name in axes):
+            # An axis the analysis could not resolve, reached under --force: a CURVE without
+            # its AXIS_DESCR is not a smaller record but an invalid file, so the record is
+            # left out, the way an object nothing exports is.
+            return None
         return CharacteristicView(
             name=entry.name,
             description=entry.description or entry.name,
@@ -371,17 +376,11 @@ class _A2lModelBuilder:
             matrix_dim=_matrix_dim(entry) if entry.kind is ObjectKind.VALUE_BLOCK else None,
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
-            axis_descrs=tuple(
-                descr
-                for name in axes
-                if (descr := self._axis_descr(self._by_name.get(name), name)) is not None
-            ),
+            axis_descrs=tuple(self._axis_descr(self._by_name[name], name) for name in axes),
             condition=entry.condition,
         )
 
-    def _axis_descr(self, axis: ResolvedObject | None, name: str) -> AxisDescrView | None:
-        if axis is None:
-            return None
+    def _axis_descr(self, axis: ResolvedObject, name: str) -> AxisDescrView:
         return AxisDescrView(
             attribute="COM_AXIS",
             input_quantity=axis.references.get("input") or NO_INPUT_QUANTITY,

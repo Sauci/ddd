@@ -189,8 +189,9 @@ A hand written project description
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A project that already maintains its own project description - because it is also built with
-another build system, or because it deliberately lists more than the image links - passes it
-with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
+another build system, because it deliberately lists more than the image links, or because it
+names plugins or carries project-level extensions, which the generated description cannot,
+being a name, a description and the list of files - passes it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
 is enough) nor ``ddd_add_component``, and the
 a2l is then named after the project name inside the description, so a ``NAME`` given as well
 is ignored with a status message.

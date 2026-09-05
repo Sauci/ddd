@@ -279,8 +279,9 @@ descriptions: unlike a tool that reads compiled objects, DDD only ever reads the
 <section id="a-hand-written-project-description">
 <h3>A hand written project description<a class="headerlink" href="#a-hand-written-project-description" title="Link to this heading"></a></h3>
 <p>A project that already maintains its own project description - because it is also built with
-another build system, or because it deliberately lists more than the image links - passes it
-with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
+another build system, because it deliberately lists more than the image links, or because it
+names plugins or carries project-level extensions, which the generated description cannot,
+being a name, a description and the list of files - passes it with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
 is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
 a2l is then named after the project name inside the description, so a <code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well
 is ignored with a status message.</p>

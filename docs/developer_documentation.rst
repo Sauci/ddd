@@ -298,7 +298,7 @@ proves that every header is self contained and that its include guard works - co
 everything with ``-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow
 -Wcast-qual -Wstrict-prototypes``, links all objects into one binary, and finally compares
 ``nm`` against ``ddd list --format json`` so that every variable DDD promised is defined
-exactly once and nothing else is. The last three steps run twice, once plain and once with
+exactly once and nothing else is. The last four steps run twice, once plain and once with
 the conditional declarations enabled, so both states of a ``#if`` guarded variable are
 covered. It renders the example templates, which is what makes them evidence rather than a
 sketch: the set a project starts from is the set a compiler has accepted. ``TEMPLATES`` points

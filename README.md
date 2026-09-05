@@ -32,9 +32,10 @@ Everything they share is the [DataDictionary](src/ddd/ir.py) - `ddd dump` writes
 
 The **full documentation is at <https://sauci.github.io/ddd/>** - a guided introduction, the
 reference for every command, every check and every json field, and the reasoning behind the
-design. It is generated from these sources and published on every change to `master`, so it
-describes the current release rather than whatever was true when somebody last wrote it down.
-This README is the short version.
+design. It is generated from these sources: the root of the site lands on the newest release,
+and <https://sauci.github.io/ddd/latest/> follows `master`, which is what the links below
+point into, so that they describe the tree this README sits in rather than whatever was true
+when somebody last wrote it down. This README is the short version.
 
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
@@ -177,7 +178,7 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | from | go to definition | find references |
 | --- | --- | --- |
 | anywhere in a declaration - the name, the datatype, a number | the declaration that **writes** that object, in whichever component that is | every declaration of it |
-| a structure name in a `type` | where the structure is declared | every member nesting it |
+| a structure name in a `typename` | where the structure is declared | every member nesting it |
 | an `includes` entry | the file - wildcards land on every match | |
 
 **Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
@@ -278,7 +279,7 @@ description, in two optional keys - `types` and `constants` - whose entries are 
 those of the standalone files below.  That co-locates a library's contract in one file
 without scoping it: the names join the same project wide namespace, every check applies
 unchanged, and any component may name them
-([documentation](https://sauci.github.io/ddd/file_formats/component.html)).
+([documentation](https://sauci.github.io/ddd/latest/file_formats/component.html)).
 
 ### Variable definition object
 
@@ -420,25 +421,25 @@ project's `includes` like a component and each with its own page in the document
   fixes the datatype, unit, conversion and limits, and there is nothing left for two
   components to disagree about; an external type names a c type a hand written header
   defines, which a structure member carries verbatim
-  ([documentation](https://sauci.github.io/ddd/file_formats/types.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/types.html));
 * a **units** file pins the unit spellings the project allows, so `Nm` here and
   `newton_meter` there is an `unknown-unit` finding instead of two quiet spellings of one
   quantity; declaring one is opt-in
-  ([documentation](https://sauci.github.io/ddd/file_formats/units.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/units.html));
 * a **sections** file declares the linker sections of the project - the name, whether the
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
-  ([documentation](https://sauci.github.io/ddd/file_formats/sections.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/sections.html));
 * a **constants** file declares named integer constants, and a shape names one where it
   would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
   the generated c declares the array by the name, and the a2l records it as a
   `SYSTEM_CONSTANT`
-  ([documentation](https://sauci.github.io/ddd/file_formats/constants.html));
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/constants.html));
 * a **rasters** file declares the DAQ events a target's XCP configuration offers - a short
   name (eight characters at most), an event channel number and, optionally, a cyclic period -
   and a definition or its producing component names the one a measurement is updated in, so
   the generated a2l preselects the right event for a calibration tool
-  ([documentation](https://sauci.github.io/ddd/file_formats/rasters.html)).
+  ([documentation](https://sauci.github.io/ddd/latest/file_formats/rasters.html)).
 
 Types and constants have a second home: the component that publishes them may declare them
 inside its own description, with entries exactly as the standalone files write them, and the
@@ -459,7 +460,7 @@ owns an `extensions` block on a definition and on the project, validates it with
 model of its own, and contributes checks (`-W layout/duplicate-key=warning` targets one),
 comparison rules and an artefact (`ddd generate layout`). DDD carries the block into the
 dictionary and never interprets it. The api is documented at
-<https://sauci.github.io/ddd/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
+<https://sauci.github.io/ddd/latest/plugins.html>; [examples/plugins/ddd_layout.py](examples/plugins/ddd_layout.py)
 is a worked example and [examples/layout](examples/layout) a project that names it.
 
 ## Consistency checks
@@ -692,7 +693,7 @@ deposit into, `COMPU_METHOD`s shared between objects with the same conversion an
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
-| `ddd schema component\|constants\|dictionary\|project\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
+| `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every description file the project is built out of, for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
@@ -823,7 +824,7 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
 5. compares `nm` against `ddd list --format json` so that every variable DDD promised is
    defined exactly once and nothing else is ([docker/verify_symbols.py](docker/verify_symbols.py)).
 
-Steps 3 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
+Steps 2 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
 declarations are covered in both states:
 
 ```text
@@ -866,11 +867,15 @@ knowing:
   severities, odd float literals - live together in
   [tests/test_edge_cases.py](tests/test_edge_cases.py).
 
-Two more suites guard things a type checker cannot:
+Three more suites guard things a type checker cannot:
 [tests/test_backends.py](tests/test_backends.py) walks the import graph so the layering
-cannot rot, and [tests/test_documentation.py](tests/test_documentation.py) asserts that every
-check, command, object kind and datatype is named in the README and the SPEC, and that no
-link in either points at a file that no longer exists.
+cannot rot, [tests/test_hardening.py](tests/test_hardening.py) holds one test per defect that
+once reached a customer-facing artefact or verdict, and
+[tests/test_documentation.py](tests/test_documentation.py) with
+[tests/test_transcripts.py](tests/test_transcripts.py) hold the documentation to the tool:
+every check, command, object kind and datatype is named where it should be, no link points at
+a file that no longer exists, and every command a page runs over the examples prints what the
+page shows.
 
 `docker compose run --rm coverage` writes a browsable report to `build/htmlcov/index.html`.
 

@@ -20,7 +20,7 @@ import pytest
 from pydantic import BaseModel
 
 from ddd import __version__
-from ddd.cli import _build_parser
+from ddd.cli import _SCHEMA_MODELS, _build_parser
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
 from ddd.models import Datatype, ObjectKind
@@ -264,6 +264,86 @@ class TestCommands:
             "templates-dir",
             "sources",
         }
+
+
+def commands_with(option: str) -> list[str]:
+    """The subcommands offering an option, an artefact of ``generate`` counting for it."""
+    parser = _build_parser()
+    action = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+
+    def offers(sub: argparse.ArgumentParser) -> bool:
+        for candidate in sub._actions:
+            if option in candidate.option_strings:
+                return True
+            if isinstance(candidate, argparse._SubParsersAction):
+                return any(offers(nested) for nested in candidate.choices.values())
+        return False
+
+    return sorted(name for name, sub in action.choices.items() if offers(sub))
+
+
+class TestTheCommandPage:
+    """The hand-written half of the command reference, held to the parser as the other half is."""
+
+    COMMAND_PAGE = PAGES["docs/command_line_interface.rst"]
+
+    @pytest.mark.parametrize("command", commands())
+    def test_every_command_has_a_row_in_the_command_table(self, command: str) -> None:
+        assert f"``ddd {command}" in self.COMMAND_PAGE
+
+    def test_the_schema_kinds_are_the_ones_the_parser_offers(self) -> None:
+        """A kind added to ``ddd schema`` has to reach the sentence that lists them."""
+        listed = re.search(
+            r"print the json schema of ((?:``[a-z]+``(?:, | or )?)+)", flattened(self.COMMAND_PAGE)
+        )
+        assert listed is not None
+        assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(_SCHEMA_MODELS)
+
+    def test_the_readme_lists_the_same_schema_kinds(self) -> None:
+        listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
+        assert listed is not None
+        assert set(listed.group(1).replace("\\", "").split("|")) == {*_SCHEMA_MODELS, "all"}
+
+    def test_the_commands_said_to_take_format_json_are_the_ones_that_do(self) -> None:
+        """Both pages enumerate them, and the command page counts them in words as well."""
+        expected = commands_with("--format")
+        counted = re.search(
+            r"(\w+) commands understand ``--format json``: ((?:``[a-z-]+``(?:, | and )?)+)",
+            flattened(self.COMMAND_PAGE),
+        )
+        assert counted is not None, "the command page no longer says which commands take it"
+        assert NUMBER_WORDS[counted.group(1).lower()] == len(expected)
+        assert sorted(re.findall(r"``([a-z-]+)``", counted.group(2))) == expected
+        listed = re.search(
+            r"available on every command that produces findings - ((?:`[a-z-]+`(?:, | and )?)+)",
+            flattened(README),
+        )
+        assert listed is not None, "the readme no longer says which commands take it"
+        assert sorted(re.findall(r"`([a-z-]+)`", listed.group(1))) == expected
+
+
+class TestTheDocumentationSite:
+    """The site serves every version under its own directory, so a link without one is a 404.
+
+    The root redirects to the newest release; ``latest/`` follows master, which is this tree,
+    so a page a link names under it has to exist here.
+    """
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_every_link_into_the_site_names_a_version_and_a_page(self, page: str) -> None:
+        for link in re.findall(r"https://sauci\.github\.io/ddd/([^\s)>`\"]*)", PAGES[page]):
+            if not link:
+                continue  # the root, which redirects to the newest release
+            version, _, path = link.partition("/")
+            assert version == "latest" or re.fullmatch(r"v\d+(?:\.\d+)*", version), (
+                f"{page} links {link}, which the site does not serve: pages live under "
+                f"latest/ or v<tag>/"
+            )
+            if version == "latest" and path:
+                target = ROOT / "docs" / path.split("#", 1)[0].replace(".html", ".rst")
+                assert target.is_file(), f"{page} links {link}, and {target.name} does not exist"
 
 
 class TestConcepts:

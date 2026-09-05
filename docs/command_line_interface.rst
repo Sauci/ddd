@@ -1,25 +1,29 @@
 Command line interface
 ======================
 
-DDD has no daemon, no editor plug-in and no state of its own: everything it does happens
-while a project is being built or delivered, so it is a plain command line tool that reads
-json files, writes files or a report, and exits. That is what makes it usable from wherever
-the build already lives - a makefile, a cmake project (see :doc:`build_integration`), a batch
-file on an engineer's machine, or a ci job that never sees a terminal.
+DDD is a plain command line tool: it reads json files, writes files or a report, and exits,
+and everything a build or a delivery needs from it happens in one such run. That is what
+makes it usable from wherever the build already lives - a makefile, a cmake project (see
+:doc:`build_integration`), a batch file on an engineer's machine, or a ci job that never sees
+a terminal. The one command that does not exit is ``ddd lsp``, the language server an editor
+keeps running (see :doc:`editor_integration`), and the one file the tool leaves behind for
+its own use is the ``ddd-build.json`` that ``ddd build-info`` writes for that server.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
 what a command actually produces (a listing, the dumped dictionary, a json schema, the list
-of source files, completion candidates) goes to standard output. The two never mix, so
+of source files) goes to standard output. The two never mix, so
 nothing has to be filtered out of a redirection: ``ddd dump project.ddd.json >
 baseline.json`` archives the dictionary and nothing else, even on a run that had something to
 say about it.
 
 For a job that files findings rather than reads them, seven commands understand
 ``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources`` and
-``checks``. That leaves out ``schema``, ``cmake-dir`` and ``templates-dir``, whose output is
-machine readable already. In json the diagnostics become part of the document the
-command prints, next to whatever else it has to report:
+``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
+``lsp``, which speaks json-rpc, ``cmake-dir`` and ``templates-dir``, which print one path, and
+``id``, which reports the files it skipped and one total rather than findings. In json the
+diagnostics become part of the document the command prints, next to whatever else it has to
+report:
 
 .. code-block:: text
 
@@ -63,7 +67,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
      - the command did what it was asked and found nothing worth reporting.
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
-       ``ddd sources`` also exits ``1`` when the file it was pointed at cannot be read at all.
+       ``ddd sources`` also exits ``1`` when the file it was pointed at cannot be read at all,
+       and ``ddd id`` when one of the files it was given was not readable as json and had to
+       be skipped, which it reports without a diagnostic.
    * - ``2``
      - the invocation itself was wrong: an unknown command or option, a required option left
        out, an unknown check identifier or severity, an attempt to relax a check that cannot
@@ -87,7 +93,9 @@ The commands
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
        an archived dictionary or a project description; ``--plugin`` loads the plugins of an
-       archived candidate, since only a project description names its own.
+       archived candidate, since only a project description names its own, and ``--renames``
+       also writes the old-to-new name pairs the identities revealed, for migrating datasets
+       and recordings.
    * - ``ddd generate c|a2l|all|<plugin> FILE -o DIR``
      - check the project and, if it is consistent, write the named artefact into ``DIR``:
        ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both in one
@@ -105,9 +113,15 @@ The commands
    * - ``ddd dump FILE``
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later.
+   * - ``ddd id --assign FILE...``
+     - write an ``id`` into every producing declaration of the given description files that
+       has none, editing them in place; a declaration that has one is left alone, so a second
+       run changes nothing. The identity is what lets ``ddd compare`` report a rename as a
+       rename, and what ``missing-id`` asks for.
    * - ``ddd schema KIND``
      - print the json schema of ``component``, ``constants``, ``dictionary``, ``project``,
-       ``sections``, ``types`` or ``units``, for an editor that offers completion inside a
+       ``rasters``, ``sections``, ``types`` or ``units``, for an editor that offers completion
+       inside a
        ``*.ddd.json`` file or for a validator in a ci job; ``all`` writes every schema into
        a directory; ``--plugin`` closes the ``extensions`` property of ``component`` and
        ``project`` over the named plugins' models.

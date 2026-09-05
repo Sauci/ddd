@@ -189,7 +189,9 @@ is shown the producer's value first, the producer its own.  A key nobody else st
 and which way to settle it is yours.  The value is copied as you wrote it rather than
 re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives looking like itself; a
 declaration that never mentioned the key gets it inserted, on one line or its own depending on
-how that file is written.  Nothing is offered when everybody already agrees.
+how that file is written.  Nothing is offered when everybody already agrees - and `limits`
+nobody else states are agreement, since a declaration that leaves them out defers to the one
+that states them, exactly as the checker reads it.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it.  A name c reserves, one that is

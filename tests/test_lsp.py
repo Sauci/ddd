@@ -2212,12 +2212,58 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="1/min")),
             },
         )
+        # b states no limits, and a declaration that omits them defers to the one that states
+        # them - the checker's rule - so the limits are not a disagreement to settle.
         assert [action["title"] for action in offered] == [
             "Apply this datatype to 1 other declaration of 'Speed'",
             "Apply this unit to 1 other declaration of 'Speed'",
-            "Apply this limits to 1 other declaration of 'Speed'",
-            # b has no limits, so dropping them settles the finding as well as spreading them.
-            "Remove this limits, which no other declaration of 'Speed' has",
+        ]
+
+    @pytest.mark.parametrize("source", ["prod.ddd.json", "cons.ddd.json"])
+    def test_limits_one_side_leaves_out_are_not_offered_from_either(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        """Omitted limits defer to whoever states them, which is agreement to the checker.
+
+        ``ddd check`` reports nothing on this project, so a lightbulb offering to spread the
+        consumer's range into the producer, or to strip it, was a fix on a clean declaration -
+        and taking either changed the range the a2l publishes without a finding before or after.
+        """
+        offered, _ = self.offer(
+            tmp_path,
+            source,
+            "component.interface[0].definition",
+            **{
+                "prod.ddd.json": component("P", declare("output", "T", unit="rpm")),
+                "cons.ddd.json": component(
+                    "C", declare("input", "T", unit="rpm", limits={"min": 0, "max": 100})
+                ),
+            },
+        )
+        assert [action["title"] for action in offered] == []
+
+    def test_two_stated_limits_that_differ_are_still_reconciled(self, tmp_path: Path) -> None:
+        """Only two stated ranges can disagree, and those are offered both ways."""
+        files = {
+            "prod.ddd.json": component(
+                "P", declare("output", "T", unit="rpm", limits={"min": 0, "max": 100})
+            ),
+            "cons.ddd.json": component(
+                "C", declare("input", "T", unit="rpm", limits={"min": 0, "max": 80})
+            ),
+        }
+        consumer, _ = self.offer(
+            tmp_path, "cons.ddd.json", "component.interface[0].definition", **files
+        )
+        assert [action["title"] for action in consumer] == [
+            "Use the limits declared in prod",
+            "Apply this limits to 1 other declaration of 'T'",
+        ]
+        producer, _ = self.offer(
+            tmp_path, "prod.ddd.json", "component.interface[0].definition", **files
+        )
+        assert [action["title"] for action in producer] == [
+            "Apply this limits to 1 other declaration of 'T'",
         ]
 
     def test_a_key_of_its_own_offers_only_that_key(self, tmp_path: Path) -> None:

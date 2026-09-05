@@ -17,6 +17,10 @@ not, and the templates a project provides are its own.
   takes a type, a unit, a section, a constant or a raster from the project's vocabulary checks
   clean alone.  An empty address map is a first run rather than a map with holes: it raises no
   `address-missing`, so a strict two-run flow passes the seeded first build.
+* **Quick fixes follow the checker on `limits`.**  A declaration that leaves the limits out
+  defers to the one that states them, which `definition-mismatch` counts as agreement; the
+  editor no longer offers to spread or strip a range in that case, and only two stated ranges
+  that differ are offered a fix.
 
 * **Fixes from a whole-project review.**  A section name is spelled with letters, digits,
   `.`, `_` and `$`, since the generated C writes it into a string literal; an enumerator

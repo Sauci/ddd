@@ -68,8 +68,9 @@ jobs:
           name: docs-html
           path: build/docs/html
 
-  # Publishing needs Pages set to build from GitHub Actions once, in the repository settings:
-  # the token below may deploy to the site but may not create it.
+  # Publishing needs Pages set to serve the gh-pages branch once, in the repository settings:
+  # the push below lands whether or not anything serves the branch, and the read-back at the
+  # end of the job is what notices when nothing does.
   deploy:
     needs: build
     # Never from a feature branch, and never from a pull request, which on a fork would mean

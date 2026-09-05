@@ -1239,24 +1239,25 @@ class TestPublishedDocumentation:
         )
 
     def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
-        """The archive branch and the served site are two publishes, and they can disagree.
+        """The branch is the site, and a push that lands is still not proof that it is served.
 
-        The branch is a git push and the site is an artifact handed to Pages, so nothing
-        makes them agree by construction. When they parted, every step of every job still
-        reported success: ``v0.6.0`` sat in the archive, named in the version index beside
-        it, while the site went on serving a build assembled before the release existed -
-        a complete set of documentation at a url that answered 404, with nothing red
-        anywhere to say so, and the version menu never offering it.
+        When the branch and the site were two publishes - a git push and an artifact handed
+        to Pages - they parted twice while every step reported success: a release sat in
+        the archive, named in the version index beside it, while the site went on serving a
+        build assembled before the release existed - a complete set of documentation at a
+        url that answered 404, with nothing red anywhere to say so. Serving the branch
+        removed the second publish; a Pages source left on the wrong setting would bring the
+        silence back.
 
         So the run ends by reading back what it just published, which is the only statement
         about the site that is made from outside the machinery that writes it.
         """
-        deploy = DOCS_WORKFLOW.split("actions/deploy-pages", 1)
-        assert len(deploy) == 2, "the workflow no longer deploys exactly once"
-        after = deploy[1]
+        pushed = DOCS_WORKFLOW.split("git -C site push origin gh-pages", 1)
+        assert len(pushed) == 2, "the workflow no longer publishes by pushing the branch once"
+        after = pushed[1]
         assert "versions.json" in after and "${SLOT}" in after, (
-            "nothing after the deployment checks that the site serves the version just "
-            "published, so a site one build behind reports success"
+            "nothing after the push checks that the site serves the version just published, "
+            "so a site one build behind reports success"
         )
         assert "cb=" in after, (
             "the read back is cacheable, so an edge answering for the previous build passes"

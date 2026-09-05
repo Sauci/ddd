@@ -10,8 +10,10 @@ would see: the files the generation writes, the project description the module a
 the schemas it closes over the plugins, and a rebuild that notices an edited plugin.
 
 Not skipped when ``cmake`` is missing: it comes from ``requirements-dev.txt``, and a test that
-skips when a tool is absent reports success without having run. The generator is CMake's
-default for the platform, so nothing here needs ninja or a shell.
+skips when a tool is absent reports success without having run. The generator is ninja, from
+the same requirements: the module refuses a multi-config generator, which is what cmake
+defaults to on Windows, and a compiler is named explicitly where ``cl`` is not on the path,
+which is a GitHub runner with MinGW's ``gcc`` and no developer prompt.
 """
 
 from __future__ import annotations
@@ -30,8 +32,17 @@ from conftest import EXAMPLES
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sys.executable).parent
 CMAKE = shutil.which("cmake", path=str(SCRIPTS)) or shutil.which("cmake") or str(SCRIPTS / "cmake")
+NINJA = shutil.which("ninja", path=str(SCRIPTS)) or shutil.which("ninja") or str(SCRIPTS / "ninja")
 DDD = SCRIPTS / ("ddd.exe" if os.name == "nt" else "ddd")
 """The console script of this environment, handed to the module so that it runs this tree."""
+
+
+def compiler() -> list[str]:
+    """``-DCMAKE_C_COMPILER=gcc`` where MSVC is not set up but MinGW is, else cmake's own pick."""
+    if shutil.which("cl") is None and (gcc := shutil.which("gcc")):
+        return [f"-DCMAKE_C_COMPILER={Path(gcc).as_posix()}"]
+    return []
+
 
 LAYOUT = EXAMPLES / "layout"
 PLUGIN = EXAMPLES / "plugins" / "ddd_layout.py"

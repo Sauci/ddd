@@ -127,8 +127,8 @@ The commands
        a directory; ``--plugin`` closes the ``extensions`` property of ``component`` and
        ``project`` over the named plugins' models.
    * - ``ddd sources FILE``
-     - list every description file the project is built out of, for the dependency list of a
-       build system.
+     - list every file the project is built out of - the description files and the modules of
+       the plugins it names - for the dependency list of a build system.
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see

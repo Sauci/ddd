@@ -33,6 +33,8 @@ project file, for a plugin the project keeps in its own repository; anything els
 dotted module name imported from the environment, for one installed as a distribution. A
 plugin acts on a project because the project names it, never because it happens to be
 installed. A sub-project may name plugins too, and the set in play is the union.
+``ddd sources`` lists each plugin's file beside the description files, so that a build re-runs
+the generation when a plugin changes exactly as it does when a component does.
 
 ``extensions`` on the project holds each plugin's settings, keyed by the plugin's name and
 validated against its project model with defaults filled in. A definition states its block

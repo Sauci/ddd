@@ -149,9 +149,27 @@ def load_plugin(spelling: str, base: Path) -> Plugin:
     return plugin
 
 
-def _load_from_path(spelling: str, base: Path) -> Any:
+def plugin_source(spelling: str, base: Path) -> Path | None:
+    """The file a loaded plugin came from, for the dependency list of a build system.
+
+    A path spelling names its file; a module spelling has the file its import recorded, which
+    only a module planted into ``sys.modules`` without one lacks. Nothing is imported here:
+    this answers for a plugin ``load_plugin`` has already loaded, so that a build re-runs the
+    generation when the plugin changes exactly as it does when a component does.
+    """
+    if spelling.endswith(".py"):
+        return _path_of(spelling, base)
+    source = getattr(sys.modules.get(spelling), "__file__", None)
+    return Path(source).resolve() if source else None
+
+
+def _path_of(spelling: str, base: Path) -> Path:
     raw = Path(spelling)
-    path = (raw if raw.is_absolute() else base / raw).resolve()
+    return (raw if raw.is_absolute() else base / raw).resolve()
+
+
+def _load_from_path(spelling: str, base: Path) -> Any:
+    path = _path_of(spelling, base)
     if not path.is_file():
         msg = f"plugin '{spelling}' names '{path.as_posix()}', which does not exist"
         raise PluginNotFoundError(msg)

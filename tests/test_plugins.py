@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import types
 from pathlib import Path
 
 import jsonschema
@@ -252,6 +253,31 @@ class TestLoading:
         write_plugin(tmp_path, "wrong.py", "PLUGIN = object()\n")
         with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("wrong.py", tmp_path)
+
+
+class TestTheSourcesOfAProject:
+    """A plugin is a file the project is built out of, whichever spelling reached it."""
+
+    def test_a_module_named_by_dotted_name_lists_its_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tmp_path / "site", "tag_plugin.py")
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["tag_plugin"])})
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        listed = capsys.readouterr().out.splitlines()
+        assert (tmp_path / "site" / "tag_plugin.py").resolve().as_posix() in listed
+
+    def test_a_module_without_a_file_contributes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only a module planted without a file; nothing importlib loads from disk lacks one."""
+        module = types.ModuleType("planted_plugin")
+        module.PLUGIN = Plugin(name="planted")  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "planted_plugin", module)
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["planted_plugin"])})
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        assert ".py" not in capsys.readouterr().out
 
 
 class TestTheKeys:

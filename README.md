@@ -700,7 +700,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
-| `ddd sources FILE` | list every description file the project is built out of, for a build system |
+| `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
 | `ddd checks` | list the checks and their default severity; `--plugin` lists a plugin's checks after the built-in ones |

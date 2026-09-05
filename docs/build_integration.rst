@@ -200,7 +200,8 @@ A hand written project pulls its components in through ``includes``, possibly wi
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with ``ddd sources`` (see
 :doc:`command_line_interface`), and uses the answer twice: as the dependencies of the
-generation step, so that editing a component regenerates the globals and the a2l, and as
+generation step, so that editing a component - or a plugin the project names, whose module
+the answer lists too - regenerates the globals and the a2l, and as
 ``CMAKE_CONFIGURE_DEPENDS``, so that adding a file matching an ``includes`` wildcard re-runs
 configure and picks the new component up. If the tool cannot resolve the project yet, the
 module says so and falls back to depending on the project file alone rather than refusing to

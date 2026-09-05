@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/documentation_options.js?v=486e5634"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -213,8 +213,9 @@ and recordings.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c|a2l|all|&lt;plugin&gt;</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">DIR</span></code></p></td>
 <td><p>check the project and, if it is consistent, write the named artefact into <code class="docutils literal notranslate"><span class="pre">DIR</span></code>:
-<code class="docutils literal notranslate"><span class="pre">c</span></code> renders the c sources, <code class="docutils literal notranslate"><span class="pre">a2l</span></code> writes the a2l file, <code class="docutils literal notranslate"><span class="pre">all</span></code> produces both in one
-run, and the name of a plugin the project loads runs that plugin’s own backend. Each
+<code class="docutils literal notranslate"><span class="pre">c</span></code> renders the c sources, <code class="docutils literal notranslate"><span class="pre">a2l</span></code> writes the a2l file, <code class="docutils literal notranslate"><span class="pre">all</span></code> produces both and
+the artefact of every plugin the project names that provides one, and the name of such
+a plugin runs its backend alone. Each
 artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
 templates the c sources are rendered from, required wherever c is rendered and with no
 default, because which files the project wants and what they look like is not
@@ -246,8 +247,8 @@ a directory; <code class="docutils literal notranslate"><span class="pre">--plug
 <code class="docutils literal notranslate"><span class="pre">project</span></code> over the named plugins’ models.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
-<td><p>list every description file the project is built out of, for the dependency list of a
-build system.</p></td>
+<td><p>list every file the project is built out of - the description files and the modules of
+the plugins it names - for the dependency list of a build system.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code></p></td>
 <td><p>run the language server, speaking the Language Server Protocol on stdin and stdout,
@@ -635,7 +636,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-generate">
 <h4>ddd generate<a class="headerlink" href="#ddd-generate" title="Link to this heading"></a></h4>
-<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both in one run; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
+<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both, and the artefact of every plugin the project names that provides one; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all,&lt;plugin&gt;} ...</span>
 </pre></div>
 </div>

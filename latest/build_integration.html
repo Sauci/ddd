@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/documentation_options.js?v=486e5634"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -166,8 +166,11 @@ conversions to initial values and bitfields, is verified as usual.</p>
 <section id="generating-an-image">
 <h3>Generating an image<a class="headerlink" href="#generating-an-image" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ddd_generate(&lt;image&gt;</span> <span class="pre">...)</span></code> collects the descriptions of every component in the link closure
-of the image, writes the project description tying them together, runs the generator, and
-links the result back into the image. It has to be called in the <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that
+of the image, writes the project description tying them together, runs the generator - <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">generate</span> <span class="pre">all</span></code>, so the artefact of every plugin named with <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> arrives beside the
+built-in files - and links the result back into the image. A plugin’s file names are its own
+and are not declared as outputs, so a target that consumes one depends on
+<code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_generation</span></code>. It has to be called in the <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that
 defines the image, and after the components have been added, because it hands the generated
 headers to the components registered up to that point.</p>
 <p>Besides the image it needs one thing: <code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>, the directory of jinja2 templates
@@ -280,8 +283,8 @@ descriptions: unlike a tool that reads compiled objects, DDD only ever reads the
 <h3>A hand written project description<a class="headerlink" href="#a-hand-written-project-description" title="Link to this heading"></a></h3>
 <p>A project that already maintains its own project description - because it is also built with
 another build system, because it deliberately lists more than the image links, or because it
-names plugins or carries project-level extensions, which the generated description cannot,
-being a name, a description and the list of files - passes it with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
+carries project-level <code class="docutils literal notranslate"><span class="pre">extensions</span></code>, the one key the generated description does not - passes
+it with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
 is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
 a2l is then named after the project name inside the description, so a <code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well
 is ignored with a status message.</p>
@@ -289,7 +292,8 @@ is ignored with a status message.</p>
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> (see
 <a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), and uses the answer twice: as the dependencies of the
-generation step, so that editing a component regenerates the globals and the a2l, and as
+generation step, so that editing a component - or a plugin the project names, whose module
+the answer lists too - regenerates the globals and the a2l, and as
 <code class="docutils literal notranslate"><span class="pre">CMAKE_CONFIGURE_DEPENDS</span></code>, so that adding a file matching an <code class="docutils literal notranslate"><span class="pre">includes</span></code> wildcard re-runs
 configure and picks the new component up. If the tool cannot resolve the project yet, the
 module says so and falls back to depending on the project file alone rather than refusing to
@@ -410,25 +414,34 @@ would fight over. Use a single-config generator such as Ninja.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code></p></td>
 <td><p>use this project description instead of collecting the link closure.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NAME</span> <span class="pre">&lt;name&gt;</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PLUGINS</span> <span class="pre">&lt;spec&gt;...</span></code></p></td>
+<td><p>the plugins of the collected project: a <code class="docutils literal notranslate"><span class="pre">.py</span></code> path relative to the current source
+directory, which has to exist, or a dotted module name passed through as written. They
+are written into the <code class="docutils literal notranslate"><span class="pre">plugins</span></code> of the generated project description in this order,
+the schemas are closed over them, and a path among them is a dependency of the
+generation. Refused together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, whose file names its own.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NAME</span> <span class="pre">&lt;name&gt;</span></code></p></td>
 <td><p>project name, and therefore the name of the a2l file. Defaults to the image name
 without its extension, with anything that is not a c identifier replaced, because the
 name ends up as the a2l project and module name. Ignored together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
 <td><p>where the generated files go; defaults to <code class="docutils literal notranslate"><span class="pre">${CMAKE_CURRENT_BINARY_DIR}/ddd/&lt;image&gt;</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
 <td><p><strong>required</strong>: the jinja2 templates the c sources are rendered from. Their names decide
 which files are generated, and renaming a template is how a project renames a generated
 file.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SCHEMA_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SCHEMA_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
 <td><p>write the json schemas of the file formats into this directory at configure time, for
 editor validation; they are rewritten on every configure, so they cannot describe a
-version of DDD that is no longer installed.</p></td>
+version of DDD that is no longer installed. They are closed over the project’s plugins
+- the <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> given here, or the ones a <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> file names - so an editor
+validates a plugin’s block as it is typed.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
 <td><p>the symbol to address map filling the addresses into the a2l. A map inside the build
 tree that does not exist at configure time is seeded with an empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), so
 the first build of the two-run flow succeeds with every address 0 and the second,
@@ -437,14 +450,14 @@ the source tree stays an error. An empty map is a first run rather than a map wi
 holes, so it raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it; a map
 that names some objects and not others does, once.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
 <td><p>severity overrides, exactly like <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the command line. They apply to both the
 generation and the check target.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
 <td><p>usage requirements for compiling the generated definition file, stated by hand. The
 manual fallback: in the collected mode the definition file already gets the interface
 compile usage of every registered component - include directories, compile
@@ -452,19 +465,19 @@ definitions and compile options, resolved through each component’s public link
 closure - so this remains for the hand written <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> mode and for what no
 description implies, such as a header the project’s own c templates include.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
 <td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
 <td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
 <td><p>treat DDD warnings as errors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
 <td><p>do not hand the generated headers to the registered components.</p></td>
 </tr>
 </tbody>

@@ -17,7 +17,7 @@
     <link rel="shortcut icon" href="_static/ddd-favicon.svg"/>
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=fe7df9b0"></script>
+      <script src="_static/documentation_options.js?v=486e5634"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/js/versions.js?v=a915def3"></script>
@@ -135,7 +135,9 @@ never interprets it.</p>
 project file, for a plugin the project keeps in its own repository; anything else is a
 dotted module name imported from the environment, for one installed as a distribution. A
 plugin acts on a project because the project names it, never because it happens to be
-installed. A sub-project may name plugins too, and the set in play is the union.</p>
+installed. A sub-project may name plugins too, and the set in play is the union.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> lists each plugin’s file beside the description files, so that a build re-runs
+the generation when a plugin changes exactly as it does when a component does.</p>
 <p><code class="docutils literal notranslate"><span class="pre">extensions</span></code> on the project holds each plugin’s settings, keyed by the plugin’s name and
 validated against its project model with defaults filled in. A definition states its block
 under the same key:</p>
@@ -247,7 +249,9 @@ one.</p>
 <code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> returning <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code> entries - and is selected as
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code>, with the common options <code class="docutils literal notranslate"><span class="pre">-o</span></code>, <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> and <code class="docutils literal notranslate"><span class="pre">--force</span></code>. It
 runs under the same writer as the built-in artefacts, so two artefacts claiming one path are
-refused exactly as between the c and the a2l backends. <code class="docutils literal notranslate"><span class="pre">all</span></code> stays the built-in pair.</p>
+refused exactly as between the c and the a2l backends. <code class="docutils literal notranslate"><span class="pre">all</span></code> runs them after the built-in
+pair, in the order the project names the plugins, so a build gets a plugin’s artefact without
+naming it; <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> names the plugins with <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> (see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>).</p>
 <p>A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2.</p>
 </section>

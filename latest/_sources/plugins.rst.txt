@@ -33,6 +33,8 @@ project file, for a plugin the project keeps in its own repository; anything els
 dotted module name imported from the environment, for one installed as a distribution. A
 plugin acts on a project because the project names it, never because it happens to be
 installed. A sub-project may name plugins too, and the set in play is the union.
+``ddd sources`` lists each plugin's file beside the description files, so that a build re-runs
+the generation when a plugin changes exactly as it does when a component does.
 
 ``extensions`` on the project holds each plugin's settings, keyed by the plugin's name and
 validated against its project model with defaults filled in. A definition states its block
@@ -147,7 +149,9 @@ one.
 ``generate(dictionary, output_dir)`` returning ``GeneratedFile`` entries - and is selected as
 ``ddd generate <name>``, with the common options ``-o``, ``--dry-run`` and ``--force``. It
 runs under the same writer as the built-in artefacts, so two artefacts claiming one path are
-refused exactly as between the c and the a2l backends. ``all`` stays the built-in pair.
+refused exactly as between the c and the a2l backends. ``all`` runs them after the built-in
+pair, in the order the project names the plugins, so a build gets a plugin's artefact without
+naming it; ``ddd_generate`` names the plugins with ``PLUGINS`` (see :doc:`build_integration`).
 
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2.

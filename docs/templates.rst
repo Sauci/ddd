@@ -182,7 +182,7 @@ The model
    * - ``model.source``
      - The name of the description file the dictionary was read from, for the banner.
    * - ``model.generator``
-     - The tool and version that produced the file, such as ``ddd 0.7.0``.
+     - The tool and version that produced the file, such as ``ddd 0.8.0``.
    * - ``model.constants``
      - One entry per :doc:`declared constant <file_formats/constants>`, in name order, each
        with ``.name``, ``.value`` and ``.description``; empty when the project declares

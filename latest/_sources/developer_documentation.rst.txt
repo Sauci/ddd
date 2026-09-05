@@ -69,9 +69,10 @@ The split is enforced by a test
 -------------------------------
 
 A layering that lives only in the documentation rots the first time somebody is in a hurry,
-so DDD asserts it. ``tests/test_backends.py`` parses every module under ``src/ddd`` with
-``ast``, collects the ``ddd.*`` modules each one imports, and fails if the import graph
-disagrees with the table above:
+so DDD asserts it. ``tests/test_backends.py`` parses the layered modules - ``loading.py``,
+``analysis.py``, ``ir.py``, ``diagnostics.py``, everything under ``backends/`` and
+``plugins.py`` - with ``ast``, collects the ``ddd.*`` modules each one imports, and fails if
+the import graph disagrees with the table above:
 
 * ``loading.py``, ``analysis.py``, ``ir.py`` and ``diagnostics.py`` import no backend,
 * nothing under ``backends/`` imports ``ddd.loading`` or ``ddd.analysis``,
@@ -152,8 +153,10 @@ package.
 Adding an output format
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Adding one - a header for another language, a csv, an ARXML - means adding a package next to
-the existing two and touching nothing else:
+A format DDD does not ship is a :doc:`plugin's <plugins>` backend: the project names the
+plugin, ``ddd generate <name>`` runs it, and nothing inside the tool changes. Adding a
+*built-in* one - a header for another language, a csv, an ARXML - means adding a package next
+to the existing two and registering it as an artefact of the generate command:
 
 #. Create ``src/ddd/backends/<format>/`` with a class exposing ``name`` and ``generate``.
    Follow the shape of the existing two: a ``model.py`` that turns the dictionary into
@@ -167,13 +170,21 @@ the existing two and touching nothing else:
    settings - in particular ``StrictUndefined``, which turns a typo in a template into an
    error rather than into an empty string - are the same as everywhere else.
 #. Export it from ``src/ddd/backends/__init__.py``.
-#. Add it to the list of backends that ``_command_generate`` in ``src/ddd/cli.py`` builds,
-   together with the option that selects or configures it.
-#. Add it to the protocol assertion in ``tests/test_backends.py``. The import graph tests
-   pick the new package up on their own, so the first thing the suite will tell you is
+#. Register the artefact in ``src/ddd/cli.py``: an entry in the tuple ``_build_parser``
+   turns into the ``generate`` subcommands, a ``render_<format>`` flag set by
+   ``_add_generate_arguments`` together with the options that configure it, and the branch
+   of ``_command_generate`` that appends the backend when the flag is set. Add the name to
+   ``BUILT_IN_ARTEFACTS`` in ``src/ddd/plugins.py`` as well: any other lowercase name is
+   taken for a plugin's artefact before the parser is built, and a name that is both is a
+   conflicting subparser.
+#. Add it to the protocol assertion in ``tests/test_backends.py``, and to the lists of
+   artefacts ``tests/test_cli.py`` and ``tests/test_plugins.py`` enumerate. The import graph
+   tests pick the new package up on their own, so the first thing the suite will tell you is
    whether the new backend reached into the front end.
 
-Nothing in the front end changes, and neither of the existing backends is touched.
+The front end changes in those two places and nowhere else, neither of the existing backends
+is touched, and ``cmake/Ddd.cmake`` keeps generating ``all`` or ``c`` until the build
+integration is taught the new artefact.
 
 Diagnostics never raise
 -----------------------
@@ -298,7 +309,7 @@ proves that every header is self contained and that its include guard works - co
 everything with ``-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow
 -Wcast-qual -Wstrict-prototypes``, links all objects into one binary, and finally compares
 ``nm`` against ``ddd list --format json`` so that every variable DDD promised is defined
-exactly once and nothing else is. The last three steps run twice, once plain and once with
+exactly once and nothing else is. The last four steps run twice, once plain and once with
 the conditional declarations enabled, so both states of a ``#if`` guarded variable are
 covered. It renders the example templates, which is what makes them evidence rather than a
 sketch: the set a project starts from is the set a compiler has accepted. ``TEMPLATES`` points
@@ -355,8 +366,9 @@ Publishing this documentation
 
 ``.github/workflows/docs.yml`` builds the html and publishes it to
 `GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and deploys on
-two events: a push to ``master``, and a published release. The deployment authenticates the
-same way the release upload does, with a short lived OIDC token rather than a stored secret.
+two events: a push to ``master``, and a published release. The deployment is a push to the
+``gh-pages`` branch with the workflow's own token, and Pages serves that branch directly;
+nothing else authenticates, and no deployment environment is involved.
 
 The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:
@@ -378,11 +390,14 @@ Old documentation describes old code, so nothing rebuilds a released version. Th
 only a saving: a tag from two years ago would have to keep building under the sphinx of the
 day, and the run that failed would be the one publishing the *current* release.
 
-Since a deployment replaces the whole site, the versions that are not being built have to
-come from somewhere. The ``gh-pages`` branch is that archive - storage rather than the
-published thing, restored at the start of the job and pushed back at the end of it. Pages
-still serves the artifact the workflow uploads, so its ``Source`` setting stays on
-*GitHub Actions*. The branch is created by the first deployment; there is nothing to set up.
+A build produces one version and the site is all of them, so the versions that are not being
+built have to come from somewhere: the ``gh-pages`` branch holds them. The branch is the site
+rather than an archive of it - Pages is configured to serve it, so the push at the end of the
+job is the publish, and there is no second copy to disagree with. It used to be one of two
+publishes, the branch and an artifact handed to ``deploy-pages``, and the two parted twice
+without a red step anywhere; the run now ends by reading the page it published back from the
+site, and fails if it is not served within five minutes. The branch is created by the first
+deployment; there is nothing to set up in the repository.
 
 The menu cannot be baked into a page at build time, or a version released today would be
 missing from the menu of every page built before it - which is the menu somebody reading an
@@ -402,21 +417,13 @@ would want a LaTeX distribution, roughly a gigabyte of packages, and nothing ask
 ``docs/conf.py`` still carries the LaTeX settings, so ``sphinx-build -M latexpdf docs output``
 produces one for whoever does.
 
-Three things are worth knowing before the first run.
+Two things are worth knowing before the first run.
 
-**Pages has to be switched on by hand, once.** In *Settings* → *Pages*, set *Source* to
-*GitHub Actions*. The workflow's token may deploy to a site but may not create one, so until
-that setting is made the deployment step fails with a message about a missing Pages site.
+**Pages has to be pointed at the branch by hand, once.** In *Settings* → *Pages*, set
+*Source* to *Deploy from a branch* and choose ``gh-pages`` at its root. The workflow pushes
+the branch whether or not anything serves it, so with the setting missing the push succeeds
+and the *Read back what was published* step fails five minutes later, naming that setting.
 There is nothing to change in the repository to fix it: correct the setting and re-run.
-
-**The ``github-pages`` environment has to allow tags.** GitHub creates that environment with
-its deployments restricted to the default branch, which is the whole of what a release
-deployment is not: the run is triggered by a tag. It fails with *not allowed to deploy to
-github-pages due to environment protection rules*, after a green build, on the release. In
-*Settings* → *Environments* → *github-pages* → *Deployment branches and tags*, choose
-*Selected branches and tags* and add a branch rule for ``master`` and a tag rule for ``v*``.
-This is a setting rather than a file, so it survives nothing in the repository and has to be
-made once per repository.
 
 **A pull request builds but never deploys.** The deploy job names the branch and the release
 event it publishes, rather than resting on the event alone, because a pull request from a
@@ -481,12 +488,14 @@ unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. 
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with ``v``.
 
-The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and so is
-subject to the same trap as ``github-pages`` above: an environment whose *Deployment branches
-and tags* is left at the default rejects a release, because a release is triggered by a tag
-and the default permits only the default branch. It fails after a green build, with
-*not allowed to deploy ... due to environment protection rules*, and is fixed in the settings
-rather than in the repository.
+The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and GitHub
+creates an environment with its deployments restricted to the default branch, which is the
+whole of what a release is not: the run is triggered by a tag. An environment whose
+*Deployment branches and tags* is left at that default rejects the release after a green
+build, with *not allowed to deploy ... due to environment protection rules*. In *Settings* →
+*Environments*, choose *Selected branches and tags* for each and add a tag rule for ``v*``;
+this is a setting rather than a file, so it is fixed in the settings rather than in the
+repository, once per repository.
 
 Delivering the editor extension
 -------------------------------

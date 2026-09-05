@@ -323,8 +323,9 @@ no longer exists. The <a class="reference internal" href="../build_integration.h
 <p class="admonition-title">Note</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> accept a <strong>component</strong> file wherever they accept a
 project file, which is what lets a component be checked before it is integrated. There is
-no project around it, so the inputs it declares have no producer; add
-<code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">missing-producer=ignore</span></code> for that run. The generated a2l is then named after the
+no project around it, so the inputs it declares have no producer; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span>
+<span class="pre">--standalone</span></code> holds that and every other project-wide check back, and a generate run
+relaxes <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> with <code class="docutils literal notranslate"><span class="pre">-W</span></code>. The generated a2l is then named after the
 component instead of after a project.</p>
 </div>
 </section>

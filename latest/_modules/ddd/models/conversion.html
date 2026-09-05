@@ -195,6 +195,24 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_publish_mapping_form</span><span class="p">(</span><span class="n">schema</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Let the schema accept the mapping ``_expand_mapping`` turns into the list.</span>
+
+<span class="sd">    The list is what the model holds, so it is what pydantic publishes; the shorthand is what</span>
+<span class="sd">    the loader accepts, so an editor validating a file has to accept it as well.</span>
+<span class="sd">    """</span>
+    <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">schema</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"type"</span><span class="p">,</span> <span class="s2">"items"</span><span class="p">,</span> <span class="s2">"minItems"</span><span class="p">)</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">schema</span><span class="p">}</span>
+    <span class="n">schema</span><span class="p">[</span><span class="s2">"anyOf"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">listed</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">"type"</span><span class="p">:</span> <span class="s2">"object"</span><span class="p">,</span>
+            <span class="s2">"additionalProperties"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"integer"</span><span class="p">},</span>
+            <span class="s2">"minProperties"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">"description"</span><span class="p">:</span> <span class="s1">'The enumerators as a ``{"NAME": value}`` mapping.'</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">]</span>
+
+
 <div class="viewcode-block" id="EnumConversion">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.EnumConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">EnumConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
@@ -214,7 +232,9 @@
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""C identifier of the generated ``typedef enum``; shared enums must agree everywhere."""</span>
 
-    <span class="n">enumerators</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+    <span class="n">enumerators</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">tuple</span><span class="p">[</span><span class="n">Enumerator</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">json_schema_extra</span><span class="o">=</span><span class="n">_publish_mapping_form</span><span class="p">)</span>
+    <span class="p">]</span>
 <span class="w">    </span><span class="sd">"""The named values, either as objects or as a ``{"NAME": value}`` mapping."""</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>

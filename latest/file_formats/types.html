@@ -236,7 +236,7 @@ dresses like storage, because the key already says it is declared.</p>
 <code class="docutils literal notranslate"><span class="pre">UINT16</span></code> - would wear the name of storage it is not, and every declaration naming it would
 read like a typo:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].scalar.name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
+types.ddd.json#types[0].name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
 1 error
 </pre></div>
 </div>
@@ -285,8 +285,11 @@ type of the project.</p></td>
 <td><p>The physical unit, as free text: <code class="docutils literal notranslate"><span class="pre">rpm</span></code>, <code class="docutils literal notranslate"><span class="pre">degC</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
-<td><p>identity</p></td>
-<td><p>How the stored number maps to the physical one; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>.</p></td>
+<td><p>required</p></td>
+<td><p>How the stored number maps to the physical one; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>. Required
+even when it is the identity, because fixing what a value means is the one job a
+scalar type has, and the identity is part of the answer rather than a silence to
+interpret.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></td>
 <td><p>derived</p></td>
@@ -309,7 +312,7 @@ of a structure as on the definition of a variable, because the confusion it prev
 same one:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
 sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'typename': 'Tem...)
-types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
+types.ddd.json#types[1].members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
 2 errors
 </pre></div>
 </div>
@@ -355,8 +358,8 @@ half would put a structure in the generated c that the description does not desc
 forgotten <code class="docutils literal notranslate"><span class="pre">bits</span></code> is the same problem in the other direction: it would turn a one bit flag
 into a full width member and move every offset after it.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a 'bits' member needs a 'bits' (got: {'name': 'ready', 'member': 'bits', 'datatype': 'uint16'})
-types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a 'value' member has no 'bits' (got: {'name': 'history', 'member': 'value', 'datatype': 'uint1...)
+types.ddd.json#types[0].members[0]: error[schema]: Value error, a 'bits' member needs a 'bits' (got: {'name': 'ready', 'member': 'bits', 'datatype': 'uint16',...)
+types.ddd.json#types[0].members[1]: error[schema]: Value error, a 'value' member has no 'bits' (got: {'name': 'history', 'member': 'value', 'datatype': 'uint1...)
 2 errors
 </pre></div>
 </div>
@@ -394,9 +397,9 @@ belong to.</p>
 declared type are all refused - a scalar type would in any case bring limits that the width
 contradicts:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in 'uint16', which holds 16 (got: {'name': 'wide', 'member': 'bits', 'datatype': 'uint16', ...)
-types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got 'float32'; only an integer can carry one in c (got: {'name': 'counted', 'member': 'bits', 'datatype': 'float3...)
-types.ddd.json#types[0].struct.members[2]: error[schema]: Value error, a 'bits' member has no 'dimensions' (got: {'name': 'flags', 'member': 'bits', 'datatype': 'uint8', ...)
+types.ddd.json#types[0].members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in 'uint16', which holds 16 (got: {'name': 'wide', 'member': 'bits', 'datatype': 'uint16', ...)
+types.ddd.json#types[0].members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got 'float32'; only an integer can carry one in c (got: {'name': 'counted', 'member': 'bits', 'datatype': 'float3...)
+types.ddd.json#types[0].members[2]: error[schema]: Value error, a 'bits' member has no 'dimensions' (got: {'name': 'flags', 'member': 'bits', 'datatype': 'uint8', ...)
 3 errors
 </pre></div>
 </div>

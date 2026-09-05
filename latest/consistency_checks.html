@@ -158,6 +158,8 @@ file-extension         error    a description file is not named '*.ddd.json'
 schema                 error    a file does not match the DDD contract (fixed)
 include-cycle          error    projects include each other recursively (fixed)
 include-empty          error    an include pattern matches no file
+plugin-not-found       error    a project names a plugin that cannot be found (fixed)
+plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
 duplicate-component    error    two different files declare the same component name
 duplicate-type         error    two different files declare the same type name
 duplicate-unit         error    a unit is declared more than once, in one file or across files
@@ -355,7 +357,7 @@ utf-8. The finding carries the line and the column the parser stopped at.</p></t
 <td><p>error (fixed)</p></td>
 <td><p>the top level of the document is not a json object, or names none of the description
 kinds (<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">component</span></code>, <code class="docutils literal notranslate"><span class="pre">types</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">sections</span></code>,
-<code class="docutils literal notranslate"><span class="pre">constants</span></code>), or several of them at once.</p></td>
+<code class="docutils literal notranslate"><span class="pre">constants</span></code>, <code class="docutils literal notranslate"><span class="pre">rasters</span></code>), or several of them at once.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file-extension</span></code></p></td>
 <td><p>error</p></td>
@@ -451,6 +453,18 @@ The nearest declared name is suggested.</p></td>
 is no free text fallback: an event nothing describes is a name the a2l could only
 write as a number nobody chose. The nearest declared name is suggested.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-raster</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a measurement raster is declared more than once, in one file or across files - the
+rule a unit, a section or a constant obey, since a raster is vocabulary like them.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-id</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two data objects of one project carry the same <code class="docutils literal notranslate"><span class="pre">id</span></code>. An identity relates an object
+to its predecessor in a delivery comparison, so one shared by two objects can relate
+neither, and a declaration copied with its <code class="docutils literal notranslate"><span class="pre">id</span></code> still in it is refused rather than
+paired wrongly.</p></td>
+</tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-event</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two measurement rasters claim the same event channel number (see the
@@ -490,7 +504,9 @@ allowed - a dimensionless value states no unit rather than a spelling of one.</p
 <td><p>a declared type is used where its shape does not fit: a declaration naming a structure
 while being a curve, a map, an axis or a value block, all of which refer to other
 objects or are arrays of one datatype, or one stating an <code class="docutils literal notranslate"><span class="pre">init</span></code>, which for a
-structure is written by the code that starts it rather than by the description.</p></td>
+structure is written by the code that starts it rather than by the description. A
+declaration naming an external type is refused the same way: DDD knows neither its
+layout nor its meaning, so only a structure member may name one.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
 <td><p>error</p></td>
@@ -673,6 +689,14 @@ everywhere else.</p></td>
 an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1 cannot
 carry. The extra dimensions are written out and only a 1.7 reader understands them.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address-missing</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object that reaches the a2l has no entry in the map <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> was given, so
+its <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> stays 0. A map produced from a linker output legitimately lacks the
+objects that were not linked into this image, which is why the run goes on; a post-link
+build that wants an a2l with no hole in it runs with <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, which makes this an
+error and writes nothing.</p></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -696,6 +720,20 @@ carry. The extra dimensions are written out and only a 1.7 reader understands th
 <td><p>a component declares no variable at all. Perfectly legal - a component may have no global
 interface - but worth saying out loud, because the usual cause is a description file that
 was registered before it was written.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code></p></td>
+<td><p>info</p></td>
+<td><p>a declaration is missing from the dictionary and the finding that says why has been
+silenced - a <code class="docutils literal notranslate"><span class="pre">type-kind</span></code> relaxed to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>, for instance. The declaration is left
+out rather than generated wrong, and this is the trace that leaves, so that a dictionary
+short of a variable is never a surprise.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-id</span></code></p></td>
+<td><p>info</p></td>
+<td><p>a declaration that produces a variable states no <code class="docutils literal notranslate"><span class="pre">id</span></code>, so a delivery that renames the
+variable is compared as a removal and an unrelated addition. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> writes
+the identities; a project that has adopted them raises the check to <code class="docutils literal notranslate"><span class="pre">error</span></code>, so that a
+new declaration cannot go out without one.</p></td>
 </tr>
 </tbody>
 </table>
@@ -727,6 +765,18 @@ registry can be read in one place.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reused-name</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a name of the baseline now belongs to a different object: the object that carried it
+was renamed or removed, and a new one took the spelling. Nothing about the delivery
+looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">renamed-object</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>an object of the baseline is offered under a different name; its <code class="docutils literal notranslate"><span class="pre">id</span></code> is what says
+so. The interface comparison still runs across the pair, and <code class="docutils literal notranslate"><span class="pre">--renames</span></code> writes the
+old and the new spelling out, for migrating datasets and recordings.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>
 <td><p>warning</p></td>
@@ -1011,8 +1061,9 @@ usage error:</p>
 ]
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the five
-load time checks whose severity cannot be changed, <code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check.</p>
+<p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the seven
+checks whose severity cannot be changed - the five of load time and the two plugin checks -
+<code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check.</p>
 </section>
 </section>
 

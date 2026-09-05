@@ -190,9 +190,10 @@ formats under <a class="reference internal" href="data_contracts.html"><span cla
 <section id="the-split-is-enforced-by-a-test">
 <h2>The split is enforced by a test<a class="headerlink" href="#the-split-is-enforced-by-a-test" title="Link to this heading"></a></h2>
 <p>A layering that lives only in the documentation rots the first time somebody is in a hurry,
-so DDD asserts it. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> parses every module under <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> with
-<code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the <code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if the import graph
-disagrees with the table above:</p>
+so DDD asserts it. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> parses the layered modules - <code class="docutils literal notranslate"><span class="pre">loading.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code>, everything under <code class="docutils literal notranslate"><span class="pre">backends/</span></code> and
+<code class="docutils literal notranslate"><span class="pre">plugins.py</span></code> - with <code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the <code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if
+the import graph disagrees with the table above:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">loading.py</span></code>, <code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code> and <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code> import no backend,</p></li>
 <li><p>nothing under <code class="docutils literal notranslate"><span class="pre">backends/</span></code> imports <code class="docutils literal notranslate"><span class="pre">ddd.loading</span></code> or <code class="docutils literal notranslate"><span class="pre">ddd.analysis</span></code>,</p></li>
@@ -267,8 +268,10 @@ to either. The a2l backend takes no such argument at all, since its templates ar
 package.</p>
 <section id="adding-an-output-format">
 <h3>Adding an output format<a class="headerlink" href="#adding-an-output-format" title="Link to this heading"></a></h3>
-<p>Adding one - a header for another language, a csv, an ARXML - means adding a package next to
-the existing two and touching nothing else:</p>
+<p>A format DDD does not ship is a <a class="reference internal" href="plugins.html"><span class="doc">plugin’s</span></a> backend: the project names the
+plugin, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">&lt;name&gt;</span></code> runs it, and nothing inside the tool changes. Adding a
+<em>built-in</em> one - a header for another language, a csv, an ARXML - means adding a package next
+to the existing two and registering it as an artefact of the generate command:</p>
 <ol class="arabic simple">
 <li><p>Create <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/&lt;format&gt;/</span></code> with a class exposing <code class="docutils literal notranslate"><span class="pre">name</span></code> and <code class="docutils literal notranslate"><span class="pre">generate</span></code>.
 Follow the shape of the existing two: a <code class="docutils literal notranslate"><span class="pre">model.py</span></code> that turns the dictionary into
@@ -282,13 +285,21 @@ directory as the first constructor argument if the format is a house style, as c
 settings - in particular <code class="docutils literal notranslate"><span class="pre">StrictUndefined</span></code>, which turns a typo in a template into an
 error rather than into an empty string - are the same as everywhere else.</p></li>
 <li><p>Export it from <code class="docutils literal notranslate"><span class="pre">src/ddd/backends/__init__.py</span></code>.</p></li>
-<li><p>Add it to the list of backends that <code class="docutils literal notranslate"><span class="pre">_command_generate</span></code> in <code class="docutils literal notranslate"><span class="pre">src/ddd/cli.py</span></code> builds,
-together with the option that selects or configures it.</p></li>
-<li><p>Add it to the protocol assertion in <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code>. The import graph tests
-pick the new package up on their own, so the first thing the suite will tell you is
+<li><p>Register the artefact in <code class="docutils literal notranslate"><span class="pre">src/ddd/cli.py</span></code>: an entry in the tuple <code class="docutils literal notranslate"><span class="pre">_build_parser</span></code>
+turns into the <code class="docutils literal notranslate"><span class="pre">generate</span></code> subcommands, a <code class="docutils literal notranslate"><span class="pre">render_&lt;format&gt;</span></code> flag set by
+<code class="docutils literal notranslate"><span class="pre">_add_generate_arguments</span></code> together with the options that configure it, and the branch
+of <code class="docutils literal notranslate"><span class="pre">_command_generate</span></code> that appends the backend when the flag is set. Add the name to
+<code class="docutils literal notranslate"><span class="pre">BUILT_IN_ARTEFACTS</span></code> in <code class="docutils literal notranslate"><span class="pre">src/ddd/plugins.py</span></code> as well: any other lowercase name is
+taken for a plugin’s artefact before the parser is built, and a name that is both is a
+conflicting subparser.</p></li>
+<li><p>Add it to the protocol assertion in <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code>, and to the lists of
+artefacts <code class="docutils literal notranslate"><span class="pre">tests/test_cli.py</span></code> and <code class="docutils literal notranslate"><span class="pre">tests/test_plugins.py</span></code> enumerate. The import graph
+tests pick the new package up on their own, so the first thing the suite will tell you is
 whether the new backend reached into the front end.</p></li>
 </ol>
-<p>Nothing in the front end changes, and neither of the existing backends is touched.</p>
+<p>The front end changes in those two places and nowhere else, neither of the existing backends
+is touched, and <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> keeps generating <code class="docutils literal notranslate"><span class="pre">all</span></code> or <code class="docutils literal notranslate"><span class="pre">c</span></code> until the build
+integration is taught the new artefact.</p>
 </section>
 </section>
 <section id="diagnostics-never-raise">
@@ -398,7 +409,7 @@ proves that every header is self contained and that its include guard works - co
 everything with <code class="docutils literal notranslate"><span class="pre">-std=c11</span> <span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span> <span class="pre">-Wshadow</span>
 <span class="pre">-Wcast-qual</span> <span class="pre">-Wstrict-prototypes</span></code>, links all objects into one binary, and finally compares
 <code class="docutils literal notranslate"><span class="pre">nm</span></code> against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code> so that every variable DDD promised is defined
-exactly once and nothing else is. The last three steps run twice, once plain and once with
+exactly once and nothing else is. The last four steps run twice, once plain and once with
 the conditional declarations enabled, so both states of a <code class="docutils literal notranslate"><span class="pre">#if</span></code> guarded variable are
 covered. It renders the example templates, which is what makes them evidence rather than a
 sketch: the set a project starts from is the set a compiler has accepted. <code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code> points
@@ -447,8 +458,9 @@ documentation without installing either.</p>
 <h2>Publishing this documentation<a class="headerlink" href="#publishing-this-documentation" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">.github/workflows/docs.yml</span></code> builds the html and publishes it to
 <a class="reference external" href="https://sauci.github.io/ddd/">GitHub Pages</a>. It runs on every pull request, and deploys on
-two events: a push to <code class="docutils literal notranslate"><span class="pre">master</span></code>, and a published release. The deployment authenticates the
-same way the release upload does, with a short lived OIDC token rather than a stored secret.</p>
+two events: a push to <code class="docutils literal notranslate"><span class="pre">master</span></code>, and a published release. The deployment is a push to the
+<code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch with the workflow’s own token, and Pages serves that branch directly;
+nothing else authenticates, and no deployment environment is involved.</p>
 <p>The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:</p>
 <table class="docutils align-default">
@@ -472,11 +484,14 @@ switches between them:</p>
 <p>Old documentation describes old code, so nothing rebuilds a released version. That is not
 only a saving: a tag from two years ago would have to keep building under the sphinx of the
 day, and the run that failed would be the one publishing the <em>current</em> release.</p>
-<p>Since a deployment replaces the whole site, the versions that are not being built have to
-come from somewhere. The <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch is that archive - storage rather than the
-published thing, restored at the start of the job and pushed back at the end of it. Pages
-still serves the artifact the workflow uploads, so its <code class="docutils literal notranslate"><span class="pre">Source</span></code> setting stays on
-<em>GitHub Actions</em>. The branch is created by the first deployment; there is nothing to set up.</p>
+<p>A build produces one version and the site is all of them, so the versions that are not being
+built have to come from somewhere: the <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch holds them. The branch is the site
+rather than an archive of it - Pages is configured to serve it, so the push at the end of the
+job is the publish, and there is no second copy to disagree with. It used to be one of two
+publishes, the branch and an artifact handed to <code class="docutils literal notranslate"><span class="pre">deploy-pages</span></code>, and the two parted twice
+without a red step anywhere; the run now ends by reading the page it published back from the
+site, and fails if it is not served within five minutes. The branch is created by the first
+deployment; there is nothing to set up in the repository.</p>
 <p>The menu cannot be baked into a page at build time, or a version released today would be
 missing from the menu of every page built before it - which is the menu somebody reading an
 old page is looking at. So <code class="docutils literal notranslate"><span class="pre">docs/_templates/versions.html</span></code> renders an empty menu and
@@ -492,19 +507,12 @@ runner: there is no prepared image to keep in step with the sources. Only html i
 would want a LaTeX distribution, roughly a gigabyte of packages, and nothing asks for one -
 <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> still carries the LaTeX settings, so <code class="docutils literal notranslate"><span class="pre">sphinx-build</span> <span class="pre">-M</span> <span class="pre">latexpdf</span> <span class="pre">docs</span> <span class="pre">output</span></code>
 produces one for whoever does.</p>
-<p>Three things are worth knowing before the first run.</p>
-<p><strong>Pages has to be switched on by hand, once.</strong> In <em>Settings</em> → <em>Pages</em>, set <em>Source</em> to
-<em>GitHub Actions</em>. The workflow’s token may deploy to a site but may not create one, so until
-that setting is made the deployment step fails with a message about a missing Pages site.
+<p>Two things are worth knowing before the first run.</p>
+<p><strong>Pages has to be pointed at the branch by hand, once.</strong> In <em>Settings</em> → <em>Pages</em>, set
+<em>Source</em> to <em>Deploy from a branch</em> and choose <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> at its root. The workflow pushes
+the branch whether or not anything serves it, so with the setting missing the push succeeds
+and the <em>Read back what was published</em> step fails five minutes later, naming that setting.
 There is nothing to change in the repository to fix it: correct the setting and re-run.</p>
-<p><strong>The ``github-pages`` environment has to allow tags.</strong> GitHub creates that environment with
-its deployments restricted to the default branch, which is the whole of what a release
-deployment is not: the run is triggered by a tag. It fails with <em>not allowed to deploy to
-github-pages due to environment protection rules</em>, after a green build, on the release. In
-<em>Settings</em> → <em>Environments</em> → <em>github-pages</em> → <em>Deployment branches and tags</em>, choose
-<em>Selected branches and tags</em> and add a branch rule for <code class="docutils literal notranslate"><span class="pre">master</span></code> and a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>.
-This is a setting rather than a file, so it survives nothing in the repository and has to be
-made once per repository.</p>
 <p><strong>A pull request builds but never deploys.</strong> The deploy job names the branch and the release
 event it publishes, rather than resting on the event alone, because a pull request from a
 fork proposes arbitrary content: without that condition, opening one would be enough to
@@ -567,12 +575,14 @@ happens on a published GitHub release tagged <code class="docutils literal notra
 unless that tag is exactly <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. The prefix is
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with <code class="docutils literal notranslate"><span class="pre">v</span></code>.</p>
-<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and so is
-subject to the same trap as <code class="docutils literal notranslate"><span class="pre">github-pages</span></code> above: an environment whose <em>Deployment branches
-and tags</em> is left at the default rejects a release, because a release is triggered by a tag
-and the default permits only the default branch. It fails after a green build, with
-<em>not allowed to deploy … due to environment protection rules</em>, and is fixed in the settings
-rather than in the repository.</p>
+<p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and GitHub
+creates an environment with its deployments restricted to the default branch, which is the
+whole of what a release is not: the run is triggered by a tag. An environment whose
+<em>Deployment branches and tags</em> is left at that default rejects the release after a green
+build, with <em>not allowed to deploy … due to environment protection rules</em>. In <em>Settings</em> →
+<em>Environments</em>, choose <em>Selected branches and tags</em> for each and add a tag rule for <code class="docutils literal notranslate"><span class="pre">v*</span></code>;
+this is a setting rather than a file, so it is fixed in the settings rather than in the
+repository, once per repository.</p>
 </section>
 <section id="delivering-the-editor-extension">
 <h2>Delivering the editor extension<a class="headerlink" href="#delivering-the-editor-extension" title="Link to this heading"></a></h2>

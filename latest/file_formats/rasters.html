@@ -122,18 +122,21 @@ guess which task moves the signal.</p>
 <span class="p">}</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">raster</span></code> is the name a definition refers to, and it is also the short name the a2l gives the
-event - a field eight characters wide, which is where the limit comes from. It is not a
+<p><code class="docutils literal notranslate"><span class="pre">raster</span></code> is the name a definition refers to, one word without whitespace, and it is also
+the short name the a2l gives the event - a field eight characters wide, which is where the
+limit comes from. It is not a
 protocol limit: XCP itself length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened, because two names shortened to the same eight
 would collide in a calibration tool rather than here, where the author can still do something
 about it. No file DDD writes carries an event name today, and the limit applies anyway, so
-that a rasters file written now still loads once the module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> block does. <code class="docutils literal notranslate"><span class="pre">event</span></code> is the event
-channel number the target’s XCP configuration assigned, distinct across the project.
-<code class="docutils literal notranslate"><span class="pre">cycle</span></code> is the period, a whole number and a unit - <code class="docutils literal notranslate"><span class="pre">100us</span></code>, <code class="docutils literal notranslate"><span class="pre">10ms</span></code>, <code class="docutils literal notranslate"><span class="pre">1s</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">1500us</span></code> rather than <code class="docutils literal notranslate"><span class="pre">1.5ms</span></code>. It is optional: an event with no period is not cyclic,
-which is what a crank synchronous or an on-change raster is, and that is a description rather
-than an omission. <code class="docutils literal notranslate"><span class="pre">description</span></code> is free text.</p>
+that a rasters file written now still loads once the module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> block does.
+<code class="docutils literal notranslate"><span class="pre">event</span></code> is the event channel number the target’s XCP configuration assigned, 0 to 65535 and
+distinct across the project. <code class="docutils literal notranslate"><span class="pre">cycle</span></code> is the period, spelled the way an XCP event period is
+carried: a count from 1 to 255 times a decade from 1 ns to 1 s - <code class="docutils literal notranslate"><span class="pre">100us</span></code>, <code class="docutils literal notranslate"><span class="pre">10ms</span></code>, <code class="docutils literal notranslate"><span class="pre">1s</span></code>,
+<code class="docutils literal notranslate"><span class="pre">1500us</span></code> rather than <code class="docutils literal notranslate"><span class="pre">1.5ms</span></code>, <code class="docutils literal notranslate"><span class="pre">2s</span></code> but not <code class="docutils literal notranslate"><span class="pre">300s</span></code>, and <code class="docutils literal notranslate"><span class="pre">255ms</span></code> but not <code class="docutils literal notranslate"><span class="pre">256ms</span></code>.
+It is optional: an event with no period is not cyclic, which is what a crank synchronous or
+an on-change raster is, and that is a description rather than an omission. <code class="docutils literal notranslate"><span class="pre">description</span></code> is
+free text.</p>
 <p>The file is project wide, listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a project like any other description;
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">rasters</span></code> prints its published contract. It has no place inside a component, for
 the reason the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a> have
@@ -185,10 +188,11 @@ is gradual, one component at a time.</p>
 </section>
 <section id="what-reaches-the-a2l">
 <h2>What reaches the a2l<a class="headerlink" href="#what-reaches-the-a2l" title="Link to this heading"></a></h2>
-<p>Each exported measurement with a raster carries the event it belongs to:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT EngineSpeed "engine speed"
-  UWORD NO_COMPU_METHOD 0 0 0 65535
-  ECU_ADDRESS 0x20000100
+<p>Each exported measurement with a raster carries the event it belongs to - here
+<code class="docutils literal notranslate"><span class="pre">EngineSpeed</span></code> as the component above declares it, before an address map has been applied:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin MEASUREMENT EngineSpeed "EngineSpeed"
+  UWORD CM_IDENT_RPM 0 0 0 65535
+  ECU_ADDRESS 0x00000000
   SYMBOL_LINK "EngineSpeed" 0
   /begin IF_DATA XCP
     /begin DAQ_EVENT VARIABLE

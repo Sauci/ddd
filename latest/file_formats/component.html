@@ -165,19 +165,26 @@ the component’s objects in the calibration tool.</p></td>
 <td><p>Free text. It is repeated in the banner of the generated header and becomes the long
 identifier of the a2l <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">interface</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">raster</span></code></p></td>
+<td><p>none</p></td>
+<td><p>The <a class="reference internal" href="rasters.html"><span class="doc">measurement raster</span></a> every variable this component produces is
+measured in, unless its own definition names another. A default for the producer’s
+own outputs and locals: it reaches nothing the component merely reads, and no
+calibration object.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">interface</span></code></p></td>
 <td><p>required</p></td>
 <td><p>The data interface: one entry per data object the component reads, writes or owns.
 Required with no default, so a component with nothing to declare says so with an
 explicit <code class="docutils literal notranslate"><span class="pre">[]</span></code> rather than with a key that might merely have been forgotten.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">types</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">types</span></code></p></td>
 <td><p>none</p></td>
 <td><p>The declared types this component publishes, a non-empty list whose entries are
 exactly those of a <a class="reference internal" href="types.html"><span class="doc">types file</span></a>. See <a class="reference internal" href="#types-and-constants-of-the-component">Types and constants of the
 component</a>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">constants</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">constants</span></code></p></td>
 <td><p>none</p></td>
 <td><p>The declared constants this component publishes, a non-empty list whose entries are
 exactly those of a <a class="reference internal" href="constants.html"><span class="doc">constants file</span></a>. See <a class="reference internal" href="#types-and-constants-of-the-component">Types and constants of

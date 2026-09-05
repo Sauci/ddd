@@ -56,6 +56,12 @@ before it becomes a field report. That comparison is what the :doc:`consistency 
      - ``""``
      - Free text. It is repeated in the banner of the generated header and becomes the long
        identifier of the a2l ``GROUP``.
+   * - ``raster``
+     - none
+     - The :doc:`measurement raster <rasters>` every variable this component produces is
+       measured in, unless its own definition names another. A default for the producer's
+       own outputs and locals: it reaches nothing the component merely reads, and no
+       calibration object.
    * - ``interface``
      - required
      - The data interface: one entry per data object the component reads, writes or owns.

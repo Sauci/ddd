@@ -155,10 +155,13 @@ build tree and are generated later, must exist at configure time; a violation of
 fatal error, because the alternative is an image whose data dictionary is quietly incomplete.</p>
 <p>Registering a component also creates the on-demand target <code class="docutils literal notranslate"><span class="pre">&lt;target&gt;.ddd</span></code>, which checks that
 component on its own - useful long before it is integrated, and useful to a supplier who does
-not have the rest of the project at all. That check runs with <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> and
-<code class="docutils literal notranslate"><span class="pre">unused-output</span></code> switched off, because a component in isolation has nobody on the other side
-of its interface; everything else, from datatypes and conversions to initial values and axis
-references, is verified as usual.</p>
+not have the rest of the project at all. That check runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code>, which
+holds back the checks that need every component of the project: a component in isolation has
+nobody on the other side of its interface, and the types, units, sections, constants and
+rasters it names may live in files the supplier does not have. Which checks those are is
+declared in the registry - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> lists them, and <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a> names the
+ten the editor holds back for the same reason - and everything else, from datatypes and
+conversions to initial values and bitfields, is verified as usual.</p>
 </section>
 <section id="generating-an-image">
 <h3>Generating an image<a class="headerlink" href="#generating-an-image" title="Link to this heading"></a></h3>
@@ -181,7 +184,11 @@ comments removed; it is what the <code class="docutils literal notranslate"><spa
 
 <span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD</span><span class="w"> </span><span class="s">11</span><span class="p">)</span>
 <span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD_REQUIRED</span><span class="w"> </span><span class="s">ON</span><span class="p">)</span>
-<span class="nb">add_compile_options</span><span class="p">(</span><span class="s">-Wall</span><span class="w"> </span><span class="s">-Wextra</span><span class="w"> </span><span class="s">-Wpedantic</span><span class="w"> </span><span class="s">-Werror</span><span class="p">)</span>
+<span class="nb">if</span><span class="p">(</span><span class="s">NOT</span><span class="w"> </span><span class="s">MSVC</span><span class="p">)</span>
+<span class="w">    </span><span class="nb">add_compile_options</span><span class="p">(</span><span class="s">-Wall</span><span class="w"> </span><span class="s">-Wextra</span><span class="w"> </span><span class="s">-Wpedantic</span><span class="w"> </span><span class="s">-Werror</span><span class="p">)</span>
+<span class="nb">else</span><span class="p">()</span>
+<span class="w">    </span><span class="nb">add_compile_options</span><span class="p">(</span><span class="s">/W4</span><span class="p">)</span>
+<span class="nb">endif</span><span class="p">()</span>
 
 <span class="nb">set</span><span class="p">(</span><span class="s">descriptions</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/../demo"</span><span class="p">)</span>
 
@@ -204,7 +211,10 @@ comments removed; it is what the <code class="docutils literal notranslate"><spa
 <span class="nb">add_executable</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">main.c</span><span class="p">)</span>
 <span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">user_interface</span><span class="w"> </span><span class="s">event_logger</span><span class="p">)</span>
 
-<span class="nb">ddd_generate</span><span class="p">(</span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">NAME</span><span class="w"> </span><span class="s">DemoDevice</span><span class="w"> </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">"${templates}"</span><span class="p">)</span>
+<span class="nb">ddd_generate</span><span class="p">(</span><span class="s">firmware.elf</span>
+<span class="w">             </span><span class="s">NAME</span><span class="w"> </span><span class="s">DemoDevice</span>
+<span class="w">             </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">"${templates}"</span>
+<span class="w">             </span><span class="s">SCHEMA_DIRECTORY</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_BINARY_DIR}/schemas"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">sensor_hub.c</span></code> then writes <code class="docutils literal notranslate"><span class="pre">#include</span> <span class="pre">&quot;SensorHub.h&quot;</span></code> and nothing else: the header DDD
@@ -422,7 +432,9 @@ version of DDD that is no longer installed.</p></td>
 tree that does not exist at configure time is seeded with an empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), so
 the first build of the two-run flow succeeds with every address 0 and the second,
 once the extractor has written the real map, fills the addresses in; a missing map in
-the source tree stays an error.</p></td>
+the source tree stays an error. An empty map is a first run rather than a map with
+holes, so it raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it; a map
+that names some objects and not others does, once.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>

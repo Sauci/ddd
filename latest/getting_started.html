@@ -320,8 +320,27 @@ raw value, so 180 means 18.0 degC.</p>
 <section id="checking-the-project">
 <h3>Checking the project<a class="headerlink" href="#checking-the-project" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> answers one question: do these components fit together. It reads the project,
-follows the includes, resolves every reference and runs every consistency check, and it says
-nothing more than a single line when there is nothing to say:</p>
+follows the includes, resolves every reference and runs every consistency check:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
+components/controller.ddd.json#component.interface[1].definition.name: info[missing-id]: 'HeaterOnThreshold' has no 'id', so a later delivery that renames it reports a removal and an unrelated addition; 'ddd id --assign' writes one
+components/sensor_hub.ddd.json#component.interface[0].definition.name: info[missing-id]: 'CabinTemperature' has no 'id', so a later delivery that renames it reports a removal and an unrelated addition; 'ddd id --assign' writes one
+2 infos
+</pre></div>
+</div>
+<p>The components fit together - nothing above <code class="docutils literal notranslate"><span class="pre">info</span></code> was found - and the two declarations that
+produce a variable are told what they still lack. An <code class="docutils literal notranslate"><span class="pre">id</span></code> is the identity of a variable over
+the life of the project: it is what lets a later delivery rename <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> and still
+be recognised as carrying the same object, rather than as having removed one variable and added
+an unrelated other. Because that identity has to stay stable, it is written once, by the tool,
+into every producing definition that has none:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd id --assign components/*.ddd.json
+wrote 2 ids
+</pre></div>
+</div>
+<p>Each of the two definitions now carries a line like <code class="docutils literal notranslate"><span class="pre">&quot;id&quot;:</span> <span class="pre">&quot;gbr9fq0et6js&quot;</span></code> - twelve
+characters drawn at random, so yours differ from any shown here - and every later run leaves
+it alone. With the identities in place, the check says nothing more than a single line when
+there is nothing to say:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
 ok: 2 variables in 2 components are consistent
 </pre></div>

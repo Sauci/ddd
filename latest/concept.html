@@ -335,8 +335,8 @@ name the calibration engineer sees.</p></td>
 </tr>
 <tr class="row-odd"><td><p>component</p></td>
 <td><p>a software unit with an explicitly declared data interface, described by a file whose
-top level key is <code class="docutils literal notranslate"><span class="pre">component</span></code>. One component corresponds to one generated header and
-to one a2l <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>.</p></td>
+top level key is <code class="docutils literal notranslate"><span class="pre">component</span></code>. One component corresponds to one generated header
+and, once it exports anything, to one a2l <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p>declaration</p></td>
 <td><p>one entry of a component interface: a scope, an optional c preprocessor condition and a
@@ -440,7 +440,7 @@ ValueA      measurement  uint8     %     -       0 (= 0 %)          SensorHub   
 ValueB      measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
 ValueC      measurement  float32   degC  -       -                  SensorHub              UserInterface
 ValueD      measurement  uint16    -     [8]     -                  SensorHub (local)      -
-ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             UserInterface, EventLogger
+ValueE      measurement  uint16    Hz    -       0 (= 0 Hz)         Controller             EventLogger, UserInterface
 ValueF      measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
 ValueG      measurement  uint16    V     -       1000 (= 1 V)       Controller             UserInterface
 ValueH      measurement  sint16    %     -       0 (= 0 %)          Controller (local)     -
@@ -494,6 +494,8 @@ with the addresses written in decimal or hexadecimal:</p>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
+build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'FlagA', 'MapA' and 10 others; they reach the a2l at address 0
+1 warning
 wrote       build/gen/DemoDevice.a2l (updated)
 </pre></div>
 </div>
@@ -505,7 +507,9 @@ move - and the generated files carry no time stamp of their own, so regenerating
 unchanged inputs produces a byte identical result, which is what makes a delivery
 reproducible.</p>
 <p>Before the address map is applied every address in the a2l is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code>; afterwards the
-objects named in the map carry their real address, and the ones that are not named keep zero.
+objects named in the map carry their real address, and the ones that are not named keep zero
+and are reported once, as the <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> warning above - which <code class="docutils literal notranslate"><span class="pre">--strict</span></code> turns
+into an error, so that a post-link build cannot ship an a2l with a hole in it.
 <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:</p>
@@ -517,7 +521,7 @@ have the symbol names in the file:</p>
 </pre></div>
 </div>
 <p class="plantuml">
-<img src="_images/plantuml-51f504d09fcd716d1264abac0a5b6f222984ddb9.svg" alt="folder &quot;software repository&quot; as repository {
+<img src="_images/plantuml-a7b08612ec11aa3d9e465856d363c012d5363cab.svg" alt="folder &quot;software repository&quot; as repository {
     collections &quot;component descriptions\n(*.ddd.json)&quot; as component_files
     file &quot;project description\n(demo.ddd.json)&quot; as project_file
     collections &quot;c templates\n(*.jinja2)&quot; as templates
@@ -548,9 +552,8 @@ toolchain --&gt; image
 image --&gt; address_map: symbol addresses taken\nfrom the linker output
 
 project_file --&gt; ddd_second
-templates --&gt; ddd_second
 address_map --&gt; ddd_second
-ddd_second --&gt; final_a2l: the c sources are\nregenerated unchanged
+ddd_second --&gt; final_a2l: the a2l alone is rewritten;\nthe c sources are not touched
 final_a2l --&gt; mc_tool: measure and calibrate\nthe built software"/></p>
 <p>Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
 the tool usable from a pipeline that only checks: <a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a> describes the
@@ -611,10 +614,10 @@ as json and <code class="docutils literal notranslate"><span class="pre">ddd</sp
 header for another language, a csv for a test bench, an ARXML - can consume the resolved data
 of a project without depending on anything inside the tool. And a backend is nothing more than
 an object with a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a <code class="docutils literal notranslate"><span class="pre">generate(dictionary,</span> <span class="pre">output_dir)</span></code> method
-(the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol of <code class="docutils literal notranslate"><span class="pre">ddd.backends.base</span></code>), so adding an output format means adding a
-package next
-to the two existing ones and listing it where the generate command assembles its backends,
-and changing nothing else.</p>
+(the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol of <code class="docutils literal notranslate"><span class="pre">ddd.backends.base</span></code>), so an output format DDD does not ship is
+a <a class="reference internal" href="plugins.html"><span class="doc">plugin’s</span></a> backend, which touches nothing inside the tool, and a built-in one
+is a package next to the two existing ones, registered as an artefact of the generate command
+the way <a class="reference internal" href="developer_documentation.html"><span class="doc">Developer documentation</span></a> describes.</p>
 <p>The boundary is not a matter of intent. The test suite walks the import graph and fails the
 build if the front end imports a backend, if a backend reaches into the loader or the analysis,
 or if one backend imports the other; it also fails if a spelling that belongs to a single

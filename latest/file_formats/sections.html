@@ -176,7 +176,7 @@ a.ddd.json#component.interface[1].definition.section: warning[section-alignment]
 <p>The generated c carries the placement in whatever spelling the toolchain wants, which is the
 templates’ business like the rest of the house style; the shipped example templates spell
 the GCC attribute, with the attribute between the declarator and the initialiser:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".fast_ram"</span><span class="p">)));</span>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">Speed</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".fast_ram"</span><span class="p">)));</span>
 <span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">Gain</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".calib"</span><span class="p">)))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3U</span><span class="p">;</span>
 </pre></div>
 </div>

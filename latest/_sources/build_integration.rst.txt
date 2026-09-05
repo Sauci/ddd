@@ -50,10 +50,13 @@ fatal error, because the alternative is an image whose data dictionary is quietl
 
 Registering a component also creates the on-demand target ``<target>.ddd``, which checks that
 component on its own - useful long before it is integrated, and useful to a supplier who does
-not have the rest of the project at all. That check runs with ``missing-producer`` and
-``unused-output`` switched off, because a component in isolation has nobody on the other side
-of its interface; everything else, from datatypes and conversions to initial values and axis
-references, is verified as usual.
+not have the rest of the project at all. That check runs ``ddd check --standalone``, which
+holds back the checks that need every component of the project: a component in isolation has
+nobody on the other side of its interface, and the types, units, sections, constants and
+rasters it names may live in files the supplier does not have. Which checks those are is
+declared in the registry - ``ddd checks`` lists them, and :doc:`editor_integration` names the
+ten the editor holds back for the same reason - and everything else, from datatypes and
+conversions to initial values and bitfields, is verified as usual.
 
 Generating an image
 ~~~~~~~~~~~~~~~~~~~
@@ -82,7 +85,11 @@ comments removed; it is what the ``cmake`` compose service configures and builds
 
    set(CMAKE_C_STANDARD 11)
    set(CMAKE_C_STANDARD_REQUIRED ON)
-   add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+   if(NOT MSVC)
+       add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+   else()
+       add_compile_options(/W4)
+   endif()
 
    set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
 
@@ -105,7 +112,10 @@ comments removed; it is what the ``cmake`` compose service configures and builds
    add_executable(firmware.elf main.c)
    target_link_libraries(firmware.elf PRIVATE user_interface event_logger)
 
-   ddd_generate(firmware.elf NAME DemoDevice TEMPLATE_DIRECTORY "${templates}")
+   ddd_generate(firmware.elf
+                NAME DemoDevice
+                TEMPLATE_DIRECTORY "${templates}"
+                SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")
 
 ``sensor_hub.c`` then writes ``#include "SensorHub.h"`` and nothing else: the header DDD
 generated for that component is the only one on its include path, so a component cannot reach
@@ -323,7 +333,9 @@ Options
        tree that does not exist at configure time is seeded with an empty map (``{}``), so
        the first build of the two-run flow succeeds with every address 0 and the second,
        once the extractor has written the real map, fills the addresses in; a missing map in
-       the source tree stays an error.
+       the source tree stays an error. An empty map is a first run rather than a map with
+       holes, so it raises no ``address-missing`` and ``STRICT`` does not fail it; a map
+       that names some objects and not others does, once.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``

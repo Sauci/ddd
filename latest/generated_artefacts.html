@@ -197,8 +197,10 @@ generated file without being written five times.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code>, the types the generated declarations are written in: <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code>,
 <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> when the project declares a <code class="docutils literal notranslate"><span class="pre">boolean</span></code>, the headers of the
 <a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use - deduplicated, sorted by spelling,
-quoted or angled exactly as declared - and one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> per enum
-conversion. Every other generated header includes this one and nothing else, so a
+quoted or angled exactly as declared - one <code class="docutils literal notranslate"><span class="pre">#define</span></code> per declared constant, one
+<code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> per enum conversion and one <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">struct</span></code> per declared structure,
+each after the structures it nests. Every other generated header includes this one and
+nothing else, so a
 component that includes its own interface header needs no further include to compile.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd_globals.h.jinja2</span></code></p></td>
@@ -231,15 +233,18 @@ listing a single component anywhere.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> accepts a single component description as well as a project. In that
 case the component name is used where a project name would be, so a component called
 <code class="docutils literal notranslate"><span class="pre">Controller</span></code> generates <code class="docutils literal notranslate"><span class="pre">Controller.h</span></code> next to the shared files and an a2l file called
-<code class="docutils literal notranslate"><span class="pre">Controller.a2l</span></code>. Add <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">missing-producer=ignore</span></code>, since the components producing the
-inputs are by definition not part of the file.</p>
+<code class="docutils literal notranslate"><span class="pre">Controller.a2l</span></code>. Check it with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> first, or relax
+<code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> for the run, since the components producing the inputs are by
+definition not part of the file.</p>
 </div>
 </section>
 <section id="the-type-header">
 <h3>The type header<a class="headerlink" href="#the-type-header" title="Link to this heading"></a></h3>
-<p>An enum conversion is the one part of a description that has to become a c type rather than
-just a c declaration, and the example templates emit it in a header of its own so that every
-component sharing the enum sees the same definition:</p>
+<p>An enum conversion, a declared constant and a declared structure are the parts of a
+description that become a c type or a macro rather than a c declaration, and the example
+templates emit them in a header of their own so that every component sharing them sees one
+definition. The demo declares neither constants nor structures, so its type header holds the
+enum alone:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * ddd_types.h</span>
 <span class="cm"> *</span>
@@ -560,7 +565,7 @@ Both are ordinary, and DDD renders what the description says.</p>
 <p class="admonition-title">Note</p>
 <p>Because the key is required and has no default, a description written before it existed
 gains it on every definition of every kind. There is no phase-in: an omitted <code class="docutils literal notranslate"><span class="pre">volatile</span></code>
-is reported by the <code class="docutils literal notranslate"><span class="pre">schema</span></code> check, one of the five whose severity <code class="docutils literal notranslate"><span class="pre">-W</span></code> refuses to
+is reported by the <code class="docutils literal notranslate"><span class="pre">schema</span></code> check, one of the seven whose severity <code class="docutils literal notranslate"><span class="pre">-W</span></code> refuses to
 relax, so <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">schema=warning</span></code> does not buy a project the time to migrate one component
 at a time. Templates need no change at all, because no template spells a qualifier out:
 <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration()</span></code> compose it, and a template that lays a declaration
@@ -617,7 +622,7 @@ which is included by every component - so a generator that rewrites its output o
 invalidates the whole tree on every run, and an incremental build of a large image
 degenerates into a full rebuild. With the comparison in place, only what genuinely changed is
 touched. Changing the description of one variable in <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> shows the granularity:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the edit
 wrote       build/gen/ddd_globals.c (updated)
 wrote       build/gen/ddd_globals.h (updated)
 unchanged   build/gen/ddd_types.h
@@ -742,7 +747,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 <td><p>one per datatype and storage category actually used</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code></p></td>
-<td><p>one per distinct combination of conversion <strong>and</strong> unit</p></td>
+<td><p>one per distinct combination of conversion, unit <strong>and</strong> display format</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code></p></td>
 <td><p>one per enum conversion</p></td>
@@ -827,9 +832,10 @@ none - carries no <code class="docutils literal notranslate"><span class="pre">I
 </section>
 <section id="conversions-and-why-coeffs-looks-inverted">
 <h3>Conversions, and why <code class="docutils literal notranslate"><span class="pre">COEFFS</span></code> looks inverted<a class="headerlink" href="#conversions-and-why-coeffs-looks-inverted" title="Link to this heading"></a></h3>
-<p>A <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> is created per distinct pair of conversion and unit, and the unit is part
-of the key because two objects scaled by the same factor but measured in different units are
-not the same conversion to a calibration tool - one displays <code class="docutils literal notranslate"><span class="pre">Hz</span></code> and the other <code class="docutils literal notranslate"><span class="pre">%</span></code>:</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> is created per distinct combination of conversion, unit and display
+format. The unit is part of the key because two objects scaled by the same factor but
+measured in different units are not the same conversion to a calibration tool - one displays
+<code class="docutils literal notranslate"><span class="pre">Hz</span></code> and the other <code class="docutils literal notranslate"><span class="pre">%</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin COMPU_METHOD CM_LIN_HZ "phys = raw * 0.25 + 0"
   RAT_FUNC "%8.3" "Hz"
   COEFFS 0 1 0 0 0 0.25
@@ -845,7 +851,11 @@ not the same conversion to a calibration tool - one displays <code class="docuti
 readable in a tool rather than being a serial number, and a unit that is not a valid
 identifier is transliterated - <code class="docutils literal notranslate"><span class="pre">%</span></code> becomes <code class="docutils literal notranslate"><span class="pre">PCT</span></code>, <code class="docutils literal notranslate"><span class="pre">m/s^2</span></code> becomes <code class="docutils literal notranslate"><span class="pre">M_PER_S2</span></code>. When two
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
-both <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> (factor 0.5) and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code> (factor 0.1).</p>
+both <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> (factor 0.5) and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code> (factor 0.1). The display format is the
+third part of the key, because a method carries exactly one: it is derived from the datatype
+and the conversion - <code class="docutils literal notranslate"><span class="pre">%8.0</span></code> where every physical value is whole, <code class="docutils literal notranslate"><span class="pre">%8.3</span></code> otherwise - so an
+integer and a float object scaled the same way in the same unit get a method each, with the
+same coefficients and the suffix telling them apart.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">COEFFS</span></code> line is the part that surprises everybody who reads an a2l for the first time.
 A description says <code class="docutils literal notranslate"><span class="pre">{&quot;kind&quot;:</span> <span class="pre">&quot;linear&quot;,</span> <span class="pre">&quot;factor&quot;:</span> <span class="pre">0.25,</span> <span class="pre">&quot;offset&quot;:</span> <span class="pre">0.0}</span></code>, which means
 <code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">=</span> <span class="pre">raw</span> <span class="pre">*</span> <span class="pre">factor</span> <span class="pre">+</span> <span class="pre">offset</span></code>, and yet the coefficients written out are
@@ -1071,7 +1081,7 @@ put it.</p>
 <p>The component structure of the project is not something the c code can carry - after
 compilation and linking there are only symbols - but it is exactly the structure a
 calibration engineer wants to navigate by, so it is preserved in the a2l as one <code class="docutils literal notranslate"><span class="pre">GROUP</span></code> per
-component, listing the objects that component declared:</p>
+component that exports at least one object, listing the objects that component declared:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin GROUP SensorHub "Produces the raw input values of the device"
   ROOT
   /begin REF_MEASUREMENT
@@ -1146,10 +1156,19 @@ produce the c code and an a2l with zero addresses, and <code class="docutils lit
 with the map extracted from the linker output, to produce the a2l that ships. The artefact
 name says what the second run is there for: it renders no c - it takes no template directory
 either - so it cannot invalidate the build it was produced from.</p>
-<p>A symbol the map does not mention keeps address 0 rather than being an error, since a map
-produced from a linker output legitimately contains only the objects that ended up in the
-image - a conditional object absent from this build has no address to report. An address
-outside the range an a2l can hold, on the other hand, is refused before anything is written:</p>
+<p>A symbol the map does not mention keeps address 0, and the run says so: the
+<code class="docutils literal notranslate"><span class="pre">address-missing</span></code> warning names the objects the map left out, once, and the a2l is written
+all the same. It is a warning rather than an error because a map produced from a linker
+output legitimately contains only the objects that ended up in the image - a conditional
+object absent from this build has no address to report - and it is a warning a post-link
+build can promote: under <code class="docutils literal notranslate"><span class="pre">--strict</span></code> (the <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> option of <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code>) it is an
+error, nothing is written, and the map has to be completed or the check relaxed with
+<code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">address-missing=ignore</span></code>. An address outside the range an a2l can hold, on the other
+hand, is refused before anything is written. With <code class="docutils literal notranslate"><span class="pre">bad.json</span></code> holding</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="mi">8589934591</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>the run stops at the map:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --address-map bad.json
 ddd: bad.json: address of 'ValueE' is 8589934591, outside the range 0 .. 0xFFFFFFFF that an a2l address can hold
 $ echo $?

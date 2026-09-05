@@ -153,26 +153,34 @@ Letters, digits and underscore, not starting with a digit, at most 128 character
 the ASAP2 1.6.1 limit, which is tighter than what a c compiler would accept and is
 therefore the one enforced.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">id</span></code></p></td>
+<td><p>none</p></td>
+<td><p>The identity of the object: twelve lowercase base32 characters, written by
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> into the producing declaration and stated by no consumer
+(<code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code>). It survives a rename, which is what lets a
+<a class="reference internal" href="../comparing_deliveries.html"><span class="doc">delivery comparison</span></a> report one as a rename; a producing
+declaration without one is reported as <code class="docutils literal notranslate"><span class="pre">missing-id</span></code>, at <code class="docutils literal notranslate"><span class="pre">info</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></td>
 <td><p>required</p></td>
 <td><p>What sort of object this is: <code class="docutils literal notranslate"><span class="pre">measurement</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter</span></code>, <code class="docutils literal notranslate"><span class="pre">value_block</span></code>, <code class="docutils literal notranslate"><span class="pre">axis</span></code>,
 <code class="docutils literal notranslate"><span class="pre">curve</span></code> or <code class="docutils literal notranslate"><span class="pre">map</span></code>. It is stated rather than inferred, and it decides which of the
 kind specific keys the definition may carry.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
 <td><p>one of the two</p></td>
 <td><p>The storage the target uses: <code class="docutils literal notranslate"><span class="pre">boolean</span></code>, <code class="docutils literal notranslate"><span class="pre">uint8</span></code>, <code class="docutils literal notranslate"><span class="pre">sint8</span></code>, <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, <code class="docutils literal notranslate"><span class="pre">sint16</span></code>,
 <code class="docutils literal notranslate"><span class="pre">uint32</span></code>, <code class="docutils literal notranslate"><span class="pre">sint32</span></code>, <code class="docutils literal notranslate"><span class="pre">uint64</span></code>, <code class="docutils literal notranslate"><span class="pre">sint64</span></code>, <code class="docutils literal notranslate"><span class="pre">float32</span></code> or <code class="docutils literal notranslate"><span class="pre">float64</span></code>. Exactly one
 of <code class="docutils literal notranslate"><span class="pre">datatype</span></code> and <code class="docutils literal notranslate"><span class="pre">typename</span></code> is stated.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">typename</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">typename</span></code></p></td>
 <td><p>one of the two</p></td>
 <td><p>The name of a <a class="reference internal" href="types.html"><span class="doc">declared type</span></a>, stated instead of <code class="docutils literal notranslate"><span class="pre">datatype</span></code>: a scalar
 type fixes what the value means, a structure makes this a structured variable. An
 external type cannot be named here (<code class="docutils literal notranslate"><span class="pre">type-kind</span></code>): only a structure member may name
 one, because DDD knows neither its layout nor its meaning.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
 <td><p>required</p></td>
 <td><p>Whether the generated declaration carries the c qualifier of the same name, which
 forbids the compiler to assume it already knows the value. A measurement needs it when
@@ -192,7 +200,7 @@ reports nothing about the choice - it renders what the description says, and
 <a class="reference internal" href="../generated_artefacts.html"><span class="doc">generated artefacts</span></a> follows what that costs into the
 image.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>Free text. It is offered to the c templates as the text of the comment above the
 generated declaration - what surrounds it is theirs to decide - and it is the long
@@ -200,31 +208,38 @@ identifier of the a2l object, so it is the sentence a calibration engineer reads
 to the value. An object without one gets its own name as the a2l long identifier,
 which is legal and useless.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>The physical unit, as free text: <code class="docutils literal notranslate"><span class="pre">Hz</span></code>, <code class="docutils literal notranslate"><span class="pre">degC</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>. It is shown in the c comment
 in brackets, and it is part of the a2l <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>. Components sharing a variable
 have to agree on it, because two components using the same variable in different units
 is the failure that compiles and links and is wrong by a constant factor.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
 <td><p>required beside <code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
 <td><p>How the stored number maps to the physical one; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>. Required
 although the identity would be derivable - that it is derivable is why it is asked
 for - and stated by the <a class="reference internal" href="types.html"><span class="doc">declared type</span></a> instead when <code class="docutils literal notranslate"><span class="pre">typename</span></code> names
 one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></td>
 <td><p>derived</p></td>
 <td><p>An object with <code class="docutils literal notranslate"><span class="pre">min</span></code> and <code class="docutils literal notranslate"><span class="pre">max</span></code>, in <strong>physical</strong> units. When it is left out, DDD
 derives the limits from the datatype and the conversion, so the a2l always carries a
 range.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
 <td><p>none</p></td>
 <td><p>The linker section the object is placed in, named in the project’s
 <a class="reference internal" href="sections.html"><span class="doc">sections file</span></a>. A storage key like <code class="docutils literal notranslate"><span class="pre">init</span></code>: the producer states it,
 and an object without one goes wherever the toolchain’s defaults put it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">raster</span></code></p></td>
+<td><p>the component’s</p></td>
+<td><p>The <a class="reference internal" href="rasters.html"><span class="doc">measurement raster</span></a> the producing component updates the object in,
+written into the a2l as the DAQ event a calibration tool preselects. Stated by the
+producer only (<code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code>), on a measurement only (<code class="docutils literal notranslate"><span class="pre">raster-kind</span></code>), and
+defaulting to what the component declares for everything it produces.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>

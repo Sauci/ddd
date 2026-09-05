@@ -273,8 +273,9 @@ which the x index runs fastest.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code></p></td>
 <td><p>The rule that converts a raw value into a physical one, together with the unit and the
-display format. DDD emits one per distinct conversion and unit and shares it, so two
-objects scaled the same way in the same unit refer to the same method.</p></td>
+display format. DDD emits one per distinct conversion, unit and display format and
+shares it, so two objects scaled the same way in the same unit, and displayed with the
+same format, refer to the same method.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code></p></td>
 <td><p>The <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> type used for a linear conversion. Its <code class="docutils literal notranslate"><span class="pre">COEFFS</span> <span class="pre">a</span> <span class="pre">b</span> <span class="pre">c</span> <span class="pre">d</span> <span class="pre">e</span> <span class="pre">f</span></code>
@@ -332,8 +333,9 @@ block, which describes the target’s XCP implementation and which DDD does not 
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
 <td><p>A named collection of measurements and characteristics, used to organise the objects
-in the calibration tool. DDD emits one per component, containing exactly the objects
-that component declares and that are present in the file.</p></td>
+in the calibration tool. DDD emits one per component that exports at least one object,
+containing exactly the objects that component declares and that are present in the
+file.</p></td>
 </tr>
 </tbody>
 </table>

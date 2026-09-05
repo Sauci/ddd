@@ -236,6 +236,7 @@ no longer exists. The :doc:`cmake integration </build_integration>` wires this u
 .. note::
    ``ddd check`` and ``ddd generate`` accept a **component** file wherever they accept a
    project file, which is what lets a component be checked before it is integrated. There is
-   no project around it, so the inputs it declares have no producer; add
-   ``-W missing-producer=ignore`` for that run. The generated a2l is then named after the
+   no project around it, so the inputs it declares have no producer; ``ddd check
+   --standalone`` holds that and every other project-wide check back, and a generate run
+   relaxes ``missing-producer`` with ``-W``. The generated a2l is then named after the
    component instead of after a project.

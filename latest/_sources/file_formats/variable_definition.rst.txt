@@ -45,6 +45,13 @@ rather than ignored.
        Letters, digits and underscore, not starting with a digit, at most 128 characters -
        the ASAP2 1.6.1 limit, which is tighter than what a c compiler would accept and is
        therefore the one enforced.
+   * - ``id``
+     - none
+     - The identity of the object: twelve lowercase base32 characters, written by
+       ``ddd id --assign`` into the producing declaration and stated by no consumer
+       (``consumer-identity``). It survives a rename, which is what lets a
+       :doc:`delivery comparison </comparing_deliveries>` report one as a rename; a producing
+       declaration without one is reported as ``missing-id``, at ``info``.
    * - ``kind``
      - required
      - What sort of object this is: ``measurement``, ``parameter``, ``value_block``, ``axis``,
@@ -109,6 +116,12 @@ rather than ignored.
      - The linker section the object is placed in, named in the project's
        :doc:`sections file <sections>`. A storage key like ``init``: the producer states it,
        and an object without one goes wherever the toolchain's defaults put it.
+   * - ``raster``
+     - the component's
+     - The :doc:`measurement raster <rasters>` the producing component updates the object in,
+       written into the a2l as the DAQ event a calibration tool preselects. Stated by the
+       producer only (``consumer-raster``), on a measurement only (``raster-kind``), and
+       defaulting to what the component declares for everything it produces.
    * - ``init``
      - ``null``
      - The initial value, in **raw** units. ``null`` means no initialiser is written at all

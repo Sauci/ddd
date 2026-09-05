@@ -190,8 +190,9 @@ key the silent answer decides whether the compiler may keep a variable in a regi
 whether it may fold a calibration constant into the code that reads it.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p><code class="docutils literal notranslate"><span class="pre">schema</span></code> is one of the five checks whose severity cannot be changed, along with
-<code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code> and <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>. A file that
+<p><code class="docutils literal notranslate"><span class="pre">schema</span></code> is one of the seven checks whose severity cannot be changed, along with
+<code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>, <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code>
+and <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>. A file that
 cannot be interpreted has nothing further to say, and a component whose description failed
 to validate is not added to the project at all - so the remaining checks are never handed a
 half-read file to draw conclusions from. The full list is on the
@@ -230,7 +231,9 @@ wrote project.schema.json
 <p>The first seven describe the files you write; <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> describes what DDD makes of them and
 is documented with the <a class="reference internal" href="../data_dictionary.html"><span class="doc">data dictionary</span></a>. The closed objects described
 above appear in all of them as <code class="docutils literal notranslate"><span class="pre">&quot;additionalProperties&quot;:</span> <span class="pre">false</span></code>, so a validating editor
-rejects a misspelled key at the moment it is typed rather than at the next build.</p>
+rejects a misspelled key at the moment it is typed rather than at the next build; an
+<code class="docutils literal notranslate"><span class="pre">extensions</span></code> block is the exception, open until <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> closes it over the model of
+the plugin that owns it.</p>
 <section id="what-the-schema-carries">
 <h3>What the schema carries<a class="headerlink" href="#what-the-schema-carries" title="Link to this heading"></a></h3>
 <p>A schema that only states which files are valid would do half the job. These carry the
@@ -279,7 +282,7 @@ right.</p>
 <li class="toctree-l2"><a class="reference internal" href="conversions.html#linear">linear</a></li>
 <li class="toctree-l2"><a class="reference internal" href="conversions.html#enum">enum</a></li>
 <li class="toctree-l2"><a class="reference internal" href="conversions.html#limits-and-where-they-come-from-when-nobody-writes-them">Limits, and where they come from when nobody writes them</a></li>
-<li class="toctree-l2"><a class="reference internal" href="conversions.html#one-compu-method-per-conversion-and-unit">One compu method per conversion and unit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conversions.html#one-compu-method-per-conversion-unit-and-format">One compu method per conversion, unit and format</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="types.html">Type description</a><ul>

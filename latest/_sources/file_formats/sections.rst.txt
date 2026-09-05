@@ -85,7 +85,7 @@ the GCC attribute, with the attribute between the declarator and the initialiser
 
 .. code-block:: c
 
-   uint16_t Speed __attribute__((section(".fast_ram")));
+   volatile uint16_t Speed __attribute__((section(".fast_ram")));
    const uint32_t Gain __attribute__((section(".calib"))) = 3U;
 
 Templates also receive the placed objects grouped per section under ``model.sections``,

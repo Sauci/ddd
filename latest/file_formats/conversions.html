@@ -380,7 +380,7 @@ short form loses nothing:</p>
 <p>Two further things are checked. Every enumerator has to fit into the datatype of the object,
 which is an error, since the constant would otherwise be truncated silently:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json
-dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
+dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into sint8
 dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
 1 error, 1 warning
 </pre></div>
@@ -448,12 +448,13 @@ finding that stops a calibration engineer from entering a value the software wil
 wrap.</p>
 </div>
 </section>
-<section id="one-compu-method-per-conversion-and-unit">
-<h2>One compu method per conversion and unit<a class="headerlink" href="#one-compu-method-per-conversion-and-unit" title="Link to this heading"></a></h2>
+<section id="one-compu-method-per-conversion-unit-and-format">
+<h2>One compu method per conversion, unit and format<a class="headerlink" href="#one-compu-method-per-conversion-unit-and-format" title="Link to this heading"></a></h2>
 <p>Conversions are not written out once per object. Two objects with the same conversion <strong>and</strong>
-the same unit share one <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>, whatever their kind and whatever their datatype, so
-the a2l stays readable and the calibration tool has one entry to configure rather than twenty
-identical ones. In the demo, <code class="docutils literal notranslate"><span class="pre">ValueA</span></code>, <code class="docutils literal notranslate"><span class="pre">AxisB</span></code>, <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> and <code class="docutils literal notranslate"><span class="pre">MapA</span></code> all use
+the same unit share one <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>, whatever their kind and whatever their datatype so
+long as the two derive the same display format, so the a2l stays readable and the
+calibration tool has one entry to configure rather than twenty identical ones. In the demo,
+<code class="docutils literal notranslate"><span class="pre">ValueA</span></code>, <code class="docutils literal notranslate"><span class="pre">AxisB</span></code>, <code class="docutils literal notranslate"><span class="pre">CurveB</span></code> and <code class="docutils literal notranslate"><span class="pre">MapA</span></code> all use
 <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> - a measurement, an axis, a curve and a map, over two datatypes and one
 conversion.</p>
 <p>The unit is part of the identity because it is part of what the method says; the name is built
@@ -462,8 +463,10 @@ different conversions in the same unit therefore want the same name, and the sec
 numbered suffix - the demo scales one percentage by 0.5 and another by 0.1, and ends up with
 <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code>. The display format that goes with a method is derived from
 the datatype and the conversion, <code class="docutils literal notranslate"><span class="pre">%8.0</span></code> where every physical value is whole and <code class="docutils literal notranslate"><span class="pre">%8.3</span></code>
-otherwise; a single object can override it with its own <code class="docutils literal notranslate"><span class="pre">a2l.format</span></code>, which is described with
-the <a class="reference internal" href="variable_definition.html"><span class="doc">variable definition</span></a>.</p>
+otherwise, and it is the third part of the key: an integer and a float object scaled the same
+way in the same unit derive different formats and get a method each, with the same
+coefficients and a numbered suffix. A single object can override the format with its own
+<code class="docutils literal notranslate"><span class="pre">a2l.format</span></code>, which is described with the <a class="reference internal" href="variable_definition.html"><span class="doc">variable definition</span></a>.</p>
 </section>
 </section>
 

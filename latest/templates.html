@@ -308,42 +308,51 @@ which therefore has to be declared before the first array that uses it.</p></td>
 <td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
 enumerator has <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.groups</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.structures</span></code></p></td>
+<td><p>One entry per <a class="reference internal" href="file_formats/types.html"><span class="doc">declared structure</span></a>, each after every
+structure it nests, with <code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.comment</span></code> and <code class="docutils literal notranslate"><span class="pre">.members</span></code>. A member has
+<code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.bits</span></code> - the width of a
+bitfield, or nothing - <code class="docutils literal notranslate"><span class="pre">.comment</span></code> and <code class="docutils literal notranslate"><span class="pre">.declaration</span></code>, the last being the member as
+it goes into a <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">struct</span></code>, <code class="docutils literal notranslate"><span class="pre">uint16_t</span> <span class="pre">value</span></code> or <code class="docutils literal notranslate"><span class="pre">uint8_t</span> <span class="pre">ready</span> <span class="pre">:</span> <span class="pre">1</span></code>,
+without the semicolon. Empty when the project declares no structure; the example
+templates emit each as a <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">struct</span></code> in the types header, after the enums.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.groups</span></code></p></td>
 <td><p>The objects to be <em>defined</em>, grouped by owning component: <code class="docutils literal notranslate"><span class="pre">.name</span></code>,
 <code class="docutils literal notranslate"><span class="pre">.description</span></code>, <code class="docutils literal notranslate"><span class="pre">.measurements</span></code>, <code class="docutils literal notranslate"><span class="pre">.calibration</span></code> and <code class="docutils literal notranslate"><span class="pre">.variables</span></code>, the last
 being the two lists one after the other. A component owning nothing has no group, and
 objects no component declares as an output end up in a final group called
 <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
 <td><p>The placed objects grouped per <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a>, one
 entry per section with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.objects</span></code>, strictest alignment first so that
 data of one section packs without padding. Objects without a <code class="docutils literal notranslate"><span class="pre">section</span></code> are not
 here - they stay in their component’s group and the toolchain’s default placement -
 and the sequence is empty when the project places nothing.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
 <td><p>One entry per component, in project order, whether or not the component declares
 anything. These are the interfaces, described below.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.needs_stdint</span></code>, <code class="docutils literal notranslate"><span class="pre">model.needs_stdbool</span></code></p></td>
 <td><p>Whether any datatype of the project needs that standard header, so that the generated
 type header includes it only when something uses it.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.external_includes</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.external_includes</span></code></p></td>
 <td><p>The headers of the <a class="reference internal" href="file_formats/types.html"><span class="doc">external types</span></a> in use, deduplicated and
 sorted by spelling, each ready to paste after <code class="docutils literal notranslate"><span class="pre">#include</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;my_driver.h&quot;</span></code> with its
 quotes for the quoted form, <code class="docutils literal notranslate"><span class="pre">&lt;os_types.h&gt;</span></code> as written for the angle form. Empty when
 no structure has an external member; the example templates emit them in the types
 header after the standard includes, before the first structure that needs them.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
 <td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
 <code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
 a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
 Offered rather than imposed - a template that has its own convention writes it out.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
 <td><p>What the command line let the caller decide, which for the c backend is
 <code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
 property of the template you write.</p></td>
@@ -410,10 +419,12 @@ that says where a value comes from.</p></td>
 </tr>
 </tbody>
 </table>
-<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code> and
-<code class="docutils literal notranslate"><span class="pre">.initializer</span></code> are there as
-well, for a template that would rather lay the declaration out itself than take
-<code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the same type in two vocabularies:
+<p><code class="docutils literal notranslate"><span class="pre">.kind</span></code>, <code class="docutils literal notranslate"><span class="pre">.c_type</span></code>, <code class="docutils literal notranslate"><span class="pre">.datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">.array_suffix</span></code>, <code class="docutils literal notranslate"><span class="pre">.qualifier</span></code>, <code class="docutils literal notranslate"><span class="pre">.initializer</span></code>
+and <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> are there as well, for a template that would rather lay the declaration
+out itself than take <code class="docutils literal notranslate"><span class="pre">.definition</span></code> whole - <code class="docutils literal notranslate"><span class="pre">.extensions</span></code> being the resolved block of
+every <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> the project loads, keyed by plugin name, for a template that
+renders what a plugin decided. <code class="docutils literal notranslate"><span class="pre">.c_type</span></code> and <code class="docutils literal notranslate"><span class="pre">.datatype</span></code> are the same type in two
+vocabularies:
 the ISO spelling (<code class="docutils literal notranslate"><span class="pre">uint16_t</span></code>) that <code class="docutils literal notranslate"><span class="pre">.definition</span></code> and the example templates use, and the
 description’s own (<code class="docutils literal notranslate"><span class="pre">uint16</span></code>). A project whose platform header already provides the
 description’s names - AUTOSAR’s <code class="docutils literal notranslate"><span class="pre">Platform_Types.h</span></code> spells them exactly - renders
@@ -500,9 +511,9 @@ each of them turning into a generated file it has to explain.</p>
 <h2>A mistake in a template stops the run<a class="headerlink" href="#a-mistake-in-a-template-stops-the-run" title="Link to this heading"></a></h2>
 <p>Undefined names are strict. Reading an attribute that does not exist - <code class="docutils literal notranslate"><span class="pre">model.grops</span></code> for
 <code class="docutils literal notranslate"><span class="pre">model.groups</span></code>, <code class="docutils literal notranslate"><span class="pre">variable.commment</span></code> for <code class="docutils literal notranslate"><span class="pre">variable.comment</span></code> - raises instead of
-rendering as an empty string, and the run ends with a traceback naming the template, the line
-and the attribute:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>jinja2.exceptions.UndefinedError: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
+rendering as an empty string, and the run ends with one line naming the template, the line
+and the attribute, and exit status 2 - a usage error, since the template is the caller’s:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>ddd: cannot render template 'ddd_globals.c.jinja2', line 14: 'ddd.backends.c.model.CodeModel object' has no attribute 'grops'
 </pre></div>
 </div>
 <p>This is worth the noise. The alternative, which is jinja2’s default, is that the typo
@@ -574,7 +585,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 </div>
 </div>
 <div class="literal-block-wrapper docutils container" id="id2">
-<div class="code-block-caption"><span class="caption-text">ddd_types.h.jinja2 - the standard includes and the enum typedefs</span><a class="headerlink" href="#id2" title="Link to this code"></a></div>
+<div class="code-block-caption"><span class="caption-text">ddd_types.h.jinja2 - the standard includes, the constants, the enum and structure typedefs</span><a class="headerlink" href="#id2" title="Link to this code"></a></div>
 <div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{{</span><span class="o">-</span> <span class="nv">macros.banner</span><span class="o">(</span><span class="nv">filename</span><span class="o">,</span> <span class="nv">model</span><span class="o">)</span> <span class="cp">}}</span>
 <span class="x">#ifndef </span><span class="cp">{{</span> <span class="nv">model.guard</span><span class="o">(</span><span class="s2">"ddd"</span><span class="o">,</span> <span class="s2">"types"</span><span class="o">)</span> <span class="cp">}}</span>

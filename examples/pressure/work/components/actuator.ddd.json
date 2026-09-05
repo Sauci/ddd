@@ -1,0 +1,45 @@
+{
+  "$schema": "../../../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Actuator",
+    "description": "Drives the valve",
+    "interface": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "ValveDuty",
+          "kind": "measurement",
+          "description": "Commanded valve duty cycle",
+          "datatype": "uint8",
+          "unit": "%",
+          "conversion": {
+            "factor": 0.5
+          },
+          "limits": {
+            "min": 0,
+            "max": 80
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "SupplyVoltage",
+          "kind": "measurement",
+          "description": "Sensor supply voltage",
+          "datatype": "uint16",
+          "unit": "V",
+          "conversion": {
+            "factor": 0.001
+          },
+          "limits": {
+            "min": 0,
+            "max": 18
+          },
+          "volatile": false
+        }
+      }
+    ]
+  }
+}

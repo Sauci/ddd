@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../schemas/ddd_project.schema.json",
+  "project": {
+    "name": "PressureLoop",
+    "description": "An older working tree whose ValveDuty nobody read yet, as the comparison page tells it",
+    "includes": [
+      "components/*.ddd.json"
+    ]
+  }
+}

@@ -45,13 +45,13 @@ and the conversion), the owning component and the list of components that read i
 
 .. code-block:: bash
 
-   ddd dump release/pressure.ddd.json > release/PressureLoop-1.4.0.json
+   ddd dump examples/pressure/release/pressure.ddd.json > examples/pressure/release/PressureLoop-1.4.0.json
 
 .. code-block:: json
 
    {
      "name": "ValveDuty",
-     "id": "zrf3esw29w6y",
+     "id": "4tnm8r7mst6h",
      "extensions": {},
      "kind": "measurement",
      "datatype": "uint8",
@@ -274,11 +274,12 @@ A worked example
 The example below is a small project called ``PressureLoop``, with three components: a
 ``Sensor`` producing the raw measurements, a ``Controller`` computing a valve duty cycle from
 them, and an ``Actuator`` consuming that duty cycle. The layout is the ordinary one, a
-project file next to a directory of components:
+project file next to a directory of components, and the deliveries of the story ship with
+DDD under ``examples/pressure``, so every command below runs as shown from a checkout:
 
 .. code-block:: text
 
-   release/
+   examples/pressure/release/
      pressure.ddd.json           the project
      components/
        sensor.ddd.json
@@ -289,7 +290,8 @@ The delivery that went out
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``Sensor`` publishes three measurements and keeps one calibration parameter to itself - shown
-here as written, before the identities of the release were assigned:
+here as it ships, identities included, without the ``$schema`` line that binds every shipped
+file to its schema for the editor's benefit:
 
 .. code-block:: json
 
@@ -301,12 +303,18 @@ here as written, before the identities of the release were assigned:
            "scope": "output",
            "definition": {
              "name": "PressureRaw",
+             "id": "jh24xz65w9hs",
              "kind": "measurement",
              "description": "Manifold pressure",
              "datatype": "uint16",
              "unit": "kPa",
-             "conversion": { "factor": 0.1 },
-             "limits": { "min": 0, "max": 400 },
+             "conversion": {
+               "factor": 0.1
+             },
+             "limits": {
+               "min": 0,
+               "max": 400
+             },
              "volatile": false
            }
          },
@@ -314,12 +322,18 @@ here as written, before the identities of the release were assigned:
            "scope": "output",
            "definition": {
              "name": "TemperatureRaw",
+             "id": "nb1f98w9yt2v",
              "kind": "measurement",
              "description": "Manifold temperature",
              "datatype": "sint16",
              "unit": "degC",
-             "conversion": { "factor": 0.1 },
-             "limits": { "min": -40, "max": 150 },
+             "conversion": {
+               "factor": 0.1
+             },
+             "limits": {
+               "min": -40,
+               "max": 150
+             },
              "volatile": false
            }
          },
@@ -327,12 +341,18 @@ here as written, before the identities of the release were assigned:
            "scope": "output",
            "definition": {
              "name": "SupplyVoltage",
+             "id": "wcvef190n8h6",
              "kind": "measurement",
              "description": "Sensor supply voltage",
              "datatype": "uint16",
              "unit": "V",
-             "conversion": { "factor": 0.001 },
-             "limits": { "min": 0, "max": 16 },
+             "conversion": {
+               "factor": 0.001
+             },
+             "limits": {
+               "min": 0,
+               "max": 16
+             },
              "volatile": false
            }
          },
@@ -340,71 +360,72 @@ here as written, before the identities of the release were assigned:
            "scope": "local",
            "definition": {
              "name": "FilterGain",
+             "id": "cxf129crsj6e",
              "kind": "parameter",
              "description": "Low pass gain of the pressure signal",
              "datatype": "uint8",
-             "conversion": { "factor": 0.01 },
-             "limits": { "min": 0, "max": 1 },
+             "conversion": {
+               "factor": 0.01
+             },
+             "limits": {
+               "min": 0,
+               "max": 1
+             },
              "init": 50,
              "volatile": false
            }
          }
-       ]
+       ],
+       "description": "Reads the manifold sensors"
      }
    }
 
 ``Controller`` reads ``PressureRaw`` and ``TemperatureRaw`` and produces ``ValveDuty``
 (``uint8``, ``%``, factor 0.5, limits 0 to 100); ``Actuator`` reads ``ValveDuty`` and
-``SupplyVoltage``. Before the release goes out, its producing declarations are given their
-identities - once, and for good, since the identity is what lets a later delivery rename an
-object without the comparison reporting a removal and an unrelated addition (`Renames`_
-above):
+``SupplyVoltage``. The producing declarations carry their identities, written by
+``ddd id --assign`` before the release went out - once, and for good, since the identity is
+what lets a later delivery rename an object without the comparison reporting a removal and an
+unrelated addition (`Renames`_ above). The project is consistent, so it is released, and its
+dictionary is archived under the name of the release:
 
 .. code-block:: text
 
-   $ ddd id --assign release/components/*.ddd.json
-   wrote 5 ids
-
-The project is consistent, so it is released, and its dictionary is archived under the name of
-the release:
-
-.. code-block:: text
-
-   $ ddd check release/pressure.ddd.json
+   $ ddd check examples/pressure/release/pressure.ddd.json
    ok: 5 variables in 3 components are consistent
 
-   $ ddd dump release/pressure.ddd.json > release/PressureLoop-1.4.0.json
+   $ ddd dump examples/pressure/release/pressure.ddd.json > examples/pressure/release/PressureLoop-1.4.0.json
 
 The delivery that wants to replace it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Development continues in ``work/`` - a copy of ``release/``, so it carries the same
-identities - and by the time the next delivery is prepared five things have changed. ``PressureRaw`` was widened from ``uint16`` to ``uint32`` to leave room for a
-finer resolution later. ``TemperatureRaw`` was dropped, because the controller now reads the
-temperature over the bus instead. The limits of ``ValveDuty`` were tightened from 0 .. 100 to
-0 .. 80, to protect a valve that turned out not to like being driven fully open. The limits
-of ``SupplyVoltage`` were relaxed from 0 .. 16 to 0 .. 18, so that an 18 V supply variant fits.
-And a new measurement, ``AmbientPressure``, was added, which ``Controller`` reads; being new,
-it was given an identity of its own by a second ``ddd id --assign``, which leaves the existing
-ones alone.
+Development continues in ``work/`` (shipped as ``examples/pressure/work``) - a copy of
+``release/``, so it carries the same identities - and by the time the next delivery is
+prepared five things have changed. ``PressureRaw`` was widened from ``uint16`` to ``uint32``
+to leave room for a finer resolution later. ``TemperatureRaw`` was dropped, because the
+controller now reads the temperature over the bus instead. The limits of ``ValveDuty`` were
+tightened from 0 .. 100 to 0 .. 80, to protect a valve that turned out not to like being
+driven fully open. The limits of ``SupplyVoltage`` were relaxed from 0 .. 16 to 0 .. 18, so
+that an 18 V supply variant fits. And a new measurement, ``AmbientPressure``, was added,
+which ``Controller`` reads; being new, it was given an identity of its own by a second
+``ddd id --assign``, which leaves the existing ones alone.
 
 Each of those is a defensible change, and the candidate passes the consistency checks exactly
 as its predecessor did, because the components were all updated together:
 
 .. code-block:: text
 
-   $ ddd check work/pressure.ddd.json
+   $ ddd check examples/pressure/work/pressure.ddd.json
    ok: 5 variables in 3 components are consistent
 
 Against the archived dictionary, the same five changes look rather different:
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-   work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-   work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-   work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json
+   examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+   examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
    2 errors, 1 warning, 1 info
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
@@ -428,8 +449,8 @@ parameter that ``Sensor`` declared ``local`` and that therefore no other compone
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-   work/pressure.ddd.json: warning[removed-unused-object]: 'FilterGain' is gone; no component read it, but a calibration dataset or an external tool still might
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # the candidate without FilterGain
+   examples/pressure/work/pressure.ddd.json: warning[removed-unused-object]: 'FilterGain' is gone; no component read it, but a calibration dataset or an external tool still might
    1 warning
    pressure.ddd.json can replace PressureLoop-1.4.0.json
 
@@ -449,13 +470,13 @@ additionally reads a ``ValvePosition`` that nobody produces:
 
 .. code-block:: text
 
-   $ ddd check work/pressure.ddd.json --baseline release/PressureLoop-1.4.0.json
-   work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
-   work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-   work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-   work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
-   work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
+   $ ddd check examples/pressure/work/pressure.ddd.json --baseline examples/pressure/release/PressureLoop-1.4.0.json  # the candidate also reading ValvePosition
+   examples/pressure/work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
+   examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+   examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
+   examples/pressure/work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
    3 errors, 1 warning, 2 infos
 
 The consistency findings point at the declaration that caused them, down to the json pointer
@@ -480,8 +501,8 @@ about it, which is exactly why the tool must:
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-   work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw's limits narrowed to 0 .. 250 instead
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
    1 warning
    pressure.ddd.json can replace PressureLoop-1.4.0.json
 
@@ -513,7 +534,7 @@ internally consistent, because all its components were updated together:
 
 .. code-block:: text
 
-   $ ddd check work/pressure.ddd.json
+   $ ddd check examples/pressure/work/pressure.ddd.json  # PressureRaw rescaled to a factor of 0.01 instead
    ok: 5 variables in 3 components are consistent
 
 Nothing in the build says a word. What has happened is that a calibration dataset from the
@@ -523,8 +544,8 @@ the only place where that can be caught, so it is an error and not a warning:
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-   work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (conversion: linear(factor=0.01, offset=0) != linear(factor=0.1, offset=0)), read by Controller
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw rescaled to a factor of 0.01 instead
+   examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (conversion: linear(factor=0.01, offset=0) != linear(factor=0.1, offset=0)), read by Controller
    1 error
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
@@ -550,12 +571,12 @@ likely explanation is that the wrong file was picked up:
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-   work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-   work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
-   work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-   work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # the candidate renamed AirLoop
+   examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+   examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+   examples/pressure/work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
    2 errors, 2 warnings, 1 info
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
@@ -568,8 +589,8 @@ A baseline that cannot be read at all is a different matter, and it stops the ru
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.3.0.json work/pressure.ddd.json
-   release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'release/PressureLoop-1.3.0.json' does not exist
+   $ ddd compare examples/pressure/release/PressureLoop-1.3.0.json examples/pressure/work/pressure.ddd.json
+   examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'examples/pressure/release/PressureLoop-1.3.0.json' does not exist
    1 error
 
 The ``in the baseline:`` prefix is there so that a missing or malformed file on the reference
@@ -586,19 +607,20 @@ appear twice whenever both sides are the same tree, and a clean delivery could b
 because of the state of its predecessor.
 
 Its warnings and infos are therefore collected in a bag of their own and dropped. Here is an
-older working tree whose ``ValveDuty`` was read by nobody:
+older working tree - the 1.3 delivery, shipped as ``examples/pressure/v1.3`` - whose
+``ValveDuty`` was read by nobody:
 
 .. code-block:: text
 
-   $ ddd check v1.3/pressure.ddd.json
-   v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
+   $ ddd check examples/pressure/v1.3/pressure.ddd.json
+   examples/pressure/v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
    1 warning
 
 Used as the baseline of a comparison, that warning does not reappear:
 
 .. code-block:: text
 
-   $ ddd compare v1.3/pressure.ddd.json release/pressure.ddd.json
+   $ ddd compare examples/pressure/v1.3/pressure.ddd.json examples/pressure/release/pressure.ddd.json
    pressure.ddd.json can replace pressure.ddd.json
 
 Its errors are another matter. A baseline that could not be read, as in the missing-file
@@ -625,9 +647,9 @@ narrowing is acceptable but wants the new objects out of its build log can say s
 
 .. code-block:: text
 
-   $ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
-   work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-   work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
+   examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+   examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    2 errors
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 

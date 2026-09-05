@@ -294,7 +294,7 @@ which is an error, since the constant would otherwise be truncated silently:
 .. code-block:: text
 
    $ ddd check dupenum.ddd.json
-   dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into int8
+   dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into sint8
    dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
    1 error, 1 warning
 

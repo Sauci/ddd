@@ -229,8 +229,31 @@ Checking the project
 ~~~~~~~~~~~~~~~~~~~~
 
 ``ddd check`` answers one question: do these components fit together. It reads the project,
-follows the includes, resolves every reference and runs every consistency check, and it says
-nothing more than a single line when there is nothing to say:
+follows the includes, resolves every reference and runs every consistency check:
+
+.. code-block:: text
+
+   $ ddd check thermostat.ddd.json
+   components/controller.ddd.json#component.interface[1].definition.name: info[missing-id]: 'HeaterOnThreshold' has no 'id', so a later delivery that renames it reports a removal and an unrelated addition; 'ddd id --assign' writes one
+   components/sensor_hub.ddd.json#component.interface[0].definition.name: info[missing-id]: 'CabinTemperature' has no 'id', so a later delivery that renames it reports a removal and an unrelated addition; 'ddd id --assign' writes one
+   2 infos
+
+The components fit together - nothing above ``info`` was found - and the two declarations that
+produce a variable are told what they still lack. An ``id`` is the identity of a variable over
+the life of the project: it is what lets a later delivery rename ``CabinTemperature`` and still
+be recognised as carrying the same object, rather than as having removed one variable and added
+an unrelated other. Because that identity has to stay stable, it is written once, by the tool,
+into every producing definition that has none:
+
+.. code-block:: text
+
+   $ ddd id --assign components/*.ddd.json
+   wrote 2 ids
+
+Each of the two definitions now carries a line like ``"id": "gbr9fq0et6js"`` - twelve
+characters drawn at random, so yours differ from any shown here - and every later run leaves
+it alone. With the identities in place, the check says nothing more than a single line when
+there is nothing to say:
 
 .. code-block:: text
 

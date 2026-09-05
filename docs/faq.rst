@@ -36,15 +36,21 @@ continues into the interface checks as usual:
 
    $ ddd check sensor_hub.json -W file-extension=warning
    sensor_hub.json: warning[file-extension]: 'sensor_hub.json' is a DDD description file and has to be named '*.ddd.json'
-   1 warning
+   sensor_hub.json#component.interface[0]: warning[unused-output]: 'ValueA' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[1]: warning[unused-output]: 'ValueB' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[2]: warning[unused-output]: 'ValueC' is written by component 'SensorHub' but read by nobody
+   sensor_hub.json#component.interface[3]: warning[unused-output]: 'FlagA' is written by component 'SensorHub' but read by nobody
+   5 warnings
 
 .. note::
    The relaxation matters for more than the wording of one line. Reading the files and
    checking the interfaces are two phases, and the second one does not start when the first
    produced an error - a workspace that could not be read has nothing trustworthy to say
    about ownership or agreement. So as long as ``file-extension`` is an error, it is the only
-   finding you get; the reserved identifier or the duplicate declaration further down the
-   same file appears only once the file has been renamed or the check has been relaxed.
+   finding you get; the ``unused-output`` warnings above - what a component read on its own
+   has to say about outputs nobody reads - appear only once the file has been renamed or the
+   check has been relaxed, and so would a reserved identifier or a duplicate declaration
+   further down the same file.
 
 Can I check a single component before it is integrated?
 -------------------------------------------------------

@@ -140,7 +140,7 @@ read like a typo:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   types.ddd.json#types[0].scalar.name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
+   types.ddd.json#types[0].name: error[schema]: Value error, 'UINT16' spells a base datatype; a declared type carries a name of its own, so that reading a declaration tells the two apart (got: 'UINT16')
    1 error
 
 A ``typename`` that names no type any file of the project declares is answered by the
@@ -204,7 +204,7 @@ same one:
 
    $ ddd check project.ddd.json
    sensing.ddd.json#component.interface[0].definition: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'limits' may not be stated here as well (got: {'name': 'Inlet', 'kind': 'measurement', 'typename': 'Tem...)
-   types.ddd.json#types[1].struct.members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
+   types.ddd.json#types[1].members[0]: error[schema]: Value error, 'Temperature_t' is a declared type and already fixes what this value means, so 'unit' may not be stated here as well (got: {'name': 'value', 'member': 'value', 'typename': 'Tempera...)
    2 errors
 
 The ``datatype`` of a scalar type is a base datatype and not another declared name, so a scalar
@@ -247,8 +247,8 @@ into a full width member and move every offset after it.
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a 'bits' member needs a 'bits' (got: {'name': 'ready', 'member': 'bits', 'datatype': 'uint16'})
-   types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a 'value' member has no 'bits' (got: {'name': 'history', 'member': 'value', 'datatype': 'uint1...)
+   types.ddd.json#types[0].members[0]: error[schema]: Value error, a 'bits' member needs a 'bits' (got: {'name': 'ready', 'member': 'bits', 'datatype': 'uint16',...)
+   types.ddd.json#types[0].members[1]: error[schema]: Value error, a 'value' member has no 'bits' (got: {'name': 'history', 'member': 'value', 'datatype': 'uint1...)
    2 errors
 
 A member says what its bytes *mean* as well as where they are, because once a structure is
@@ -292,9 +292,9 @@ contradicts:
 .. code-block:: text
 
    $ ddd check project.ddd.json
-   types.ddd.json#types[0].struct.members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in 'uint16', which holds 16 (got: {'name': 'wide', 'member': 'bits', 'datatype': 'uint16', ...)
-   types.ddd.json#types[0].struct.members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got 'float32'; only an integer can carry one in c (got: {'name': 'counted', 'member': 'bits', 'datatype': 'float3...)
-   types.ddd.json#types[0].struct.members[2]: error[schema]: Value error, a 'bits' member has no 'dimensions' (got: {'name': 'flags', 'member': 'bits', 'datatype': 'uint8', ...)
+   types.ddd.json#types[0].members[0]: error[schema]: Value error, a bitfield of 17 bits does not fit in 'uint16', which holds 16 (got: {'name': 'wide', 'member': 'bits', 'datatype': 'uint16', ...)
+   types.ddd.json#types[0].members[1]: error[schema]: Value error, a bitfield needs an integer datatype, got 'float32'; only an integer can carry one in c (got: {'name': 'counted', 'member': 'bits', 'datatype': 'float3...)
+   types.ddd.json#types[0].members[2]: error[schema]: Value error, a 'bits' member has no 'dimensions' (got: {'name': 'flags', 'member': 'bits', 'datatype': 'uint8', ...)
    3 errors
 
 The limits of a bitfield are derived from its **width** and not from the datatype carrying it.

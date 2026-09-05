@@ -90,13 +90,14 @@ is gradual, one component at a time.
 What reaches the a2l
 --------------------
 
-Each exported measurement with a raster carries the event it belongs to:
+Each exported measurement with a raster carries the event it belongs to - here
+``EngineSpeed`` as the component above declares it, before an address map has been applied:
 
 .. code-block:: text
 
-   /begin MEASUREMENT EngineSpeed "engine speed"
-     UWORD NO_COMPU_METHOD 0 0 0 65535
-     ECU_ADDRESS 0x20000100
+   /begin MEASUREMENT EngineSpeed "EngineSpeed"
+     UWORD CM_IDENT_RPM 0 0 0 65535
+     ECU_ADDRESS 0x00000000
      SYMBOL_LINK "EngineSpeed" 0
      /begin IF_DATA XCP
        /begin DAQ_EVENT VARIABLE

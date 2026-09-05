@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from ddd import __version__
 from ddd.cli import _build_parser
 from ddd.diagnostics import CHECKS
+from ddd.loading import FILE_KINDS
 from ddd.models import Datatype, ObjectKind
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,15 @@ EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encodi
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
 PUBLISH_WORKFLOW = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
 DOCS_URL = "https://sauci.github.io/ddd/"
+CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
+COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
+PAGES = {
+    page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
+    for page in sorted((ROOT / "docs").rglob("*.rst"))
+    if "superpowers" not in page.parts
+}
+PAGES["README.md"] = README
+"""Every page a reader can reach, by its path, for the claims that may be made on any of them."""
 
 PROJECT_WIDE_DOCUMENTS = {
     "SPEC.md": (SPEC, "`"),
@@ -171,6 +181,66 @@ class TestChecks:
         assert sorted(enumerations[0]) == sorted(expected), (
             f"{name} lists {sorted(enumerations[0])}; the registry says {sorted(expected)}"
         )
+
+
+class TestTheCheckReference:
+    """The reference page promises the registry in one place, so the registry is what it is held to.
+
+    Seven checks were added to the registry over three releases and none reached the tables;
+    a reader who met one of them in a build log found nothing to look up.
+    """
+
+    @pytest.mark.parametrize("check", sorted(CHECKS))
+    def test_every_check_has_a_row_on_the_reference_page(self, check: str) -> None:
+        assert f"``{check}``" in CONSISTENCY_CHECKS
+
+    @pytest.mark.parametrize(
+        "check", sorted(name for name, info in CHECKS.items() if info.comparison)
+    )
+    def test_every_comparison_check_is_in_the_comparison_table(self, check: str) -> None:
+        """The comparison page grades every difference; one it does not list cannot be looked up."""
+        rows = re.findall(
+            r"\* - (?:error|warning|info)\n\s+- ``([a-z0-9-]+)``", COMPARING_DELIVERIES
+        )
+        assert check in rows, f"the comparison table lists {sorted(rows)}"
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
+        """ "The five checks whose severity cannot be changed" went stale when two more joined.
+
+        Any page may count them, so every page is read; a sentence that counts them in words
+        has to count what the registry marks as not overridable.
+        """
+        expected = sum(1 for info in CHECKS.values() if not info.overridable)
+        text = flattened(PAGES[page])
+        counted = re.findall(
+            r"\b(\w+) (?:load time )?(?:checks )?whose severity\b", text, flags=re.I
+        ) + re.findall(r"\b(\w+) checks cannot be relaxed", text, flags=re.I)
+        for word in counted:
+            if word.lower() in NUMBER_WORDS:
+                assert NUMBER_WORDS[word.lower()] == expected, (
+                    f"{page} counts {word} checks with a fixed severity; "
+                    f"the registry has {expected}"
+                )
+
+
+class TestTheFileKinds:
+    """A seventh file kind was added, and the lists of them written in prose stayed at six."""
+
+    @pytest.mark.parametrize("page", sorted(PAGES))
+    def test_the_description_kinds_are_counted_as_the_loader_counts_them(self, page: str) -> None:
+        for word in re.findall(r"\b(\w+) description kinds", flattened(PAGES[page]), flags=re.I):
+            if word.lower() in NUMBER_WORDS:
+                assert NUMBER_WORDS[word.lower()] == len(FILE_KINDS), (
+                    f"{page} counts {word} description kinds; the loader knows {len(FILE_KINDS)}"
+                )
+
+    def test_the_file_kind_row_names_every_kind(self) -> None:
+        """The row explaining the check enumerates what a top level key may be, in full."""
+        row = re.search(r"\* - ``file-kind``\n(.*?)\n   \* - ``", CONSISTENCY_CHECKS, flags=re.S)
+        assert row is not None
+        for kind in FILE_KINDS:
+            assert f"``{kind}``" in row.group(1), f"the file-kind row does not name {kind}"
 
 
 class TestCommands:

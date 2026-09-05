@@ -457,7 +457,7 @@ Both are ordinary, and DDD renders what the description says.
 .. note::
    Because the key is required and has no default, a description written before it existed
    gains it on every definition of every kind. There is no phase-in: an omitted ``volatile``
-   is reported by the ``schema`` check, one of the five whose severity ``-W`` refuses to
+   is reported by the ``schema`` check, one of the seven whose severity ``-W`` refuses to
    relax, so ``-W schema=warning`` does not buy a project the time to migrate one component
    at a time. Templates need no change at all, because no template spells a qualifier out:
    ``.definition`` and ``.declaration()`` compose it, and a template that lays a declaration

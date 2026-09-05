@@ -98,8 +98,9 @@ key the silent answer decides whether the compiler may keep a variable in a regi
 whether it may fold a calibration constant into the code that reads it.
 
 .. note::
-   ``schema`` is one of the five checks whose severity cannot be changed, along with
-   ``file-not-found``, ``json-syntax``, ``file-kind`` and ``include-cycle``. A file that
+   ``schema`` is one of the seven checks whose severity cannot be changed, along with
+   ``file-not-found``, ``json-syntax``, ``file-kind``, ``include-cycle``, ``plugin-not-found``
+   and ``plugin-invalid``. A file that
    cannot be interpreted has nothing further to say, and a component whose description failed
    to validate is not added to the project at all - so the remaining checks are never handed a
    half-read file to draw conclusions from. The full list is on the

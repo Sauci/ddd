@@ -264,7 +264,7 @@ or an a2l file that does not do what the description says - or that does not com
      - error (fixed)
      - the top level of the document is not a json object, or names none of the description
        kinds (``project``, ``component``, ``types``, ``units``, ``sections``,
-       ``constants``), or several of them at once.
+       ``constants``, ``rasters``), or several of them at once.
    * - ``file-extension``
      - error
      - a description file is not named ``*.ddd.json``. Relaxable with
@@ -344,6 +344,16 @@ or an a2l file that does not do what the description says - or that does not com
        :doc:`rasters file <file_formats/rasters>`). Like a section and unlike a unit there
        is no free text fallback: an event nothing describes is a name the a2l could only
        write as a number nobody chose. The nearest declared name is suggested.
+   * - ``duplicate-raster``
+     - error
+     - a measurement raster is declared more than once, in one file or across files - the
+       rule a unit, a section or a constant obey, since a raster is vocabulary like them.
+   * - ``duplicate-id``
+     - error
+     - two data objects of one project carry the same ``id``. An identity relates an object
+       to its predecessor in a delivery comparison, so one shared by two objects can relate
+       neither, and a declaration copied with its ``id`` still in it is refused rather than
+       paired wrongly.
    * - ``duplicate-event``
      - error
      - two measurement rasters claim the same event channel number (see the
@@ -378,7 +388,9 @@ or an a2l file that does not do what the description says - or that does not com
      - a declared type is used where its shape does not fit: a declaration naming a structure
        while being a curve, a map, an axis or a value block, all of which refer to other
        objects or are arrays of one datatype, or one stating an ``init``, which for a
-       structure is written by the code that starts it rather than by the description.
+       structure is written by the code that starts it rather than by the description. A
+       declaration naming an external type is refused the same way: DDD knows neither its
+       layout nor its meaning, so only a structure member may name one.
    * - ``type-cycle``
      - error
      - structures nest each other, directly or through others. The finding names the chain,
@@ -530,6 +542,13 @@ it is either a smell or a decision somebody should have taken consciously.
      - an exported object cannot be fully described by the a2l version DDD writes: today that is
        an array of more than three dimensions, which the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot
        carry. The extra dimensions are written out and only a 1.7 reader understands them.
+   * - ``address-missing``
+     - warning
+     - an object that reaches the a2l has no entry in the map ``--address-map`` was given, so
+       its ``ECU_ADDRESS`` stays 0. A map produced from a linker output legitimately lacks the
+       objects that were not linked into this image, which is why the run goes on; a post-link
+       build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
+       error and writes nothing.
 
 Information
 ~~~~~~~~~~~
@@ -546,6 +565,18 @@ Information
      - a component declares no variable at all. Perfectly legal - a component may have no global
        interface - but worth saying out loud, because the usual cause is a description file that
        was registered before it was written.
+   * - ``incomplete-project``
+     - info
+     - a declaration is missing from the dictionary and the finding that says why has been
+       silenced - a ``type-kind`` relaxed to ``ignore``, for instance. The declaration is left
+       out rather than generated wrong, and this is the trace that leaves, so that a dictionary
+       short of a variable is never a surprise.
+   * - ``missing-id``
+     - info
+     - a declaration that produces a variable states no ``id``, so a delivery that renames the
+       variable is compared as a removal and an unrelated addition. ``ddd id --assign`` writes
+       the identities; a project that has adopted them raises the check to ``error``, so that a
+       new declaration cannot go out without one.
 
 Checks of the delivery comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -569,6 +600,16 @@ registry can be read in one place.
    * - ``changed-interface``
      - error
      - the kind, datatype, unit, scaling, shape, axes or locality of an object changed.
+   * - ``reused-name``
+     - error
+     - a name of the baseline now belongs to a different object: the object that carried it
+       was renamed or removed, and a new one took the spelling. Nothing about the delivery
+       looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.
+   * - ``renamed-object``
+     - warning
+     - an object of the baseline is offered under a different name; its ``id`` is what says
+       so. The interface comparison still runs across the pair, and ``--renames`` writes the
+       old and the new spelling out, for migrating datasets and recordings.
    * - ``removed-unused-object``
      - warning
      - an object of the baseline is gone that no component read - a calibration dataset or an
@@ -864,5 +905,6 @@ usage error:
      ...
    ]
 
-``overridable`` is the machine readable form of the ``(fixed)`` marker: ``false`` for the five
-load time checks whose severity cannot be changed, ``true`` for every other check.
+``overridable`` is the machine readable form of the ``(fixed)`` marker: ``false`` for the seven
+checks whose severity cannot be changed - the five of load time and the two plugin checks -
+``true`` for every other check.

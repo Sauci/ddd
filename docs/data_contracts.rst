@@ -93,9 +93,9 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
    controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
-The same rule applies at the top level of a file: a document naming none of the six
+The same rule applies at the top level of a file: a document naming none of the seven
 description kinds - ``project``, ``component``, ``types``, ``units``, ``sections``,
-``constants`` - or several of them at once, is refused rather than guessed at.
+``constants``, ``rasters`` - or several of them at once, is refused rather than guessed at.
 
 Identifiers are constrained
 ---------------------------

@@ -224,6 +224,10 @@ them together with everything else.
    * - warning
      - ``project-mismatch``
      - the two sides of a comparison describe differently named projects
+   * - warning
+     - ``missing-plugin``
+     - a compared dictionary records a plugin this run has not loaded, so that plugin's
+       comparison rules did not run
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not

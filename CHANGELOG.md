@@ -17,6 +17,12 @@ not, and the templates a project provides are its own.
   takes a type, a unit, a section, a constant or a raster from the project's vocabulary checks
   clean alone.  An empty address map is a first run rather than a map with holes: it raises no
   `address-missing`, so a strict two-run flow passes the seeded first build.
+* **The published schemas accept what the loader accepts.**  An empty conversion, the
+  enumerators of an enum as a `{"NAME": value}` mapping and a unit as a bare spelling were
+  read by `ddd check` and refused by the schemas `ddd schema` publishes, so an editor bound to
+  them underlined every recommended shorthand; the conversion union is published as `anyOf`
+  and the two shorthands beside their object forms.  The example projects carry identities,
+  and the tests re-run every command the documentation shows over them.
 * **Quick fixes follow the checker on `limits`.**  A declaration that leaves the limits out
   defers to the one that states them, which `definition-mismatch` counts as agreement; the
   editor no longer offers to spread or strip a range in that case, and only two stated ranges

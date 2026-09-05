@@ -170,7 +170,12 @@ def run(
             status = main(shlex.split(transcript.command)[1:])
         except SystemExit as usage_error:  # argparse refusing the command line
             status = int(usage_error.code or 0)
-    printed = [line.rstrip().replace(str(cwd), CHECKOUT) for line in stream.getvalue().splitlines()]
+    # The tool prints paths in posix form on every platform, so both spellings of the
+    # scratch directory stand for the reader's checkout: the native one and the posix one.
+    printed = [
+        line.rstrip().replace(str(cwd), CHECKOUT).replace(cwd.as_posix(), CHECKOUT)
+        for line in stream.getvalue().splitlines()
+    ]
     while printed and not printed[-1]:
         printed.pop()
     return printed, status

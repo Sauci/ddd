@@ -1660,10 +1660,11 @@ The server offers, from a description file: the findings of
 file; go to definition and find references across files, which is the question a schema
 cannot answer at all, because the producer of an `input` is in a file the author might not
 know the name of; a summary of a data object on hover, the physical reading of its
-initial value included; renaming an object everywhere the
-project writes it, refused up front for a name the C language does not allow or one the
-project already uses, whether for another object, an enum, an enumerator, a type or a
-constant,
+initial value included; renaming an object, a declared type or a declared constant
+everywhere the project writes it - the declaration and every reference, `typename`,
+dimension or axis `size` spelling it - refused up front for a name the C language does not
+allow, a type name spelling a base datatype, or one the project already uses, whether for
+another object, an enum, an enumerator, a type or a constant,
 because a rename that silently merges two objects compiles, links, and shares storage
 nobody intended to share; and quick fixes that reconcile one key across the declarations of one object, in either
 direction, including removing a key the others do not have; and, on a `missing-id`, a fix that

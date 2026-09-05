@@ -194,7 +194,9 @@ nobody else states are agreement, since a declaration that leaves them out defer
 that states them, exactly as the checker reads it.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
-every `axis`, `x_axis`, `y_axis` or `input` that names it.  A name c reserves, one that is
+every `axis`, `x_axis`, `y_axis` or `input` that names it; on a declared type, in its
+declaration and in every `typename` naming it; on a declared constant, in its declaration and
+in every dimension or axis `size` spelling it.  A name c reserves, one that is
 not a usable identifier, or one the project already declares is refused with the reason
 before a single file is touched - a rename writes into several at once, and an unusable
 name is otherwise noticed a build later.  Free text is left alone: a `description` that

@@ -87,9 +87,15 @@ endfunction()
 # is that they only exist once the project has been configured at least once, which is why a project whose developers
 # expect editor support straight after cloning commits them instead and runs "ddd schema all -o <dir>" by hand after
 # an upgrade. Both are supported; SCHEMA_DIRECTORY is the choice that cannot go stale.
-function(_ddd_write_schemas directory)
+function(_ddd_write_schemas directory plugins)
     cmake_path(ABSOLUTE_PATH directory BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
-    execute_process(COMMAND "${DDD_EXECUTABLE}" schema all --output "${directory}"
+    # Closed over the project's plugins, so that an editor validates a plugin's block as it is typed; a path spec
+    # reaches the tool absolute, so the working directory of the configure step does not matter.
+    set(plugin_arguments "")
+    foreach(spec IN LISTS plugins)
+        list(APPEND plugin_arguments --plugin "${spec}")
+    endforeach()
+    execute_process(COMMAND "${DDD_EXECUTABLE}" schema all --output "${directory}" ${plugin_arguments}
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
                     OUTPUT_QUIET)
@@ -248,19 +254,64 @@ endfunction()
 # a generator expression - only at generate time is the link graph of the image known - so the file is produced with
 # file(GENERATE) rather than being written here. An image without any registered component yields an empty
 # "includes" list, which DDD accepts and reports as a project without variables.
-function(_ddd_write_project_file output name description components)
+function(_ddd_write_project_file output name description components plugins)
     # $<COMMA> keeps the comma of the json separator out of the argument splitting of $<JOIN>.
     set(entries "$<$<BOOL:${components}>:\n      \"$<JOIN:${components},\"$<COMMA>\n      \">\"\n    >")
+    # The plugins are known at configure time, so they need no generator expression: a plain json list of strings,
+    # in the order the call gave them, which is the order the tool runs their hooks in.
+    set(plugin_entries "")
+    if(plugins)
+        list(JOIN plugins "\", \"" joined)
+        set(plugin_entries "\"${joined}\"")
+    endif()
     file(GENERATE
          OUTPUT "${output}"
          CONTENT "{
   \"project\": {
     \"name\": \"${name}\",
     \"description\": \"${description}\",
+    \"plugins\": [${plugin_entries}],
     \"includes\": [${entries}]
   }
 }
 ")
+endfunction()
+
+# Resolves the PLUGINS of a ddd_generate() call: a spec ending in .py is a path, made absolute against the calling
+# directory and required to exist, and is also a file the generation depends on; any other spec is a dotted module
+# name the tool imports from its environment, passed through as written.
+function(_ddd_plugin_specs specs_variable files_variable specs base)
+    set(resolved "")
+    set(files "")
+    foreach(spec IN LISTS specs)
+        if(spec MATCHES "\\.py$")
+            _ddd_absolute_input(spec "${base}" "ddd_generate")
+            list(APPEND files "${spec}")
+        endif()
+        list(APPEND resolved "${spec}")
+    endforeach()
+    set(${specs_variable} "${resolved}" PARENT_SCOPE)
+    set(${files_variable} "${files}" PARENT_SCOPE)
+endfunction()
+
+# The plugins a hand written project description names, read off its "plugins" array, a .py path resolved against the
+# directory of the file the way the tool resolves it. Nothing here imports anything: the list only closes the schemas.
+function(_ddd_project_plugins variable project_file)
+    file(READ "${project_file}" content)
+    set(specs "")
+    string(JSON count ERROR_VARIABLE error LENGTH "${content}" "project" "plugins")
+    if(NOT error AND count GREATER 0)
+        cmake_path(GET project_file PARENT_PATH base)
+        math(EXPR last "${count} - 1")
+        foreach(index RANGE 0 ${last})
+            string(JSON spec GET "${content}" "project" "plugins" ${index})
+            if(spec MATCHES "\\.py$")
+                cmake_path(ABSOLUTE_PATH spec BASE_DIRECTORY "${base}" NORMALIZE)
+            endif()
+            list(APPEND specs "${spec}")
+        endforeach()
+    endif()
+    set(${variable} "${specs}" PARENT_SCOPE)
 endfunction()
 
 # Generates the data dictionary of an image out of the component descriptions collected from its link closure, and
@@ -273,6 +324,7 @@ endfunction()
 #              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
 #              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
 #              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
+#              [PLUGINS <spec>...]           # the collected project's plugins: a .py path or a module name
 #              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
@@ -300,10 +352,18 @@ function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
                           "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
-                          "SEVERITY;LINK_LIBRARIES;DEPENDS")
+                          "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
+    # A hand written project names its own plugins, so a second list here would be a second source of truth.
+    if(arg_PLUGINS AND arg_PROJECT)
+        message(FATAL_ERROR "ddd_generate: PLUGINS cannot be given together with PROJECT: the project description "
+                            "names its own plugins.")
+    endif()
+    # A .py spec is a path, made absolute and required to exist like a description; anything else is a module name
+    # the tool imports, passed through as written. The paths are dependencies of the generation, module names cannot be.
+    _ddd_plugin_specs(plugin_specs plugin_files "${arg_PLUGINS}" "${CMAKE_CURRENT_SOURCE_DIR}")
     if(NOT TARGET ${image})
         message(FATAL_ERROR "ddd_generate: \"${image}\" is not a target.")
     endif()
@@ -328,9 +388,6 @@ function(ddd_generate image)
                             "\"ddd templates-dir\" prints a working set to copy from.")
     endif()
     _ddd_absolute_input(arg_TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
-    if(arg_SCHEMA_DIRECTORY)
-        _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}")
-    endif()
     if(arg_ADDRESS_MAP)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
         # The two-run flow: the map is typically extracted from the linked image by a build step, so on the very
@@ -365,8 +422,10 @@ function(ddd_generate image)
     if(arg_PROJECT)
         _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
         set(project_file "${arg_PROJECT}")
-        # A hand written project includes its components itself, so the files to watch have to be asked for.
+        # A hand written project includes its components itself, so the files to watch have to be asked for; its
+        # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
         _ddd_project_sources(descriptions "${project_file}")
+        _ddd_project_plugins(plugin_specs "${project_file}")
         # The tool names the a2l after the project name in the description; NAME does not rename it.
         _ddd_description_name(arg_NAME "${project_file}")
     else()
@@ -378,7 +437,11 @@ function(ddd_generate image)
         set(descriptions "$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${image},DDD_JSON>>")
         set(project_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.ddd.json")
         _ddd_write_project_file("${project_file}" "${arg_NAME}"
-                                "Collected from the link closure of ${image} by ddd_generate()" "${descriptions}")
+                                "Collected from the link closure of ${image} by ddd_generate()" "${descriptions}"
+                                "${plugin_specs}")
+    endif()
+    if(arg_SCHEMA_DIRECTORY)
+        _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}" "${plugin_specs}")
     endif()
 
     # The severity policy applies to both subcommands; everything else only makes sense for "generate", and
@@ -459,7 +522,7 @@ function(ddd_generate image)
                        COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                                --output-dir "${arg_OUTPUT_DIRECTORY}"
                                --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
-                       DEPENDS "${project_file}" ${descriptions} ${arg_ADDRESS_MAP} ${arg_DEPENDS}
+                       DEPENDS "${project_file}" ${descriptions} ${plugin_files} ${arg_ADDRESS_MAP} ${arg_DEPENDS}
                                ${template_files} "${DDD_EXECUTABLE}"
                        COMMENT "Generating the data dictionary of ${image}"
                        COMMAND_EXPAND_LISTS

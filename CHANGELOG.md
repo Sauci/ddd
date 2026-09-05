@@ -15,6 +15,10 @@ not, and the templates a project provides are its own.
   generation when a plugin changes.  `ddd generate all` produces the artefact of every plugin
   the project names that provides one, after the built-in artefacts and in the order the
   project names the plugins; a path two backends claim is refused before anything is written.
+  `ddd_generate` takes `PLUGINS <spec>...`, writes them into the project description it
+  generates, closes the schemas of `SCHEMA_DIRECTORY` over them - or over the plugins a
+  `PROJECT` file names - and depends on the ones that are files; the plugins' artefacts
+  arrive beside the built-in ones.
 
 ## 0.8.0
 

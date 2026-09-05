@@ -1008,6 +1008,45 @@ class TestTheBuildIntegrationPage:
         assert "--standalone" in command.group(1), command.group(1)
         assert "-W" not in command.group(1), "a check named by hand beside the derived flag"
 
+    def parsed_options(self) -> set[str]:
+        """Every keyword ``ddd_generate`` accepts, read off its ``cmake_parse_arguments``."""
+        body = self.CMAKE_MODULE.split("function(ddd_generate image)", 1)[1]
+        lists = re.search(
+            r'cmake_parse_arguments\(PARSE_ARGV 1 arg\s+"([^"]*)"\s+"([^"]*)"\s+"([^"]*)"\)', body
+        )
+        assert lists is not None, "ddd_generate no longer parses its arguments in one place"
+        return {name for group in lists.groups() for name in group.split(";") if name}
+
+    def test_every_option_of_ddd_generate_has_a_row_on_the_page(self) -> None:
+        """An option the module parses and the page does not list is one nobody finds."""
+        rows = set(
+            re.findall(r"^   \* - ``([A-Z0-9_]+)", PAGES["docs/build_integration.rst"], re.M)
+        )
+        assert self.parsed_options() <= rows, sorted(self.parsed_options() - rows)
+
+    def test_every_option_of_ddd_generate_is_named_in_the_readme(self) -> None:
+        named = set(re.findall(r"`([A-Z0-9_]+)`", README))
+        assert self.parsed_options() <= named, sorted(self.parsed_options() - named)
+
+    def test_the_generated_project_names_its_plugins(self) -> None:
+        """The project the module writes has to carry what the call declared, plugins included."""
+        template = re.search(
+            r"file\(GENERATE\s+OUTPUT \"\$\{output\}\"\s+CONTENT \"(.*?)\"\)",
+            self.CMAKE_MODULE,
+            re.S,
+        )
+        assert template is not None, "the module no longer writes the project with file(GENERATE)"
+        assert '\\"plugins\\"' in template.group(1), template.group(1)
+
+    def test_the_schema_step_closes_over_the_plugins(self) -> None:
+        step = re.search(r"schema all --output \"\$\{directory\}\"([^\n]*)", self.CMAKE_MODULE)
+        assert step is not None, "the module no longer writes the schemas"
+        assert "plugin" in step.group(1), step.group(0)
+
+    def test_plugins_and_project_exclude_each_other(self) -> None:
+        """Two lists of plugins would be two sources of truth; the module refuses the pair."""
+        assert re.search(r"FATAL_ERROR \"ddd_generate: PLUGINS[^\"]*PROJECT", self.CMAKE_MODULE)
+
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""
         shipped = (ROOT / "examples" / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")

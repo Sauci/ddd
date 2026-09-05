@@ -151,7 +151,7 @@ one.
 runs under the same writer as the built-in artefacts, so two artefacts claiming one path are
 refused exactly as between the c and the a2l backends. ``all`` runs them after the built-in
 pair, in the order the project names the plugins, so a build gets a plugin's artefact without
-naming it.
+naming it; ``ddd_generate`` names the plugins with ``PLUGINS`` (see :doc:`build_integration`).
 
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2.

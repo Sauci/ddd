@@ -783,7 +783,8 @@ Nothing in the build reads it; it is there so that an editor can report what the
 reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
-`ADDRESS_MAP`, `BYTE_ORDER`,
+`PLUGINS` (the collected project's plugins, written into the generated description and closing
+the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so only one image may hand its headers

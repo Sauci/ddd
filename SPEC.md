@@ -1594,8 +1594,10 @@ formats up to its own it validates strictly.
 
 DDD ships a CMake module with two calls: `ddd_add_component(<target> JSON <file>...)`
 registers descriptions, component and types files alike, on their target, and
-`ddd_generate(<image> ...)` generates the built-in artefacts for an image, a plugin's
-artefact ([section 3.11](#311-plugins)) not yet among them. It generates into the build
+`ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
+those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
+writes into the collected project description; a plugin's files are produced beside the
+built-in ones without being declared as outputs. It generates into the build
 tree, exposes the generated headers to the components through an interface library and
 compiles the generated definition sources into the image as an object library of their
 own, so that an object no compiled code references is not dropped
@@ -1627,12 +1629,15 @@ The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `CONST_INPUTS`, `NO_A2L`, `STRICT` and repeatable `SEVERITY` entries written
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the
 build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for
-extra generation dependencies, and `NO_PROPAGATE_HEADERS` to stop the generated headers
-being linked into every registered component. `SCHEMA_DIRECTORY <dir>` writes the JSON
-schemas of [section 3](#3-file-formats) into that directory at configure time, so that
-they describe the installed DDD rather than a version that is no longer there; it writes
-the open schemas, so a project with plugins that wants the closed ones runs
-`ddd schema all --plugin` itself ([section 3.11](#311-plugins)). Beside the generation
+extra generation dependencies, `PLUGINS <spec>...` for the plugins of a collected project -
+a `.py` spec resolved against the calling directory and depended on, any other passed
+through as a module name; refused beside `PROJECT`, whose file names its own - and
+`NO_PROPAGATE_HEADERS` to stop the generated headers being linked into every registered
+component. `SCHEMA_DIRECTORY <dir>` writes the JSON schemas of
+[section 3](#3-file-formats) into that directory at configure time, so that they describe
+the installed DDD rather than a version that is no longer there, closed over the project's
+plugins - from `PLUGINS`, or from the `PROJECT` file - so that an editor validates a
+plugin's block as it is typed ([section 3.11](#311-plugins)). Beside the generation
 step, the call defines a `<stem>_ddd_check` target, named after the image without its
 extension, that runs `ddd check` under the same severity policy, so that a CI job can
 check without generating.

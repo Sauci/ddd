@@ -81,7 +81,8 @@ preview first, so nothing changes without being seen. The value is copied as wri
 than re-serialised, and a declaration that never mentioned the key gets it inserted.
 
 `F2` renames a variable across every component that declares it and every `axis`, `x_axis`,
-`y_axis` or `input` that names it. A name c reserves, one that is not a usable identifier, or
+`y_axis` or `input` that names it - and a declared type or constant across its declaration and
+every `typename`, dimension or `size` spelling it. A name c reserves, one that is not a usable identifier, or
 one the project already declares is refused with the reason rather than half applied. Free text
 is left alone, so a `description` mentioning the old name still mentions it.
 

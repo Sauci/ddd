@@ -43,9 +43,9 @@ from ddd.lsp.navigation import (
     references,
     rename_edits,
     rename_problem,
+    renameable_at,
     subject_at,
     type_at,
-    variable_at,
     workspaces,
 )
 from ddd.lsp.protocol import (
@@ -397,11 +397,11 @@ class Server:
         path = self._document(message)
         document = read(path, {})
         pointer = document.pointer_at(self._at(message))
-        name = variable_at(document, pointer)
-        if name is None:
+        subject = renameable_at(document, pointer)
+        if subject is None:
             return None
         span = document.text_range_of(pointer)
-        return None if span is None else {"range": span, "placeholder": name}
+        return None if span is None else {"range": span, "placeholder": subject[1]}
 
     def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
         """Rewrite a name everywhere the project writes it, or say why it cannot be.
@@ -420,9 +420,10 @@ class Server:
         # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
         # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
+        subject = renameable_at(document, pointer)
         for workspace in self._projects_of(path):
             built = index(workspace)
-            refused = rename_problem(built, wanted)
+            refused = rename_problem(built, wanted, subject[0] if subject else "variable")
             if refused is not None:
                 write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
                 return

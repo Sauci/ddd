@@ -63,16 +63,16 @@ constants file, or inside the component that publishes it - and back to every sh
 spells it, and from an ``includes`` entry to the files it matches, wildcards included.
 
 **Rename.** ``F2`` on a variable renames it in every declaration and in every reference that
-names it, across as many files as that takes. A name c reserves, one that is not a usable
+names it, across as many files as that takes. A declared type is renamed the same way, from
+the ``name`` of its entry or from any ``typename`` spelling it, in the file declaring it and
+in every definition and structure member naming it; a declared constant from its entry or from
+any dimension or axis ``size`` spelling it. A name c reserves, one that is not a usable
 identifier, or one the project already uses - for another object, an enum, an enumerator, a
 type or a declared constant - is refused with the reason before anything is written, because
 a rename that silently merges two objects compiles, links, and shares storage nobody
-intended to share. Renaming starts from a variable and stops there: a type or a constant is
-not renamed by the server, because its name lives in every file that spells it - the one
-declaring it and every ``typename`` or ``dimensions`` naming it - and a hand edit of the
-declaration alone leaves those references pointing at nothing until the next check says so.
-Only the characters between the quotes are replaced, so formatting survives and free text is
-left alone.
+intended to share; a type may not take the spelling of a base datatype either, which the
+loader would refuse. Only the characters between the quotes are replaced, so formatting
+survives and free text is left alone.
 
 **Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling

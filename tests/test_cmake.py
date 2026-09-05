@@ -63,7 +63,11 @@ def configure(source: Path, build: Path, *definitions: str) -> subprocess.Comple
         str(source),
         "-B",
         str(build),
+        "-G",
+        "Ninja",
+        f"-DCMAKE_MAKE_PROGRAM={NINJA}",
         f"-DDDD_EXECUTABLE={DDD.as_posix()}",
+        *compiler(),
         *definitions,
         cwd=source,
     )
@@ -216,14 +220,18 @@ ddd_generate(img
             str(tmp_path),
             "-B",
             str(tmp_path / "build"),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={NINJA}",
             f"-DDDD_EXECUTABLE={DDD.as_posix()}",
+            *compiler(),
             cwd=tmp_path,
         )
         assert run.returncode != 0
         assert "PLUGINS cannot be given together with PROJECT" in run.stderr
 
 
-@pytest.mark.parametrize("tool", [CMAKE, str(DDD)])
+@pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])
 def test_the_tools_this_module_runs_exist(tool: str) -> None:
     """Said out loud, so that a missing tool is this failure and not a hundred cryptic ones."""
     assert Path(tool).is_file(), f"{tool} is not installed in this environment"

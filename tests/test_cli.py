@@ -181,6 +181,34 @@ class TestCheck:
         capsys.readouterr()
 
 
+class TestGenerateAll:
+    """``all`` means everything the project produces, the plugins' artefacts included."""
+
+    def run(self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> list[str]:
+        templates = ["-t", str(EXAMPLES / "templates")] if artefact != "a2l" else []
+        arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates]
+        assert main([*arguments, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
+        return [
+            Path(entry["path"]).name for entry in json.loads(capsys.readouterr().out)["generated"]
+        ]
+
+    def test_all_produces_the_plugins_artefact_after_the_built_in_ones(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        written = self.run("all", tmp_path, capsys)
+        assert written[-1] == "ddd_layout.h"
+        assert "ddd_globals.c" in written and "LayoutDevice.a2l" in written
+        assert (tmp_path / "ddd_layout.h").is_file()
+
+    @pytest.mark.parametrize("artefact", ["c", "a2l"])
+    def test_a_single_built_in_artefact_runs_no_plugin(
+        self, tmp_path: Path, artefact: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        written = self.run(artefact, tmp_path, capsys)
+        assert "ddd_layout.h" not in written
+        assert not (tmp_path / "ddd_layout.h").exists()
+
+
 class TestGenerate:
     def test_writes_every_artefact(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"

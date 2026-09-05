@@ -186,7 +186,8 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "dictionary. The artefact is part of the command, so every run states what it "
             "produces and carries only the options of that artefact: only a run that "
             "renders c takes a template directory, only one that writes the a2l takes an "
-            "address map. 'all' produces both in one run; 'a2l' is the run a build repeats "
+            "address map. 'all' produces both, and the artefact of every plugin the project "
+            "names that provides one; 'a2l' is the run a build repeats "
             "after linking, when the addresses are known but the c must not change."
         ),
     )
@@ -196,13 +197,22 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     artefacts = generate.add_subparsers(
         dest="artefact", required=True, metavar="{c,a2l,all,<plugin>}"
     )
-    for name, description, with_c, with_a2l in (
-        ("c", "render the c sources from the project's jinja2 templates", True, False),
-        ("a2l", "write the a2l file, with the addresses --address-map carries", False, True),
-        ("all", "render the c sources and write the a2l file in one run", True, True),
+    for name, description, with_c, with_a2l, with_plugins in (
+        ("c", "render the c sources from the project's jinja2 templates", True, False, False),
+        ("a2l", "write the a2l file, with the addresses --address-map carries", False, True, False),
+        (
+            "all",
+            "render the c sources, write the a2l file and produce the plugins' artefacts",
+            True,
+            True,
+            True,
+        ),
     ):
         _add_generate_arguments(
-            artefacts.add_parser(name, help=description), with_c=with_c, with_a2l=with_a2l
+            artefacts.add_parser(name, help=description),
+            with_c=with_c,
+            with_a2l=with_a2l,
+            with_plugins=with_plugins,
         )
     if plugin_artefact is not None:
         extra = artefacts.add_parser(
@@ -362,9 +372,14 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_generate_arguments(
-    parser: argparse.ArgumentParser, *, with_c: bool, with_a2l: bool
+    parser: argparse.ArgumentParser, *, with_c: bool, with_a2l: bool, with_plugins: bool = False
 ) -> None:
-    """The options of one ``generate`` artefact; only the selected backends contribute any."""
+    """The options of one ``generate`` artefact; only the selected backends contribute any.
+
+    A plugin's backend takes no option of its own, so ``with_plugins`` adds none: it only says
+    that the run produces the plugins' artefacts after the built-in ones, which is what ``all``
+    means and no other artefact does.
+    """
     _add_common_arguments(parser)
     parser.add_argument(
         "-o",
@@ -414,7 +429,12 @@ def _add_generate_arguments(
     parser.add_argument(
         "--force", action="store_true", help="generate even if the consistency check fails"
     )
-    parser.set_defaults(handler=_command_generate, render_c=with_c, render_a2l=with_a2l)
+    parser.set_defaults(
+        handler=_command_generate,
+        render_c=with_c,
+        render_a2l=with_a2l,
+        render_plugins=with_plugins,
+    )
 
 
 def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
@@ -623,6 +643,14 @@ def _command_generate(args: argparse.Namespace) -> int:
                 A2lOptions(byte_order=ByteOrder(args.byte_order), addresses=addresses),
                 GENERATOR,
             )
+        )
+    if getattr(args, "render_plugins", False):
+        # After the built-in backends and in the order the project names the plugins, which
+        # is the order their hooks run in; the renderer refuses a path two backends claim.
+        backends.extend(
+            backend_of(plugin, dictionary, GENERATOR)
+            for plugin in resolved.plugins
+            if plugin.backend is not None
         )
     name = getattr(args, "plugin_artefact", None)
     if name is not None:

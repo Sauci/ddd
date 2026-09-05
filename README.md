@@ -650,8 +650,9 @@ opt-in.
 
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
-build, once the linker has decided the addresses - and `ddd generate all` produces both in
-one run.  Each artefact takes only its own options.  Useful ones: `--dry-run`
+build, once the linker has decided the addresses - and `ddd generate all` produces both, and
+the artefact of every plugin the project names that provides one, in one run.  Each artefact
+takes only its own options.  Useful ones: `--dry-run`
 (reports what would be written and exits `0` either way, so it is not a staleness gate on
 its own), `--force` (generate despite errors - the files are written using the producing
 component's definition, but the command still reports every finding and still exits `1`),

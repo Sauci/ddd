@@ -12,7 +12,9 @@ not, and the templates a project provides are its own.
 
 * **Plugins in the build.**  `ddd sources` lists the modules of the plugins a project names
   beside its description files, each by the file it was imported from, so a build re-runs the
-  generation when a plugin changes.
+  generation when a plugin changes.  `ddd generate all` produces the artefact of every plugin
+  the project names that provides one, after the built-in artefacts and in the order the
+  project names the plugins; a path two backends claim is refused before anything is written.
 
 ## 0.8.0
 

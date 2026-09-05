@@ -99,8 +99,9 @@ The commands
        and recordings.
    * - ``ddd generate c|a2l|all|<plugin> FILE -o DIR``
      - check the project and, if it is consistent, write the named artefact into ``DIR``:
-       ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both in one
-       run, and the name of a plugin the project loads runs that plugin's own backend. Each
+       ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both and
+       the artefact of every plugin the project names that provides one, and the name of such
+       a plugin runs its backend alone. Each
        artefact takes only its own options - ``-t`` names the directory of jinja2
        templates the c sources are rendered from, required wherever c is rendered and with no
        default, because which files the project wants and what they look like is not

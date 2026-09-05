@@ -995,8 +995,10 @@ targets it as `-W layout/duplicate-key=warning` - and three optional hooks, each
 one context object: `check`, run at the end of every analysis over the resolved dictionary
 with the settings, the diagnostic bag and a locator that answers where an object's producing
 declaration is written; `compare`, run after the built-in comparison with both dictionaries;
-and `backend`, returning a backend selected as `ddd generate <name>`, and by that name
-alone ([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
+and `backend`, returning a backend selected as `ddd generate <name>` and run by
+`ddd generate all` after the built-in backends, in the order the project names the plugins,
+two artefacts claiming one path being refused before anything is written
+([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
 built-in check does, and a hook that raises is a usage error naming the plugin and the
 hook; the language server, which has no usage error to give and does not stop, reports the
 same failure as a `plugin-invalid` finding at the project file
@@ -1526,8 +1528,9 @@ comparing two deliveries (`ddd compare`, the baseline before the candidate, or
 of an archived candidate, `--renames` writing the old-to-new name pairs to a file;
 [section 4.1](#41-comparing-two-deliveries)); generating the
 artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all` for
-the two built-in artefacts in one run, or the name of a plugin providing an artefact, which
-`all` does not cover, each carrying only the options of what it produces;
+the two built-in artefacts and the artefact of every plugin the project names that provides
+one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
+options of what it produces;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside

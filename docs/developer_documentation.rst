@@ -260,8 +260,11 @@ the paths that only a coverage run reaches - unreadable files, malformed json, r
 severities, odd float literals - are collected in ``tests/test_edge_cases.py`` rather than
 being scattered through the suite that describes behaviour.
 
-Three suites guard things a type checker cannot. ``tests/test_backends.py`` walks the import
-graph, as described above. ``tests/test_hardening.py`` holds one test per defect that once
+Four suites guard things a type checker cannot. ``tests/test_backends.py`` walks the import
+graph, as described above. ``tests/test_cmake.py`` configures and builds the cmake module -
+over the shipped example, over a collected project naming a plugin and over a hand written
+one - with the ``cmake`` the development requirements install, so that the module is held to
+what it does rather than to what it says. ``tests/test_hardening.py`` holds one test per defect that once
 reached a customer-facing artefact or verdict - a transposed a2l array, a header that does
 not compile, a legal name rejected, a description file that ended the run with a python
 traceback - grouped by what was at stake rather than by module. ``tests/test_documentation.py``

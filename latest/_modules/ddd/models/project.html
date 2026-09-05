@@ -101,7 +101,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">hash_excluding_mappings</span>
 
 
 <div class="viewcode-block" id="Project">
@@ -145,17 +145,7 @@
 <span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""A frozen model hashes by default from all its fields, and ``extensions`` may hold</span>
-<span class="sd">        whatever a plugin's settings are, which pydantic cannot hash - the same gap</span>
-<span class="sd">        :meth:`~ddd.models.objects.DataObject.__hash__` closes, for the same reason.</span>
-
-<span class="sd">        Leaving it out of the hash costs nothing a caller would notice: two projects equal in</span>
-<span class="sd">        every field, ``extensions`` included, still hash equal, since equality is coarser than</span>
-<span class="sd">        this - the only thing a hash has to promise.</span>
-<span class="sd">        """</span>
-        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span>
-            <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="o">*</span><span class="p">(</span><span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">"extensions"</span><span class="p">))</span>
-        <span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">hash_excluding_mappings</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
 
 
 

@@ -101,9 +101,10 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">get_args</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">model_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">,</span> <span class="n">model_validator</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">SECTION_NAME_PATTERN</span><span class="p">,</span>
     <span class="n">A2lFormat</span><span class="p">,</span>
     <span class="n">Datatype</span><span class="p">,</span>
     <span class="n">Identifier</span><span class="p">,</span>
@@ -112,6 +113,7 @@
     <span class="n">Real</span><span class="p">,</span>
     <span class="n">TypeName</span><span class="p">,</span>
     <span class="n">format_number</span><span class="p">,</span>
+    <span class="n">hash_excluding_mappings</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
 
@@ -401,7 +403,7 @@
 <span class="sd">    checks that every component declaring this object spells the unit the same way.</span>
 <span class="sd">    """</span>
 
-    <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">section</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="n">SECTION_NAME_PATTERN</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Linker section the object is placed in, named in the project's sections file.</span>
 
 <span class="sd">    A storage key like ``init``: the producer states it, a consumer stating one claims</span>
@@ -553,16 +555,7 @@
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""A frozen model hashes by default from all its fields, and ``extensions`` may hold</span>
-<span class="sd">        whatever a plugin put there - a list inside a block, say - which pydantic cannot hash.</span>
-
-<span class="sd">        Leaving it out of the hash costs nothing a caller would notice: two definitions equal</span>
-<span class="sd">        in every field, ``extensions`` included, still hash equal, since equality is coarser</span>
-<span class="sd">        than this - the only thing a hash has to promise.</span>
-<span class="sd">        """</span>
-        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span>
-            <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="o">*</span><span class="p">(</span><span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">"extensions"</span><span class="p">))</span>
-        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">hash_excluding_mappings</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 
     <span class="c1"># The shape of a stated ``init`` is deliberately not validated here. Only part of the</span>
     <span class="c1"># answer is written in the file - a curve or a map takes its shape from axes another</span>

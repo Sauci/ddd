@@ -313,14 +313,13 @@ def compare(
             )
         _compare_object(old, new, bag, location, was, now)
 
+    renamed = {old.name: new.name for old, new in paired if old.name != new.name}
     for name in sorted(was.keys() & now.keys()):
         # Proof does not need both sides to have adopted an id: pairing (above) may already
         # have matched the baseline's object under this name to a *different* name, by id -
         # which proves whatever still answers to this name in the candidate is not it, whether
         # or not that entry states an id of its own (design section 5.3).
-        moved = next(
-            (new.name for old, new in paired if old.name == name and new.name != name), None
-        )
+        moved = renamed.get(name)
         if moved is None and not _states_different_identities(was[name], now[name]):
             continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a

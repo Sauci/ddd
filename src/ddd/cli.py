@@ -56,11 +56,13 @@ from ddd.models import (
 )
 from ddd.models.schema import PublishedSchema
 from ddd.plugins import (
+    BUILT_IN_ARTEFACTS,
     PLUGIN_NAME_PATTERN,
     Plugin,
     PluginInvalidError,
     PluginNotFoundError,
     backend_of,
+    block_model,
     load_plugin,
     run_compare_hooks,
 )
@@ -70,7 +72,6 @@ EXIT_FINDINGS = 1
 EXIT_USAGE = 2
 
 GENERATOR = f"ddd {__version__}"
-BUILT_IN_ARTEFACTS = ("c", "a2l", "all")
 
 
 def cmake_module_directory() -> Path | None:
@@ -581,11 +582,10 @@ def _listed(names: list[str]) -> str:
 
 def _command_generate(args: argparse.Namespace) -> int:
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is None:
+    if resolved is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
-    assert resolved is not None  # dictionary is only set from resolved; narrows it for mypy
+    dictionary = resolved.dictionary
 
     addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
     if args.render_a2l and args.address_map is not None:
@@ -650,10 +650,10 @@ def _command_generate(args: argparse.Namespace) -> int:
 
 def _command_list(args: argparse.Namespace) -> int:
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is None:
+    if resolved is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
+    dictionary = resolved.dictionary
 
     if args.format == "json":
         print(
@@ -684,11 +684,10 @@ def _command_dump(args: argparse.Namespace) -> int:
     stderr - where they also stay out of the way of a pipe.
     """
     resolved, bag = _analyze(args)
-    dictionary = resolved.dictionary if resolved is not None else None
-    if dictionary is not None:
-        print(dictionary.model_dump_json(indent=2))
+    if resolved is not None:
+        print(resolved.dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
-    if dictionary is None:
+    if resolved is None:
         return EXIT_FINDINGS
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
@@ -766,7 +765,7 @@ def _close_extensions(
     ]
     properties: dict[str, Any] = {}
     for plugin in plugins:
-        model = plugin.project_model if on_project else plugin.object_model
+        model = block_model(plugin, on_project=on_project)
         if model is None:
             continue
         rendered = model.model_json_schema(

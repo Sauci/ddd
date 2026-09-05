@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -268,6 +268,12 @@ class LoadedConstant:
         return Location(self.path, pointer)
 
 
+class _Located(Protocol):
+    """A loaded entry that knows where it was declared."""
+
+    def location(self) -> Location: ...
+
+
 @dataclass(frozen=True, slots=True)
 class LoadedPlugin:
     """A plugin together with where the project named it, for the note on a clash."""
@@ -349,6 +355,10 @@ class Workspace:
     project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The settings block of each plugin, as the project files wrote it, by plugin name."""
 
+    locations: dict[str, Location] = field(default_factory=dict)
+    """Where each declared name is written: its producing declaration, else the first one
+    naming it, since a consumer's declaration is still where a reader looks for the object."""
+
     def sources(self) -> tuple[Path, ...]:
         """Every file that was read to build this workspace, sorted and without duplicates.
 
@@ -358,32 +368,19 @@ class Workspace:
         return tuple(sorted({self.root, *self.read_paths}))
 
     def __hash__(self) -> int:
-        """Every field but the plugin settings, which are a dict and cannot be hashed."""
+        """Every field but the two mappings, which cannot be hashed."""
         return hash(
             tuple(
                 getattr(self, entry.name)
                 for entry in fields(self)
-                if entry.name != "project_extensions"
+                if entry.name not in ("project_extensions", "locations")
             )
         )
 
     def locate(self, name: str) -> Location | None:
-        """Where a plugin's finding about the object ``name`` belongs.
-
-        The declaration that produces it, and failing that the first one naming it: a
-        consumer's declaration is still where a reader looks for the object. ``None`` when no
-        component names it - a leaf, or a name the plugin made up.
-        """
-        fallback: Location | None = None
-        for loaded in self.components:
-            for index, declaration in enumerate(loaded.component.interface):
-                if declaration.definition.name != name:
-                    continue
-                location = loaded.declaration_location(index)
-                if declaration.scope.is_producer:
-                    return location
-                fallback = fallback or location
-        return fallback
+        """Where a plugin's finding about the object ``name`` belongs, or ``None`` when no
+        component names it - a leaf, or a name the plugin made up."""
+        return self.locations.get(name)
 
 
 def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
@@ -460,7 +457,6 @@ class _Loader:
         self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
-        self._plugins: list[Plugin] = []
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
@@ -499,10 +495,11 @@ class _Loader:
                     sorted(self._constants_by_name.values(), key=lambda entry: entry.name)
                 ),
                 read_paths=tuple(sorted(self._read_paths)),
-                plugins=tuple(self._plugins),
+                plugins=self._loaded_plugins,
                 project_extensions={
                     name: block for name, (block, _) in self._project_blocks.items()
                 },
+                locations=self._locations(),
             )
 
         project = self._load_project(root, data, parents=(), stack=())
@@ -523,8 +520,9 @@ class _Loader:
             rasters=tuple(sorted(self._rasters_by_name.values(), key=lambda entry: entry.raster)),
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
-            plugins=tuple(self._plugins),
+            plugins=self._loaded_plugins,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
+            locations=self._locations(),
         )
 
     def _read_json(self, path: Path, origin: Location | None) -> dict[str, Any] | None:
@@ -634,7 +632,6 @@ class _Loader:
             self._register(
                 LoadedType(loaded.path, index, declared_type, container="component.types"),
                 key=lambda entry: entry.name,
-                location=lambda entry: entry.location(),
                 registry=self._types_by_name,
                 noun="type",
             )
@@ -644,12 +641,11 @@ class _Loader:
                     loaded.path, index, declared_constant, container="component.constants"
                 ),
                 key=lambda entry: entry.name,
-                location=lambda entry: entry.location(),
                 registry=self._constants_by_name,
                 noun="constant",
             )
 
-    def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT](
+    def _load_vocabulary[ModelT: BaseModel, EntryT, LoadedT: _Located](
         self,
         path: Path,
         data: dict[str, Any],
@@ -658,7 +654,6 @@ class _Loader:
         entries: Callable[[ModelT], tuple[EntryT, ...]],
         wrap: Callable[[Path, int, EntryT], LoadedT],
         key: Callable[[LoadedT], str],
-        location: Callable[[LoadedT], Location],
         registry: dict[str, LoadedT],
         noun: str,
     ) -> None:
@@ -676,20 +671,13 @@ class _Loader:
             return
 
         for index, declared in enumerate(entries(model)):
-            self._register(
-                wrap(path, index, declared),
-                key=key,
-                location=location,
-                registry=registry,
-                noun=noun,
-            )
+            self._register(wrap(path, index, declared), key=key, registry=registry, noun=noun)
 
-    def _register[LoadedT](
+    def _register[LoadedT: _Located](
         self,
         loaded: LoadedT,
         *,
         key: Callable[[LoadedT], str],
-        location: Callable[[LoadedT], Location],
         registry: dict[str, LoadedT],
         noun: str,
     ) -> None:
@@ -704,8 +692,8 @@ class _Loader:
             self._bag.add(
                 f"duplicate-{noun}",
                 f"{noun} '{key(loaded)}' is already declared",
-                location(loaded),
-                notes=[("first declared here", location(previous))],
+                loaded.location(),
+                notes=[("first declared here", previous.location())],
             )
             return
         registry[key(loaded)] = loaded
@@ -724,7 +712,6 @@ class _Loader:
             entries=lambda model: model.types,
             wrap=LoadedType,
             key=lambda loaded: loaded.name,
-            location=lambda loaded: loaded.location(),
             registry=self._types_by_name,
             noun="type",
         )
@@ -743,7 +730,6 @@ class _Loader:
             entries=lambda model: model.units,
             wrap=LoadedUnit,
             key=lambda loaded: loaded.unit,
-            location=lambda loaded: loaded.location(),
             registry=self._units_by_name,
             noun="unit",
         )
@@ -763,7 +749,6 @@ class _Loader:
             entries=lambda model: model.sections,
             wrap=LoadedSection,
             key=lambda loaded: loaded.section,
-            location=lambda loaded: loaded.location(),
             registry=self._sections_by_name,
             noun="section",
         )
@@ -782,7 +767,6 @@ class _Loader:
             entries=lambda model: model.rasters,
             wrap=LoadedRaster,
             key=lambda loaded: loaded.raster,
-            location=lambda loaded: loaded.location(),
             registry=self._rasters_by_name,
             noun="raster",
         )
@@ -802,7 +786,6 @@ class _Loader:
             entries=lambda model: model.constants,
             wrap=LoadedConstant,
             key=lambda loaded: loaded.name,
-            location=lambda loaded: loaded.location(),
             registry=self._constants_by_name,
             noun="constant",
         )
@@ -836,6 +819,26 @@ class _Loader:
                 self._load_include(included, origin, child_parents, child_stack)
         return loaded
 
+    def _locations(self) -> dict[str, Location]:
+        """Where each declared name is written, a producer's declaration winning over a
+        consumer's, and the first of either otherwise."""
+        found: dict[str, Location] = {}
+        produced: set[str] = set()
+        for loaded in self._components:
+            for index, declaration in enumerate(loaded.component.interface):
+                name = declaration.definition.name
+                if declaration.scope.is_producer and name not in produced:
+                    produced.add(name)
+                    found[name] = loaded.declaration_location(index)
+                elif name not in found:
+                    found[name] = loaded.declaration_location(index)
+        return found
+
+    @property
+    def _loaded_plugins(self) -> tuple[Plugin, ...]:
+        """The plugins in the order the project files named them, each once."""
+        return tuple(loaded.plugin for loaded in self._plugins_by_name.values())
+
     def _load_plugin(self, spelling: str, origin: Location, base: Path) -> None:
         """Import one plugin the project names, or report why it could not be.
 
@@ -863,7 +866,6 @@ class _Loader:
                 )
             return
         self._plugins_by_name[plugin.name] = LoadedPlugin(plugin, spelling, origin)
-        self._plugins.append(plugin)
         self._bag.register(plugin.checks)
 
     def _register_settings(self, name: str, block: dict[str, Any], location: Location) -> None:
@@ -889,7 +891,7 @@ class _Loader:
         plugins = {name: loaded.plugin for name, loaded in self._plugins_by_name.items()}
         for name, (block, location) in sorted(self._project_blocks.items()):
             self._validate_block(plugins.get(name), name, block, location, on_project=True)
-        for plugin in self._plugins:
+        for plugin in self._loaded_plugins:
             # A plugin whose settings have a required field, in a project stating none: the
             # finding belongs where the block would be written.
             if plugin.project_model is not None and plugin.name not in self._project_blocks:

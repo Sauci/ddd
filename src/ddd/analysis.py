@@ -13,7 +13,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Final
 
 from ddd.compare import ComparedField, differing, spell_out
 from ddd.diagnostics import DiagnosticBag, Location
@@ -59,7 +59,7 @@ from ddd.models import (
     resolve_export,
     spelled_dimensions,
 )
-from ddd.plugins import resolve_blocks, run_check_hooks, settings_of
+from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
@@ -524,22 +524,7 @@ class _Analysis:
         kept = {(ref.component_name, ref.index) for _, refs in resolved for ref in refs}
         known = self._enums.by_name
 
-        # The first mapping keeps a relaxed unknown block as written; the second adds every
-        # plugin's settings with their defaults, so that a plugin whose settings the project
-        # did not state still reaches the dictionary with them.
-        settings = {
-            name: validated.model_dump(mode="json")
-            for name, plugin in sorted(self._plugins.items())
-            if (validated := settings_of(plugin, workspace.project_extensions)) is not None
-        }
-        extensions = dict(
-            sorted(
-                {
-                    **resolve_blocks(self._plugins, workspace.project_extensions, on_project=True),
-                    **settings,
-                }.items()
-            )
-        )
+        extensions = resolve_blocks(self._plugins, workspace.project_extensions, on_project=True)
         dictionary = DataDictionary(
             name=workspace.name,
             description=workspace.description,
@@ -1533,48 +1518,17 @@ class _Analysis:
                 ref.location("definition.name"),
             )
 
-        if not ref.scope.is_producer and definition.init is not None:
+        if not ref.scope.is_producer:
             # Reported where the claim is written rather than where it is overruled: the
             # producer may be in a file this author has never opened, and the fix is here.
-            self._bag.add(
-                "consumer-storage",
-                f"'{definition.name}': the initial value is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.init"),
-            )
-
-        if not ref.scope.is_producer and definition.section is not None:
-            self._bag.add(
-                "consumer-storage",
-                f"'{definition.name}': the memory section is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.section"),
-            )
-
-        if not ref.scope.is_producer and definition.raster is not None:
-            self._bag.add(
-                "consumer-raster",
-                f"'{definition.name}': the measurement raster is decided by the component "
-                f"that produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.raster"),
-            )
-
-        if not ref.scope.is_producer and definition.id is not None:
-            self._bag.add(
-                "consumer-identity",
-                f"'{definition.name}': the identity is decided by the component that "
-                f"produces the variable, not by '{ref.component_name}', which reads it",
-                ref.location("definition.id"),
-            )
-
-        if not ref.scope.is_producer and definition.extensions:
-            self._bag.add(
-                "consumer-extension",
-                f"'{definition.name}': what a plugin knows about the variable is decided by "
-                f"the component that produces the variable, not by '{ref.component_name}', "
-                f"which reads it",
-                ref.location("definition.extensions"),
-            )
+            for key, check, what in _PRODUCER_KEYS:
+                if getattr(definition, key) not in (None, {}):
+                    self._bag.add(
+                        check,
+                        f"'{definition.name}': {what} is decided by the component that "
+                        f"produces the variable, not by '{ref.component_name}', which reads it",
+                        ref.location(f"definition.{key}"),
+                    )
 
         if ref.scope.is_producer and definition.id is None:
             # Info, and optional, because the key is an adoption: a project that has migrated
@@ -1672,7 +1626,7 @@ class _Analysis:
             self._check_enum_values(conversion, location, storage)
             return
         previous, previous_location = known
-        if _enum_key(previous) != _enum_key(conversion):
+        if conversion_identity(previous) != conversion_identity(conversion):
             self._bag.add(
                 "enum-conflict",
                 f"enum '{conversion.name}' is defined with different enumerators",
@@ -2238,6 +2192,19 @@ class _Analysis:
                 )
 
 
+_PRODUCER_KEYS: Final = (
+    ("init", "consumer-storage", "the initial value"),
+    ("section", "consumer-storage", "the memory section"),
+    ("raster", "consumer-raster", "the measurement raster"),
+    ("id", "consumer-identity", "the identity"),
+    ("extensions", "consumer-extension", "what a plugin knows about the variable"),
+)
+"""The keys only a producing declaration may state, with the check a consumer stating one
+earns and how the finding names the key. One rule, five keys: what an object starts as,
+where it lives, which event updates it, which earlier delivery it continues, and what a
+plugin knows about it are all decided by the component that produces it."""
+
+
 def _member_raw_range(member: Member) -> tuple[float, float]:
     """The raw values a member's storage holds: its bitfield's, or its datatype's."""
     assert member.datatype is not None
@@ -2263,10 +2230,6 @@ def _or_list(values: tuple[str, ...]) -> str:
 
 def _condition(condition: str | None) -> str:
     return f"'{condition}'" if condition else "no condition"
-
-
-def _enum_key(conversion: EnumConversion) -> tuple[tuple[str, int], ...]:
-    return tuple((e.name, e.value) for e in conversion.enumerators)
 
 
 def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...]]:

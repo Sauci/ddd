@@ -1408,3 +1408,25 @@ class TestHashingTheResolvedForms:
         )
         assert dictionary is not None, messages(bag)
         assert len({*dictionary.instances}) == 1
+
+
+class TestPluginNamesAndArtefacts:
+    @pytest.mark.parametrize("name", ["c", "a2l", "all"])
+    def test_a_built_in_artefact_name_is_not_a_plugin_name(self, name: str) -> None:
+        """``ddd generate c`` is the c backend; a plugin so named could never be reached."""
+        with pytest.raises(ValueError, match="built-in artefact"):
+            Plugin(name=name)
+
+
+class TestResolvedSettings:
+    def test_every_plugin_with_a_project_model_appears_with_its_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        """The dictionary carries each plugin's settings whether or not the project stated any."""
+        from ddd.plugins import resolve_blocks
+
+        plugin = load_plugin(str(write_plugin(tmp_path)), tmp_path)
+        assert resolve_blocks({"tag": plugin}, {}, on_project=True) == {"tag": {"prefix": ""}}
+        stated = resolve_blocks({"tag": plugin}, {"tag": {"prefix": "p"}}, on_project=True)
+        assert stated == {"tag": {"prefix": "p"}}
+        assert resolve_blocks({"tag": plugin}, {}, on_project=False) == {}

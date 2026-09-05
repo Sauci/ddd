@@ -36,6 +36,10 @@ if TYPE_CHECKING:
 PLUGIN_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 """A plugin name is the key of its block, so it is a lowercase identifier."""
 
+BUILT_IN_ARTEFACTS: Final = ("c", "a2l", "all")
+"""What ``ddd generate`` produces on its own; a plugin's artefact is asked for by the plugin's
+name, so a plugin cannot be called any of these."""
+
 _CHECK_PATTERN: Final = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 """The grammar of the part after the separator: the grammar of a built-in identifier."""
 
@@ -102,6 +106,9 @@ class Plugin:
     def __post_init__(self) -> None:
         if not PLUGIN_NAME_PATTERN.match(self.name):
             msg = f"plugin name '{self.name}' is not a lowercase identifier"
+            raise ValueError(msg)
+        if self.name in BUILT_IN_ARTEFACTS:
+            msg = f"plugin name '{self.name}' is the name of a built-in artefact of ddd generate"
             raise ValueError(msg)
         prefix = f"{self.name}{PLUGIN_CHECK_SEPARATOR}"
         seen: set[str] = set()
@@ -200,20 +207,33 @@ def resolve_blocks(
     Validated against the plugin's model and dumped back to json, so defaults are filled in
     and two dumps compare on one shape. A block no loaded plugin owns, or one the plugin
     declares no model for, is carried as written: the loader has already reported it, and a
-    project that relaxed ``unknown-extension`` asked for exactly that.
+    project that relaxed ``unknown-extension`` asked for exactly that. On the project, every
+    plugin that declares a project model appears, with its defaults, whether or not the
+    project stated a block for it: the dictionary carries each plugin's settings.
     """
     resolved: dict[str, dict[str, Any]] = {}
-    for name in sorted(blocks):
-        plugin = plugins.get(name)
-        model = None if plugin is None else _model_of(plugin, on_project=on_project)
-        if model is None:
-            resolved[name] = dict(blocks[name])
-        else:
-            resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
-    return resolved
+    try:
+        for name in blocks:
+            plugin = plugins.get(name)
+            model = None if plugin is None else block_model(plugin, on_project=on_project)
+            if model is None:
+                resolved[name] = dict(blocks[name])
+            else:
+                resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+        if on_project:
+            for name, plugin in plugins.items():
+                if name not in resolved and plugin.project_model is not None:
+                    resolved[name] = plugin.project_model.model_validate({}).model_dump(mode="json")
+    except ValidationError as error:
+        # The loader has validated every block a run of the checks reaches; a hover resolves
+        # a project that did not read cleanly, and its blocks are then the plugin's problem.
+        msg = f"a block of plugin '{name}' does not validate: {error}"
+        raise PluginError(msg) from error
+    return dict(sorted(resolved.items()))
 
 
-def _model_of(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
+def block_model(plugin: Plugin, *, on_project: bool) -> type[BaseModel] | None:
+    """The model a plugin validates a block with: the project's, or a definition's."""
     return plugin.project_model if on_project else plugin.object_model
 
 

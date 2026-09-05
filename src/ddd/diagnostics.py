@@ -221,7 +221,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object of the baseline is gone; no component read it",
                comparison=True),
         _check("changed-storage", Severity.WARNING,
-               "the initial value, volatility or memory section of an object changed",
+               "the initial value, volatility, memory section or measurement raster of an "
+               "object changed",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
                "the physical limits of an object got tighter, so calibrated data may not fit",

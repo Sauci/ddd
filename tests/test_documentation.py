@@ -209,6 +209,11 @@ class TestTheCheckReference:
         )
         assert check in rows, f"the comparison table lists {sorted(rows)}"
 
+    def test_the_registry_describes_changed_storage_as_the_pages_do(self) -> None:
+        """``ddd checks`` prints the registry's one-liner; the raster joined the comparison
+        without joining it, so the tool and the pages disagreed on what the check covers."""
+        assert "raster" in CHECKS["changed-storage"].description
+
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
         """ "The five checks whose severity cannot be changed" went stale when two more joined.

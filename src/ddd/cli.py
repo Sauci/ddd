@@ -990,8 +990,10 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     attributed to this run, printed twice when both sides are the same tree, and would fail a
     clean project because of its predecessor. Its warnings are its own, however strict this
     run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
-    prefixed, so that a broken baseline is visible - and the comparison still runs on whatever
-    resolved, because a delivery that cannot be accepted still needs its differences listed.
+    prefixed, so that a broken baseline is visible. A candidate given as a dump is still
+    compared against whatever resolved, because a delivery that cannot be accepted still needs
+    its differences listed; a candidate given as a description is not analysed once the shared
+    bag holds an error, so a broken baseline stops that run at the errors.
     """
     own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
     resolved = _read_dictionary(path, own)

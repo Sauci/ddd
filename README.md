@@ -875,9 +875,11 @@ knowing:
   severities, odd float literals - live together in
   [tests/test_edge_cases.py](tests/test_edge_cases.py).
 
-Three more suites guard things a type checker cannot:
+Four more suites guard things a type checker cannot:
 [tests/test_backends.py](tests/test_backends.py) walks the import graph so the layering
-cannot rot, [tests/test_hardening.py](tests/test_hardening.py) holds one test per defect that
+cannot rot, [tests/test_cmake.py](tests/test_cmake.py) configures and builds the cmake module
+over the examples with the `cmake` the development requirements install,
+[tests/test_hardening.py](tests/test_hardening.py) holds one test per defect that
 once reached a customer-facing artefact or verdict, and
 [tests/test_documentation.py](tests/test_documentation.py) with
 [tests/test_transcripts.py](tests/test_transcripts.py) hold the documentation to the tool:

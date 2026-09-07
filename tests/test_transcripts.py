@@ -6,7 +6,7 @@ release. So every ``$ ddd ...`` command a page runs over the shipped examples is
 in a scratch copy of ``examples/``, and its output is compared line by line with the lines
 the page shows beneath it.
 
-Three conventions keep the transcripts honest without making them unreadable:
+Four conventions keep the transcripts honest without making them unreadable:
 
 * a line that is only ``...`` stands for any run of lines the page left out;
 * ``$ echo $?`` followed by a number pins the exit status of the command before it;
@@ -20,6 +20,15 @@ so a page may show a first run wherever its story needs one; ``updated`` and ``u
 runs see whatever the page's earlier commands left behind. A json file a command names
 that the examples do not ship - an address map, say - is written from the json block the
 page shows last before the command, which is where a reader would have copied it from.
+
+A page that builds its own project - the tutorial - writes it for the reader too: a json
+block whose introducing paragraph names exactly one ``*.ddd.json`` path in double backticks
+is that file. A page whose commands then name one of the files it wrote is building a
+project of its own, and every command of its transcripts runs, through ``bash`` in the
+page's own working directory, exactly as the reader types them - globs, redirections and
+``cp`` included. The commands over the shipped examples run in-process on every page, and a
+page quoting a shipped file under its own name, or naming files it never writes, has its
+other commands read as illustrations.
 """
 
 from __future__ import annotations
@@ -28,9 +37,12 @@ import contextlib
 import io
 import itertools
 import json
+import os
 import re
 import shlex
 import shutil
+import subprocess
+import sysconfig
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +59,9 @@ PAGES = [
 SHELL = re.compile(r"^(?P<indent>\s*)\$ (?P<command>.*)$")
 ELISION = "..."
 CHECKOUT = "/home/you/ddd"
+NAMED_FILE = re.compile(r"``([\w./-]+\.ddd\.json)``")
+SCRIPTS = Path(sysconfig.get_path("scripts"))
+"""Where ``ddd`` is installed for this interpreter, put first on the path of a shell run."""
 
 
 @dataclass
@@ -64,15 +79,22 @@ class Transcript:
         return f"{self.page.relative_to(ROOT)}:{self.line}"
 
     @property
-    def reproducible(self) -> bool:
-        """Whether the run needs nothing but the shipped examples.
+    def illustrative(self) -> bool:
+        """A trailing comment marks a run that depends on an edit the prose describes."""
+        return " #" in self.command
 
-        A command over a project the page builds in prose (a tutorial's files, a delivery
-        archive) cannot be re-run from here; one with a trailing comment is illustrative.
-        """
-        if " #" in self.command:
-            return False
+    @property
+    def over_the_examples(self) -> bool:
+        """Whether the run needs nothing but the shipped examples, and so runs on every page."""
         return "examples/" in self.command or self.command.split()[:2] == ["ddd", "checks"]
+
+    def mode(self, page_writes_files: bool) -> str | None:
+        """How to run this transcript: in this process, through a shell, or not at all."""
+        if self.illustrative:
+            return None
+        if self.over_the_examples and self.command.startswith("ddd "):
+            return "process"
+        return "shell" if page_writes_files else None
 
 
 def shell_segments(page: Path) -> list[tuple[int, str, list[str]]]:
@@ -106,13 +128,50 @@ def shell_segments(page: Path) -> list[tuple[int, str, list[str]]]:
 
 
 def transcripts(page: Path) -> list[Transcript]:
-    """The ``ddd`` runs of a page, each with the exit status the page pins, if it does."""
+    """The runs of a page, each with the exit status the page pins, if it does.
+
+    Every command is kept, ``ddd`` or not: a tutorial copies templates and lists them, and
+    the shell has to see those in order. ``echo $?`` is not a run of its own but the status
+    of the one before it.
+    """
     found: list[Transcript] = []
     for number, command, shown in shell_segments(page):
-        if command.startswith("ddd "):
-            found.append(Transcript(page, number, command, shown))
-        elif command == "echo $?" and found and shown and shown[0].strip().isdigit():
-            found[-1].status = int(shown[0])
+        if command == "echo $?":
+            if found and shown and shown[0].strip().isdigit():
+                found[-1].status = int(shown[0])
+            continue
+        found.append(Transcript(page, number, command, shown))
+    return found
+
+
+def written_files(page: Path) -> dict[str, str]:
+    """The description files a page writes for its reader, by the path the page names.
+
+    A json block is a file when the paragraph introducing it names exactly one ``*.ddd.json``
+    path in double backticks; a paragraph naming several names no single one.
+    """
+    lines = page.read_text(encoding="utf-8").splitlines()
+    found: dict[str, str] = {}
+    for number, text in enumerate(lines):
+        if text.strip() != ".. code-block:: json":
+            continue
+        end = number
+        while end > 0 and not lines[end - 1].strip():
+            end -= 1
+        start = end
+        while start > 0 and lines[start - 1].strip():
+            start -= 1
+        names = NAMED_FILE.findall(" ".join(lines[start:end]))
+        if len(names) != 1 or names[0].startswith("examples/"):
+            continue  # several files named, or a shipped one quoted
+        body: list[str] = []
+        for line in lines[number + 1 :]:
+            if line.strip() and not line.startswith("   "):
+                break
+            body.append(line[3:])
+        content = "\n".join(body).strip() + "\n"
+        json.loads(content)  # the page has to show valid json
+        found[names[0]] = content
     return found
 
 
@@ -149,6 +208,8 @@ def prepare(transcript: Transcript, cwd: Path) -> None:
     for previous, argument in zip(["", *arguments[:-1]], arguments, strict=True):
         if previous in ("-o", "--output-dir") or not argument.endswith(".json"):
             continue
+        if any(character in argument for character in "*?["):
+            continue  # a glob names files that exist already, for the shell to expand
         target = cwd / argument
         if not target.exists() and not argument.startswith("examples/"):
             block = json_block_before(transcript.page, transcript.line)
@@ -158,27 +219,67 @@ def prepare(transcript: Transcript, cwd: Path) -> None:
                 target.write_text(block, encoding="utf-8")
 
 
-def run(
-    transcript: Transcript, cwd: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[list[str], int]:
-    """Runs the command as the page shows it, output and findings merged as a terminal would."""
-    prepare(transcript, cwd)
-    monkeypatch.chdir(cwd)
-    stream = io.StringIO()
-    with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
-        try:
-            status = main(shlex.split(transcript.command)[1:])
-        except SystemExit as usage_error:  # argparse refusing the command line
-            status = int(usage_error.code or 0)
-    # The tool prints paths in posix form on every platform, so both spellings of the
-    # scratch directory stand for the reader's checkout: the native one and the posix one.
+def normalized(text: str, cwd: Path) -> list[str]:
+    """The printed lines as a page shows them, the scratch directory standing for the checkout.
+
+    The tool prints paths in posix form on every platform, so both spellings of the directory
+    are replaced: the native one and the posix one.
+    """
     printed = [
         line.rstrip().replace(str(cwd), CHECKOUT).replace(cwd.as_posix(), CHECKOUT)
-        for line in stream.getvalue().splitlines()
+        for line in text.splitlines()
     ]
     while printed and not printed[-1]:
         printed.pop()
-    return printed, status
+    return printed
+
+
+def run(
+    transcript: Transcript, cwd: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], int]:
+    """Runs a ``ddd`` command in this process, output and findings merged as a terminal would.
+
+    ``> file`` sends the payload where the page sends it - an archived dump, say - and the
+    terminal then shows the findings alone, which is what the page shows too.
+    """
+    prepare(transcript, cwd)
+    monkeypatch.chdir(cwd)
+    command, _, target = transcript.command.partition(" > ")
+    stream, payload = io.StringIO(), io.StringIO()
+    with (
+        contextlib.redirect_stdout(payload if target else stream),
+        contextlib.redirect_stderr(stream),
+    ):
+        try:
+            status = main(shlex.split(command)[1:])
+        except SystemExit as usage_error:  # argparse refusing the command line
+            status = int(usage_error.code or 0)
+    if target:
+        (cwd / target.strip()).write_text(payload.getvalue(), encoding="utf-8")
+    return normalized(stream.getvalue(), cwd), status
+
+
+def run_in_shell(transcript: Transcript, cwd: Path) -> tuple[list[str], int]:
+    """Runs a command as the reader types it, through bash, in the page's own directory."""
+    bash = shutil.which("bash")
+    assert bash is not None, "the tutorial's transcripts are shell sessions; bash is needed"
+    prepare(transcript, cwd)
+    environment = {
+        **os.environ,
+        "PATH": f"{SCRIPTS}{os.pathsep}{os.environ.get('PATH', '')}",
+        "PYTHONPATH": str(ROOT / "src"),
+        "PYTHONUTF8": "1",
+    }
+    completed = subprocess.run(
+        [bash, "-c", transcript.command],
+        cwd=cwd,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    return normalized(completed.stdout, cwd), completed.returncode
 
 
 def matches(shown: list[str], printed: list[str]) -> bool:
@@ -212,7 +313,16 @@ def matches(shown: list[str], printed: list[str]) -> bool:
     return shown[-1].strip() == ELISION or position == len(printed)
 
 
-RUNS = {page: [t for t in transcripts(page) if t.reproducible] for page in PAGES}
+FILES = {page: written_files(page) for page in PAGES}
+
+
+def builds_its_own_project(page: Path) -> bool:
+    """Whether a page's commands run over files it wrote, which is what opts it into a shell."""
+    return any(name in t.command for name in FILES[page] for t in transcripts(page))
+
+
+BUILDS = {page: builds_its_own_project(page) for page in PAGES}
+RUNS = {page: [t for t in transcripts(page) if t.mode(BUILDS[page]) is not None] for page in PAGES}
 
 
 @pytest.mark.parametrize(
@@ -225,9 +335,15 @@ def test_every_documented_run_prints_what_the_page_shows(
 ) -> None:
     """One scratch copy of the examples per page; the page's runs happen in its order."""
     shutil.copytree(ROOT / "examples", tmp_path / "examples")
+    for name, content in FILES[page].items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(content, encoding="utf-8")
     complaints: list[str] = []
     for transcript in RUNS[page]:
-        printed, status = run(transcript, tmp_path, monkeypatch)
+        if transcript.mode(BUILDS[page]) == "process":
+            printed, status = run(transcript, tmp_path, monkeypatch)
+        else:
+            printed, status = run_in_shell(transcript, tmp_path)
         if not matches(transcript.shown, printed):
             shown = "\n".join(transcript.shown)
             complaints.append(

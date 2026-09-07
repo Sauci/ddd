@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Controller",
+    "description": "Closes the pressure loop",
+    "interface": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "PressureRaw",
+          "kind": "measurement",
+          "description": "Manifold pressure",
+          "datatype": "uint32",
+          "unit": "kPa",
+          "conversion": {
+            "factor": 0.1
+          },
+          "limits": {
+            "min": 0,
+            "max": 400
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "output",
+        "definition": {
+          "name": "ValveDuty",
+          "id": "4tnm8r7mst6h",
+          "kind": "measurement",
+          "description": "Commanded valve duty cycle",
+          "datatype": "uint8",
+          "unit": "%",
+          "conversion": {
+            "factor": 0.5
+          },
+          "limits": {
+            "min": 0,
+            "max": 80
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
+          "name": "AmbientPressure",
+          "kind": "measurement",
+          "description": "Ambient pressure",
+          "datatype": "uint16",
+          "unit": "kPa",
+          "conversion": {
+            "factor": 0.1
+          },
+          "limits": {
+            "min": 0,
+            "max": 120
+          },
+          "volatile": false
+        }
+      }
+    ]
+  }
+}

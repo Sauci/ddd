@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Actuator",
+    "description": "Drives the valve",
+    "interface": [
+      {
+        "scope": "input",
+        "definition": {
+          "name": "SupplyVoltage",
+          "kind": "measurement",
+          "description": "Sensor supply voltage",
+          "datatype": "uint16",
+          "unit": "V",
+          "conversion": {
+            "factor": 0.001
+          },
+          "limits": {
+            "min": 0,
+            "max": 16
+          },
+          "volatile": false
+        }
+      }
+    ]
+  }
+}

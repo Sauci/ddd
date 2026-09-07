@@ -157,7 +157,7 @@ documentation ever refers to <code class="docutils literal notranslate"><span cl
 <p>The examples of this documentation live in the source distribution rather than in the wheel,
 and while evaluating the tool it is often convenient not to install anything at all. From a
 checkout or an unpacked sdist, the package runs directly out of <code class="docutils literal notranslate"><span class="pre">src</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ PYTHONPATH=src python -m ddd --version
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ PYTHONPATH=src python -m ddd --version  # from a checkout of the sources
 ddd 0.8.0
 </pre></div>
 </div>
@@ -191,8 +191,9 @@ prescribed; it merely lets the project file collect its members with a single pa
 </div>
 <section id="the-project-description">
 <h3>The project description<a class="headerlink" href="#the-project-description" title="Link to this heading"></a></h3>
-<p>A project is a name and a list of members. It carries no data of its own, because the data
-belongs to the components, and it is the file a build script points DDD at.</p>
+<p><code class="docutils literal notranslate"><span class="pre">thermostat.ddd.json</span></code>, the project, is a name and a list of members. It carries no data of
+its own, because the data belongs to the components, and it is the file a build script points
+DDD at.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Thermostat"</span><span class="p">,</span>
@@ -607,7 +608,7 @@ produced from the linker output and writes the real addresses straight away.</p>
 <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> in <code class="docutils literal notranslate"><span class="pre">components/controller.ddd.json</span></code> from <code class="docutils literal notranslate"><span class="pre">sint16</span></code> to <code class="docutils literal notranslate"><span class="pre">uint16</span></code> - the
 kind of change that happens when a signal is reworked in one component and the other one is not
 told - and check the project again:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check thermostat.ddd.json  # after the edit
 components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
@@ -635,7 +636,7 @@ rather than something the c compiler will ever see.</p>
 <p>Nothing was generated during that run. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs the checks first and writes no file
 at all when one of them fails, because half-generated sources that describe a project nobody
 agreed on are worse than no sources:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen2 -t templates
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen2 -t templates  # after the edit
 components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion

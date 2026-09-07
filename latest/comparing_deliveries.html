@@ -154,12 +154,12 @@ from another company as a binary with an a2l next to it.</p>
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes it as a single self-contained json document, with every value already
 worked out: the shape of each object, the limits (as given, or as derived from the datatype
 and the conversion), the owning component and the list of components that read it.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>dump<span class="w"> </span>release/pressure.ddd.json<span class="w"> </span>&gt;<span class="w"> </span>release/PressureLoop-1.4.0.json
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ddd<span class="w"> </span>dump<span class="w"> </span>examples/pressure/release/pressure.ddd.json<span class="w"> </span>&gt;<span class="w"> </span>examples/pressure/release/PressureLoop-1.4.0.json
 </pre></div>
 </div>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ValveDuty"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"zrf3esw29w6y"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4tnm8r7mst6h"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"extensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
 <span class="w">  </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
@@ -387,8 +387,9 @@ decision, rather than a build being failed on a suspicion.</p>
 <p>The example below is a small project called <code class="docutils literal notranslate"><span class="pre">PressureLoop</span></code>, with three components: a
 <code class="docutils literal notranslate"><span class="pre">Sensor</span></code> producing the raw measurements, a <code class="docutils literal notranslate"><span class="pre">Controller</span></code> computing a valve duty cycle from
 them, and an <code class="docutils literal notranslate"><span class="pre">Actuator</span></code> consuming that duty cycle. The layout is the ordinary one, a
-project file next to a directory of components:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>release/
+project file next to a directory of components, and the deliveries of the story ship with
+DDD under <code class="docutils literal notranslate"><span class="pre">examples/pressure</span></code>, so every command below runs as shown from a checkout:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>examples/pressure/release/
   pressure.ddd.json           the project
   components/
     sensor.ddd.json
@@ -399,7 +400,8 @@ project file next to a directory of components:</p>
 <section id="the-delivery-that-went-out">
 <h3>The delivery that went out<a class="headerlink" href="#the-delivery-that-went-out" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">Sensor</span></code> publishes three measurements and keeps one calibration parameter to itself - shown
-here as written, before the identities of the release were assigned:</p>
+here as it ships, identities included, without the <code class="docutils literal notranslate"><span class="pre">$schema</span></code> line that binds every shipped
+file to its schema for the editor’s benefit:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"component"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sensor"</span><span class="p">,</span>
@@ -408,12 +410,18 @@ here as written, before the identities of the release were assigned:</p>
 <span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PressureRaw"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jh24xz65w9hs"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Manifold pressure"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kPa"</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span>
+<span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">},</span>
@@ -421,12 +429,18 @@ here as written, before the identities of the release were assigned:</p>
 <span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TemperatureRaw"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"nb1f98w9yt2v"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Manifold temperature"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sint16"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"degC"</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">-40</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">150</span>
+<span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">},</span>
@@ -434,12 +448,18 @@ here as written, before the identities of the release were assigned:</p>
 <span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"SupplyVoltage"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wcvef190n8h6"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"measurement"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Sensor supply voltage"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint16"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"V"</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span>
+<span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">},</span>
@@ -447,62 +467,65 @@ here as written, before the identities of the release were assigned:</p>
 <span class="w">        </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"definition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FilterGain"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cxf129crsj6e"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parameter"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Low pass gain of the pressure signal"</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"datatype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"uint8"</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"conversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"factor"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"init"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
 <span class="w">          </span><span class="nt">"volatile"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">      </span><span class="p">}</span>
-<span class="w">    </span><span class="p">]</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Reads the manifold sensors"</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">Controller</span></code> reads <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> and <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> and produces <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code>
 (<code class="docutils literal notranslate"><span class="pre">uint8</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>, factor 0.5, limits 0 to 100); <code class="docutils literal notranslate"><span class="pre">Actuator</span></code> reads <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> and
-<code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code>. Before the release goes out, its producing declarations are given their
-identities - once, and for good, since the identity is what lets a later delivery rename an
-object without the comparison reporting a removal and an unrelated addition (<a class="reference internal" href="#renames">Renames</a>
-above):</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd id --assign release/components/*.ddd.json
-wrote 5 ids
-</pre></div>
-</div>
-<p>The project is consistent, so it is released, and its dictionary is archived under the name of
-the release:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check release/pressure.ddd.json
+<code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code>. The producing declarations carry their identities, written by
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> before the release went out - once, and for good, since the identity is
+what lets a later delivery rename an object without the comparison reporting a removal and an
+unrelated addition (<a class="reference internal" href="#renames">Renames</a> above). The project is consistent, so it is released, and its
+dictionary is archived under the name of the release:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/pressure/release/pressure.ddd.json
 ok: 5 variables in 3 components are consistent
 
-$ ddd dump release/pressure.ddd.json &gt; release/PressureLoop-1.4.0.json
+$ ddd dump examples/pressure/release/pressure.ddd.json &gt; examples/pressure/release/PressureLoop-1.4.0.json
 </pre></div>
 </div>
 </section>
 <section id="the-delivery-that-wants-to-replace-it">
 <h3>The delivery that wants to replace it<a class="headerlink" href="#the-delivery-that-wants-to-replace-it" title="Link to this heading"></a></h3>
-<p>Development continues in <code class="docutils literal notranslate"><span class="pre">work/</span></code> - a copy of <code class="docutils literal notranslate"><span class="pre">release/</span></code>, so it carries the same
-identities - and by the time the next delivery is prepared five things have changed. <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> was widened from <code class="docutils literal notranslate"><span class="pre">uint16</span></code> to <code class="docutils literal notranslate"><span class="pre">uint32</span></code> to leave room for a
-finer resolution later. <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> was dropped, because the controller now reads the
-temperature over the bus instead. The limits of <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> were tightened from 0 .. 100 to
-0 .. 80, to protect a valve that turned out not to like being driven fully open. The limits
-of <code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code> were relaxed from 0 .. 16 to 0 .. 18, so that an 18 V supply variant fits.
-And a new measurement, <code class="docutils literal notranslate"><span class="pre">AmbientPressure</span></code>, was added, which <code class="docutils literal notranslate"><span class="pre">Controller</span></code> reads; being new,
-it was given an identity of its own by a second <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code>, which leaves the existing
-ones alone.</p>
+<p>Development continues in <code class="docutils literal notranslate"><span class="pre">work/</span></code> (shipped as <code class="docutils literal notranslate"><span class="pre">examples/pressure/work</span></code>) - a copy of
+<code class="docutils literal notranslate"><span class="pre">release/</span></code>, so it carries the same identities - and by the time the next delivery is
+prepared five things have changed. <code class="docutils literal notranslate"><span class="pre">PressureRaw</span></code> was widened from <code class="docutils literal notranslate"><span class="pre">uint16</span></code> to <code class="docutils literal notranslate"><span class="pre">uint32</span></code>
+to leave room for a finer resolution later. <code class="docutils literal notranslate"><span class="pre">TemperatureRaw</span></code> was dropped, because the
+controller now reads the temperature over the bus instead. The limits of <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> were
+tightened from 0 .. 100 to 0 .. 80, to protect a valve that turned out not to like being
+driven fully open. The limits of <code class="docutils literal notranslate"><span class="pre">SupplyVoltage</span></code> were relaxed from 0 .. 16 to 0 .. 18, so
+that an 18 V supply variant fits. And a new measurement, <code class="docutils literal notranslate"><span class="pre">AmbientPressure</span></code>, was added,
+which <code class="docutils literal notranslate"><span class="pre">Controller</span></code> reads; being new, it was given an identity of its own by a second
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code>, which leaves the existing ones alone.</p>
 <p>Each of those is a defensible change, and the candidate passes the consistency checks exactly
 as its predecessor did, because the components were all updated together:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/pressure/work/pressure.ddd.json
 ok: 5 variables in 3 components are consistent
 </pre></div>
 </div>
 <p>Against the archived dictionary, the same five changes look rather different:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json
+examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
 2 errors, 1 warning, 1 info
 pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 </pre></div>
@@ -522,8 +545,8 @@ project share its name and naming the projects would print the same word twice.<
 <h3>An object that nobody read<a class="headerlink" href="#an-object-that-nobody-read" title="Link to this heading"></a></h3>
 <p>Suppose instead that the only change is the removal of <code class="docutils literal notranslate"><span class="pre">FilterGain</span></code>, the calibration
 parameter that <code class="docutils literal notranslate"><span class="pre">Sensor</span></code> declared <code class="docutils literal notranslate"><span class="pre">local</span></code> and that therefore no other component ever read:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-work/pressure.ddd.json: warning[removed-unused-object]: 'FilterGain' is gone; no component read it, but a calibration dataset or an external tool still might
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # the candidate without FilterGain
+examples/pressure/work/pressure.ddd.json: warning[removed-unused-object]: 'FilterGain' is gone; no component read it, but a calibration dataset or an external tool still might
 1 warning
 pressure.ddd.json can replace PressureLoop-1.4.0.json
 </pre></div>
@@ -540,13 +563,13 @@ says so in as many words, and the decision is left to the reader.</p>
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span></code> runs the consistency checks and the comparison over the same
 resolved dictionary, and reports everything in one list. Here the five-change candidate
 additionally reads a <code class="docutils literal notranslate"><span class="pre">ValvePosition</span></code> that nobody produces:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json --baseline release/PressureLoop-1.4.0.json
-work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
-work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
-work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/pressure/work/pressure.ddd.json --baseline examples/pressure/release/PressureLoop-1.4.0.json  # the candidate also reading ValvePosition
+examples/pressure/work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
+examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
+examples/pressure/work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
 3 errors, 1 warning, 2 infos
 </pre></div>
 </div>
@@ -568,8 +591,8 @@ more. A calibration dataset written against the baseline can hold a value outsid
 range, an operator can have a test case that drives the signal there, and a calibration tool
 will refuse the write or clip it. Neither the compiler nor the linker has anything to say
 about it, which is exactly why the tool must:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw's limits narrowed to 0 .. 250 instead
+examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
 1 warning
 pressure.ddd.json can replace PressureLoop-1.4.0.json
 </pre></div>
@@ -597,7 +620,7 @@ wrong by a constant factor. Suppose the resolution of <code class="docutils lite
 what the new raw range can express. The datatype is untouched, so every consumer still
 compiles and every access is still to a two-byte object at the same address. The project is
 internally consistent, because all its components were updated together:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check work/pressure.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/pressure/work/pressure.ddd.json  # PressureRaw rescaled to a factor of 0.01 instead
 ok: 5 variables in 3 components are consistent
 </pre></div>
 </div>
@@ -605,8 +628,8 @@ ok: 5 variables in 3 components are consistent
 previous delivery, a logged measurement file, a test limit written into a test bench and a
 threshold in a diagnostic tool now all mean ten times what they used to. The comparison is
 the only place where that can be caught, so it is an error and not a warning:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (conversion: linear(factor=0.01, offset=0) != linear(factor=0.1, offset=0)), read by Controller
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw rescaled to a factor of 0.01 instead
+examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (conversion: linear(factor=0.01, offset=0) != linear(factor=0.1, offset=0)), read by Controller
 1 error
 pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 </pre></div>
@@ -630,12 +653,12 @@ formed report of hundreds of removals and changes that means nothing at all, and
 lost to reading it is the point of the <code class="docutils literal notranslate"><span class="pre">project-mismatch</span></code> warning. Two deliveries of one
 project share the project name, so when the two sides name different projects, the most
 likely explanation is that the wrong file was picked up:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json
-work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
-work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
-work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # the candidate renamed AirLoop
+examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+examples/pressure/work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
+examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
 2 errors, 2 warnings, 1 info
 pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 </pre></div>
@@ -645,8 +668,8 @@ renaming a project is a legitimate thing to do and the report is then exactly wh
 wants. It is reported before any object is compared, and among the warnings it comes first,
 because it should be looked at before anything below it is believed.</p>
 <p>A baseline that cannot be read at all is a different matter, and it stops the run:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.3.0.json work/pressure.ddd.json
-release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'release/PressureLoop-1.3.0.json' does not exist
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.3.0.json examples/pressure/work/pressure.ddd.json
+examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'examples/pressure/release/PressureLoop-1.3.0.json' does not exist
 1 error
 </pre></div>
 </div>
@@ -662,14 +685,15 @@ this run’s business. Reported here they would be attributed to the candidate, 
 appear twice whenever both sides are the same tree, and a clean delivery could be failed
 because of the state of its predecessor.</p>
 <p>Its warnings and infos are therefore collected in a bag of their own and dropped. Here is an
-older working tree whose <code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> was read by nobody:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check v1.3/pressure.ddd.json
-v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
+older working tree - the 1.3 delivery, shipped as <code class="docutils literal notranslate"><span class="pre">examples/pressure/v1.3</span></code> - whose
+<code class="docutils literal notranslate"><span class="pre">ValveDuty</span></code> was read by nobody:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/pressure/v1.3/pressure.ddd.json
+examples/pressure/v1.3/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValveDuty' is written by component 'Controller' but read by nobody
 1 warning
 </pre></div>
 </div>
 <p>Used as the baseline of a comparison, that warning does not reappear:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare v1.3/pressure.ddd.json release/pressure.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/v1.3/pressure.ddd.json examples/pressure/release/pressure.ddd.json
 pressure.ddd.json can replace pressure.ddd.json
 </pre></div>
 </div>
@@ -692,9 +716,9 @@ the report is the whole of stdout and the verdict line is dropped, since a json 
 a job is about to parse must not have a sentence appended to it.</p>
 <p>Severities are tuned the same way as everywhere else, so a project that has decided a
 narrowing is acceptable but wants the new objects out of its build log can say so:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare release/PressureLoop-1.4.0.json work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
-work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
-work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
+examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
+examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
 2 errors
 pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 </pre></div>

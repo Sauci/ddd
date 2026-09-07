@@ -366,8 +366,11 @@ the analysis and contract types; the fix was deleting them, not writing tests fo
 the paths that only a coverage run reaches - unreadable files, malformed json, relaxed
 severities, odd float literals - are collected in <code class="docutils literal notranslate"><span class="pre">tests/test_edge_cases.py</span></code> rather than
 being scattered through the suite that describes behaviour.</p>
-<p>Three suites guard things a type checker cannot. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> walks the import
-graph, as described above. <code class="docutils literal notranslate"><span class="pre">tests/test_hardening.py</span></code> holds one test per defect that once
+<p>Four suites guard things a type checker cannot. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> walks the import
+graph, as described above. <code class="docutils literal notranslate"><span class="pre">tests/test_cmake.py</span></code> configures and builds the cmake module -
+over the shipped example, over a collected project naming a plugin and over a hand written
+one - with the <code class="docutils literal notranslate"><span class="pre">cmake</span></code> the development requirements install, so that the module is held to
+what it does rather than to what it says. <code class="docutils literal notranslate"><span class="pre">tests/test_hardening.py</span></code> holds one test per defect that once
 reached a customer-facing artefact or verdict - a transposed a2l array, a header that does
 not compile, a legal name rejected, a description file that ended the run with a python
 traceback - grouped by what was at stake rather than by module. <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code>

@@ -37,6 +37,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
+    Datatype,
     EnumConversion,
     is_reserved_identifier,
     spelled_dimensions,
@@ -61,6 +62,11 @@ _CONSTANT_ENTRIES: Final = re.compile(r"^(?:component\.)?constants\[")
 _INCLUDES: Final = "project.includes["
 
 _DIMENSION_KEY: Final = re.compile(r"^(?:dimensions\[\d+\]|size)$")
+
+_TYPE_NAME: Final = re.compile(r"^(?:component\.)?types\[\d+\]\.name$")
+_CONSTANT_NAME: Final = re.compile(r"^(?:component\.)?constants\[\d+\]\.name$")
+
+_BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
 
 
@@ -375,7 +381,43 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     return []
 
 
-def rename_problem(built: Index, name: str) -> str | None:
+def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
+    """What a rename may start from at this position: its kind and its name, or nothing.
+
+    A variable, from its name or from a reference naming it; a declared type, from the
+    ``name`` of its entry or from any ``typename`` spelling it; a declared constant, from the
+    ``name`` of its entry or from any dimension or axis ``size`` spelling it. Narrow on
+    purpose, like :func:`variable_at`: the editor opens its box over the range this names.
+    """
+    value = document.value_at(pointer)
+    if not isinstance(value, str):
+        return None
+    variable = variable_at(document, pointer)
+    if variable is not None:
+        return ("variable", variable)
+    if _key(pointer) == "typename" or _TYPE_NAME.match(pointer):
+        return ("type", value)
+    if _DIMENSION_KEY.match(_key(pointer)) or _CONSTANT_NAME.match(pointer):
+        return ("constant", value)
+    return None
+
+
+def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
+    """Every string a rename of this kind has to rewrite, the declaration included.
+
+    A variable's mentions are indexed as strings already. A type or a constant is indexed by
+    its entry and by the places spelling it, so its own ``name`` is added here; a name nothing
+    declares - a ``typename`` the loader has already reported - renames its uses alone.
+    """
+    if kind == "variable":
+        return list(built.mentions.get(name, ()))
+    declared = (built.types if kind == "type" else built.constants).get(name)
+    uses = (built.type_uses if kind == "type" else built.constant_uses).get(name, ())
+    own = [] if declared is None else [Site(declared.path, f"{declared.pointer}.name")]
+    return [*own, *uses]
+
+
+def rename_problem(built: Index, name: str, kind: str = "variable") -> str | None:
     """Why the project may not be renamed to ``name``, or nothing if it may.
 
     Checked before a single file is touched. A rename writes into every component that
@@ -385,6 +427,10 @@ def rename_problem(built: Index, name: str) -> str | None:
     """
     if not re.fullmatch(C_IDENTIFIER_PATTERN, name) or len(name) > IDENTIFIER_MAX_LENGTH:
         return f"'{name}' is not a usable c identifier"
+    if kind == "type" and name.lower() in _BASE_DATATYPES:
+        # The loader refuses a declared type wearing the name of storage it is not; the rename
+        # has to refuse it first, or the files it rewrote would not load.
+        return f"'{name}' spells a base datatype, which a declared type may not be called"
     if is_reserved_identifier(name):
         return f"'{name}' is reserved by c or by a header DDD generates"
     if name in built.declarations:
@@ -409,9 +455,9 @@ def rename_edits(
     Only the characters between the quotes are replaced, so whatever else is on the line -
     the key, the spacing a project formats its files with - is left exactly as it was.
     """
-    subject = variable_at(document, pointer)
+    subject = renameable_at(document, pointer)
     changes: dict[str, list[dict[str, Any]]] = {}
-    for site in built.mentions.get(subject or "", ()):
+    for site in rename_sites(built, *subject) if subject is not None else ():
         span = read(site.path, cache).text_range_of(site.pointer)
         if span is not None:
             changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})

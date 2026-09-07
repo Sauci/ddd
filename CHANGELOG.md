@@ -10,6 +10,12 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **Renaming a type or a constant from the editor.**  `F2` on the `name` of a declared type
+  or on any `typename` spelling it rewrites the declaration and every definition and member
+  naming it; on a declared constant or any dimension or axis `size` spelling it, the
+  declaration and every dimension.  The refusals are the variables' - a reserved or unusable
+  name, one the project already uses - plus a type name spelling a base datatype.
+
 * **Plugins in the build.**  `ddd sources` lists the modules of the plugins a project names
   beside its description files, each by the file it was imported from, so a build re-runs the
   generation when a plugin changes.  `ddd generate all` produces the artefact of every plugin

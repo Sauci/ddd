@@ -1653,6 +1653,151 @@ class TestRename:
         assert '"name": "X"' in rewritten
         assert json.loads(rewritten)  # still json, quotes intact
 
+    def vocabulary(self, tmp_path: Path) -> Path:
+        """A type nested by a member and two declarations, and a constant sizing two arrays."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P", "types.ddd.json", "constants.ddd.json", "a.ddd.json", "b.ddd.json"
+                ),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "scalar",
+                            "name": "Temp_t",
+                            "datatype": "uint16",
+                            "unit": "degC",
+                            "conversion": {"factor": 0.1},
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Sensor_t",
+                            "members": [
+                                {"name": "value", "member": "value", "typename": "Temp_t"},
+                                {
+                                    "name": "history",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "dimensions": ["N"],
+                                },
+                            ],
+                        },
+                    ]
+                },
+                "constants.ddd.json": {"constants": [{"name": "N", "value": 4}]},
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Inlet", typename="Sensor_t"),
+                    declare("output", "Buf", "uint8", dimensions=["N"]),
+                ),
+                "b.ddd.json": component("B", declare("input", "Inlet", typename="Sensor_t")),
+            },
+        )
+        return tmp_path / "p.ddd.json"
+
+    def renamed(self, tmp_path: Path, source: str, pointer: str, name: str) -> dict[str, str]:
+        """The files a rename from this position rewrites, by name, with the edits applied."""
+        from ddd.lsp.navigation import rename_edits
+
+        root = self.vocabulary(tmp_path)
+        path = tmp_path / source
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(self.index_of(root), read(path, cache), pointer, name, cache)
+        return {
+            uri_to_path(uri).name: apply_edits(uri_to_path(uri), found)
+            for uri, found in edits.items()
+        }
+
+    @pytest.mark.parametrize(
+        ("source", "pointer"),
+        [
+            ("types.ddd.json", "types[1].name"),
+            ("b.ddd.json", "component.interface[0].definition.typename"),
+        ],
+    )
+    def test_a_type_is_renamed_where_it_is_declared_and_wherever_it_is_named(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        """From its declaration or from any typename spelling it: the same three files."""
+        rewritten = self.renamed(tmp_path, source, pointer, "Probe_t")
+        assert set(rewritten) == {"types.ddd.json", "a.ddd.json", "b.ddd.json"}
+        assert json.loads(rewritten["types.ddd.json"])["types"][1]["name"] == "Probe_t"
+        for name in ("a.ddd.json", "b.ddd.json"):
+            interface = json.loads(rewritten[name])["component"]["interface"]
+            assert interface[0]["definition"]["typename"] == "Probe_t"
+            assert "Sensor_t" not in rewritten[name]
+
+    def test_a_type_a_member_nests_is_renamed_in_the_member_too(self, tmp_path: Path) -> None:
+        rewritten = self.renamed(tmp_path, "types.ddd.json", "types[1].members[0].typename", "T_t")
+        types = json.loads(rewritten["types.ddd.json"])["types"]
+        assert types[0]["name"] == "T_t"
+        assert types[1]["members"][0]["typename"] == "T_t"
+        assert set(rewritten) == {"types.ddd.json"}
+
+    @pytest.mark.parametrize(
+        ("source", "pointer"),
+        [
+            ("constants.ddd.json", "constants[0].name"),
+            ("a.ddd.json", "component.interface[1].definition.dimensions[0]"),
+            ("types.ddd.json", "types[1].members[1].dimensions[0]"),
+        ],
+    )
+    def test_a_constant_is_renamed_where_it_is_declared_and_in_every_dimension(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        rewritten = self.renamed(tmp_path, source, pointer, "SLOTS")
+        assert set(rewritten) == {"constants.ddd.json", "a.ddd.json", "types.ddd.json"}
+        assert json.loads(rewritten["constants.ddd.json"])["constants"][0]["name"] == "SLOTS"
+        buffer = json.loads(rewritten["a.ddd.json"])["component"]["interface"][1]["definition"]
+        assert buffer["dimensions"] == ["SLOTS"]
+        member = json.loads(rewritten["types.ddd.json"])["types"][1]["members"][1]
+        assert member["dimensions"] == ["SLOTS"]
+
+    def test_a_type_nothing_declares_renames_its_uses_alone(self, tmp_path: Path) -> None:
+        """The loader has reported unknown-type already; the rename keeps the files agreeing."""
+        from ddd.lsp.navigation import rename_edits
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Inlet", typename="Ghost_t")),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            self.index_of(tmp_path / "p.ddd.json"),
+            read(path, cache),
+            "component.interface[0].definition.typename",
+            "Seen_t",
+            cache,
+        )
+        assert {uri_to_path(uri).name for uri in edits} == {"a.ddd.json"}
+
+    def test_a_position_holding_a_number_starts_no_rename(self, tmp_path: Path) -> None:
+        """A constant's value is a number; a rename box over it would rename nothing."""
+        from ddd.lsp.navigation import rename_edits, renameable_at
+
+        root = self.vocabulary(tmp_path)
+        path = tmp_path / "constants.ddd.json"
+        document = read(path, {})
+        assert renameable_at(document, "constants[0].value") is None
+        assert rename_edits(self.index_of(root), document, "constants[0].value", "X", {}) == {}
+
+    def test_a_type_may_not_be_renamed_to_a_base_datatype_spelling(self, tmp_path: Path) -> None:
+        """The loader refuses UINT16 as a type name, so the rename has to, before writing."""
+        from ddd.lsp.navigation import rename_problem
+
+        built = self.index_of(self.vocabulary(tmp_path))
+        assert rename_problem(built, "UINT16", "type") is not None
+        assert "base datatype" in str(rename_problem(built, "UINT16", "type"))
+        assert rename_problem(built, "Probe_t", "type") is None
+        # A variable may still not take a type's name, and a type may not take a variable's.
+        assert "already" in str(rename_problem(built, "Inlet", "type"))
+
     def test_a_rename_from_a_position_naming_nothing_edits_nothing(self, tmp_path: Path) -> None:
         from ddd.lsp.navigation import rename_edits
 
@@ -2884,6 +3029,76 @@ class TestServer:
         ).run()
         (answer,) = sent(writer)
         assert answer["result"]["placeholder"] == "Shared"
+
+    def vocabulary_workspace(self, tmp_path: Path) -> Path:
+        """A types file whose structure two components name, and a constant they size by."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json", "constants.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Sensor_t",
+                            "members": [
+                                {
+                                    "name": "v",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "constants.ddd.json": {"constants": [{"name": "N", "value": 4}]},
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Inlet", typename="Sensor_t"),
+                    declare("output", "Buf", "uint8", dimensions=["N"]),
+                ),
+            },
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        ("source", "pointer", "placeholder"),
+        [
+            ("types.ddd.json", "types[0].name", "Sensor_t"),
+            ("a.ddd.json", "component.interface[0].definition.typename", "Sensor_t"),
+            ("constants.ddd.json", "constants[0].name", "N"),
+            ("a.ddd.json", "component.interface[1].definition.dimensions[0]", "N"),
+        ],
+    )
+    def test_preparing_a_rename_of_a_type_or_a_constant_says_where_the_box_goes(
+        self, tmp_path: Path, source: str, pointer: str, placeholder: str
+    ) -> None:
+        base = self.vocabulary_workspace(tmp_path)
+        path = base / source
+        position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
+        writer = io.BytesIO()
+        Server(
+            framed(self.navigation_request("textDocument/prepareRename", path, position)),
+            writer,
+            root=base,
+        ).run()
+        (answer,) = sent(writer)
+        assert answer["result"]["placeholder"] == placeholder
+
+    def test_renaming_a_type_rewrites_its_declaration_and_every_typename(
+        self, tmp_path: Path
+    ) -> None:
+        base = self.vocabulary_workspace(tmp_path)
+        writer = io.BytesIO()
+        Server(
+            framed(self.rename_request(base / "types.ddd.json", "types[0].name", "Probe_t")),
+            writer,
+            root=base,
+        ).run()
+        (answer,) = sent(writer)
+        changed = {uri_to_path(uri).name for uri in answer["result"]["changes"]}
+        assert changed == {"types.ddd.json", "a.ddd.json"}
 
     @pytest.mark.parametrize(
         "pointer", ["component.interface[0].definition.datatype", "component.name"]

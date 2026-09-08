@@ -993,17 +993,25 @@ one on the project, and contributing checks, comparison rules and an artefact of
   over the project, and in the language server whenever a file of the project is opened or
   saved, and whenever the server reads the project description to find out whether it
   includes an opened file
-  ([section 7.2](#72-editor-integration)). A module that cannot be found is
-  `plugin-not-found`; one that raises on import, exposes no `PLUGIN`, exposes a malformed
-  one, or claims a name another plugin already has is `plugin-invalid`. Both have a fixed
-  severity, because a project cannot be interpreted without the plugins it names.
+  ([section 7.2](#72-editor-integration)). A module is imported once per process; an edit
+  takes effect in the next run, and in the editor after the server is restarted. A module
+  that cannot be found is `plugin-not-found`; one that raises on import, exposes no
+  `PLUGIN`, exposes a malformed one, or claims a name another plugin already has is
+  `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and is none of `c`, `a2l`
+  and `all`, which name the built-in artefacts of `ddd generate`; each check identifier it
+  registers is `<name>/<check>` with `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
+  Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
+  grammar or reserved, a check identifier outside its grammar, or a check registered twice.
+  Both checks have a fixed severity, because a project cannot be interpreted without the
+  plugins it names.
 - `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
   against the plugin's project model with defaults filled in. A plugin with a project model
   and no stated settings is validated as if the project stated `{}`, so a setting the plugin
   requires and the project omits is `schema`, located where the block would be written; a
   block stated for a plugin that declares no project model is `schema` as well, as any
-  unknown key is. Stated by one project file; a second file stating a plugin's settings is
-  `schema`, with a note at the first.
+  unknown key is. A project block keyed by a name no loaded plugin has is
+  `unknown-extension`, as on a definition. Stated by one project file; a second file stating
+  a plugin's settings is `schema`, with a note at the first.
 
 A definition states its block under the same key, `"extensions": {"layout": {"key": 12,
 "version": 3}}`, on any kind, and therefore on an instance of a declared type. Only the
@@ -1080,9 +1088,10 @@ written, and need no identifier of their own.
 A finding about several declarations of one object is reported once per declaration that
 deviates, anchored where the deviation is written, with a note pointing at the reference,
 which is the producer's declaration or the first loaded one
-([section 3.3.1](#331-one-object-several-declarations)). `multiple-producers` is therefore
-reported on every producer after the first, `missing-producer` once per consumer, and
-`unused-output` once, on the producer. A scope clash involving a `local` declaration is
+([section 3.3.1](#331-one-object-several-declarations)); for `limits`, at the first
+declaration that states them ([section 3.3.1.1](#3311-interface)). `multiple-producers` is
+therefore reported on every producer after the first, `missing-producer` once per consumer,
+and `unused-output` once, on the producer. A scope clash involving a `local` declaration is
 `local-conflict` alone, never `multiple-producers` as well.
 
 Errors:
@@ -1128,7 +1137,9 @@ Errors:
 - `plugin-not-found`: a project names a plugin ([section 3.11](#311-plugins)) that cannot be
   found. Fixed severity, because a project cannot be interpreted without the plugins it names.
 - `plugin-invalid`: a plugin module raises on import, exposes no `PLUGIN`, exposes one that is
-  malformed, or claims a name another plugin already has. Fixed severity, for the same reason.
+  malformed, or claims a name another plugin already has, and, in the language server only, a
+  hook that raises while a file is checked ([section 3.11](#311-plugins)). Fixed severity, for
+  the same reason.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
   deliberately carries a block no installed plugin interprets, which then reaches the
@@ -1140,8 +1151,10 @@ Errors:
   object in name order rather than on both, so the finding does not depend on the order the
   includes are read in; the first object is named in the message.
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
-  project declares, a declared type is used where its shape does not fit, or structures
-  nest each other so that neither has a size.
+  project declares, a declared type is used where its shape does not fit or a structured
+  declaration carries a key a structure cannot take, such as `init`
+  ([section 3.7](#37-type-description)), or structures nest each other so that neither has
+  a size.
 - `unknown-unit`: a unit is not in the vocabulary the project declares
   ([section 3.8](#38-unit-vocabulary)); declared nowhere, units stay free text and the
   check never fires.
@@ -1164,8 +1177,8 @@ Errors:
 - `duplicate-event`: two measurement rasters claim the same event channel number
   ([section 3.10](#310-measurement-rasters)), which would put two rasters on one event.
 - `enum-conflict`: one enum name is used with different enumerators. The ordered name and
-  value pairs are compared, so a reordering conflicts and the free text descriptions do
-  not.
+  value pairs are compared, in the textual order of the file, for the list form and the
+  mapping form alike, so a reordering conflicts and the free text descriptions do not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
   not exist or has the wrong kind. A reference to an object that was declared but dropped
@@ -1177,7 +1190,9 @@ Errors:
   by a capital letter. The third family of the same clause, every other leading underscore,
   which the standard reserves at file scope only, is not refused and is left to the
   project's naming rules. The set is fixed by the standard rather than read out of any
-  header, so the verdict does not depend on a toolchain.
+  header, so the verdict does not depend on a toolchain. It applies to the names that reach
+  the generated C: projects, components, data objects, declared types, structure members,
+  enums, enumerators and constants; not to `display_identifier`, which reaches only the A2L.
 - `name-collision`: two names that are distinct in the description files become the same
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
@@ -1212,15 +1227,18 @@ Warnings:
 - `a2l-unrepresentable`: an object, or a member of a structured object, cannot be fully
   described by the A2L version DDD writes;
   today that is an array of more than three dimensions, which the `MATRIX_DIM` of
-  version 1.6.1 cannot carry. The check fires only for an object the A2L exports, and the
-  emitted file writes every dimension out regardless, which a 1.7 reader accepts.
+  version 1.6.1 cannot carry. The check fires only for an object the A2L carries, the
+  closure over references included ([section 5.2](#52-a2l)), and the emitted file writes
+  every dimension out regardless, which a 1.7 reader accepts.
 - `address-missing`: an object the A2L carries has no entry in the address map the run was
-  given. It fires only when a map is supplied: without one every address is zero by
-  construction, which is the run a build makes before it has linked anything. With one, a
+  given. It fires only when a map with at least one entry is supplied: without a map, or
+  with an empty one, every address is zero by construction, which is the run a build makes
+  before it has linked anything ([section 7.1](#71-build-system-integration)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
-  there as readily as anywhere else. The entries of the map that match no object are named
-  in a note, because a renamed object usually loses its address and leaves its old spelling
-  behind in the same file.
+  there as readily as anywhere else. It is one finding per run, naming up to five of the
+  uncovered objects and counting the rest, with a note listing the entries of the map that
+  name nothing the A2L carries, because those are usually the old spellings of the same
+  objects.
 
 Information:
 
@@ -1251,19 +1269,27 @@ artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the compar
 function of two of them. Either side **may** also be given as a project or component
 description, which is resolved to its dictionary on the spot; the archived dictionary is
 what keeps the question answerable after the descriptions have moved on. The baseline is
-analysed in its own right, and only its error findings are carried into the report, each
-prefixed with "in the baseline:", so that a broken baseline is visible without drowning
-the comparison.
+analysed in its own right and without `--strict`, its warnings being its own; only its
+error findings are carried into the report, each prefixed with "in the baseline:", so that
+a broken baseline is visible without drowning the comparison. A candidate given as a
+description is analysed too, and all of its findings are reported at their own severities.
+The verdict is that the candidate can replace the baseline exactly when no finding of the
+run is reported as an error - the candidate's own, the baseline's carried ones and the
+comparison's alike - and the exit code follows the verdict
+([section 7](#7-tool-interface)). When a side cannot be read, or the baseline carries an
+error and the candidate is a description, no verdict is printed and the exit code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether
 the candidate can replace the baseline. `ddd compare --renames <file>` writes beside it the
-old-to-new name pairs the comparison established, one entry per paired object whose name
-changed, as its `id`, its old name and its new name, sorted by the new name, so that a
-calibration dataset, a recording or a test script keyed by the old spelling can be migrated
-without parsing the findings; a member of a structured object is listed under its
-instance's `id` followed by its member path. The file is written whether or not the
-comparison found errors, because a delivery that cannot be accepted still needs its renames
-listed.
+old-to-new name pairs the comparison established, so that a calibration dataset, a
+recording or a test script keyed by the old spelling can be migrated without parsing the
+findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
+name changed, sorted by `to`, `[]` when nothing was renamed; a member of a structured
+object is listed once per member, its `id` being the instance's `id` followed by `.` and
+the member path. The file is written whether or not the comparison found errors, because a
+delivery that cannot be accepted still needs its renames listed - and not at all when a
+side could not be read. Both `--renames` and `--plugin` belong to `ddd compare`;
+`ddd check --baseline` runs the candidate's own plugins and writes no rename list.
 
 A change **shall** be graded by what it costs the consumers.
 
@@ -1279,14 +1305,14 @@ compile:
   name that differ proves it outright; so does the baseline's object under that name having
   already been paired, by `id`, to a *different* name elsewhere in the candidate - which proves
   that whatever still answers to the name in the candidate is not it, whether or not that entry
-  states an `id` of its own. It is reported above the removal and addition it accompanies,
-  because it is the failure that compiles, links, runs and reads the wrong storage: a
-  calibration dataset or a recorded measurement keyed by that spelling binds to the new object
-  exactly as readily as it did to the old one, and nothing about the delivery looks broken.
-  When the baseline's object survives elsewhere in the candidate under a new name, the finding
-  carries a note saying so - the spelling was freed by a rename and claimed in the same
-  delivery, which is the worst version of it. A project that reuses names deliberately relaxes
-  the check with `-W reused-name=warning`.
+  states an `id` of its own. It is reported above the removal it accompanies - findings at
+  one location keep the order they were reported in - because it is the failure that compiles,
+  links, runs and reads the wrong storage: a calibration dataset or a recorded measurement
+  keyed by that spelling binds to the new object exactly as readily as it did to the old one,
+  and nothing about the delivery looks broken. When the baseline's object survives elsewhere
+  in the candidate under a new name, the finding carries a note saying so - the spelling was
+  freed by a rename and claimed in the same delivery, which is the worst version of it. A
+  project that reuses names deliberately relaxes the check with `-W reused-name=warning`.
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
@@ -1320,14 +1346,17 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `missing-plugin`: the baseline or the candidate records a plugin
   ([section 3.11](#311-plugins)) this run has not loaded, so that plugin's comparison rules
   did not run. Once per plugin and side, because a comparison that silently skipped a rule
-  would be a confident verdict with a hole in it.
+  would be a confident verdict with a hole in it. Each side given as a description runs the
+  plugins it names for its own analysis; the comparison hooks are the candidate's (or
+  `--plugin`'s for a dumped candidate), and `missing-plugin` is reported for a plugin either
+  side records that the comparison did not run.
 
 Information:
 
 - `added-object`: the candidate declares an object the baseline did not.
 
 A `removed-object` or `removed-unused-object` finding carries a note when exactly one
-addition in the candidate is identical to it in every compared field, references included, and
+addition in the candidate is identical to it in interface, storage and references, and
 under a different name: `'X' was added with an identical interface; if that was a rename, the
 id did not travel with it`. It asserts nothing and pairs nothing - the two may simply be
 different objects - and stays silent the moment more than one addition matches equally well.
@@ -1335,10 +1364,11 @@ This is the only part of the feature that helps a project which never adopts `id
 
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration
 of its own to carry an `id`: it is paired by the `id` of its instance together with its
-path below the instance. Renaming the instance therefore keeps every member paired and is
-one `renamed-object`, while renaming a member of the *type* changes the path and is
-reported as a removal and an addition, exactly as an object without an `id` is. The gap is
-known; closing it would mean an identity on a type's member.
+path below the instance. Renaming the instance therefore keeps every member paired, each
+reported as a `renamed-object` under its path, which is what a migration tool needs, while
+renaming a member of the *type* changes the path and is reported as a removal and an
+addition, exactly as an object without an `id` is. The gap is known; closing it would mean
+an identity on a type's member.
 
 Widening a limit **shall** be silent, because every value the baseline allowed still fits.
 Limits that got tighter **shall not** be reported on an object whose interface changed as
@@ -1346,6 +1376,12 @@ well: the interface change is the finding to act on, and the narrowing would onl
 This is deliberately coarser than reporting only a narrowing that is a consequence of the
 interface change, which nothing can decide; an independent narrowing of the same object is
 therefore also held back until the interface change is resolved.
+
+A dictionary of an older format is read with the defaults of that format: a baseline at
+format 3 or older states no `dimensions`, so shapes compare by value alone; one at format 6
+or older records no `plugins`, so `missing-plugin` cannot fire for it. Adopting a scalar
+type is not a change of interface, because the dictionary records the datatype a type
+resolves to ([section 3.3.1.1](#3311-interface)).
 
 ## 5 Generated artefacts
 

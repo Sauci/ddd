@@ -391,8 +391,13 @@ function(ddd_generate image)
                             "\"ddd templates-dir\" prints a working set to copy from.")
     endif()
     _ddd_absolute_input(arg_TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
-    if(arg_ADDRESS_MAP)
+    # Only the a2l reads the map, so a call that subtracts the a2l neither seeds it nor depends
+    # on it: the map is rewritten after every link, and a dependency on it would re-render every
+    # c source each time for a file this run does not pass to the generator.
+    set(address_map_dependency "")
+    if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+        set(address_map_dependency "${arg_ADDRESS_MAP}")
         # The two-run flow: the map is typically extracted from the linked image by a build step, so on the very
         # first build it does not exist yet - and ninja would refuse to run the generation for want of a file no
         # rule produces. An absent map inside the build tree is therefore seeded empty at configure time; the
@@ -527,7 +532,8 @@ function(ddd_generate image)
                        COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                                --output-dir "${arg_OUTPUT_DIRECTORY}"
                                --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
-                       DEPENDS "${project_file}" ${descriptions} ${plugin_files} ${arg_ADDRESS_MAP} ${arg_DEPENDS}
+                       DEPENDS "${project_file}" ${descriptions} ${plugin_files}
+                               ${address_map_dependency} ${arg_DEPENDS}
                                ${template_files} "${DDD_EXECUTABLE}"
                        COMMENT "Generating the data dictionary of ${image}"
                        COMMAND_EXPAND_LISTS

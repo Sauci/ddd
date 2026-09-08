@@ -711,6 +711,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
+| `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
 | `ddd checks` | list the checks and their default severity; `--plugin` lists a plugin's checks after the built-in ones |
@@ -722,8 +723,8 @@ component on its own before integrating it - add `--standalone` in that case, wh
 back the checks that need the components the file does not contain.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
-command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources` and
-`checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
+command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources`,
+`artefacts` and `checks`. The rest have nothing to format: `ddd schema` and `ddd build-info` emit json
 already, `ddd lsp` speaks json-rpc on its own, `ddd cmake-dir` and `ddd templates-dir` print
 a single path, and `ddd id --assign` reports which files it could not read and one total of
 ids written across all of them, not a list of findings. `ddd dump` is the
@@ -865,7 +866,7 @@ declarations are covered in both states:
 
 Point it at your own project with
 `docker compose run --rm compile ddd-compile path/to/project.ddd.json build/mine`, and use the
-`CDEFS`, `GENFLAGS`, `CFLAGS` and `CC` environment variables to change the defines,
+`CDEFS`, `GENFLAGS`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change the defines,
 the `ddd generate` flags, the warning set or the compiler.
 
 The working tree is bind mounted at `/work` and `PYTHONPATH=/work/src` shadows the copy

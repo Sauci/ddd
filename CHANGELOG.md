@@ -54,6 +54,47 @@ not, and the templates a project provides are its own.
   for.  A command line spelling `ddd generate c` to avoid the a2l keeps its meaning, and
   should become `ddd generate all --without a2l` if the project names a plugin.
 
+* **`ddd artefacts` reports what a project can be asked to generate.**  It prints the built-in
+  `c` and `a2l` and the name of every plugin the project names that provides one, in text or
+  json, and is tolerant the way `ddd sources` is: which artefacts exist follows from the
+  plugins a project names, not from whether its interfaces agree.  Given `--plugin` instead of
+  a project it answers the same question for a build that has not assembled its project
+  description yet, which is the spelling the CMake integration can use at configure time.
+  What each artefact *writes* is deliberately not reported: a plugin's file names follow from
+  the resolved dictionary, and `ddd generate all --dry-run` already lists them.  A plugin that
+  provides no backend is no artefact of its own; it is named in a note rather than passed over,
+  since an unexplained absence reads as a plugin that failed to load.  The note says where its
+  output does come from: the block such a plugin contributes is part of the vocabulary the
+  project's own templates read, and those are rendered by the `c` artefact.
+
+* **A structure DDD only carries is no longer reported as an undeclared symbol.**  The symbol
+  check behind `ddd-compile` read `ddd list`, which reports what can be *described*: the leaves
+  of a structured variable, and none at all for an external member.  A structure whose members
+  are all external therefore had real storage, a real symbol, and no entry, so the check called
+  its definition stray and failed a correct project.  It now reads `ddd dump`, whose `objects`
+  and `instances` are exactly what the definition file defines, one symbol each.
+
+* **`--without` subtracts an artefact's options along with the artefact.**  `--without a2l`
+  beside an `--address-map` used to load and validate the map, and could abort the run over a
+  file it would never read - the two-run flow the option exists for, where the map does not
+  exist before the link.  Options belonging to an artefact that was left out are now refused,
+  `--byte-order` among them, and the address map is not opened at all.  `--without c` no longer
+  demands `-t`: the template directory is asked for once the subtraction is known, so a run
+  producing only the a2l and the plugins' artefacts needs no templates it will not read.
+
+* **A run that would write nothing is refused the same way whatever the project.**  The check
+  sat after the findings gate, so the identical command line was a usage error on a consistent
+  project and a list of that project's findings on any other.  It now runs before the gate.
+
+* **`ddd-compile` finds the headers of external types more reliably.**  It searches for an
+  `include` directory from the description upwards, so pointing it at one component of a
+  project reaches the project's own; `INCLUDES` now adds to that rather than replacing it; and
+  a path containing a space is no longer split into two compiler arguments.
+
+* **`NO_A2L` stops making the address map a dependency of the generation.**  A map named beside
+  it was still seeded and still depended on, so a post-link step rewriting it re-rendered every
+  c source on every build, for a file the run no longer passes to the generator.
+
 * **The demo declares an external type.**  `SensorHub` declares `DriverState_t`, whose header
   the demo keeps beside its descriptions in `examples/demo/include`, and a `SensorDiagnosis_t`
   structure that carries it next to an ordinary member; `Diagnosis` is a variable of that

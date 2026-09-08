@@ -1531,12 +1531,19 @@ artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `
 the two built-in artefacts and the artefact of every plugin the project names that provides
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
 options of what it produces; `all` additionally takes a repeatable `--without c|a2l`, which
-leaves that built-in artefact out of the run while still producing the plugins', and refuses
-a run left with nothing to write rather than reporting success;
+leaves that built-in artefact out of the run while still producing the plugins'. What it
+subtracts it subtracts entirely: the options of an artefact left out are refused rather than
+accepted and ignored, the one it needs is asked for only if it stayed, and a run left with
+nothing to write is refused rather than reporting success;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
+reporting the artefacts a project can be asked to generate (`ddd artefacts`: the built-in
+`c` and `a2l`, and the name of every plugin the project names that provides one, or the
+plugins named with `--plugin` when there is no project description to read yet; what each
+artefact writes is not among them, since a plugin's file names follow from the resolved
+dictionary and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`

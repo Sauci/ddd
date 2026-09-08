@@ -58,6 +58,7 @@ from ddd.models import (
 from ddd.models.schema import PublishedSchema
 from ddd.plugins import (
     BUILT_IN_ARTEFACTS,
+    BUILT_IN_GENERATED,
     PLUGIN_NAME_PATTERN,
     Plugin,
     PluginInvalidError,
@@ -332,6 +333,30 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     _add_plugin_argument(schema)
     schema.set_defaults(handler=_command_schema)
 
+    artefact_listing = subparsers.add_parser(
+        "artefacts",
+        help="list the artefacts a project can generate",
+        description=(
+            "Prints the artefacts 'ddd generate' accepts for this project: the built-in "
+            "'c' and 'a2l', and the name of every plugin the project names that provides "
+            "one. What each artefact writes is not listed here, because a plugin's file "
+            "names follow from the resolved project rather than from the plugin alone; "
+            "'ddd generate all --dry-run' reports those. A plugin providing no backend is "
+            "no artefact of its own, and is named in a note rather than passed over: its "
+            "block is still part of what the project's templates render under 'c'. Named "
+            "with --plugin instead of a project, it answers the same question for a build "
+            "that has not assembled its project description yet."
+        ),
+    )
+    artefact_listing.add_argument(
+        "project", type=Path, nargs="?", help="project or component description file"
+    )
+    _add_plugin_argument(artefact_listing)
+    artefact_listing.add_argument(
+        "--format", choices=["text", "json"], default="text", help="output format"
+    )
+    artefact_listing.set_defaults(handler=_command_artefacts)
+
     sources = subparsers.add_parser(
         "sources",
         help="list every description file a project is built out of",
@@ -402,7 +427,10 @@ def _add_generate_arguments(
             "-t",
             "--template-dir",
             type=Path,
-            required=True,
+            # Required wherever c is rendered, but on the artefact that can subtract the c it
+            # cannot be enforced here: --without c is read after parsing, so _selected() below
+            # asks for it only once it knows the c survived.
+            required=not with_exclusions,
             # No reStructuredText inline markup in this text: the documentation inserts every
             # help string into a page as markup, where a lone asterisk opens an emphasis that
             # never closes. See test_no_help_string_carries_markup_characters.
@@ -424,8 +452,10 @@ def _add_generate_arguments(
         parser.add_argument(
             "--byte-order",
             choices=[order.value for order in ByteOrder],
-            default=ByteOrder.LITTLE.value,
-            help="byte order reported in the a2l file, default: %(default)s",
+            # No default here: the handler resolves it, so that a run which subtracted the a2l
+            # can tell an option it must refuse from one the parser filled in.
+            default=None,
+            help=f"byte order reported in the a2l file, default: {ByteOrder.LITTLE.value}",
         )
         parser.add_argument(
             "--address-map",
@@ -436,9 +466,8 @@ def _add_generate_arguments(
         parser.add_argument(
             "--without",
             action="append",
-            choices=["c", "a2l"],
+            choices=list(BUILT_IN_GENERATED),
             default=[],
-            metavar="{c,a2l}",
             help=(
                 "leave one of the built-in artefacts out of this run, repeatable. The plugins' "
                 "artefacts are produced either way, so 'generate all --without a2l' is how a "
@@ -639,12 +668,35 @@ def _listed(names: list[str]) -> str:
     return f"{spelled} and {rest} other{'s' if rest != 1 else ''}" if rest > 0 else spelled
 
 
-def _command_generate(args: argparse.Namespace) -> int:
-    # Subtracting a built-in artefact is the same as never having selected it, so clearing the
-    # render flag is the whole of it. A plugin's artefact has no such flag and is therefore
-    # untouched, which is the point: --without a2l keeps them.
+def _selected(args: argparse.Namespace) -> None:
+    """Apply ``--without`` and refuse a run the subtraction has made incoherent.
+
+    Subtracting a built-in artefact is the same as never having selected it, so clearing the
+    render flag is the whole of it; a plugin's artefact has no such flag and is therefore
+    untouched, which is the point. What the subparsers can no longer check for themselves is
+    checked here instead: an artefact that is gone must not be given its options, and one that
+    stayed must still have them.
+    """
     for artefact in getattr(args, "without", ()):
         setattr(args, f"render_{artefact}", False)
+
+    template_dir = getattr(args, "template_dir", None)
+    if args.render_c and template_dir is None:
+        msg = "the c sources are part of this run, so -t/--template-dir is required"
+        raise ValueError(msg)
+    for option, given, artefact in (
+        ("-t/--template-dir", template_dir is not None, "c"),
+        ("--const-inputs", getattr(args, "const_inputs", False), "c"),
+        ("--byte-order", getattr(args, "byte_order", None) is not None, "a2l"),
+        ("--address-map", getattr(args, "address_map", None) is not None, "a2l"),
+    ):
+        if given and not getattr(args, f"render_{artefact}"):
+            msg = f"{option} belongs to the {artefact} artefact, left out by --without"
+            raise ValueError(msg)
+
+
+def _command_generate(args: argparse.Namespace) -> int:
+    _selected(args)
 
     resolved, bag = _analyze(args)
     if resolved is None:
@@ -652,8 +704,30 @@ def _command_generate(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     dictionary = resolved.dictionary
 
-    addresses = load_address_map(args.address_map) if getattr(args, "address_map", None) else {}
-    if args.render_a2l and args.address_map is not None:
+    # Before the findings gate below, so that a command line which would write nothing is
+    # reported as the usage error it is, whatever state the project happens to be in. Asked
+    # after the analysis rather than at parse time, because only the resolved project knows
+    # whether a plugin provides an artefact.
+    produces_plugin_artefact = getattr(args, "render_plugins", False) and any(
+        plugin.backend is not None for plugin in resolved.plugins
+    )
+    if not (
+        args.render_c
+        or args.render_a2l
+        or produces_plugin_artefact
+        or getattr(args, "plugin_artefact", None) is not None
+    ):
+        msg = (
+            "this run would write nothing: what --without left of it is the plugins' "
+            "artefacts, and this project provides none"
+        )
+        raise ValueError(msg)
+
+    # Guarded on the artefact, not just on the option: a run that does not write the a2l has
+    # no use for the map and must not be killed by one it was never going to read.
+    wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
+    addresses = load_address_map(args.address_map) if wants_addresses else {}
+    if wants_addresses:
         # Before the gate below, so that a --strict build stops rather than writing a file
         # whose addresses it has just been told are incomplete.
         _check_address_coverage(dictionary, addresses, args.address_map, bag)
@@ -669,7 +743,10 @@ def _command_generate(args: argparse.Namespace) -> int:
     if args.render_a2l:
         backends.append(
             A2lBackend(
-                A2lOptions(byte_order=ByteOrder(args.byte_order), addresses=addresses),
+                A2lOptions(
+                    byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
+                    addresses=addresses,
+                ),
                 GENERATOR,
             )
         )
@@ -692,12 +769,6 @@ def _command_generate(args: argparse.Namespace) -> int:
             )
             raise ValueError(msg)
         backends.append(backend_of(plugin, dictionary, GENERATOR))
-    if not backends:
-        msg = (
-            "this run would write nothing: what --without left of it is the plugins' "
-            "artefacts, and this project provides none"
-        )
-        raise ValueError(msg)
     files = render(dictionary, backends, args.output_dir)
     try:
         results = write(files, dry_run=args.dry_run)
@@ -939,6 +1010,78 @@ def _command_templates_dir(args: argparse.Namespace) -> int:
         print("ddd: the example templates are not part of this installation", file=sys.stderr)
         return EXIT_USAGE
     print(directory.as_posix())
+    return EXIT_OK
+
+
+def _command_artefacts(args: argparse.Namespace) -> int:
+    """The artefacts this project can be asked to generate, by name.
+
+    Tolerant in the same way as ``sources`` and for the same reason: which artefacts exist
+    follows from the plugins a project names, not from whether its interfaces agree, and a
+    build asking what it can produce deserves an answer while the project is still being
+    fixed. Only a root file that cannot be read at all is fatal.
+
+    The files an artefact writes are deliberately not reported. A plugin decides them from
+    the resolved dictionary, so they are knowable only once the project has been assembled,
+    which is exactly what ``ddd generate all --dry-run`` does.
+    """
+    bag = DiagnosticBag()
+    if args.project is not None and args.plugin:
+        msg = "--plugin cannot be given together with a project, which names its own plugins"
+        raise ValueError(msg)
+
+    if args.project is None:
+        plugins: tuple[Plugin, ...] = _plugins_from_arguments(args.plugin)
+        unreadable = False
+    else:
+        workspace = load_workspace(args.project, bag)
+        plugins = () if workspace is None else workspace.plugins
+        unreadable = workspace is None
+
+    # Nothing at all when the root file could not be read: the built-in pair exists whatever
+    # happens, but the question asked was what *this* project generates, and that is unanswered.
+    # Reporting half of it would invite a build to act on an answer DDD does not have.
+    listed: list[dict[str, str]] = []
+    silent: list[str] = []
+    if not unreadable:
+        listed = [{"name": name, "kind": "built-in"} for name in BUILT_IN_GENERATED]
+        listed += [
+            {"name": plugin.name, "kind": "plugin"}
+            for plugin in plugins
+            if plugin.backend is not None
+        ]
+        # A plugin with no backend is not an artefact, but leaving it out in silence reads as
+        # the plugin having failed to load, and calling it one that generates nothing reads as
+        # a plugin with no effect. Neither is true: its block is part of the vocabulary the
+        # project's own templates render, so the note says where its output comes from.
+        silent = [plugin.name for plugin in plugins if plugin.backend is None]
+
+    if args.format == "json":
+        payload = {
+            "artefacts": listed,
+            "plugins_without_artefact": silent,
+            **_diagnostics_payload(bag),
+        }
+        print(json.dumps(payload, indent=2))
+        return EXIT_FINDINGS if unreadable else EXIT_OK
+    if unreadable:
+        _report(bag, "text")
+        return EXIT_FINDINGS
+    width = max(len(entry["name"]) for entry in listed)
+    for entry in listed:
+        print(f"{entry['name']:<{width}}  {entry['kind']}")
+    if silent:
+        one = len(silent) == 1
+        # After the listing, which goes to stdout: the note is commentary, like every other
+        # line this tool writes about what it did, and the two must not interleave.
+        sys.stdout.flush()
+        print(
+            f"note: the project also names {_listed(silent)}, which "
+            f"{'provides' if one else 'provide'} no artefact of its own; the c artefact "
+            f"renders any template reading such a plugin's block",
+            file=sys.stderr,
+        )
+    _report(bag, "text")
     return EXIT_OK
 
 

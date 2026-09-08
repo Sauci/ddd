@@ -191,7 +191,8 @@ class TestGenerateAll:
         capsys: pytest.CaptureFixture[str],
         *extra: str,
     ) -> list[str]:
-        templates = ["-t", str(EXAMPLES / "templates")] if artefact != "a2l" else []
+        renders_c = artefact != "a2l" and "c" not in extra
+        templates = ["-t", str(TEMPLATES)] if renders_c else []
         arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates, *extra]
         assert main([*arguments, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
         return [
@@ -235,6 +236,32 @@ class TestGenerateAll:
         assert "LayoutDevice.a2l" in written and "ddd_layout.h" in written
         assert "ddd_globals.c" not in written
 
+    @pytest.mark.parametrize(
+        ("option", "value", "artefact"),
+        [
+            ("--address-map", "map.json", "a2l"),
+            ("--byte-order", "big", "a2l"),
+        ],
+    )
+    def test_an_option_of_a_subtracted_artefact_is_refused(
+        self,
+        tmp_path: Path,
+        option: str,
+        value: str,
+        artefact: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Subtracting an artefact takes its options with it, rather than ignoring them.
+
+        The address map is the one that matters: loading it is what a two-run build wants to
+        avoid before the link, and a run that accepted and ignored it would also drop the
+        address coverage check without saying so.
+        """
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path), "-t", str(TEMPLATES)]
+        arguments += ["--without", artefact, option, value, "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert option in capsys.readouterr().err
+
     def test_a_run_left_with_nothing_to_write_is_refused(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -243,19 +270,8 @@ class TestGenerateAll:
         Reporting success while writing nothing is what this whole option is about, so the one
         combination that would still do it is a usage error.
         """
-        arguments = [
-            "generate",
-            "all",
-            str(DEMO),
-            "-o",
-            str(tmp_path),
-            "-t",
-            str(EXAMPLES / "templates"),
-            "--without",
-            "c",
-            "--without",
-            "a2l",
-        ]
+        arguments = ["generate", "all", str(DEMO), "-o", str(tmp_path)]
+        arguments += ["--without", "c", "--without", "a2l"]
         assert main(arguments) == EXIT_USAGE
         assert "would write nothing" in capsys.readouterr().err
 
@@ -303,10 +319,19 @@ class TestGenerate:
     def test_whatever_renders_c_requires_the_template_directory(
         self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Structurally, by the parser of the artefact: there is no fallback to relax."""
-        with pytest.raises(SystemExit) as exit_code:
-            main(["generate", artefact, str(DEMO), "-o", str(tmp_path / "gen")])
-        assert exit_code.value.code == EXIT_USAGE
+        """There is no fallback to relax, only a difference in where the refusal comes from.
+
+        ``c`` cannot be anything but a c run, so its parser demands the directory. ``all`` can
+        subtract the c, so it is asked for once the subtraction has been applied - which is why
+        the one refuses before parsing finishes and the other after.
+        """
+        arguments = ["generate", artefact, str(DEMO), "-o", str(tmp_path / "gen")]
+        if artefact == "all":
+            assert main(arguments) == EXIT_USAGE
+        else:
+            with pytest.raises(SystemExit) as exit_code:
+                main(arguments)
+            assert exit_code.value.code == EXIT_USAGE
         assert "-t/--template-dir" in capsys.readouterr().err
 
     def test_the_a2l_artefact_refuses_the_options_of_the_c_one(
@@ -1008,6 +1033,83 @@ class TestList:
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+
+class TestArtefacts:
+    """What ``ddd generate`` will accept for a project, which only the project can say."""
+
+    def test_a_project_naming_a_plugin_reports_its_artefact(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(LAYOUT)]) == EXIT_OK
+        lines = capsys.readouterr().out.splitlines()
+        assert [line.split()[0] for line in lines] == ["c", "a2l", "layout"]
+        assert lines[-1].split()[1] == "plugin"
+
+    def test_a_project_without_plugins_reports_the_built_in_pair(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(DEMO)]) == EXIT_OK
+        assert [line.split()[0] for line in capsys.readouterr().out.splitlines()] == ["c", "a2l"]
+
+    def test_the_plugins_can_be_named_without_a_project(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The question a build asks before it has assembled a project description of its own."""
+        arguments = ["artefacts", "--plugin", str(EXAMPLES / "plugins" / "ddd_layout.py")]
+        assert main(arguments) == EXIT_OK
+        assert "layout" in capsys.readouterr().out
+
+    def test_a_plugin_without_a_backend_is_named_rather_than_omitted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A plugin may contribute only checks and a block, so it is no artefact of its own.
+
+        Leaving it out in silence reads as the plugin having failed to load, and calling it
+        one that generates nothing reads as a plugin with no effect. Neither is true, so the
+        note says what it is and where the files that do carry its block come from.
+        """
+        module = tmp_path / "ddd_quiet.py"
+        module.write_text(
+            "from ddd.plugins import Plugin" + chr(10) + "PLUGIN = Plugin(name='quiet')" + chr(10),
+            encoding="utf-8",
+        )
+        assert main(["artefacts", "--plugin", str(module)]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert [line.split()[0] for line in captured.out.splitlines()] == ["c", "a2l"]
+        assert "'quiet'" in captured.err and "no artefact of its own" in captured.err
+        assert "the c artefact renders" in captured.err, "the note says where its block lands"
+
+        assert main(["artefacts", "--plugin", str(module), "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["plugins_without_artefact"] == ["quiet"]
+        assert [entry["name"] for entry in payload["artefacts"]] == ["c", "a2l"]
+
+    def test_a_project_and_plugins_together_are_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A project names its own, so the two spellings would be two sources of truth."""
+        arguments = ["artefacts", str(LAYOUT), "--plugin", "ddd_layout"]
+        assert main(arguments) == EXIT_USAGE
+        assert "--plugin cannot be given together with a project" in capsys.readouterr().err
+
+    def test_json_carries_the_artefacts_and_the_diagnostics_contract(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(LAYOUT), "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert {"name": "layout", "kind": "plugin"} in payload["artefacts"]
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+    def test_an_unreadable_project_is_a_finding_in_both_formats(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Tolerant like ``sources``: only a root file nothing can read is fatal."""
+        missing = str(tmp_path / "nope.ddd.json")
+        assert main(["artefacts", missing]) == EXIT_FINDINGS
+        capsys.readouterr()
+        assert main(["artefacts", missing, "--format", "json"]) == EXIT_FINDINGS
+        assert json.loads(capsys.readouterr().out)["artefacts"] == []
 
 
 class TestSchemaAndChecks:

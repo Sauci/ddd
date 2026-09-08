@@ -36,9 +36,15 @@ if TYPE_CHECKING:
 PLUGIN_NAME_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 """A plugin name is the key of its block, so it is a lowercase identifier."""
 
-BUILT_IN_ARTEFACTS: Final = ("c", "a2l", "all")
-"""What ``ddd generate`` produces on its own; a plugin's artefact is asked for by the plugin's
-name, so a plugin cannot be called any of these."""
+BUILT_IN_GENERATED: Final = ("c", "a2l")
+"""The artefacts DDD writes itself, each naming one backend of its own.
+
+These are what ``all`` composes beside the plugins', and therefore what a run can be asked to
+leave out: subtracting one of them still leaves something to write."""
+
+BUILT_IN_ARTEFACTS: Final = (*BUILT_IN_GENERATED, "all")
+"""Everything ``ddd generate`` accepts on its own; a plugin's artefact is asked for by the
+plugin's name, so a plugin cannot be called any of these."""
 
 _CHECK_PATTERN: Final = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 """The grammar of the part after the separator: the grammar of a built-in identifier."""

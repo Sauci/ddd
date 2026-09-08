@@ -17,9 +17,9 @@ nothing has to be filtered out of a redirection: ``ddd dump project.ddd.json >
 baseline.json`` archives the dictionary and nothing else, even on a run that had something to
 say about it.
 
-For a job that files findings rather than reads them, seven commands understand
-``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources`` and
-``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
+For a job that files findings rather than reads them, eight commands understand
+``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources``,
+``artefacts`` and ``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
 ``lsp``, which speaks json-rpc, ``cmake-dir`` and ``templates-dir``, which print one path, and
 ``id``, which reports the files it skipped and one total rather than findings. In json the
 diagnostics become part of the document the command prints, next to whatever else it has to
@@ -110,6 +110,9 @@ The commands
        built-in artefact out while still producing the plugins' - the run a build wants when
        the a2l is written later, once the addresses are known. Naming ``c`` instead is not the
        same thing: it produces no plugin artefact at all, and says nothing about it.
+       Subtracting an artefact takes its options with it, so ``--without a2l`` beside an
+       ``--address-map`` is refused rather than quietly ignored, and a run that has subtracted
+       the c neither wants nor accepts ``-t``.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
        generates in spite of errors.
    * - ``ddd list FILE``
@@ -134,6 +137,16 @@ The commands
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
        the plugins it names - for the dependency list of a build system.
+   * - ``ddd artefacts [FILE]``
+     - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
+       ``a2l``, and the name of every plugin it names that provides one. What each writes is
+       not listed, because a plugin's file names follow from the resolved project rather than
+       from the plugin alone - ``ddd generate all --dry-run`` reports those. A plugin that
+       provides no backend is no artefact of its own; it is named in a note rather than left
+       out in silence, which would read as the plugin having failed to load. Such a plugin is
+       not idle: the block it contributes is part of the vocabulary a project's own templates
+       read, and those are rendered by ``c``. With ``--plugin`` and no file it answers the same question for a
+       build that has not assembled its project description yet.
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see
@@ -163,13 +176,7 @@ without it is refused rather than falling back to templates of DDD's own.
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen
-   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                           [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                           [--dry-run] [--force]
-                           project
-   ddd generate all: error: the following arguments are required: -t/--template-dir
+   ddd: the c sources are part of this run, so -t/--template-dir is required
 
 A default would have to be somebody's house style, and a project that inherited one without
 choosing it would find out which one only by reading the generated code; :doc:`templates`

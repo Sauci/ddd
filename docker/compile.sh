@@ -11,8 +11,9 @@
 #   TEMPLATES  directory of the c templates, defaulting to the examples shipped with DDD
 #   CFLAGS   override the default warning set
 #   CC       override the compiler
-#   INCLUDES -I flags for the hand written headers the project's external types name,
-#            defaulting to the project's own include/ directory when it has one
+#   INCLUDES extra -I flags for the hand written headers the project's external types
+#            name; the nearest include/ directory at or above the description is added
+#            as well, so this adds to that default rather than replacing it
 set -euo pipefail
 
 PROJECT="${1:-examples/demo/demo.ddd.json}"
@@ -23,12 +24,22 @@ CDEFS="${CDEFS:-}"
 GENFLAGS="${GENFLAGS:-}"
 TEMPLATES="${TEMPLATES:-$(ddd templates-dir)}"
 # An external type names a header DDD does not write, so the generated code cannot be compiled
-# out of the output directory alone. The project keeps such headers beside its descriptions.
-INCLUDES="${INCLUDES:-}"
-if [ -z "$INCLUDES" ] && [ -d "$(dirname "$PROJECT")/include" ]; then
-    INCLUDES="-I$(dirname "$PROJECT")/include"
-fi
-read -r -a include_flags <<<"$INCLUDES"
+# out of the output directory alone. The project keeps such headers beside its descriptions,
+# so the search starts at the description and walks up: pointed at one component of a project,
+# the include/ directory it needs belongs to the project, a level or more above.
+# What the caller gave is split on whitespace, since it is a flag list; the derived directory
+# is appended as one element instead, so that a path containing a space survives.
+read -r -a include_flags <<<"${INCLUDES:-}"
+directory="$(cd "$(dirname "$PROJECT")" && pwd)"
+while true; do
+    if [ -d "$directory/include" ]; then
+        include_flags+=("-I$directory/include")
+        break
+    fi
+    parent="$(dirname "$directory")"
+    [ "$parent" = "$directory" ] && break
+    directory="$parent"
+done
 
 log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
@@ -36,10 +47,10 @@ log "generate  $PROJECT -> $OUTPUT ${GENFLAGS}"
 read -r -a generate_flags <<<"$GENFLAGS"
 ddd generate all "$PROJECT" -o "$OUTPUT" --template-dir "$TEMPLATES" "${generate_flags[@]}"
 # The severity overrides in GENFLAGS apply here too: pointed at a single component file,
-# 'ddd list' would otherwise exit 1 on the missing producers that the generate step was
+# 'ddd dump' would otherwise exit 1 on the missing producers that the generate step was
 # explicitly told to tolerate, and take the whole run down with it.
 read -r -a policy_flags <<<"$(printf '%s\n' "$GENFLAGS" | grep -oE -- '(-W [^ ]+|--strict)' | tr '\n' ' ')"
-ddd list "$PROJECT" --format json "${policy_flags[@]}" >"$OUTPUT/variables.json"
+ddd dump "$PROJECT" --format json "${policy_flags[@]}" >"$OUTPUT/dictionary.json"
 
 compile_variant() {
     local label="$1"
@@ -84,7 +95,7 @@ compile_variant() {
     log "symbols   [$label]"
     nm --defined-only --extern-only --format=posix "${globals_objects[@]}" \
         | awk 'NF >= 2 { print $1 }' | sort -u >"$objdir/symbols.txt"
-    python3 /opt/ddd/bin/verify_symbols.py "$OUTPUT/variables.json" "$objdir/symbols.txt"
+    python3 /opt/ddd/bin/verify_symbols.py "$OUTPUT/dictionary.json" "$objdir/symbols.txt"
 }
 
 compile_variant base

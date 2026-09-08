@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Compare what DDD promised with what really ended up in the object file.
 
-Usage: verify_symbols.py variables.json symbols.txt
+Usage: verify_symbols.py dictionary.json symbols.txt
 
-``variables.json`` is the output of ``ddd list --format json``, ``symbols.txt`` the
+``dictionary.json`` is the output of ``ddd dump --format json``, ``symbols.txt`` the
 externally visible symbols defined by the generated definition file.  Variables with
 a preprocessor condition may legitimately be absent, everything else must be there
 exactly once, and nothing else may be defined.
+
+The dictionary is read rather than ``ddd list``, because the two answer different
+questions.  ``ddd list`` reports what can be *described* - the leaves of a structured
+variable, and none at all for a member DDD only carries - while the definition file
+defines one symbol per plain object and one per structured instance, whether or not
+anything inside it can be described.  A structure whose members are all external types
+is exactly that case: real storage, no leaf, and a symbol the linker sees.
 """
 
 from __future__ import annotations
@@ -16,14 +23,13 @@ import sys
 from pathlib import Path
 
 
-def symbol(variable: dict) -> str:
-    """The identifier the definition file actually defines.
+def defines(dictionary: dict) -> list[dict]:
+    """Every declaration the definition file turns into one symbol.
 
-    A plain object is defined under its own name. A structured one is defined once, under the
-    name of the instance, so every leaf of it reports the same symbol and the set collapses to
-    the one object the linker sees.
+    A plain object is defined under its own name and a structured one under the name of its
+    instance; both carry ``name`` and ``condition``, so nothing here has to tell them apart.
     """
-    return variable["name"] if "name" in variable else variable["instance"]
+    return [*dictionary["objects"], *dictionary["instances"]]
 
 
 def main(argv: list[str]) -> int:
@@ -31,12 +37,12 @@ def main(argv: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 2
 
-    variables = json.loads(Path(argv[1]).read_text(encoding="utf-8"))["variables"]
+    declarations = defines(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
     symbols = Path(argv[2]).read_text(encoding="utf-8").splitlines()
     defined = {line.strip() for line in symbols if line.strip()}
 
-    declared = {symbol(variable) for variable in variables}
-    conditional = {symbol(variable) for variable in variables if variable["condition"]}
+    declared = {entry["name"] for entry in declarations}
+    conditional = {entry["name"] for entry in declarations if entry["condition"]}
     unconditional = declared - conditional
 
     missing = sorted(unconditional - defined)

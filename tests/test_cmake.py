@@ -180,6 +180,117 @@ ddd_generate(img
         assert after != before and "by key, edited" in after.splitlines()[0]
 
 
+VENDOR_HEADER = """#ifndef VENDOR_TYPES_H
+#define VENDOR_TYPES_H
+#ifndef VENDOR_PROFILE
+#error "VENDOR_PROFILE is not defined; the component declaring the type publishes it."
+#endif
+typedef struct { unsigned short revision; } VendorState_t;
+#endif
+"""
+"""A hand written header that refuses to compile without the flag its component publishes."""
+
+
+def component(name: str, *, owns_the_type: bool) -> dict:
+    """One component description, optionally declaring the external type and a struct using it."""
+    body: dict = {
+        "name": name,
+        "description": name + " of the vendor block",
+        "interface": [
+            {
+                "scope": "local",
+                "definition": {
+                    "name": name + "Value",
+                    "kind": "measurement",
+                    "description": "a plain local, so the component declares something",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "identity"},
+                    "volatile": False,
+                },
+            }
+        ],
+    }
+    if owns_the_type:
+        body["types"] = [
+            {
+                "type": "external",
+                "name": "VendorState_t",
+                "description": "the vendor's own type, defined by its own header",
+                "header": "vendor_types.h",
+            },
+            {
+                "type": "struct",
+                "name": "VendorBlock_t",
+                "description": "carries the vendor state",
+                "members": [
+                    {
+                        "name": "state",
+                        "member": "value",
+                        "description": "opaque to DDD",
+                        "typename": "VendorState_t",
+                    }
+                ],
+            },
+        ]
+    return {"component": body}
+
+
+class TestTheCompileUsageReachesEveryComponent:
+    """The half of the propagation the shipped example cannot demonstrate.
+
+    ``examples/cmake`` proves that a registered component's include directories travel, because
+    its vendor header is findable no other way. Compile definitions and options travel by the
+    same mechanism, and nothing shipped depends on one, so a regression could drop them in
+    silence. Here the component declaring the type also publishes a flag its header refuses to
+    compile without, and a component that links neither has to receive both.
+    """
+
+    def write(self, tmp_path: Path) -> None:
+        (tmp_path / "vendor").mkdir()
+        (tmp_path / "vendor" / "vendor_types.h").write_text(VENDOR_HEADER, encoding="utf-8")
+        for spelling, name in (("owner", "Owner"), ("stranger", "Stranger")):
+            (tmp_path / (spelling + ".c")).write_text(
+                '#include "' + name + '.h"' + chr(10), encoding="utf-8"
+            )
+            (tmp_path / (spelling + ".ddd.json")).write_text(
+                json.dumps(component(name, owns_the_type=name == "Owner"), indent=2),
+                encoding="utf-8",
+            )
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }" + chr(10), encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Usage LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(owner STATIC owner.c)
+target_include_directories(owner PUBLIC "${{CMAKE_CURRENT_SOURCE_DIR}}/vendor")
+target_compile_definitions(owner PUBLIC VENDOR_PROFILE=1)
+ddd_add_component(owner JSON "{(tmp_path / "owner.ddd.json").as_posix()}")
+add_library(stranger STATIC stranger.c)
+ddd_add_component(stranger JSON "{(tmp_path / "stranger.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE owner stranger)
+ddd_generate(img
+             NAME UsageDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+
+    def test_a_component_compiles_under_flags_it_never_asked_for(self, tmp_path: Path) -> None:
+        """``stranger`` links nothing, yet must read the vendor header the way ``owner`` does.
+
+        Its generated header includes ``ddd_types.h``, which includes the vendor header, which
+        refuses to compile without the flag ``owner`` publishes. The build therefore passes only
+        if both the include directory and the compile definition were collected and handed on.
+        """
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        types = (tmp_path / "build" / "ddd" / "img" / "ddd_types.h").read_text(encoding="utf-8")
+        assert '#include "vendor_types.h"' in types
+
+
 class TestAHandWrittenProject:
     def write(self, tmp_path: Path) -> Path:
         """The layout example as shipped, its project naming ``../plugins/ddd_layout.py``."""

@@ -170,8 +170,9 @@ follows is worth stating plainly: an external member reaches no a2l record and n
 contributes no leaf to :doc:`ddd list </command_line_interface>`, and a structure containing one
 gets no section alignment estimate. It is storage DDD carries into the image without describing.
 
-The variable itself keeps the storage its ``datatype`` asks for - ``StateA`` is declared
-``uint8_t``, not ``StateA_t`` - because the size of an enumerated type is up to the compiler
+Back to the enum, and to what a variable of one is declared as. A variable keeps the storage
+its ``datatype`` asks for - ``StateA`` is declared ``uint8_t``, not ``StateA_t`` - because the
+size of an enumerated type is up to the compiler
 and a global variable whose width depends on the toolchain is not something an interface
 description should hand over. The ``typedef`` exists so that the code can be written in terms
 of ``STATE_ACTIVE`` instead of ``2``, and the ``enum-conflict`` check makes sure the same
@@ -1047,6 +1048,7 @@ component that exports at least one object, listing the objects that component d
            ValueB
            ValueC
            FlagA
+           Diagnosis.faults
          /end REF_MEASUREMENT
        /end GROUP
 

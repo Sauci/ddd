@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -166,6 +167,21 @@ class TestRanges:
         path = tmp_path / "a b.ddd.json"
         path.write_text("{}", encoding="utf-8")
         assert uri_to_path(path.as_uri()) == path
+
+    @pytest.mark.parametrize("spelling", ["c%3A", "C%3A", "c:", "C:"])
+    def test_the_drive_spellings_a_windows_client_sends_name_one_file(self, spelling: str) -> None:
+        """VS Code sends ``file:///c%3A/...``: a lower-case drive with the colon escaped.
+
+        ``url2pathname`` looks for a literal colon before it unquotes, so the escaped one was
+        read as no drive at all, and the path came back relative - ``/c:/git/x`` - which names
+        no file and cannot be turned back into a uri. The server died on the first didOpen.
+        """
+        decoded = uri_to_path(f"file:///{spelling}/git/x/a.ddd.json")
+        assert decoded == uri_to_path("file:///C:/git/x/a.ddd.json")
+        if os.name == "nt":
+            assert decoded.is_absolute()
+            # ``as_uri`` keeps the drive letter's case, so compare case-blind.
+            assert decoded.as_uri().lower() == "file:///c:/git/x/a.ddd.json"
 
     def test_a_byte_order_mark_is_read_the_way_the_loader_reads_one(self, tmp_path: Path) -> None:
         """``ddd check`` accepts a BOM on purpose; the editor has to agree with it.
@@ -2591,6 +2607,61 @@ class TestPositions:
 
 class TestServer:
     """The loop, which is the only part a test can reach only through the protocol."""
+
+    def test_a_document_opened_under_the_clients_spelling_of_its_uri_is_analysed(
+        self, tmp_path: Path
+    ) -> None:
+        """The uri a client sends is not the one ``Path.as_uri()`` writes.
+
+        VS Code on Windows opens ``file:///c%3A/...``; read as a relative path, the server
+        analysed a file that does not exist and then exited trying to publish under it. The
+        answer has to be diagnostics for the real file, under a uri naming that file, and a
+        server that is still running afterwards.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        # The client's spelling: the drive lower-cased and its colon escaped. Without a drive
+        # (posix) there is nothing to respell and the uri is the server's own.
+        spelled = re.sub(
+            r"^file:///([A-Za-z]):", lambda m: f"file:///{m.group(1).lower()}%3A", path.as_uri()
+        )
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": spelled.rsplit("/", 1)[0]},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": spelled,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": path.read_text(encoding="utf-8"),
+                    }
+                },
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        findings = published(writer)["a.ddd.json"]
+        assert [finding["code"] for finding in findings] == ["missing-producer"]
+        assert [
+            uri_to_path(m["params"]["uri"]).resolve()
+            for m in sent(writer)
+            if m.get("method") == "textDocument/publishDiagnostics"
+        ] == [path.resolve()]
 
     def handshake(self, tmp_path: Path) -> dict[str, Any]:
         return {

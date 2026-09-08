@@ -20,6 +20,7 @@ making yet.
 from __future__ import annotations
 
 import contextlib
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -73,6 +74,10 @@ _RENAME: Final = "textDocument/rename"
 _CODE_ACTION: Final = "textDocument/codeAction"
 
 
+_ESCAPED_DRIVE: Final = re.compile(r"^/([A-Za-z])%3[Aa](?=/|$)")
+"""``/c%3A/...``: a drive letter whose colon the client escaped, which VS Code always does."""
+
+
 def uri_to_path(uri: str) -> Path:
     """The file a ``file://`` uri names, undoing the escaping a client applies to it.
 
@@ -81,9 +86,16 @@ def uri_to_path(uri: str) -> Path:
     of ``Path.as_uri()`` for every path except the ones that actually needed escaping. A
     document called ``a%20b.ddd.json`` came back as ``a b.ddd.json``, and the diagnostics
     published for it went out under a uri the client could match to nothing on screen.
+
+    The one exception is the drive colon. ``Path.as_uri()`` writes ``file:///C:/...`` and
+    VS Code sends ``file:///c%3A/...``, and ``url2pathname`` decides whether there is a drive
+    by looking for a literal colon *before* it unquotes - so the escaped spelling was read as
+    no drive at all and came back as the relative path ``/c:/...``, which names no file and
+    cannot be turned back into a uri. The server died on the first document a Windows client
+    opened. Only that colon is restored here; everything else stays escaped for the call.
     """
     parsed = urlparse(uri)
-    path = url2pathname(parsed.path)
+    path = url2pathname(_ESCAPED_DRIVE.sub(r"/\1:", parsed.path))
     if parsed.netloc and parsed.netloc != "localhost":
         # file://server/share/...: a network share, whose host is the start of the path.
         path = f"//{parsed.netloc}{path}"

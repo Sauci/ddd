@@ -1598,9 +1598,10 @@ registers descriptions, component and types files alike, on their target, and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
 built-in ones without being declared as outputs. It generates into the build
-tree, exposes the generated headers to the components through an interface library and
-compiles the generated definition sources into the image as an object library of their
-own, so that an object no compiled code references is not dropped
+tree, exposes the generated headers to the components through an interface library that
+carries the registered components' compile usage as well, and compiles the generated
+definition sources into the image as an object library of their own, so that an object no
+compiled code references is not dropped
 ([section 5.1](#51-c-code)).
 
 `ddd_generate` knows two modes. In the collected mode, which is the default, the registered
@@ -1632,7 +1633,7 @@ build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DE
 extra generation dependencies, `PLUGINS <spec>...` for the plugins of a collected project -
 a `.py` spec resolved against the calling directory and depended on, any other passed
 through as a module name; refused beside `PROJECT`, whose file names its own - and
-`NO_PROPAGATE_HEADERS` to stop the generated headers being linked into every registered
+`NO_PROPAGATE_HEADERS` to stop that interface library being linked into every registered
 component. `SCHEMA_DIRECTORY <dir>` writes the JSON schemas of
 [section 3](#3-file-formats) into that directory at configure time, so that they describe
 the installed DDD rather than a version that is no longer there, closed over the project's
@@ -1642,11 +1643,17 @@ step, the call defines a `<stem>_ddd_check` target, named after the image withou
 extension, that runs `ddd check` under the same severity policy, so that a CI job can
 check without generating.
 
-In the collected mode the generated definition sources are compiled with the interface
-include directories of every registered target, include paths and not link edges, so that
-a header an external type names ([section 3.7](#37-type-description)) is found without
-further wiring; `LINK_LIBRARIES` remains for the hand written project mode and for
-headers the link graph does not carry.
+In the collected mode the interface library carries the compile usage of every registered
+target - include directories, compile definitions and compile options, never link edges - so
+that a header an external type names ([section 3.7](#37-type-description)) is found *and read
+the way the target declaring it reads it* without further wiring. The generated definition
+sources receive that usage by linking the library, and so does every component the library is
+propagated to: `ddd_types.h` names the external includes of the whole project and every
+component header includes it, so a component parses those headers whether it declares an
+external type or not, and all of them have to read them alike. The price is that a component
+also compiles under compile definitions and compile options of components it does not link.
+`LINK_LIBRARIES` remains for the hand written project mode and for headers the link graph
+does not carry.
 
 ### 7.2 Editor integration
 

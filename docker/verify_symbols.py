@@ -16,6 +16,16 @@ import sys
 from pathlib import Path
 
 
+def symbol(variable: dict) -> str:
+    """The identifier the definition file actually defines.
+
+    A plain object is defined under its own name. A structured one is defined once, under the
+    name of the instance, so every leaf of it reports the same symbol and the set collapses to
+    the one object the linker sees.
+    """
+    return variable["name"] if "name" in variable else variable["instance"]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print(__doc__, file=sys.stderr)
@@ -25,8 +35,8 @@ def main(argv: list[str]) -> int:
     symbols = Path(argv[2]).read_text(encoding="utf-8").splitlines()
     defined = {line.strip() for line in symbols if line.strip()}
 
-    declared = {variable["name"] for variable in variables}
-    conditional = {variable["name"] for variable in variables if variable["condition"]}
+    declared = {symbol(variable) for variable in variables}
+    conditional = {symbol(variable) for variable in variables if variable["condition"]}
     unconditional = declared - conditional
 
     missing = sorted(unconditional - defined)

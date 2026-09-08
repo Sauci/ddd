@@ -26,6 +26,41 @@ not, and the templates a project provides are its own.
   `PROJECT` file names - and depends on the ones that are files; the plugins' artefacts
   arrive beside the built-in ones.
 
+* **The registered components' compile usage travels with `<image>_ddd_headers`.**  In the
+  collected mode, `ddd_generate()` used to apply the interface include directories, compile
+  definitions and compile options of every registered component privately to
+  `<image>_ddd_globals`, the object library compiling the definition file.  It now carries them
+  as interface usage on `<image>_ddd_headers`, which `<image>_ddd_globals` links for them.
+  Only the definition file could be compiled before: `ddd_types.h` includes the headers
+  declaring the external types, so the include directory alone never sufficed, and a component
+  including its own generated header had to find those headers by itself.  Linking
+  `<image>_ddd_headers` is enough now.  The price is that every registered component compiles
+  under the union of those compile definitions and compile options, including ones belonging to
+  components it does not link; `ddd_types.h` holds the external includes of the whole project
+  and every component header includes it, so all of them have to read those headers alike, and
+  a project whose components disagree about such a flag has to settle it itself.
+  **Migration:** a component that wired up an external type's header by hand, only so that its
+  own generated header would compile, can drop that wiring.
+
+* **The demo declares an external type.**  `SensorHub` declares `DriverState_t`, whose header
+  the demo keeps beside its descriptions in `examples/demo/include`, and a `SensorDiagnosis_t`
+  structure that carries it next to an ordinary member; `Diagnosis` is a variable of that
+  structure.  The generated `ddd_types.h` therefore includes the vendor header, which is what
+  the feature looks like in the generated code, and the demo now shows the rest of it too: an
+  external member reaches no a2l record, contributes no leaf to `ddd list`, and is storage DDD
+  carries without describing.  The shipped cmake example publishes the directory holding that
+  header from `sensor_hub` alone, so `event_logger`, which does not link `sensor_hub`, compiles
+  the generated headers only because `ddd_generate()` hands the registered components the
+  compile usage it collected - the cmake test that builds the example now fails if it stops.
+  `ddd-compile` takes an `INCLUDES` variable for the same reason, defaulting to the project's
+  own `include` directory when it has one.
+
+* **`ddd-compile` counts a structured variable as the one symbol it is.**  Its symbol check read
+  a `name` off every entry of `ddd list --format json`.  The leaves of a structured variable
+  carry no `name`, only the path and the instance they belong to, so the check crashed on the
+  first project that had one; it now takes the instance, and one structure counts as the one
+  object the linker sees however many leaves it has.
+
 ## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that

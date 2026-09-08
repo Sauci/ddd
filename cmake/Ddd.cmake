@@ -333,14 +333,17 @@ endfunction()
 #              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
 #              [STRICT]                      # treat DDD warnings as errors
-#              [NO_PROPAGATE_HEADERS])       # do not hand the generated headers to the registered components
+#              [NO_PROPAGATE_HEADERS])       # do not hand <image>_ddd_headers to the registered components
 #
 # It creates:
 #
 # * <image>_ddd_generation  custom target running the generator
-# * <image>_ddd_headers     interface library exposing the generated headers; linked into every registered component
-#                           unless NO_PROPAGATE_HEADERS is given
-# * <image>_ddd_globals     object library compiling the single definition file, linked into the image
+# * <image>_ddd_headers     interface library exposing the generated headers, and in the collected mode the compile
+#                           usage - include directories, compile definitions and compile options - of every
+#                           registered component; linked into every registered component unless
+#                           NO_PROPAGATE_HEADERS is given
+# * <image>_ddd_globals     object library compiling the single definition file, linked into the image; links
+#                           <image>_ddd_headers, which is where its compile usage comes from
 #
 # The helper names are derived from the image name without its extension, so an image named firmware.elf yields
 # firmware_ddd_headers. The path of the generated a2l is available as the DDD_A2L property of the image.
@@ -579,13 +582,20 @@ function(ddd_generate image)
     target_link_libraries(${image_stem}_ddd_globals PUBLIC ${image_stem}_ddd_headers)
     target_link_libraries(${image} PRIVATE ${image_stem}_ddd_globals)
 
-    # Every component registered so far gets the generated headers, which is what makes the integration a two-liner
-    # on the component side: add the library, register its description, include "<Component>.h". Components
-    # registered after this call are not reached - call ddd_generate() last.
+    # Every component registered so far gets the generated headers, and the compile usage they need to be read,
+    # which is what makes the integration a two-liner on the component side: add the library, register its
+    # description, include "<Component>.h". Components registered after this call are not reached - call
+    # ddd_generate() last.
     #
     # "Registered so far" is wider than the link closure of this image: a component that this image does not link
-    # still receives the include directory. That is harmless for a single image - an unused include path changes
-    # nothing - and it is why a second image has to opt out rather than being silently merged into the first.
+    # still receives <image>_ddd_headers, and with it the compile usage collected above. That is deliberate rather
+    # than harmless. ddd_types.h carries the external includes of the whole project and every component header
+    # includes it, so a component parses every external type header whether it declares one or not; reading those
+    # headers under other flags than the image does would lay the types out differently - the failure that compiles.
+    # The price is that a component also compiles under compile definitions and compile options it never asked for,
+    # and unlike an unused include path those are not inert. A project whose components disagree about such a flag
+    # has to settle it itself, because this call cannot. It is also why a second image has to opt out rather than
+    # being silently merged into the first.
     if(NOT arg_NO_PROPAGATE_HEADERS)
         # Two images would hand two different sets of headers to the same components: a component's interface header
         # depends on the link closure it was generated for, so whichever include directory came first would silently

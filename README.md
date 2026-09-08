@@ -777,12 +777,21 @@ needs no 3.30 and no `ddd_add_component`.
 | target | what it is |
 | --- | --- |
 | `firmware_ddd_generation` | runs the generator |
-| `firmware_ddd_headers` | interface library carrying the include directory; linked into every registered component |
-| `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image |
+| `firmware_ddd_headers` | interface library carrying the include directory, and the compile usage of the registered components; linked into every registered component |
+| `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image; links `firmware_ddd_headers` for that compile usage |
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image.
+
+In the collected mode `firmware_ddd_headers` carries more than the include directory: the
+interface include directories, compile definitions and compile options of every registered
+component travel with it, so that a header an external type names is found *and read the way
+the component declaring it reads it*.  Linking that one target is therefore all a consumer
+has to do.  The other side of the bargain is that every registered component then compiles
+under the union of those flags, including ones it does not link itself - `ddd_types.h` holds
+the external includes of the whole project and every component header includes it, so all of
+them have to read those headers alike.
 
 A `ddd-build.json` is written into the output directory at configure time as well.  It names
 the project description this image is generated from and the severity policy it is generated
@@ -796,8 +805,9 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
-the same components: their generated headers differ, so only one image may hand its headers
-to the components automatically - the second call has to opt out and be wired explicitly.
+the same components: their generated headers differ, so only one image may hand its
+`<image>_ddd_headers` to the components automatically - the second call has to opt out and be
+wired explicitly.
 DDD refuses the ambiguous case rather than letting an include order decide it.
 
 The declared outputs are derived from the template names, and the a2l; a `{component}`
@@ -846,10 +856,10 @@ declarations are covered in both states:
 
 ```text
 == symbols   [base]
-19 of 20 declared variables are defined
+20 of 21 declared variables are defined
   conditional, absent : ValueG
 == symbols   [defines]
-20 of 20 declared variables are defined
+21 of 21 declared variables are defined
   conditional, present: ValueG
 ```
 

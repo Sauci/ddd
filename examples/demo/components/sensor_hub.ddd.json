@@ -3,6 +3,36 @@
   "component": {
     "name": "SensorHub",
     "description": "Produces the raw input values of the device",
+    "types": [
+      {
+        "type": "external",
+        "name": "DriverState_t",
+        "description": "The raw state of the sensor driver, as the vendor's own header defines it",
+        "header": "sensor_hub_driver.h"
+      },
+      {
+        "type": "struct",
+        "name": "SensorDiagnosis_t",
+        "description": "What the sensor hub keeps for the vendor's own diagnosis code",
+        "members": [
+          {
+            "name": "driver",
+            "member": "value",
+            "description": "Raw driver state, kept verbatim for the vendor's diagnosis code",
+            "typename": "DriverState_t"
+          },
+          {
+            "name": "faults",
+            "member": "value",
+            "description": "Faults the driver has reported since the last reset",
+            "datatype": "uint16",
+            "conversion": {
+              "kind": "identity"
+            }
+          }
+        ]
+      }
+    ],
     "interface": [
       {
         "scope": "output",
@@ -95,6 +125,17 @@
           "a2l": {
             "export": false
           },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Diagnosis",
+          "id": "fs7522mtcvh4",
+          "kind": "measurement",
+          "description": "Diagnosis block whose raw driver state DDD does not describe",
+          "typename": "SensorDiagnosis_t",
           "volatile": false
         }
       }

@@ -122,8 +122,8 @@ The type header
 An enum conversion, a declared constant and a declared structure are the parts of a
 description that become a c type or a macro rather than a c declaration, and the example
 templates emit them in a header of their own so that every component sharing them sees one
-definition. The demo declares neither constants nor structures, so its type header holds the
-enum alone:
+definition. The demo declares no constants, so its type header holds the enum, the structure
+``SensorHub`` declares, and the include line of the vendor header its external member names:
 
 .. code-block:: c
 
@@ -141,6 +141,9 @@ enum alone:
    #include <stdint.h>
    #include <stdbool.h>
 
+   /* headers defining the external types */
+   #include "sensor_hub_driver.h"
+
    /* StateA_t */
    typedef enum
    {
@@ -151,7 +154,21 @@ enum alone:
        STATE_FAULT = 15
    } StateA_t;
 
+   /* SensorDiagnosis_t - What the sensor hub keeps for the vendor's own diagnosis code */
+   typedef struct
+   {
+       DriverState_t driver; /**< Raw driver state, kept verbatim for the vendor's diagnosis code */
+       uint16_t faults; /**< Faults the driver has reported since the last reset */
+   } SensorDiagnosis_t;
+
    #endif /* DDD_TYPES_H */
+
+That ``#include`` is the whole of what DDD does about an external type. It knows the type's
+name and the header defining it and nothing else - no datatype, no unit, no conversion, no size
+- so ``DriverState_t`` is emitted as written and the vendor's header is left to define it. What
+follows is worth stating plainly: an external member reaches no a2l record and no ``GROUP``, it
+contributes no leaf to :doc:`ddd list </command_line_interface>`, and a structure containing one
+gets no section alignment estimate. It is storage DDD carries into the image without describing.
 
 The variable itself keeps the storage its ``datatype`` asks for - ``StateA`` is declared
 ``uint8_t``, not ``StateA_t`` - because the size of an enumerated type is up to the compiler
@@ -301,7 +318,8 @@ whether or not another component may read it.
    a hand-written ``extern`` in the middle of a component, is a visible thing that a reviewer
    can object to. The :doc:`cmake integration </build_integration>` reinforces this by putting
    the generated directory on the include path of the components and expecting each of them
-   to include its own header.
+   to include its own header. What travels to a component is that directory and the compile
+   usage needed to read what is in it, never a link edge.
 
 ``--const-inputs``
 ~~~~~~~~~~~~~~~~~~
@@ -377,10 +395,10 @@ where another does not define it.
    against ``ddd list --format json``, once without defines and once with ``-DFEATURE_X``::
 
       == symbols   [base]
-      19 of 20 declared variables are defined
+      20 of 21 declared variables are defined
         conditional, absent : ValueG
       == symbols   [defines]
-      20 of 20 declared variables are defined
+      21 of 21 declared variables are defined
         conditional, present: ValueG
 
 Calibration data is const, and volatile when a tool tunes it
@@ -655,7 +673,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 The record layouts and the compu methods are shared rather than repeated per object, because
 they describe *how* a value is stored and scaled rather than *which* value it is, and two
 objects that agree on both have no reason to carry two copies. The seven calibration objects
-of the demo share five record layouts, and its twenty objects share eight compu methods:
+of the demo share five record layouts, and its twenty-one objects share eight compu methods:
 
 .. code-block:: text
 

@@ -103,7 +103,7 @@ project is entirely clean, with a statement of what was checked:
 .. code-block:: text
 
    $ ddd check examples/demo/demo.ddd.json
-   ok: 20 variables in 4 components are consistent
+   ok: 21 variables in 4 components are consistent
 
 All of this goes to **stderr** - every finding, every note and the closing summary or ``ok:``
 line. Stdout is reserved for whatever the command was asked to produce: the dictionary of

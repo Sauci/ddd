@@ -28,7 +28,7 @@ on the generated a2l. ``examples/demo/demo.ddd.json`` is a complete one:
 .. code-block:: text
 
    $ ddd check demo.ddd.json
-   ok: 20 variables in 4 components are consistent
+   ok: 21 variables in 4 components are consistent
 
 The keys
 --------

@@ -11,6 +11,8 @@
 #   TEMPLATES  directory of the c templates, defaulting to the examples shipped with DDD
 #   CFLAGS   override the default warning set
 #   CC       override the compiler
+#   INCLUDES -I flags for the hand written headers the project's external types name,
+#            defaulting to the project's own include/ directory when it has one
 set -euo pipefail
 
 PROJECT="${1:-examples/demo/demo.ddd.json}"
@@ -20,6 +22,13 @@ CFLAGS="${CFLAGS:--std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshado
 CDEFS="${CDEFS:-}"
 GENFLAGS="${GENFLAGS:-}"
 TEMPLATES="${TEMPLATES:-$(ddd templates-dir)}"
+# An external type names a header DDD does not write, so the generated code cannot be compiled
+# out of the output directory alone. The project keeps such headers beside its descriptions.
+INCLUDES="${INCLUDES:-}"
+if [ -z "$INCLUDES" ] && [ -d "$(dirname "$PROJECT")/include" ]; then
+    INCLUDES="-I$(dirname "$PROJECT")/include"
+fi
+read -r -a include_flags <<<"$INCLUDES"
 
 log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
@@ -55,12 +64,12 @@ compile_variant() {
     local globals_objects=()
     for source in "$objdir"/tu_*.c; do
         object="$objdir/$(basename "${source%.c}").o"
-        $CC $CFLAGS "${defines[@]}" -I"$OUTPUT" -c "$source" -o "$object"
+        $CC $CFLAGS "${defines[@]}" "${include_flags[@]}" -I"$OUTPUT" -c "$source" -o "$object"
         objects+=("$object")
     done
     for source in "$OUTPUT"/*.c; do
         object="$objdir/$(basename "${source%.c}").o"
-        $CC $CFLAGS "${defines[@]}" -I"$OUTPUT" -c "$source" -o "$object"
+        $CC $CFLAGS "${defines[@]}" "${include_flags[@]}" -I"$OUTPUT" -c "$source" -o "$object"
         objects+=("$object")
         globals_objects+=("$object")
     done
@@ -69,7 +78,7 @@ compile_variant() {
     # duplicate definition and no declaration without a definition behind it.
     log "link      [$label]"
     printf 'int main(void)\n{\n    return 0;\n}\n' >"$objdir/main.c"
-    $CC $CFLAGS "${defines[@]}" -I"$OUTPUT" -o "$objdir/app" "${objects[@]}" "$objdir/main.c"
+    $CC $CFLAGS "${defines[@]}" "${include_flags[@]}" -I"$OUTPUT" -o "$objdir/app" "${objects[@]}" "$objdir/main.c"
     "$objdir/app"
 
     log "symbols   [$label]"

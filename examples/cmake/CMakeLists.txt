@@ -28,7 +28,14 @@ set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
 # `ddd templates-dir` prints.
 set(templates "${CMAKE_CURRENT_SOURCE_DIR}/../templates")
 
+# SensorHub declares an external type, so it is the component that publishes the vendor header
+# defining it. That header's include line lands in ddd_types.h, and every component's generated
+# header includes ddd_types.h - event_logger's among them, although event_logger does not link
+# sensor_hub and names nothing of the type itself. Nothing here wires that up: ddd_generate()
+# hands the registered components the compile usage it collected off each of them, which is what
+# puts this include directory on all of their compile lines.
 add_library(sensor_hub STATIC components/sensor_hub.c)
+target_include_directories(sensor_hub PUBLIC "${descriptions}/include")
 ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json")
 
 add_library(controller STATIC components/controller.c)

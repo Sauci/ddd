@@ -3660,6 +3660,115 @@ class TestServer:
         for action in answer["result"]:
             assert b_uri not in action["edit"].get("changes", {}), action["title"]
 
+    def test_a_client_that_takes_versioned_edits_is_told_which_version_they_are_for(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a version the client applies the edit to whatever the buffer holds by the
+        time it arrives; with one it refuses an edit computed for a text it no longer has."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        b_uri = (tmp_path / "b.ddd.json").as_uri()
+        b_text = (tmp_path / "b.ddd.json").read_text(encoding="utf-8")
+        at_name = Document((tmp_path / "a.ddd.json").read_text(encoding="utf-8")).text_range_of(
+            "component.interface[0].definition.name"
+        )
+        assert at_name is not None
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "rootUri": tmp_path.as_uri(),
+                    "capabilities": {"workspace": {"workspaceEdit": {"documentChanges": True}}},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": b_uri,
+                        "languageId": "json",
+                        "version": 7,
+                        "text": b_text,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": a_uri},
+                    "position": at_name["start"],
+                    "newName": "Velocity",
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        assert "changes" not in answer["result"]
+        versions = {
+            change["textDocument"]["uri"]: change["textDocument"]["version"]
+            for change in answer["result"]["documentChanges"]
+        }
+        assert versions == {a_uri: None, b_uri: 7}
+        assert all(change["edits"] for change in answer["result"]["documentChanges"])
+
+    @pytest.mark.parametrize(
+        "capabilities",
+        [
+            "nonsense",
+            {"workspace": "nonsense"},
+            {"workspace": {"workspaceEdit": "nonsense"}},
+            {"workspace": {"workspaceEdit": {}}},
+        ],
+    )
+    def test_anything_short_of_the_exact_announcement_keeps_the_plain_changes_form(
+        self, tmp_path: Path, capabilities: Any
+    ) -> None:
+        """Each guard in ``_initialise`` refuses a shape one step short of the real
+        announcement: capabilities not a dict, workspace not a dict, workspaceEdit not a dict,
+        and workspaceEdit a dict that never actually says ``documentChanges: true``. Short of
+        the exact shape, the client gets the ``changes`` form, which is the only one it has
+        said it can apply.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri(), "capabilities": capabilities},
+            },
+            self.rename_request(path, "component.interface[0].definition.name", "Velocity"),
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 11)
+        assert "changes" in answer["result"]
+        assert "documentChanges" not in answer["result"]
+
     def test_a_removal_is_not_offered_while_another_declaration_is_unreadable(
         self, tmp_path: Path
     ) -> None:

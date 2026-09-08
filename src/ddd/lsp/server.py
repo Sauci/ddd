@@ -173,6 +173,9 @@ class Server:
         edit that follows is applied to the buffer, so both have to be read from it.
         """
 
+        self._versioned_edits = False
+        """Whether the client takes ``documentChanges``, which carry the version an edit is for."""
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
 
@@ -476,6 +479,27 @@ class Server:
         span = document.text_range_of(pointer)
         return None if span is None else {"range": span, "placeholder": subject[1]}
 
+    def _workspace_edit(self, changes: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+        """The edits in the shape the client asked for.
+
+        ``documentChanges`` names, for each file, the version of the text the edit was
+        computed against, so a client that has typed since refuses the edit instead of
+        applying it to a text it was not meant for. A document that is not open has no
+        version, which the protocol spells ``null``. The plain ``changes`` form stays for a
+        client that did not announce the other, because it is the only one it can apply.
+        """
+        if not self._versioned_edits:
+            return {"changes": changes}
+        return {
+            "documentChanges": [
+                {
+                    "textDocument": {"uri": uri, "version": self._version_of(uri_to_path(uri))},
+                    "edits": edits,
+                }
+                for uri, edits in changes.items()
+            ]
+        }
+
     def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
         """Rewrite a name everywhere the project writes it, or say why it cannot be.
 
@@ -510,7 +534,7 @@ class Server:
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()
-        write_message(self.writer, response(request_id, {"changes": changes}))
+        write_message(self.writer, response(request_id, self._workspace_edit(changes)))
 
     def _actions(self, message: dict[str, Any]) -> list[dict[str, Any]]:
         """What can be offered for the key under the cursor.
@@ -527,6 +551,8 @@ class Server:
         offered: list[dict[str, Any]] = []
         for workspace in self._projects_of(path):
             offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
+        for action in offered:
+            action["edit"] = self._workspace_edit(action["edit"]["changes"])
         return offered
 
     def _initialise(self, params: dict[str, Any]) -> None:
@@ -536,6 +562,10 @@ class Server:
             self.roots = [uri_to_path(folder["uri"]) for folder in folders]
         elif params.get("rootUri"):
             self.roots = [uri_to_path(params["rootUri"])]
+        capabilities = params.get("capabilities")
+        workspace = capabilities.get("workspace") if isinstance(capabilities, dict) else None
+        edit = workspace.get("workspaceEdit") if isinstance(workspace, dict) else None
+        self._versioned_edits = isinstance(edit, dict) and edit.get("documentChanges") is True
 
     def _capabilities(self) -> dict[str, Any]:
         return {

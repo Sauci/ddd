@@ -3660,6 +3660,134 @@ class TestServer:
         for action in answer["result"]:
             assert b_uri not in action["edit"].get("changes", {}), action["title"]
 
+    def test_a_removal_is_not_offered_while_another_declaration_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        """The title says no other declaration has this key, which this can only claim having
+        read every one of them. B's real declaration still says "rpm" once you look past the
+        decoy in front of it - drifted out of reach is not the same as agreeing."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        b_uri = (tmp_path / "b.ddd.json").as_uri()
+        a_disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        at_unit = Document(a_disk).range_of("component.interface[0].definition.unit")
+        # B's buffer gained a declaration in front of the one the index knows; both the decoy
+        # and the real declaration say "rpm", but only the pointer has drifted.
+        drifted = json.dumps(
+            component(
+                "B", declare("input", "Other", unit="rpm"), declare("input", "Speed", unit="rpm")
+            ),
+            indent=2,
+        )
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": b_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": drifted,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": a_uri},
+                    "range": at_unit,
+                    "context": {"diagnostics": []},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        for action in answer["result"]:
+            assert not action["title"].startswith("Remove this unit"), action["title"]
+
+    def test_adopting_the_others_value_is_not_offered_while_one_of_them_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        """The title says the other declarations state this value, which this can only claim
+        having read every one of them. B alone is not "the other declarations" when C, the
+        third, could not be read at all."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        c_uri = (tmp_path / "c.ddd.json").as_uri()
+        a_disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        at_definition = Document(a_disk).range_of("component.interface[0].definition")
+        # C's buffer gained a declaration in front of the one the index knows.
+        drifted = json.dumps(
+            component(
+                "C", declare("input", "Other", unit="Hz"), declare("input", "Speed", unit="Hz")
+            ),
+            indent=2,
+        )
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": c_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": drifted,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": a_uri},
+                    "range": at_definition,
+                    "context": {"diagnostics": []},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        for action in answer["result"]:
+            assert not action["title"].startswith("Take the unit"), action["title"]
+
     def test_the_server_asks_for_the_full_text_on_every_change(self, tmp_path: Path) -> None:
         stream = framed(
             {

@@ -313,12 +313,21 @@ def _adopt(
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
+    others = [site for site in built.declarations.get(name, ()) if site != here]
+    targets: list[Document] = []
+    for site in others:
+        target = _at_site(site, name, cache)
+        if target is None:
+            # The title claims the other declarations state this value - a claim only
+            # available having actually read every one of them. A declaration drifted out of
+            # reach is not the same as one that agrees, so a single reading among several
+            # readable others is not the unanimity the title would assert; withhold instead.
+            return None
+        targets.append(target)
     stated = {
         raw
-        for site in built.declarations.get(name, ())
-        if site != here
-        and (target := _at_site(site, name, cache)) is not None
-        and (raw := target.raw_at(f"{site.pointer}.{key}")) is not None
+        for site, target in zip(others, targets, strict=True)
+        if (raw := target.raw_at(f"{site.pointer}.{key}")) is not None
     }
     if len(stated) != 1:
         return None
@@ -385,10 +394,19 @@ def _remove_here(
     # suggestion to lose information for no reason at all.
     if not others:
         return None
+    targets: list[Document] = []
+    for site in others:
+        target = _at_site(site, name, cache)
+        if target is None:
+            # The title below claims no other declaration has this key - a claim only
+            # available having actually read every one of them. A declaration drifted out of
+            # reach is not the same as one that agrees, so it must not be counted out of the
+            # "other declarations" the title speaks for; withhold the offer instead.
+            return None
+        targets.append(target)
     if any(
         target.raw_at(f"{site.pointer}.{key}") is not None
-        for site in others
-        if (target := _at_site(site, name, cache)) is not None
+        for site, target in zip(others, targets, strict=True)
     ):
         return None
     edit = _erase(document, here.pointer, key)

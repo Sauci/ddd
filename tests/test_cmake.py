@@ -112,7 +112,7 @@ class TestTheShippedExample:
 
 
 class TestACollectedProjectWithPlugins:
-    def write(self, tmp_path: Path) -> tuple[Path, Path]:
+    def write(self, tmp_path: Path, options: str = "") -> tuple[Path, Path]:
         """A component carrying the layout plugin's blocks, collected into an image naming it."""
         component = tmp_path / "storage.ddd.json"
         shutil.copy(LAYOUT / "storage.ddd.json", component)
@@ -133,7 +133,7 @@ ddd_generate(img
              NAME LayoutDevice
              TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
              SCHEMA_DIRECTORY "${{CMAKE_CURRENT_BINARY_DIR}}/schemas"
-             PLUGINS "{plugin.as_posix()}")
+             PLUGINS "{plugin.as_posix()}"{options})
 """,
             encoding="utf-8",
         )
@@ -151,6 +151,21 @@ ddd_generate(img
         assert described["project"]["includes"] == [component.as_posix()]
         assert (generated / "ddd_layout.h").is_file(), "the plugin's artefact, under generate all"
         assert closed_over_layout(tmp_path / "build" / "schemas" / "ddd_component.schema.json")
+
+    def test_no_a2l_keeps_the_plugins_artefact(self, tmp_path: Path) -> None:
+        """NO_A2L subtracts the a2l from the run; it does not narrow the run to the c artefact.
+
+        Narrowing is what it used to do, and 'all' is the only artefact that produces the
+        plugins' output, so a build asking for no a2l silently got no plugin artefact either -
+        and nothing failed, because a plugin's files are not declared outputs.
+        """
+        self.write(tmp_path, options="\n             NO_A2L")
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "img"
+        assert (generated / "ddd_layout.h").is_file(), "the plugin's artefact, with no a2l asked"
+        assert (generated / "ddd_globals.c").is_file()
+        assert not (generated / "LayoutDevice.a2l").exists(), "the a2l is what was subtracted"
 
     def test_an_edited_plugin_regenerates(self, tmp_path: Path) -> None:
         """The plugin file is a dependency of the generation, so its edit reaches the header."""

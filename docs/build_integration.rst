@@ -432,7 +432,10 @@ Options
    * - ``CONST_INPUTS``
      - declare input variables ``const`` in the consumer headers.
    * - ``NO_A2L``
-     - do not generate the a2l file; no ``DDD_A2L`` property is set then.
+     - do not generate the a2l file; no ``DDD_A2L`` property is set then. The run still
+       produces everything else the project has, the artefacts of the plugins named with
+       ``PLUGINS`` included: the a2l is subtracted from the run rather than the run being
+       narrowed to the c sources.
    * - ``STRICT``
      - treat DDD warnings as errors.
    * - ``NO_PROPAGATE_HEADERS``

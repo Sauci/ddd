@@ -184,9 +184,15 @@ class TestCheck:
 class TestGenerateAll:
     """``all`` means everything the project produces, the plugins' artefacts included."""
 
-    def run(self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> list[str]:
+    def run(
+        self,
+        artefact: str,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        *extra: str,
+    ) -> list[str]:
         templates = ["-t", str(EXAMPLES / "templates")] if artefact != "a2l" else []
-        arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates]
+        arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates, *extra]
         assert main([*arguments, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
         return [
             Path(entry["path"]).name for entry in json.loads(capsys.readouterr().out)["generated"]
@@ -207,6 +213,51 @@ class TestGenerateAll:
         written = self.run(artefact, tmp_path, capsys)
         assert "ddd_layout.h" not in written
         assert not (tmp_path / "ddd_layout.h").exists()
+
+    def test_without_the_a2l_keeps_the_plugins_artefact(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What a build asks for when the a2l is written later, once the addresses are known.
+
+        Selecting the c artefact instead is the trap this option exists to avoid: it drops the
+        plugins' artefacts along with the a2l, and says nothing about having done so.
+        """
+        written = self.run("all", tmp_path, capsys, "--without", "a2l")
+        assert "ddd_layout.h" in written and "ddd_globals.c" in written
+        assert "LayoutDevice.a2l" not in written
+        assert (tmp_path / "ddd_layout.h").is_file()
+        assert not (tmp_path / "LayoutDevice.a2l").exists()
+
+    def test_without_the_c_keeps_the_a2l_and_the_plugins_artefact(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        written = self.run("all", tmp_path, capsys, "--without", "c")
+        assert "LayoutDevice.a2l" in written and "ddd_layout.h" in written
+        assert "ddd_globals.c" not in written
+
+    def test_a_run_left_with_nothing_to_write_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Subtracting both built-in artefacts from a project that provides no plugin artefact.
+
+        Reporting success while writing nothing is what this whole option is about, so the one
+        combination that would still do it is a usage error.
+        """
+        arguments = [
+            "generate",
+            "all",
+            str(DEMO),
+            "-o",
+            str(tmp_path),
+            "-t",
+            str(EXAMPLES / "templates"),
+            "--without",
+            "c",
+            "--without",
+            "a2l",
+        ]
+        assert main(arguments) == EXIT_USAGE
+        assert "would write nothing" in capsys.readouterr().err
 
 
 class TestGenerate:

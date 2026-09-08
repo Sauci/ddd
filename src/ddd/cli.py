@@ -187,7 +187,8 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "produces and carries only the options of that artefact: only a run that "
             "renders c takes a template directory, only one that writes the a2l takes an "
             "address map. 'all' produces both, and the artefact of every plugin the project "
-            "names that provides one; 'a2l' is the run a build repeats "
+            "names that provides one, and takes --without to leave one of the built-in "
+            "artefacts out of that; 'a2l' is the run a build repeats "
             "after linking, when the addresses are known but the c must not change."
         ),
     )
@@ -213,6 +214,9 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             with_c=with_c,
             with_a2l=with_a2l,
             with_plugins=with_plugins,
+            # Only a run composing several artefacts has anything to subtract, and 'all' is
+            # the only one there is.
+            with_exclusions=with_plugins,
         )
     if plugin_artefact is not None:
         extra = artefacts.add_parser(
@@ -372,7 +376,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_generate_arguments(
-    parser: argparse.ArgumentParser, *, with_c: bool, with_a2l: bool, with_plugins: bool = False
+    parser: argparse.ArgumentParser,
+    *,
+    with_c: bool,
+    with_a2l: bool,
+    with_plugins: bool = False,
+    with_exclusions: bool = False,
 ) -> None:
     """The options of one ``generate`` artefact; only the selected backends contribute any.
 
@@ -422,6 +431,20 @@ def _add_generate_arguments(
             "--address-map",
             type=Path,
             help="json file mapping variable names to their address in the target",
+        )
+    if with_exclusions:
+        parser.add_argument(
+            "--without",
+            action="append",
+            choices=["c", "a2l"],
+            default=[],
+            metavar="{c,a2l}",
+            help=(
+                "leave one of the built-in artefacts out of this run, repeatable. The plugins' "
+                "artefacts are produced either way, so 'generate all --without a2l' is how a "
+                "build that writes the a2l later, once the addresses are known, asks for "
+                "everything else"
+            ),
         )
     parser.add_argument(
         "--dry-run", action="store_true", help="report what would be written, write nothing"
@@ -617,6 +640,12 @@ def _listed(names: list[str]) -> str:
 
 
 def _command_generate(args: argparse.Namespace) -> int:
+    # Subtracting a built-in artefact is the same as never having selected it, so clearing the
+    # render flag is the whole of it. A plugin's artefact has no such flag and is therefore
+    # untouched, which is the point: --without a2l keeps them.
+    for artefact in getattr(args, "without", ()):
+        setattr(args, f"render_{artefact}", False)
+
     resolved, bag = _analyze(args)
     if resolved is None:
         _report(bag, args.format)
@@ -663,6 +692,12 @@ def _command_generate(args: argparse.Namespace) -> int:
             )
             raise ValueError(msg)
         backends.append(backend_of(plugin, dictionary, GENERATOR))
+    if not backends:
+        msg = (
+            "this run would write nothing: what --without left of it is the plugins' "
+            "artefacts, and this project provides none"
+        )
+        raise ValueError(msg)
     files = render(dictionary, backends, args.output_dir)
     try:
         results = write(files, dry_run=args.dry_run)

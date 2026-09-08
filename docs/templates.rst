@@ -13,7 +13,8 @@ generate a2l`` goes without, because it renders no c at all.
    usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
                            [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
                            [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
+                           [--dry-run] [--force]
                            project
    ddd generate all: error: the following arguments are required: -t/--template-dir
 

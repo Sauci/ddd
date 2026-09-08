@@ -260,6 +260,53 @@ The targets it creates
 The helper targets are named after the image without its file extension, because an image is
 usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers``.
 
+The example above builds the graph below. The check targets are left out of it; everything
+else a build sees is there, and so is every edge between them:
+
+.. uml::
+
+   top to bottom direction
+
+   rectangle "firmware.elf" as image
+
+   package "components, registered with ddd_add_component()" as components {
+       rectangle "user_interface" as user_interface
+       rectangle "controller" as controller
+       rectangle "sensor_hub" as sensor_hub
+       rectangle "event_logger" as event_logger
+   }
+
+   package "created by ddd_generate(firmware.elf)" as generated {
+       rectangle "firmware_ddd_globals" as globals
+       rectangle "firmware_ddd_headers" as headers
+       rectangle "firmware_ddd_generation" as generation
+   }
+
+   image --> user_interface
+   image --> event_logger
+   user_interface --> controller
+   controller --> sensor_hub
+   image --> globals : PRIVATE
+
+   globals --> headers : PUBLIC
+   headers ..> generation : build order
+   image ..> generation : the descriptions of the\nlink closure are collected
+
+   components --> headers : PROPAGATE_HEADERS:\nevery component links it
+   headers ..> components : and reads back each one's\ninterface include directories,\ncompile definitions and\ncompile options
+
+   legend bottom
+     solid arrow = link edge, target_link_libraries()
+     dashed arrow = a reference that creates no link edge
+   endlegend
+
+The two arrows between the components and ``firmware_ddd_headers`` are what reduce the
+integration to two lines per component, and they are not a cycle. The components link the
+interface library; the interface library names their usage through ``$<TARGET_PROPERTY:...>``,
+which is read at generate time and visits each target once. It is also the picture of what the
+propagation costs: the usage collected on the right reaches every component on the left,
+including the ones this image happens not to link.
+
 .. list-table::
    :header-rows: 1
    :widths: 34 66

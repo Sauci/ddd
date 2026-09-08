@@ -2001,6 +2001,36 @@ class TestPropagating:
         declared = json.loads(rewritten)["component"]["interface"][0]["definition"]
         assert declared["unit"] == "rpm"
 
+    def test_a_missing_key_is_not_read_from_a_buffer_where_the_pointer_has_drifted(
+        self, tmp_path: Path
+    ) -> None:
+        """`_missing` reads every other declaration to see which keys it lacks; a buffer with
+        a declaration inserted above must not be read at the disk's now wrong position, or a
+        key only the wrong declaration states looks like one 'Speed' is missing."""
+        from ddd.lsp.edits import _missing
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        built = self.built_from(tmp_path / "p.ddd.json")
+        a_path = tmp_path / "a.ddd.json"
+        b_path = tmp_path / "b.ddd.json"
+        # B's buffer gained a declaration in front of the one the index knows.
+        drifted = json.dumps(
+            component("B", declare("input", "Other", unit="Hz"), declare("input", "Speed")),
+            indent=2,
+        )
+        cache: dict[Path, Document] = {b_path: Document(drifted)}
+        absent = _missing(
+            built, a_path, read(a_path, cache), "Speed", "component.interface[0].definition", cache
+        )
+        assert absent == [], "'unit' is 'Other's, not the drifted 'Speed' declaration's"
+
     def test_a_value_is_copied_as_written_rather_than_re_serialised(self, tmp_path: Path) -> None:
         """A conversion arrives looking the way its author typed it, not the way json.dumps
         would have; otherwise a one line fix reformats somebody's file."""
@@ -3508,6 +3538,127 @@ class TestServer:
         answers = {m["id"]: m for m in sent(writer) if "id" in m}
         assert answers[2]["result"]["placeholder"] == "Speed"  # the changed buffer
         assert answers[3]["result"] is None  # closed: the disk again, where that line is not a name
+
+    def test_a_rename_skips_a_buffer_where_the_pointer_no_longer_names_the_object(
+        self, tmp_path: Path
+    ) -> None:
+        """The index describes the disk; a buffer with a declaration inserted above has the
+        object one entry further down. Editing at the disk's pointer would rename whatever now
+        sits there, so that file is left alone rather than rewritten wrong."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        b_uri = (tmp_path / "b.ddd.json").as_uri()
+        a_disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        at_name = Document(a_disk).text_range_of("component.interface[0].definition.name")
+        assert at_name is not None
+        # B's buffer gained a declaration in front of the one the index knows.
+        drifted = json.dumps(
+            component("B", declare("input", "Other"), declare("input", "Speed")), indent=2
+        )
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": b_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": drifted,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": a_uri},
+                    "position": at_name["start"],
+                    "newName": "Velocity",
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        changes = answer["result"]["changes"]
+        assert a_uri in changes
+        assert b_uri not in changes, "the drifted buffer would have had 'Other' renamed"
+
+    def test_a_quick_fix_skips_a_buffer_where_the_pointer_no_longer_names_the_object(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        a_uri = (tmp_path / "a.ddd.json").as_uri()
+        b_uri = (tmp_path / "b.ddd.json").as_uri()
+        a_disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        at_unit = Document(a_disk).range_of("component.interface[0].definition.unit")
+        drifted = json.dumps(
+            component(
+                "B", declare("input", "Other", unit="Hz"), declare("input", "Speed", unit="Hz")
+            ),
+            indent=2,
+        )
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": b_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": drifted,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": a_uri},
+                    "range": at_unit,
+                    "context": {"diagnostics": []},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        for action in answer["result"]:
+            assert b_uri not in action["edit"].get("changes", {}), action["title"]
 
     def test_the_server_asks_for_the_full_text_on_every_change(self, tmp_path: Path) -> None:
         stream = framed(

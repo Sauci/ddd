@@ -458,9 +458,20 @@ def rename_edits(
     subject = renameable_at(document, pointer)
     changes: dict[str, list[dict[str, Any]]] = {}
     for site in rename_sites(built, *subject) if subject is not None else ():
-        span = read(site.path, cache).text_range_of(site.pointer)
-        if span is not None:
-            changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
+        # The loop body only ever runs through the branch above where `subject` is not
+        # `None`. Asserted rather than reshaped into its own guard: a branch that cannot be
+        # taken is a branch no test can cover and no reader can trust.
+        assert subject is not None
+        target = read(site.path, cache)
+        if target.value_at(site.pointer) != subject[1]:
+            # The index describes the disk; an open buffer may have moved the declaration.
+            # Editing at the old pointer would rename whatever now sits there.
+            continue
+        # `text_range_of` and the `value_at` above are read off the same scan of `target`, so
+        # a pointer just confirmed to hold `subject[1]` there always has a text span too.
+        span = target.text_range_of(site.pointer)
+        assert span is not None
+        changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
     return changes
 
 

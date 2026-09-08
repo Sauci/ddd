@@ -258,6 +258,18 @@ def interface_keys(members: Any) -> list[str]:
     return [key for key in members if key in PROPAGATED_KEYS]
 
 
+def _at_site(site: Site, name: str, cache: dict[Path, Document]) -> Document | None:
+    """The document a site lies in, provided the site still names the object there.
+
+    The index is built from the files on disk and a site's pointer describes them; an open
+    buffer may have a declaration inserted above, after which the same pointer names a
+    different object. Reading a value from there, or inserting one, would reconcile the
+    wrong declaration - so a site that has drifted is treated as absent.
+    """
+    document = read(site.path, cache)
+    return document if document.value_at(f"{site.pointer}.name") == name else None
+
+
 def _missing(
     built: Index,
     path: Path,
@@ -280,7 +292,10 @@ def _missing(
     for site in built.declarations.get(name, ()):
         if site.path == path and site.pointer == definition:
             continue
-        absent.update(interface_keys(read(site.path, cache).value_at(site.pointer)))
+        target = _at_site(site, name, cache)
+        if target is None:
+            continue
+        absent.update(interface_keys(target.value_at(site.pointer)))
     # A key this declaration may defer on is not missing from it.
     return sorted(absent - mine - DEFERRED_KEYS)
 
@@ -302,7 +317,8 @@ def _adopt(
         raw
         for site in built.declarations.get(name, ())
         if site != here
-        and (raw := read(site.path, cache).raw_at(f"{site.pointer}.{key}")) is not None
+        and (target := _at_site(site, name, cache)) is not None
+        and (raw := target.raw_at(f"{site.pointer}.{key}")) is not None
     }
     if len(stated) != 1:
         return None
@@ -331,7 +347,8 @@ def _from_producer(
         # No producer, or several - which is its own finding, and not one to guess through.
         return None
     producer = producers[0]
-    raw = read(producer.path, cache).raw_at(f"{producer.pointer}.{key}")
+    target = _at_site(producer, name, cache)
+    raw = None if target is None else target.raw_at(f"{producer.pointer}.{key}")
     mine = document.raw_at(f"{here.pointer}.{key}")
     if raw is None or raw == mine or (key in DEFERRED_KEYS and mine is None):
         return None
@@ -368,7 +385,11 @@ def _remove_here(
     # suggestion to lose information for no reason at all.
     if not others:
         return None
-    if any(read(site.path, cache).raw_at(f"{site.pointer}.{key}") is not None for site in others):
+    if any(
+        target.raw_at(f"{site.pointer}.{key}") is not None
+        for site in others
+        if (target := _at_site(site, name, cache)) is not None
+    ):
         return None
     edit = _erase(document, here.pointer, key)
     if edit is None:
@@ -401,7 +422,9 @@ def _remove_elsewhere(
     for site in built.declarations.get(name, ()):
         if site == here:
             continue
-        target = read(site.path, cache)
+        target = _at_site(site, name, cache)
+        if target is None:
+            continue
         edit = (
             None
             if target.raw_at(f"{site.pointer}.{key}") is None
@@ -467,7 +490,9 @@ def _propagate(
     for site in built.declarations.get(name, ()):
         if site == here:
             continue
-        target = read(site.path, cache)
+        target = _at_site(site, name, cache)
+        if target is None:
+            continue
         if key in DEFERRED_KEYS and target.raw_at(f"{site.pointer}.{key}") is None:
             continue  # it deferred to us; there is nothing to reconcile
         edit = _assign(target, site.pointer, key, raw)

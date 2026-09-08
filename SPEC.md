@@ -1652,47 +1652,58 @@ of an archived candidate, `--renames` writing the old-to-new name pairs to a fil
 artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all` for
 the two built-in artefacts and the artefact of every plugin the project names that provides
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
-options of what it produces; `all` additionally takes a repeatable `--without c|a2l`, which
-leaves that built-in artefact out of the run while still producing the plugins'. What it
-subtracts it subtracts entirely: the options of an artefact left out are refused rather than
-accepted and ignored, the one it needs is asked for only if it stayed, and a run left with
-nothing to write is refused rather than reporting success;
+options of what it produces - a plugin's artefact takes the output directory, `--dry-run`,
+`--force` and the severity and format options, and none of the built-in artefacts' own;
+`all` additionally takes a repeatable `--without c|a2l`, which leaves that built-in
+artefact out of the run while still producing the plugins'. What it subtracts it subtracts
+entirely: the options of an artefact left out are refused rather than accepted and ignored,
+the one it needs is asked for only if it stayed, and a run left with nothing to write is
+refused rather than reporting success;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
-table stating the physical reading of a stated initial value beside the raw one, or, in
-JSON, as an object carrying `project`, `components` and `variables` beside
-the findings);
+table whose rows are sorted by variable name, stating the physical reading of a stated
+initial value beside the raw one, or, in JSON, as an object carrying `project`,
+`components` and `variables` beside the findings);
 reporting the artefacts a project can be asked to generate (`ddd artefacts`: the built-in
-`c` and `a2l`, and the name of every plugin the project names that provides one, or the
-plugins named with `--plugin` when there is no project description to read yet; what each
-artefact writes is not among them, since a plugin's file names follow from the resolved
-dictionary and a dry run of `ddd generate all` reports them);
+`c` and `a2l`, then the plugins that provide one in the order the project names them, or
+the plugins named with `--plugin` when there is no project description to read yet, and the
+two built-in artefacts alone when neither is given; a plugin that provides none is named in
+a note rather than passed over, its block being part of what the `c` templates render; what
+each artefact writes is not among them, since a plugin's file names follow from the
+resolved dictionary and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
-nothing; printing the JSON schema of the file
+nothing, an explicit `"id": null` is filled in place, a file that is not a component
+description is left alone, and a file that cannot be parsed is reported while the others
+are stamped, the run exiting 1; printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
 closing the extension blocks over the named plugins' models); listing
 the description files a project is built out of
-(`ddd sources`, which lets a build system re-run its configure step when one changes; in
-JSON the paths are a `sources` list beside the findings; the plugin modules the project
-names ([section 3.11](#311-plugins)) are among them, each by the file it was imported
-from, so that an edited plugin re-runs the generation as an edited component does); recording
+(`ddd sources`, one sorted absolute POSIX path per line, which lets a build system re-run
+its configure step when one changes; in JSON the paths are a `sources` list beside the
+findings; the plugin modules the project names ([section 3.11](#311-plugins)) are among
+them, each by the file it was imported from, so that an edited plugin re-runs the
+generation as an edited component does); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
-(`ddd checks`, each with its default severity, the unrelaxable ones marked; `--plugin`
-listing a plugin's checks after the built-in ones); reporting
-where its build system integration and its example templates
+(`ddd checks`, each with its default severity, the unrelaxable ones marked, the built-in
+ones in the order of the registry and then each `--plugin`'s checks in their declared
+order); reporting where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
-printing its own version (`ddd --version`). The root handed to a command is a project or a
-single component file; a component alone is checked with every check, the whole project
-ones included, because holding them back is the editor's leniency
-([section 7.2](#72-editor-integration)), not the command line's.
+printing its own version (`ddd --version`). Beside the command line, the package publishes
+a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
+The root handed to a command is a project or a single component file; a component alone is
+checked with every check unless `ddd check --standalone` is given, which holds back the ten
+checks that need every component of a project ([section 4](#4-consistency-checks)), the
+same set the editor holds back ([section 7.2](#72-editor-integration)); an explicit `-W` on
+the same run still wins. Given a project root, `--standalone` holds the same checks back
+project-wide, which is rarely wanted.
 
 Every command that reports findings can produce machine readable JSON (`--format json`): a
 `diagnostics` list, each finding carrying `check`, `severity`, `message`, a `location` of
@@ -1701,17 +1712,21 @@ counting by severity. In plain text, a finding is written
 `path:line:column#pointer: severity[check]: message`, the pieces of the location present
 as far as they are known and its notes indented beneath it; findings are ordered by
 severity, then path, then location, numeric parts of a pointer compared as numbers; and a
-clean `ddd check` closes with an `ok:` line counting the objects and components it found
-consistent, and `compare` with a verdict line saying whether the candidate file can replace
-the baseline file ([section 4.1](#41-comparing-two-deliveries)). `generate` adds the files
-it wrote with their status (`created`, `updated` or `unchanged`), and `dump` keeps its
-stdout for the dictionary, reporting findings on stderr. The exit code
-distinguishes clean runs (0), findings (1) and usage errors (2). A findings exit is
-reserved for findings reported *as errors*: a run whose findings are all warnings is a
-clean run unless `--strict` says otherwise. `ddd generate` with error findings writes
-nothing, because a stale artefact is preferable to a wrong one written halfway into a
-build, unless `--force` asks for the outputs anyway; the exit stays a findings exit in
-either case. `ddd generate --dry-run` reports what it would write and writes nothing.
+`ddd check` with no finding at all closes with an `ok:` line counting the objects and
+components it found consistent, and `compare` with a verdict line saying whether the
+candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
+`generate` adds the files it wrote with their status (`created`, `updated` or `unchanged`),
+and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
+`--format json` the findings document goes there too, so stdout carries the dictionary
+alone in both formats. The exit code distinguishes clean runs (0), findings (1) and usage
+errors (2). A findings exit is reserved for findings reported *as errors*: a run whose
+findings are all warnings is a clean run unless `--strict` says otherwise. `ddd sources`
+and `ddd artefacts` exit 0 whatever the findings, because what a project is built out of
+does not depend on whether it is consistent; they exit 1 only when the root cannot be read.
+`ddd generate` with error findings writes nothing, because a stale artefact is preferable
+to a wrong one written halfway into a build, unless `--force` asks for the outputs anyway;
+the exit stays a findings exit in either case. `ddd generate --dry-run` reports what it
+would write and writes nothing.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
@@ -1724,16 +1739,21 @@ formats up to its own it validates strictly.
 ### 7.1 Build system integration
 
 DDD ships a CMake module with two calls: `ddd_add_component(<target> JSON <file>...)`
-registers descriptions, component and types files alike, on their target, and
+registers descriptions, component and vocabulary files alike, on their target, and
 `ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
-built-in ones without being declared as outputs. It generates into the build
-tree, exposes the generated headers to the components through an interface library that
-carries the registered components' compile usage as well, and compiles the generated
-definition sources into the image as an object library of their own, so that an object no
-compiled code references is not dropped
-([section 5.1](#51-c-code)).
+built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
+a registered file not named `*.ddd.json` is a configure error; it defines an on-demand
+target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
+component file under the default severity policy, a vocabulary file getting none because it
+declares no interface of its own. `ddd_generate` generates into the build tree and defines
+two libraries, named after the image without its extension: an interface library
+`<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
+collected mode, the interface include directories, compile definitions and compile options
+of every registered component; and an object library `<stem>_ddd_globals` compiling the
+definition files, which links the first and is linked into the image, so that an object no
+compiled code references is not dropped ([section 5.1](#51-c-code)).
 
 `ddd_generate` knows two modes. In the collected mode, which is the default, the registered
 descriptions travel the link graph as a transitive target property, and the project
@@ -1741,10 +1761,13 @@ description is assembled in the build directory from the closure the image actua
 ([section 3.6](#36-build-record)); it needs a CMake new enough to carry properties across
 links, and the module itself refuses a CMake older than its stated floor with a message
 naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
-into an identifier, and that name becomes the A2L project, module and file name
-([section 5.2](#52-a2l)); its includes keep the link graph's traversal order, first
-occurrence kept, which orders the components and with them the `GROUP`s, while the objects
-themselves sort by name regardless ([section 5.1](#51-c-code)). With `PROJECT <file>` a
+into an identifier - every character outside `[A-Za-z0-9_]` replaced by `_`, a leading digit
+prefixed with `N` - and that name becomes the A2L project, module and file name
+([section 5.2](#52-a2l)); its includes keep the link graph's traversal order - the order
+CMake evaluates the transitive `DDD_JSON` property in, a depth-first walk of
+`target_link_libraries` in declaration order - first occurrence kept, which orders the
+components and with them the `GROUP`s, while the objects themselves sort by name regardless
+([section 5.1](#51-c-code)). With `PROJECT <file>` a
 hand written project description is used instead, which is the mode for an older CMake, or
 for a project layout the link graph does not mirror; `NAME` is then ignored in favour of
 the name written inside the file. An `ADDRESS_MAP <file>` names the address map of
@@ -1754,10 +1777,13 @@ addresses ([section 1.6](#16-position-in-the-build-process)), and the C sources 
 run re-renders are byte identical and trigger no rebuild ([section 5.1](#51-c-code)). A
 map named inside the build tree that does not exist yet is seeded empty at configure time,
 so that the first build runs with address zero instead of failing over a file only the
-link can produce.
+link can produce; an empty map raises no `address-missing`
+([section 4](#4-consistency-checks)), so that first build passes under `STRICT` as well.
+With `NO_A2L` the map is neither seeded nor a dependency, the A2L being the only artefact
+that reads it.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
-`--template-dir`), `OUTPUT_DIRECTORY` (defaulting into the build tree), `BYTE_ORDER`,
+`--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
 `CONST_INPUTS`, `NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
 the c artefact, so the plugins' artefacts are produced either way - `STRICT` and repeatable
 `SEVERITY` entries written
@@ -1770,11 +1796,15 @@ through as a module name; refused beside `PROJECT`, whose file names its own - a
 component. `SCHEMA_DIRECTORY <dir>` writes the JSON schemas of
 [section 3](#3-file-formats) into that directory at configure time, so that they describe
 the installed DDD rather than a version that is no longer there, closed over the project's
-plugins - from `PLUGINS`, or from the `PROJECT` file - so that an editor validates a
-plugin's block as it is typed ([section 3.11](#311-plugins)). Beside the generation
-step, the call defines a `<stem>_ddd_check` target, named after the image without its
-extension, that runs `ddd check` under the same severity policy, so that a CI job can
-check without generating.
+plugins - from `PLUGINS`, or, beside `PROJECT`, from the plugins that one file names and
+not a sub-project's - so that an editor validates a plugin's block as it is typed
+([section 3.11](#311-plugins)). Beside the generation step, the call defines a
+`<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
+CI job can check without generating. The path of the A2L, where the run writes one, is
+published as the image's `DDD_A2L` property. The tool itself is found by `find_program`
+into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
+upgraded DDD regenerates; multi-config generators are refused at configure time, because
+the generated files have one path that every configuration would write to.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so
@@ -1821,7 +1851,8 @@ under each of them and the findings published together: a component linked into 
 is in two projects, and the answer to which one the reader cares about is both. A file no
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
-descriptions of the nearest directory that include it. A file
+descriptions of the nearest directory that include it - the candidates of a directory being
+its `*.ddd.json` files in sorted order, the opened file itself excluded. A file
 belonging to no build and to no such project is still checked, on its own, with the ten
 checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
@@ -1844,17 +1875,20 @@ A plugin hook that raises while a file is checked is reported as a `plugin-inval
 at the project file rather than ending the session ([section 3.11](#311-plugins)).
 
 A message body the server cannot parse is answered with the protocol's parse or
-invalid-request error and does not stop the server; a corrupted frame header, after which
-no message boundary can be trusted, ends the session with a message rather than a failure
-trace.
+invalid-request error and does not stop the server; a frame header whose `Content-Length`
+is not a number, after which no message boundary can be trusted, ends the session with a
+message rather than a failure trace, and a header block without a length is read as the end
+of the conversation.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
-repeatable `-b` arguments; the shipped VS Code extension exposes them as the setting
-`ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
+repeatable `-b` arguments, a relative one read against the server's working directory; the
+shipped VS Code extension exposes them as the setting `ddd.buildDirectories`, and the
+executable to launch as `ddd.executable`.
 
-An editor extension **shall** do no more than launch the server and point it at the build
-directories: everything a reader sees is the tool's answer, so that an editor DDD ships
-nothing for is not at a disadvantage. It **shall** launch the server only in a workspace the
-reader has trusted, where the editor has such a notion: the server runs the plugins of every
-project it analyses ([section 3.11](#311-plugins)), so opening a repository is running its
-python, and that is a decision the reader makes, not the extension.
+An editor extension **shall** do no more than launch the server, point it at the build
+directories and offer to restart it: everything a reader sees is the tool's answer, so that
+an editor DDD ships nothing for is not at a disadvantage. It **shall** launch the server
+only in a workspace the reader has trusted, where the editor has such a notion: the server
+runs the plugins of every project it analyses ([section 3.11](#311-plugins)), so opening a
+repository is running its python, and that is a decision the reader makes, not the
+extension.

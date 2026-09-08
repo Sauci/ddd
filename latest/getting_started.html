@@ -373,13 +373,7 @@ from jinja2 templates the project provides, and asks for them with <code class="
 with no default and no fallback, so nothing is ever generated from templates the project did
 not choose.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen
-usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                        [--const-inputs] [--byte-order {little,big}]
-                        [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                        [--dry-run] [--force]
-                        project
-ddd generate all: error: the following arguments are required: -t/--template-dir
+ddd: the c sources are part of this run, so -t/--template-dir is required
 </pre></div>
 </div>
 <p>A project that has no templates yet starts from the set DDD ships as an example.

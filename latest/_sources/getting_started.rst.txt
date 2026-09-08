@@ -295,13 +295,7 @@ not choose.
 .. code-block:: text
 
    $ ddd generate all thermostat.ddd.json -o gen
-   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                           [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                           [--dry-run] [--force]
-                           project
-   ddd generate all: error: the following arguments are required: -t/--template-dir
+   ddd: the c sources are part of this run, so -t/--template-dir is required
 
 A project that has no templates yet starts from the set DDD ships as an example.
 ``ddd templates-dir`` prints where that set is installed - inside the package in a normal

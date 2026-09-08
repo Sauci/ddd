@@ -351,7 +351,7 @@ usually named like its artefact: <code class="docutils literal notranslate"><spa
 <p>The example above builds the graph below. The check targets are left out of it; everything
 else a build sees is there, and so is every edge between them:</p>
 <p class="plantuml">
-<img src="_images/plantuml-a886f8c38198dc52aaa19db14e2f2167a786ba20.svg" alt="top to bottom direction
+<img src="_images/plantuml-73af9b8a9f39f1fb39b70a82455958a9cd814310.svg" alt="top to bottom direction
 
 rectangle &quot;firmware.elf&quot; as image
 
@@ -378,7 +378,7 @@ globals --&gt; headers : PUBLIC
 headers ..&gt; generation : build order
 image ..&gt; generation : the descriptions of the\nlink closure are collected
 
-components --&gt; headers : PROPAGATE_HEADERS:\nevery component links it
+components --&gt; headers : propagated by default:\nevery component links it
 headers ..&gt; components : and reads back each one's\ninterface include directories,\ncompile definitions and\ncompile options
 
 legend bottom
@@ -626,8 +626,9 @@ environment variable - <code class="docutils literal notranslate"><span class="p
 declarations are covered in both of their states.</p>
 <p>The script takes the project and the output directory as arguments, so it also runs on a real
 project rather than only on the demo, and the environment variables <code class="docutils literal notranslate"><span class="pre">CDEFS</span></code>, <code class="docutils literal notranslate"><span class="pre">GENFLAGS</span></code>,
-<code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code>, <code class="docutils literal notranslate"><span class="pre">CFLAGS</span></code> and <code class="docutils literal notranslate"><span class="pre">CC</span></code> change the defines, the <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> flags, the
-templates, the warning set and the compiler:</p>
+<code class="docutils literal notranslate"><span class="pre">TEMPLATES</span></code>, <code class="docutils literal notranslate"><span class="pre">CFLAGS</span></code>, <code class="docutils literal notranslate"><span class="pre">CC</span></code> and <code class="docutils literal notranslate"><span class="pre">INCLUDES</span></code> change the defines, the <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>
+flags, the templates, the warning set, the compiler, and where the headers of the project’s
+external types are looked for on top of the nearest <code class="docutils literal notranslate"><span class="pre">include</span></code> directory:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile<span class="w"> </span>ddd-compile<span class="w"> </span>path/to/project.ddd.json<span class="w"> </span>build/mine
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-e<span class="w"> </span><span class="nv">TEMPLATES</span><span class="o">=</span>path/to/templates<span class="w"> </span>compile<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>ddd-compile<span class="w"> </span>path/to/project.ddd.json<span class="w"> </span>build/mine

@@ -120,9 +120,9 @@ of source files) goes to standard output. The two never mix, so
 nothing has to be filtered out of a redirection: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span>
 <span class="pre">baseline.json</span></code> archives the dictionary and nothing else, even on a run that had something to
 say about it.</p>
-<p>For a job that files findings rather than reads them, seven commands understand
-<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">sources</span></code> and
-<code class="docutils literal notranslate"><span class="pre">checks</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">build-info</span></code>, whose output is json already,
+<p>For a job that files findings rather than reads them, eight commands understand
+<code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code>: <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">compare</span></code>, <code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, <code class="docutils literal notranslate"><span class="pre">sources</span></code>,
+<code class="docutils literal notranslate"><span class="pre">artefacts</span></code> and <code class="docutils literal notranslate"><span class="pre">checks</span></code>. That leaves out <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">build-info</span></code>, whose output is json already,
 <code class="docutils literal notranslate"><span class="pre">lsp</span></code>, which speaks json-rpc, <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, which print one path, and
 <code class="docutils literal notranslate"><span class="pre">id</span></code>, which reports the files it skipped and one total rather than findings. In json the
 diagnostics become part of the document the command prints, next to whatever else it has to
@@ -224,6 +224,9 @@ something DDD can guess; <code class="docutils literal notranslate"><span class=
 built-in artefact out while still producing the plugins’ - the run a build wants when
 the a2l is written later, once the addresses are known. Naming <code class="docutils literal notranslate"><span class="pre">c</span></code> instead is not the
 same thing: it produces no plugin artefact at all, and says nothing about it.
+Subtracting an artefact takes its options with it, so <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code> beside an
+<code class="docutils literal notranslate"><span class="pre">--address-map</span></code> is refused rather than quietly ignored, and a run that has subtracted
+the c neither wants nor accepts <code class="docutils literal notranslate"><span class="pre">-t</span></code>.
 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> reports what would be written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code>
 generates in spite of errors.</p></td>
 </tr>
@@ -254,25 +257,36 @@ a directory; <code class="docutils literal notranslate"><span class="pre">--plug
 <td><p>list every file the project is built out of - the description files and the modules of
 the plugins it names - for the dependency list of a build system.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span> <span class="pre">[FILE]</span></code></p></td>
+<td><p>list the artefacts <code class="docutils literal notranslate"><span class="pre">generate</span></code> accepts for this project: the built-in <code class="docutils literal notranslate"><span class="pre">c</span></code> and
+<code class="docutils literal notranslate"><span class="pre">a2l</span></code>, and the name of every plugin it names that provides one. What each writes is
+not listed, because a plugin’s file names follow from the resolved project rather than
+from the plugin alone - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">all</span> <span class="pre">--dry-run</span></code> reports those. A plugin that
+provides no backend is no artefact of its own; it is named in a note rather than left
+out in silence, which would read as the plugin having failed to load. Such a plugin is
+not idle: the block it contributes is part of the vocabulary a project’s own templates
+read, and those are rendered by <code class="docutils literal notranslate"><span class="pre">c</span></code>. With <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> and no file it answers the same question for a
+build that has not assembled its project description yet.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code></p></td>
 <td><p>run the language server, speaking the Language Server Protocol on stdin and stdout,
 so an editor reports the checks while a description file is being written; see
 <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
 <td><p>record which project description a build runs DDD on and under which severity policy,
 the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> an editor reads; <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> calls it at configure
 time, so a hand-rolled build is the only caller that needs it directly.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
 <td><p>list every check with its identifier, its default severity and whether it can be
 relaxed; <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> lists a named plugin’s own checks after the built-in ones.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code></p></td>
 <td><p>print the directory holding <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code>, so that a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> finds the
 integration module of the installation it is actually using.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">templates-dir</span></code></p></td>
 <td><p>print the directory holding the example c templates, to copy into a project as a
 starting point for its own. They are an example and not a default: no run of
 <code class="docutils literal notranslate"><span class="pre">generate</span></code> falls back to them.</p></td>
@@ -285,13 +299,7 @@ supplier verify a component long before an integrator ever sees it.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">-t</span></code> of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD’s own.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
-usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                        [--const-inputs] [--byte-order {little,big}]
-                        [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                        [--dry-run] [--force]
-                        project
-ddd generate all: error: the following arguments are required: -t/--template-dir
+ddd: the c sources are part of this run, so -t/--template-dir is required
 </pre></div>
 </div>
 <p>A default would have to be somebody’s house style, and a project that inherited one without
@@ -398,7 +406,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h3>ddd<a class="headerlink" href="#ddd" title="Link to this heading"></a></h3>
 <p>Data dictionary for the global variables of a component based embedded software project.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd [-h] [-v]</span>
-<span class="go">           {check,compare,generate,list,dump,id,lsp,build-info,schema,sources,checks,cmake-dir,templates-dir}</span>
+<span class="go">           {check,compare,generate,list,dump,id,lsp,build-info,schema,artefacts,sources,checks,cmake-dir,templates-dir}</span>
 <span class="go">           ...</span>
 </pre></div>
 </div>
@@ -414,6 +422,37 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dd><p>show program’s version number and exit</p>
 </dd></dl>
 
+<section id="ddd-artefacts">
+<h4>ddd artefacts<a class="headerlink" href="#ddd-artefacts" title="Link to this heading"></a></h4>
+<p>Prints the artefacts ‘ddd generate’ accepts for this project: the built-in ‘c’ and ‘a2l’, and the name of every plugin the project names that provides one. What each artefact writes is not listed here, because a plugin’s file names follow from the resolved project rather than from the plugin alone; ‘ddd generate all –dry-run’ reports those. A plugin providing no backend is no artefact of its own, and is named in a note rather than passed over: its block is still part of what the project’s templates render under ‘c’. Named with –plugin instead of a project, it answers the same question for a build that has not assembled its project description yet.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd artefacts [-h] [--plugin MODULE] [--format {text,json}] [project]</span>
+</pre></div>
+</div>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-artefacts-arg-project">
+<span class="sig-name descname"><span class="pre">project</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-artefacts-arg-project" title="Link to this definition"></a></dt>
+<dd><p>project or component description file</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-artefacts-h">
+<span id="cmdoption-ddd-artefacts-help"></span><span class="sig-name descname"><span class="pre">-h</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--help</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-artefacts-h" title="Link to this definition"></a></dt>
+<dd><p>show this help message and exit</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-artefacts-plugin">
+<span class="sig-name descname"><span class="pre">--plugin</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;module&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-artefacts-plugin" title="Link to this definition"></a></dt>
+<dd><p>load this plugin, a .py path relative to the working directory or a module name; repeatable. For a run that reads no project description, which names its own plugins</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-artefacts-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-artefacts-format" title="Link to this definition"></a></dt>
+<dd><p>output format</p>
+</dd></dl>
+
+</section>
 <section id="ddd-build-info">
 <h4>ddd build-info<a class="headerlink" href="#ddd-build-info" title="Link to this heading"></a></h4>
 <p>Writes the project description a build runs DDD on, and the severity policy it applies, into a small json file. A build system calls this at configure time so that an editor can report what the build reports. The project description is recorded rather than read: with CMake it is often generated later in the same configure run, out of the link graph.</p>
@@ -725,7 +764,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-generate-all">
 <h4>ddd generate all<a class="headerlink" href="#ddd-generate-all" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]</span>
-<span class="go">                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
+<span class="go">                        [--format {text,json}] -o OUTPUT_DIR [-t TEMPLATE_DIR]</span>
 <span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
 <span class="go">                        [--address-map ADDRESS_MAP] [--without {c,a2l}]</span>
 <span class="go">                        [--dry-run] [--force]</span>

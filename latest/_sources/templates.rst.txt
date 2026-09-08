@@ -10,13 +10,7 @@ generate a2l`` goes without, because it renders no c at all.
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen
-   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                           [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                           [--dry-run] [--force]
-                           project
-   ddd generate all: error: the following arguments are required: -t/--template-dir
+   ddd: the c sources are part of this run, so -t/--template-dir is required
 
 Why the templates belong to the project
 ---------------------------------------

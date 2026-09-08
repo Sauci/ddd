@@ -288,8 +288,9 @@ name and the header defining it and nothing else - no datatype, no unit, no conv
 follows is worth stating plainly: an external member reaches no a2l record and no <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>, it
 contributes no leaf to <a class="reference internal" href="command_line_interface.html"><span class="doc">ddd list</span></a>, and a structure containing one
 gets no section alignment estimate. It is storage DDD carries into the image without describing.</p>
-<p>The variable itself keeps the storage its <code class="docutils literal notranslate"><span class="pre">datatype</span></code> asks for - <code class="docutils literal notranslate"><span class="pre">StateA</span></code> is declared
-<code class="docutils literal notranslate"><span class="pre">uint8_t</span></code>, not <code class="docutils literal notranslate"><span class="pre">StateA_t</span></code> - because the size of an enumerated type is up to the compiler
+<p>Back to the enum, and to what a variable of one is declared as. A variable keeps the storage
+its <code class="docutils literal notranslate"><span class="pre">datatype</span></code> asks for - <code class="docutils literal notranslate"><span class="pre">StateA</span></code> is declared <code class="docutils literal notranslate"><span class="pre">uint8_t</span></code>, not <code class="docutils literal notranslate"><span class="pre">StateA_t</span></code> - because the
+size of an enumerated type is up to the compiler
 and a global variable whose width depends on the toolchain is not something an interface
 description should hand over. The <code class="docutils literal notranslate"><span class="pre">typedef</span></code> exists so that the code can be written in terms
 of <code class="docutils literal notranslate"><span class="pre">STATE_ACTIVE</span></code> instead of <code class="docutils literal notranslate"><span class="pre">2</span></code>, and the <code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code> check makes sure the same
@@ -1106,6 +1107,7 @@ component that exports at least one object, listing the objects that component d
     ValueB
     ValueC
     FlagA
+    Diagnosis.faults
   /end REF_MEASUREMENT
 /end GROUP
 </pre></div>

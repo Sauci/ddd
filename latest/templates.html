@@ -120,13 +120,7 @@ built-in default and there is no fallback, so a run that leaves the option out i
 mistake rather than a run that silently produces somebody else’s idea of c code. Only <code class="docutils literal notranslate"><span class="pre">ddd</span>
 <span class="pre">generate</span> <span class="pre">a2l</span></code> goes without, because it renders no c at all.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen
-usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                        [--const-inputs] [--byte-order {little,big}]
-                        [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                        [--dry-run] [--force]
-                        project
-ddd generate all: error: the following arguments are required: -t/--template-dir
+ddd: the c sources are part of this run, so -t/--template-dir is required
 </pre></div>
 </div>
 <section id="why-the-templates-belong-to-the-project">

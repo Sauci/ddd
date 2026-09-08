@@ -459,16 +459,18 @@ function(ddd_generate image)
 
     _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
 
-    # NO_A2L selects the artefact of the run: the c sources alone, or everything.
+    # The run always asks for every artefact the project has, and NO_A2L subtracts the a2l from
+    # that rather than selecting the c artefact instead: 'all' is the only run that produces the
+    # plugins' artefacts, so selecting c would silently drop them along with the a2l.
     set(artefact all)
-    if(arg_NO_A2L)
-        set(artefact c)
-    endif()
     set(generate_options ${common_options})
+    if(arg_NO_A2L)
+        list(APPEND generate_options --without a2l)
+    endif()
     if(arg_CONST_INPUTS)
         list(APPEND generate_options --const-inputs)
     endif()
-    # The two options belong to the a2l artefact alone; the c artefact refuses them.
+    # Both options belong to the a2l, so a run that subtracts it has no use for either.
     if(arg_BYTE_ORDER AND NOT arg_NO_A2L)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
     endif()

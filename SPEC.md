@@ -1530,7 +1530,9 @@ of an archived candidate, `--renames` writing the old-to-new name pairs to a fil
 artefacts (`ddd generate`, the artefact named on the command line: `c`, `a2l`, `all` for
 the two built-in artefacts and the artefact of every plugin the project names that provides
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
-options of what it produces;
+options of what it produces; `all` additionally takes a repeatable `--without c|a2l`, which
+leaves that built-in artefact out of the run while still producing the plugins', and refuses
+a run left with nothing to write rather than reporting success;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
@@ -1627,7 +1629,9 @@ link can produce.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (defaulting into the build tree), `BYTE_ORDER`,
-`CONST_INPUTS`, `NO_A2L`, `STRICT` and repeatable `SEVERITY` entries written
+`CONST_INPUTS`, `NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
+the c artefact, so the plugins' artefacts are produced either way - `STRICT` and repeatable
+`SEVERITY` entries written
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the
 build record, plus `LINK_LIBRARIES` for compiling the generated definitions, `DEPENDS` for
 extra generation dependencies, `PLUGINS <spec>...` for the plugins of a collected project -

@@ -29,6 +29,7 @@ from ddd.lsp.protocol import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     PARSE_ERROR,
+    REQUEST_FAILED,
     MessageError,
     ProtocolError,
     error,
@@ -1646,7 +1647,8 @@ class TestRename:
             cache,
         )
         rewritten = {
-            uri_to_path(uri): apply_edits(uri_to_path(uri), found) for uri, found in edits.items()
+            uri_to_path(uri): apply_edits(uri_to_path(uri), found)
+            for uri, found in edits.changes.items()
         }
         assert {path.name for path in rewritten} == {"a.ddd.json", "b.ddd.json"}
         produced = json.loads(rewritten[tmp_path / "a.ddd.json"])["component"]["interface"]
@@ -1668,7 +1670,7 @@ class TestRename:
             "X",
             cache,
         )
-        rewritten = apply_edits(path, edits[path.as_uri()])
+        rewritten = apply_edits(path, edits.changes[path.as_uri()])
         assert '"name": "X"' in rewritten
         assert json.loads(rewritten)  # still json, quotes intact
 
@@ -1726,7 +1728,7 @@ class TestRename:
         edits = rename_edits(self.index_of(root), read(path, cache), pointer, name, cache)
         return {
             uri_to_path(uri).name: apply_edits(uri_to_path(uri), found)
-            for uri, found in edits.items()
+            for uri, found in edits.changes.items()
         }
 
     @pytest.mark.parametrize(
@@ -1794,17 +1796,18 @@ class TestRename:
             "Seen_t",
             cache,
         )
-        assert {uri_to_path(uri).name for uri in edits} == {"a.ddd.json"}
+        assert {uri_to_path(uri).name for uri in edits.changes} == {"a.ddd.json"}
 
     def test_a_position_holding_a_number_starts_no_rename(self, tmp_path: Path) -> None:
         """A constant's value is a number; a rename box over it would rename nothing."""
-        from ddd.lsp.navigation import rename_edits, renameable_at
+        from ddd.lsp.navigation import RenameEdits, rename_edits, renameable_at
 
         root = self.vocabulary(tmp_path)
         path = tmp_path / "constants.ddd.json"
         document = read(path, {})
         assert renameable_at(document, "constants[0].value") is None
-        assert rename_edits(self.index_of(root), document, "constants[0].value", "X", {}) == {}
+        found = rename_edits(self.index_of(root), document, "constants[0].value", "X", {})
+        assert found == RenameEdits(changes={}, drifted=())
 
     def test_a_type_may_not_be_renamed_to_a_base_datatype_spelling(self, tmp_path: Path) -> None:
         """The loader refuses UINT16 as a type name, so the rename has to, before writing."""
@@ -1818,16 +1821,19 @@ class TestRename:
         assert "already" in str(rename_problem(built, "Inlet", "type"))
 
     def test_a_rename_from_a_position_naming_nothing_edits_nothing(self, tmp_path: Path) -> None:
-        from ddd.lsp.navigation import rename_edits
+        from ddd.lsp.navigation import RenameEdits, rename_edits
 
         root = self.workspace(tmp_path)
         path = tmp_path / "b.ddd.json"
-        assert rename_edits(self.index_of(root), read(path, {}), "component.name", "X", {}) == {}
+        found = rename_edits(self.index_of(root), read(path, {}), "component.name", "X", {})
+        assert found == RenameEdits(changes={}, drifted=())
 
     def test_a_mention_that_is_not_a_string_is_skipped(self, tmp_path: Path) -> None:
         """Belt and braces: the index and the text are read at the same moment, but a file
-        rewritten between the two would otherwise put an edit over a number."""
-        from ddd.lsp.navigation import Index, Site, rename_edits
+        rewritten between the two would otherwise put an edit over a number - and is reported
+        as drifted for the same reason a moved declaration is: the pointer no longer names
+        what the rename was asked to touch."""
+        from ddd.lsp.navigation import Index, RenameEdits, Site, rename_edits
 
         write_tree(tmp_path, {"a.ddd.json": component("A", declare("output", "Speed"))})
         path = tmp_path / "a.ddd.json"
@@ -1838,7 +1844,7 @@ class TestRename:
         found = rename_edits(
             built, read(path, cache), "component.interface[0].definition.name", "X", cache
         )
-        assert found == {}
+        assert found == RenameEdits(changes={}, drifted=(path,))
 
     @pytest.mark.parametrize(
         ("name", "because"),
@@ -3539,12 +3545,14 @@ class TestServer:
         assert answers[2]["result"]["placeholder"] == "Speed"  # the changed buffer
         assert answers[3]["result"] is None  # closed: the disk again, where that line is not a name
 
-    def test_a_rename_skips_a_buffer_where_the_pointer_no_longer_names_the_object(
+    def test_a_rename_is_refused_while_a_buffer_has_moved_the_declaration(
         self, tmp_path: Path
     ) -> None:
         """The index describes the disk; a buffer with a declaration inserted above has the
         object one entry further down. Editing at the disk's pointer would rename whatever now
-        sits there, so that file is left alone rather than rewritten wrong."""
+        sits there, so the rename is refused rather than applied to every file but that one -
+        an editor that rewrote the other files and left this buffer untouched, with no
+        message, would be a project half renamed and a reader with no reason to notice."""
         write_tree(
             tmp_path,
             {
@@ -3597,9 +3605,87 @@ class TestServer:
         writer = io.BytesIO()
         assert Server(stream, writer, root=tmp_path).run() == 0
         answer = next(m for m in sent(writer) if m.get("id") == 2)
-        changes = answer["result"]["changes"]
-        assert a_uri in changes
-        assert b_uri not in changes, "the drifted buffer would have had 'Other' renamed"
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "b.ddd.json" in answer["error"]["message"]
+        assert "result" not in answer
+
+    def test_a_rename_started_in_a_drifted_buffer_is_refused_rather_than_applied_elsewhere(
+        self, tmp_path: Path
+    ) -> None:
+        """The file the rename started from is not exempt from its own refusal. The position
+        the client sends resolves against C's buffer well enough - the box opened over
+        'Speed' just as it should - but the index's site for C still points at the entry the
+        inserted declaration displaced, so the same drift applies to the very file the request
+        came from, and the whole rename is refused rather than applied to A and B, which were
+        clean."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed")),
+            },
+        )
+        b_uri = (tmp_path / "b.ddd.json").as_uri()
+        c_uri = (tmp_path / "c.ddd.json").as_uri()
+        # C's buffer gained a declaration in front of the one the index knows; the rename is
+        # asked for at Speed's position *in that buffer*, one entry further down than the disk.
+        drifted = json.dumps(
+            component("C", declare("input", "Other"), declare("input", "Speed")), indent=2
+        )
+        in_buffer = Document(drifted).text_range_of("component.interface[1].definition.name")
+        assert in_buffer is not None
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": b_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": (tmp_path / "b.ddd.json").read_text(encoding="utf-8"),
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": c_uri,
+                        "languageId": "json",
+                        "version": 1,
+                        "text": drifted,
+                    }
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": c_uri},
+                    "position": in_buffer["start"],
+                    "newName": "Velocity",
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        assert answer["error"]["code"] == REQUEST_FAILED
+        assert "c.ddd.json" in answer["error"]["message"]
+        assert "result" not in answer
 
     def test_a_quick_fix_skips_a_buffer_where_the_pointer_no_longer_names_the_object(
         self, tmp_path: Path

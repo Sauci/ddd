@@ -447,16 +447,35 @@ def rename_problem(built: Index, name: str, kind: str = "variable") -> str | Non
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class RenameEdits:
+    """What a rename takes: the edits it makes, and the sites a drifted buffer kept out of them."""
+
+    changes: dict[str, list[dict[str, Any]]]
+    drifted: tuple[Path, ...]
+    """Every site skipped because its buffer no longer names the subject there, sorted.
+
+    Reported rather than silently dropped: the caller is the one in a position to decide
+    whether an edit that could not reach every site should be applied at all.
+    """
+
+
 def rename_edits(
     built: Index, document: Document, pointer: str, name: str, cache: dict[Path, Document]
-) -> dict[str, list[dict[str, Any]]]:
-    """Every edit that renaming the object under the cursor takes, keyed by file.
+) -> RenameEdits:
+    """Every edit that renaming the object under the cursor takes, keyed by file - and the
+    sites a drifted buffer kept out of them.
 
     Only the characters between the quotes are replaced, so whatever else is on the line -
-    the key, the spacing a project formats its files with - is left exactly as it was.
+    the key, the spacing a project formats its files with - is left exactly as it was. A site
+    whose buffer no longer names the subject at the index's pointer is reported in
+    ``drifted`` instead of silently left out of ``changes``: a rename that rewrites some
+    files and not others leaves the project half renamed, and the caller has to know which
+    file that would have been.
     """
     subject = renameable_at(document, pointer)
     changes: dict[str, list[dict[str, Any]]] = {}
+    drifted: list[Path] = []
     for site in rename_sites(built, *subject) if subject is not None else ():
         # The loop body only ever runs through the branch above where `subject` is not
         # `None`. Asserted rather than reshaped into its own guard: a branch that cannot be
@@ -466,13 +485,14 @@ def rename_edits(
         if target.value_at(site.pointer) != subject[1]:
             # The index describes the disk; an open buffer may have moved the declaration.
             # Editing at the old pointer would rename whatever now sits there.
+            drifted.append(site.path)
             continue
         # `text_range_of` and the `value_at` above are read off the same scan of `target`, so
         # a pointer just confirmed to hold `subject[1]` there always has a text span too.
         span = target.text_range_of(site.pointer)
         assert span is not None
         changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
-    return changes
+    return RenameEdits(changes=changes, drifted=tuple(sorted(drifted)))
 
 
 def locations(sites: Iterable[Site], cache: dict[Path, Document]) -> list[dict[str, Any]]:

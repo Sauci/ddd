@@ -504,7 +504,11 @@ class Server:
         """Rewrite a name everywhere the project writes it, or say why it cannot be.
 
         A refusal is an error rather than an empty edit: an editor shows the message, where an
-        empty edit looks like a rename that quietly did nothing.
+        empty edit looks like a rename that quietly did nothing. A drifted buffer is refused
+        along with the rest of the rename rather than skipped on its own: writing every other
+        file and leaving that one alone is the half-renamed project the refusal exists to
+        prevent, and it would happen silently, because the client asked for one rename, not a
+        rename of everything except what it could not reach.
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -517,6 +521,7 @@ class Server:
         # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
         # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
+        drifted: set[Path] = set()
         subject = renameable_at(document, pointer)
         for workspace in self._projects_of(path):
             built = index(workspace)
@@ -524,13 +529,24 @@ class Server:
             if refused is not None:
                 write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
                 return
-            for uri, edits in rename_edits(built, document, pointer, wanted, cache).items():
+            edited = rename_edits(built, document, pointer, wanted, cache)
+            drifted.update(edited.drifted)
+            for uri, edits in edited.changes.items():
                 for edit in edits:
                     start = edit["range"]["start"]
                     where = (uri, start["line"], start["character"])
                     if where not in seen:
                         seen.add(where)
                         changes.setdefault(uri, []).append(edit)
+        if drifted:
+            names = ", ".join(sorted(p.name for p in drifted))
+            verb = "has" if len(drifted) == 1 else "have"
+            msg = (
+                f"{names} {verb} unsaved changes that moved a declaration this rename would "
+                "touch; save it and rename again"
+            )
+            write_message(self.writer, error(request_id, REQUEST_FAILED, msg))
+            return
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()

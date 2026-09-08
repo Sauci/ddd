@@ -33,6 +33,7 @@
   - [5 Generated artefacts](#5-generated-artefacts)
     - [5.1 C code](#51-c-code)
     - [5.2 A2L](#52-a2l)
+    - [5.3 Data dictionary](#53-data-dictionary)
   - [6 Address information](#6-address-information)
   - [7 Tool interface](#7-tool-interface)
     - [7.1 Build system integration](#71-build-system-integration)
@@ -1430,11 +1431,15 @@ compiles, and re-types the helper; the cast that would silence it is itself refu
 warning set containing `-Wcast-qual`. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
-every declaration; the example templates emit each constant as a `#define`. The headers
-of the external types in use ([section 3.7](#37-type-description)) are offered too,
-deduplicated and in a fixed order, and the example templates emit them as `#include`
-lines in the types header, so that a structure whose member comes from a hand written
-header compiles without the template being edited.
+every declaration; the example templates emit each constant as a `#define`. The enum
+conversions in use ([section 3.4](#34-conversions)) are offered with their enumerators, and
+the example templates emit a `typedef enum` for each; a variable under an enum conversion is
+declared with its base datatype, the `typedef enum` being for the enumerators alone. The
+headers of the external types in use ([section 3.7](#37-type-description)) are offered too,
+deduplicated and in the sorted order of the spellings the types files give, so the angle
+forms come first, and the example templates emit them as `#include` lines in the types
+header, so that a structure whose member comes from a hand written header compiles without
+the template being edited.
 
 The example templates generate the definitions into one file per project and the
 declarations into one header per component, and the build integration of
@@ -1474,7 +1479,10 @@ reason above.
 Generated output is deterministic to the byte: objects are sorted by name within their
 component's group, member paths by path, components keep the include order of the project,
 and wildcard includes expand in sorted order ([section 3.1](#31-project-description)), so
-the same project generates the same bytes on any machine. Names sort by code point, an
+the same project generates the same bytes on any machine. A component's own header keeps
+the author's declaration order within each scope, and an object no component owns - one of
+those that arise where `missing-producer` is relaxed - is grouped under `<unresolved>` in
+the definition file rather than under a component. Names sort by code point, an
 upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
 spelling rule rather than a locale's; only file paths order as the platform compares them.
 Files are written UTF-8, and a rendered file whose content has not changed is left
@@ -1489,26 +1497,35 @@ ASAM MCD-2 MC output containing:
 - `MEASUREMENT` for every measurement, `CHARACTERISTIC` for parameters, value blocks,
   curves and maps, `AXIS_PTS` for axes.
 - `RECORD_LAYOUT` per datatype and storage category; maps are stored row wise, that is the
-  C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`.
+  C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`. An axis layout states
+  `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
-- `COMPU_METHOD` shared between objects with the same conversion and unit, `COMPU_VTAB`
-  per enum.
+- `COMPU_METHOD` shared between objects with the same conversion, unit and default display
+  format - an integer and a float object scaled alike get one method each, because the
+  method states the format - and `COMPU_VTAB` per enum.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
   and an engineer can still pick another; a measurement resolving to no raster carries no
   `IF_DATA`.
 - one `GROUP` per component that contributes at least one exported object, referencing
-  the measurements and characteristics it declares; a component contributing none gets no
-  empty `GROUP`.
+  every declaration of the component that reaches the file, in any scope, in declaration
+  order, then the leaves of the structured objects it declares; a component contributing
+  none gets no empty `GROUP`.
 - the address field of every object taken from the address information (`ECU_ADDRESS` is
   the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
   information does not cover keeps address `0x00000000`
   ([section 6](#6-address-information)).
 - deterministic order: records sorted by object name, member paths by path, `GROUP`s in the
-  component order of the project.
+  component order of the project. Inside the `MODULE` the record kinds come in a fixed
+  order: `MOD_COMMON`, `MOD_PAR`, the `RECORD_LAYOUT`s, the `COMPU_VTAB`s, the
+  `COMPU_METHOD`s, the `MEASUREMENT`s, the `AXIS_PTS`s, the `CHARACTERISTIC`s and the
+  `GROUP`s; within a kind the plain objects by name, then the leaves of structured objects
+  by access path.
 
-The file opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
+The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
+sources; a component generated on its own names the file after the component. The file
+opens with `ASAP2_VERSION 1 61` and one `PROJECT` holding one `MODULE`, both named
 after the project ([section 3.1](#31-project-description)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
@@ -1524,24 +1541,29 @@ and a tool reading multi byte values under the wrong one misreads every value.
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `RL_AXIS_<TYPE>` per datatype and storage category, computation methods `CM_<enum>`,
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
-`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. An
-enum is a `TAB_VERB` referring to its `COMPU_VTAB`. A linear conversion is a `RAT_FUNC`
-whose `COEFFS` state raw as a function of physical, so the stated slope is the inverse of
-`factor`. An identity with a unit is `IDENTICAL`, and one without a unit gets no method at
-all: the record says `NO_COMPU_METHOD`. What the description files do not carry is emitted
-neutrally: resolution and accuracy of a `MEASUREMENT` and the `MaxDiff` of a
-`CHARACTERISTIC` are 0, and the display format defaults to `%8.0` for integral values,
-that is an integer datatype under an identity or under a linear conversion whose `factor`
-and `offset` are whole numbers, and to `%8.3` otherwise, overridden per object by `format`
-([section 3.3](#33-data-object-definition)). An object stating no `description` carries
-its name as the A2L long identifier. Quoted strings escape backslash and quote and
-replace control characters by a space, and numbers are written in their shortest round trip
-form, an integral value without a decimal point.
+`_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. The
+suffix is added when the generated name collides - two linear conversions in one unit, or
+one conversion used by an integer and by a float object - and the unsuffixed name goes to
+the method of the object that reaches the file first, the plain objects in name order
+before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`. A linear
+conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so the
+stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and one
+without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
+description files do not carry is emitted neutrally: resolution and accuracy of a
+`MEASUREMENT` and the `MaxDiff` of a `CHARACTERISTIC` and of an `AXIS_PTS` are 0. The
+display format defaults to `%8.0` for an integer or `boolean` datatype under an identity
+or under a linear conversion whose `factor` and `offset` are whole numbers, and to `%8.3`
+otherwise. The default is stated on the `COMPU_METHOD`, so an object with no method
+(`NO_COMPU_METHOD`: an identity without a unit) carries no format unless its own `format`
+states one ([section 3.3](#33-data-object-definition)), which is written on the record. An
+object stating no `description` carries its name as the A2L long identifier. Quoted
+strings escape backslash and quote and replace control characters by a space, and numbers
+are written in their shortest round trip form, an integral value without a decimal point.
 
 Export is closed over references: an exported curve or map pulls the axes it refers to into
-the A2L, and a pulled in axis pulls the measurement indexing it, whatever their own
-`export` says, because an `AXIS_PTS_REF` to an absent axis would be an invalid file rather
-than a smaller one.
+the A2L, and an axis in the file, exported in its own right or pulled in, pulls the
+measurement indexing it, whatever their own `export` says, because an `AXIS_PTS_REF` to an
+absent axis would be an invalid file rather than a smaller one.
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
 naming that condition, because the format has no conditional construct of its own.
@@ -1567,18 +1589,51 @@ Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, the 
 level `IF_DATA XCP` block describing the protocol layer, the transport and the `DAQ` events
 themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *planned*.
 
+### 5.3 Data dictionary
+
+`ddd dump` publishes the resolved project as one JSON document, the contract between the
+checking front end and every backend, DDD's own and a project's. Its `format` is `7`: a
+reader **shall** refuse a higher number, and reads a lower one with the defaults of that
+format ([section 4.1](#41-comparing-two-deliveries)). Its schema is published by
+`ddd schema dictionary`. The top level carries `format`, `name`, `description`, `source`
+(the file name of the root description), `components`, `objects`, `enums`, `constants`,
+`rasters`, `types`, `instances`, `leaves`, `plugins` and `extensions`.
+
+A component records `name`, `description`, `source` and its `declarations`, each a `name`,
+a `scope` and a `condition`; only declarations whose object resolved are listed. An object
+records what its producing declaration states, resolved: `name`, `id`, `extensions`,
+`kind`, `datatype`, `description`, `unit`, `conversion` with its `kind` spelled out,
+`limits` (`min`, `max`, the stated ones or the ones the datatype and conversion imply),
+`shape` (the numbers) and `dimensions` (the spelling, constant names kept), `init`,
+`section`, `raster` (the declaration's own, else its component's default), `volatile`,
+`condition` (the producer's), `references`, `owner`, `consumers`, `local` and `a2l` with
+`export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
+`kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
+`owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
+`kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
+`bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
+`a2l`, the instance's and the member's `export` folded into one. `types` lists the
+structures in dependency order with their members; `enums` the enum conversions, one per
+name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
+in the document depends on the machine that wrote it.
+
 ## 6 Address information
 
 The addresses of the generated objects are only known after linking. DDD accepts a symbol
 to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
 each symbol to its address. The key is the C identifier of an object or, for the member of
 a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
-as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON number, or a string
+as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON integer, or a string
 read as hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an
-unsigned 32 bit `ECU_ADDRESS`. A key the project does not know is ignored, and an object the map
-does not cover keeps address `0x00000000` rather than failing the run: a map extracted from
-a linker output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK`
-lets a downstream tool resolve those it cares about. `ddd generate a2l` writes the A2L
+unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON object of integers, or an address
+outside `0 .. 0xFFFFFFFF`, is a usage error and nothing is written. A key the project does
+not know is ignored, and an object the map does not cover keeps address `0x00000000` rather
+than failing the run: a map extracted from a linker output legitimately omits the objects a
+condition compiled away, and `SYMBOL_LINK` lets a downstream tool resolve those it cares
+about. A map with entries that leaves an object of the A2L uncovered is `address-missing`
+([section 4](#4-consistency-checks)): a warning by default, an error under `--strict`, and
+a run that reports it as an error writes nothing rather than a file whose addresses it has
+just been told are incomplete. `ddd generate a2l` writes the A2L
 alone - no C is rendered and no template directory is accepted - so the post-link run
 regenerates the A2L without touching the sources the image was built from. Reading the
 linker output directly (ELF/DWARF, IEEE-695) and cross-checking the linked symbols against

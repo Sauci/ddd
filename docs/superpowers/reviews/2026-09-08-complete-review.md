@@ -28,6 +28,111 @@ coverage 100%. The 12 failures are environmental: the eleven in `tests/test_cmak
 a venv), and `tests/test_lsp.py::TestSymlinkedWorkspace` needs a Windows privilege the shell
 does not hold.
 
+## Summary
+
+Eight passes, 6 Critical, 65 Important and 87 Minor findings, plus the open questions each
+pass left. Every finding was verified by the reviewer that reported it against the text or by
+running the tool; the one that decides whether the editor integration works on Windows (pass 8,
+Critical 1) was reproduced a second time by hand. Two findings are reported twice because two
+passes met them from different sides: the spec's denial of `--standalone` (pass 1 Important 1,
+pass 5 Critical 1) and `address-missing` on an empty map (pass 1 Critical 1, pass 3 Important 4).
+
+| pass | subject | Critical | Important | Minor |
+| --- | --- | --- | --- | --- |
+| 1 | the specification on its own | 1 | 18 | 21 |
+| 2 | file formats: spec, models, schemas, docs | 0 | 5 | 9 |
+| 3 | consistency checks and comparison | 1 | 11 | 8 |
+| 4 | generated artefacts, address map, dictionary | 0 | 7 | 7 |
+| 5 | tool interface: CLI, plugins, CMake, editor | 1 | 7 | 11 |
+| 6 | remaining documentation and repository | 0 | 3 | 11 |
+| 7 | code review of the core | 0 | 8 | 9 |
+| 8 | code review of the periphery | 3 | 6 | 11 |
+
+**Verdict.** On a project a team would plausibly write, the tool gives the right answers, the
+generated C compiles warning-free under the CI flag set, the A2L is well formed, the outputs
+are deterministic, throughput is linear, and the tutorial, the transcripts, the static checks,
+the docs build and the release machinery all hold. The problems are of three kinds.
+
+1. **The specification has drifted behind the last two releases.** It still denies
+   `--standalone`, says `address-missing` fires on an empty map, keys `COMPU_METHOD` sharing
+   on conversion and unit alone, and under-specifies the artefacts it calls public contracts:
+   the dictionary, the `--renames` file, the listings, the A2L file name, the CMake targets, the
+   plugin name grammar. Two load-bearing words, "instance" and "storage", are undefined or
+   overloaded. All of it is sentences, not redesign; pass 1 proposes wording for each.
+2. **The editor integration does not survive contact with VS Code on Windows, and its edits
+   are unsafe.** The server decodes `file:///c%3A/...` into a relative path and exits on the
+   first opened file; rename and quick-fix edits are computed from the disk and applied by the
+   client to its buffer; and opening a repository runs the Python its description files name,
+   with no warning and no trust check.
+3. **The edges of the input space are guarded in one place and not in the others.** Relaxing
+   `unknown-reference` puts a curve into the C as a scalar and a dangling name into the A2L;
+   `incomplete-project` is silent for most of the drops it exists for, and a dropped
+   declaration makes the ownership checks accuse the wrong component; huge integers, deep
+   recursion and per-element expansion end in tracebacks; the loader accepts quoted numbers the
+   published schema refuses; findings are lost whenever a step after the analysis fails; and
+   the plugin boundary is thinner than its docstrings claim.
+
+**What to fix first, in order.**
+
+1. Language server URI decoding on Windows (pass 8, Critical 1).
+2. Edits from the client's buffer, with versioned `documentChanges` (pass 8, Critical 2).
+3. State the plugin trust boundary in the editor docs and the spec, and gate the extension on
+   workspace trust (pass 8, Critical 3).
+4. Mark dropped declarations instead of erasing them, so that `incomplete-project` fires for
+   every silenced drop and `missing-producer` / `unused-output` stop accusing the other
+   component (pass 3, Critical 1; pass 7, Important 1; pass 7, design note 1).
+5. Drop an object whose reference does not resolve, or guard both backends against it
+   (pass 3, Important 1; pass 4, Important 1).
+6. Report the findings before any fallible output step: `--renames`, the address map, the
+   templates, the plugin hooks (pass 8, Important 4; pass 3, Important 5).
+7. The server's handling of a build record naming an unknown check (pass 5, Important 1).
+8. The plugin boundary: `sys.modules` before `exec_module`, paths normalised and kept inside
+   `-o`, `SystemExit` caught, factory results validated, atomic writes (pass 8, Important 1,
+   2, 3, 5, 6).
+9. Core robustness: bounded integers, bounded recursion, the pointer sort on non-decimal
+   digits, a leaf-count limit before flattening, strict mode on the models, scalar types
+   checked at their declaration (pass 7, Important 2 to 8).
+10. `ddd sources` reporting its findings in text mode, `ddd checks` printing the
+    whole-project flag, the enum-reorder double report (pass 5, Important 2 and 4; pass 3,
+    Important 2).
+
+**Specification updates, grouped.** `--standalone` and the per-component target, the
+`<image>_ddd_headers` / `<image>_ddd_globals` names, `DDD_A2L`, the multi-config refusal
+(passes 1 and 5); the empty address map and the one-per-run shape of `address-missing`
+(passes 1 and 3); the `COMPU_METHOD` key, the boolean display format, the closure over an
+exported axis's input, the `GROUP` contents, the A2L file name and `-o`, the record order
+(passes 1 and 4); a `typename` compared as what it resolves to, the alignment need per
+datatype, references into another component's `local` object, per-member `renamed-object`,
+the verdict criterion, the `--renames` shape, the tolerant exit of `sources` and `artefacts`
+and the listing orders (passes 1, 3 and 5); a section describing the dictionary (pass 1
+Important 8, pass 4 answer k); the plugin name grammar and reserved names (passes 1 and 5);
+`"dimensions": []` as the scalar spelling (pass 2); the terms "instance", "leaf" and
+"storage" (pass 1).
+
+**Documentation updates, grouped.** The stale schema descriptions of `identity`, a
+definition's `unit`, `StructType.name`, `Enumerator.value`, `scope: output` and "a
+calibration tool only reads a measurement" (pass 2); the checks reference's account of
+`--standalone` and of which load-time errors withhold the interface checks (pass 3); `ddd
+dump` where four pages say `ddd list` for the container's symbol check (pass 4); where a
+project-wide vocabulary file goes in CMake, and who produces the address map (pass 5); the
+README's `NO_PROPAGATE_HEADERS` paragraph, the sdist contents, the ten models missing from
+`data_contracts.rst` (pass 6).
+
+**Test gaps worth closing first.** A Windows client's URI spellings and a buffer that differs
+from the disk (pass 8); a dropped declaration with a surviving counterpart in another
+component (pass 7); the empty and the hole-carrying address map through the CMake module,
+`STRICT` and `SEVERITY` reaching the record and the commands (pass 5); `incomplete-project`
+for a poisoned type and for a silenced axis (pass 3); the `_2` suffix on a `COMPU_METHOD`
+name collision and a `boolean` in the A2L (pass 4); a mixed-case type name against the
+published schema (pass 2).
+
+**Open questions for the maintainers** (each pass lists its own; these decide behaviour):
+whether a reference to another component's `local` object is a use; whether a `typename`
+should compare as spelled or as resolved; whether the baseline's own plugins load in a
+comparison; what "can replace" counts, the candidate's own errors and the baseline's carried
+errors included or not; which names `reserved-identifier` polices; whether a project-level
+extension block for an unloaded plugin is `schema` or `unknown-extension`.
+
 ## Pass 1: SPEC.md, internal quality
 
 Review of `SPEC.md` (1729 lines, sections 1 to 7) as a normative document, on its own terms.

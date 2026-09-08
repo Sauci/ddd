@@ -301,7 +301,8 @@ whether or not another component may read it.
    a hand-written ``extern`` in the middle of a component, is a visible thing that a reviewer
    can object to. The :doc:`cmake integration </build_integration>` reinforces this by putting
    the generated directory on the include path of the components and expecting each of them
-   to include its own header.
+   to include its own header. What travels to a component is that directory and the compile
+   usage needed to read what is in it, never a link edge.
 
 ``--const-inputs``
 ~~~~~~~~~~~~~~~~~~

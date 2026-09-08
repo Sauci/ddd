@@ -67,8 +67,9 @@ generate all``, so the artefact of every plugin named with ``PLUGINS`` arrives b
 built-in files - and links the result back into the image. A plugin's file names are its own
 and are not declared as outputs, so a target that consumes one depends on
 ``<image>_ddd_generation``. It has to be called in the ``CMakeLists.txt`` that
-defines the image, and after the components have been added, because it hands the generated
-headers to the components registered up to that point.
+defines the image, and after the components have been added, because it hands
+``<image>_ddd_headers`` to the components registered up to that point - which settles both
+which components get the generated headers and whose compile usage travels with them.
 
 Besides the image it needs one thing: ``TEMPLATE_DIRECTORY``, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
@@ -122,8 +123,9 @@ comments removed; it is what the ``cmake`` compose service configures and builds
 
 ``sensor_hub.c`` then writes ``#include "SensorHub.h"`` and nothing else: the header DDD
 generated for that component is the only one on its include path, so a component cannot reach
-a variable it never declared. The include directory travels to the components automatically,
-which is what keeps the integration down to two lines per component.
+a variable it never declared. The include directory travels to the components automatically -
+and with it, in the collected mode, the compile usage those headers need to be read - which is
+what keeps the integration down to two lines per component.
 
 The templates this example points at are the ones DDD ships as examples, since it sits next to
 them in the source tree. A real project keeps its own under version control, next to its
@@ -270,19 +272,25 @@ usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers`
    * - ``<image>_ddd_headers``
      - interface library carrying the include directory of the generated headers, and
        depending on the generation. Every registered component links it, so a component
-       includes its interface header without knowing where the image put it.
+       includes its interface header without knowing where the image put it. In the collected
+       mode it carries the *interface compile usage* of every registered component as well -
+       include directories, compile definitions and compile options, but never link edges - so
+       that a header an :doc:`external type <file_formats/types>` names is found *and read the
+       way the component declaring it reads it*. The flags matter as much as the paths: a hand
+       written header may change its layout under the component's interface defines, and a
+       file compiled without them finds every header, compiles cleanly, and lays the variables
+       out differently than the image using them. Carrying it here is what keeps the
+       integration a two-liner, since linking this one target is then enough; the price is
+       that every registered component compiles under the union of those flags, including
+       components it does not link itself. ``ddd_types.h`` holds the external includes of the
+       whole project and every component header includes it, so they all have to read those
+       headers alike.
    * - ``<image>_ddd_globals``
      - object library compiling every generated ``.c`` file, linked into the image. It is an
        object library on purpose: a static library would drop the members whose symbols
        nobody references, and a measurement that only the calibration tool ever reads has no
-       referencing code at all. In the collected mode it is compiled with the *interface
-       compile usage* of every registered component - include directories, compile
-       definitions and compile options, but never link edges - so that a header an
-       :doc:`external type <file_formats/types>` names is found *and read the way the
-       component reads it* without further wiring. The flags matter as much as the paths: a
-       hand written header may change its layout under the component's interface defines,
-       and a definition file compiled without them finds every header, compiles cleanly,
-       and lays the variables out differently than the image using them.
+       referencing code at all. It links ``<image>_ddd_headers`` publicly, which is where the
+       compile usage it needs to read the external type headers comes from.
    * - ``<image>_ddd_check``
      - runs ``ddd check`` on the collected project on its own, for a ci job that wants the
        verdict without producing artefacts. Checking is part of generating anyway - the
@@ -356,11 +364,13 @@ Options
        generation and the check target.
    * - ``LINK_LIBRARIES <target>...``
      - usage requirements for compiling the generated definition file, stated by hand. The
-       manual fallback: in the collected mode the definition file already gets the interface
-       compile usage of every registered component - include directories, compile
+       manual fallback: in the collected mode ``<image>_ddd_headers`` already carries the
+       interface compile usage of every registered component - include directories, compile
        definitions and compile options, resolved through each component's public link
-       closure - so this remains for the hand written ``PROJECT`` mode and for what no
-       description implies, such as a header the project's own c templates include.
+       closure - and the definition file links it, so this remains for the hand written
+       ``PROJECT`` mode and for what no description implies, such as a header the project's
+       own c templates include. These libraries reach the definition file alone, so a
+       component that includes a generated header needing one of them has to link it itself.
    * - ``DEPENDS <file>...``
      - additional files that retrigger the generation.
    * - ``CONST_INPUTS``
@@ -370,14 +380,16 @@ Options
    * - ``STRICT``
      - treat DDD warnings as errors.
    * - ``NO_PROPAGATE_HEADERS``
-     - do not hand the generated headers to the registered components.
+     - do not hand ``<image>_ddd_headers``, and the compile usage it carries, to the
+       registered components.
 
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include
-directory reached it first would silently decide which set it compiles against. Rather than
-letting an include order settle that, the second ``ddd_generate()`` stops the configure step
-with a fatal error. Such a project gives ``NO_PROPAGATE_HEADERS`` to **both** calls and links
+directory reached it first would silently decide which set it compiles against - and, since
+``<image>_ddd_headers`` carries the components' compile usage too, under which flags. Rather
+than letting an include order settle that, the second ``ddd_generate()`` stops the configure
+step with a fatal error. Such a project gives ``NO_PROPAGATE_HEADERS`` to **both** calls and links
 the wanted ``<image>_ddd_headers`` into each component explicitly - opting out of only one of
 the two would leave the same ambiguity in place, because the automatic set still reaches every
 registered component rather than only the ones that image links.

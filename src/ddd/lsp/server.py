@@ -66,12 +66,11 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, read
 
-_REFRESHING: Final = frozenset({"textDocument/didOpen", "textDocument/didSave"})
-"""The two moments the text on disk is known to be the text on screen."""
-
 _DID_OPEN: Final = "textDocument/didOpen"
 _DID_CHANGE: Final = "textDocument/didChange"
 _DID_CLOSE: Final = "textDocument/didClose"
+_DID_SAVE: Final = "textDocument/didSave"
+"""A save is the moment the text on disk is known to be the text on screen."""
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
@@ -81,8 +80,13 @@ _RENAME: Final = "textDocument/rename"
 _CODE_ACTION: Final = "textDocument/codeAction"
 
 
-_ESCAPED_DRIVE: Final = re.compile(r"^/([A-Za-z])%3[Aa](?=/|$)")
-"""``/c%3A/...``: a drive letter whose colon the client escaped, which VS Code always does."""
+_ESCAPED_DRIVE: Final = re.compile(r"^/([A-Za-z])%3[Aa](?=/)")
+"""``/c%3A/...``: a drive letter whose colon the client escaped, which VS Code always does.
+
+Only where more path follows - VS Code never sends the drive alone - and only where there is
+a drive position to escape at all: the leading slash this matches is the one ``file:///...``
+puts before a drive, which a network share's host takes the place of instead.
+"""
 
 
 def uri_to_path(uri: str) -> Path:
@@ -102,9 +106,13 @@ def uri_to_path(uri: str) -> Path:
     opened. Only that colon is restored here; everything else stays escaped for the call.
     """
     parsed = urlparse(uri)
-    path = url2pathname(_ESCAPED_DRIVE.sub(r"/\1:", parsed.path))
+    path = parsed.path
+    if not parsed.netloc or parsed.netloc == "localhost":
+        path = _ESCAPED_DRIVE.sub(r"/\1:", path)
+    path = url2pathname(path)
     if parsed.netloc and parsed.netloc != "localhost":
-        # file://server/share/...: a network share, whose host is the start of the path.
+        # file://server/share/...: a network share, whose host is the start of the path - its
+        # first segment is a share name, never a drive, however much it may look like one.
         path = f"//{parsed.netloc}{path}"
     return Path(path)
 
@@ -225,7 +233,7 @@ class Server:
             self._remember(message)
         elif method == _DID_CLOSE:
             self._open.pop(self._document(message).resolve(), None)
-        elif method in _REFRESHING:
+        elif method == _DID_SAVE:
             self.refresh(self._document(message))
         elif method in _NAVIGATING:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
@@ -258,8 +266,12 @@ class Server:
         ``didOpen`` carries the whole text; ``didChange`` carries it too, because the server
         asks for full-content synchronisation (``change: 1``): a description file is small,
         and applying incremental edits to a kept copy is a second place to get a position
-        wrong. A notification without text - a client that sends none - leaves the disk copy
-        in charge, which is what the server did for everything before it kept buffers.
+        wrong. An entry carrying a ``range`` is an incremental change sent anyway - a client
+        that did not honour ``change: 1`` - and its text is a fragment rather than the
+        document, so it is left alone rather than stored as if it were one; the last known
+        text stays in charge until a compliant change or a save corrects it. A notification
+        without text - a client that sends none - leaves the disk copy in charge too, which is
+        what the server did for everything before it kept buffers.
         """
         params = _field(message.get("params"), dict, "params")
         target = _field(params.get("textDocument"), dict, "params.textDocument")
@@ -267,7 +279,12 @@ class Server:
         version = target.get("version")
         text = target.get("text")
         changes = params.get("contentChanges")
-        if isinstance(changes, list) and changes and isinstance(changes[-1], dict):
+        if (
+            isinstance(changes, list)
+            and changes
+            and isinstance(changes[-1], dict)
+            and "range" not in changes[-1]
+        ):
             text = changes[-1].get("text")
         if isinstance(text, str):
             self._open[path] = (text, version if isinstance(version, int) else None)

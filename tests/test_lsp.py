@@ -187,6 +187,21 @@ class TestRanges:
             # ``as_uri`` keeps the drive letter's case, so compare case-blind.
             assert decoded.as_uri().lower() == "file:///c:/git/x/a.ddd.json"
 
+    def test_a_drive_looking_segment_after_a_host_is_not_mistaken_for_a_drive(self) -> None:
+        """``file://server/share/...`` is a network share, whose first path segment is a
+        share name, not a drive letter - a share may be called ``c%3A`` just as readily as
+        anything else. Substituting there asked ``url2pathname`` to parse a share name as a
+        Windows drive, which is not what it is."""
+        found = uri_to_path("file://server/c%3A/a.ddd.json")
+        assert found == Path(f"//server{server_module.url2pathname('/c%3A/a.ddd.json')}")
+
+    def test_a_drive_colon_with_nothing_after_it_is_left_to_url2pathname(self) -> None:
+        """VS Code always sends more path after the drive - ``file:///c%3A/...`` - so a
+        colon with nothing following it at all is not a shape any client is known to send,
+        and guessing it is a bare drive root is a guess this function is not in a position
+        to make."""
+        assert uri_to_path("file:///c%3A") == Path(server_module.url2pathname("/c%3A"))
+
     def test_a_byte_order_mark_is_read_the_way_the_loader_reads_one(self, tmp_path: Path) -> None:
         """``ddd check`` accepts a BOM on purpose; the editor has to agree with it.
 
@@ -3545,6 +3560,69 @@ class TestServer:
         assert answers[2]["result"]["placeholder"] == "Speed"  # the changed buffer
         assert answers[3]["result"] is None  # closed: the disk again, where that line is not a name
 
+    def test_an_incremental_change_fragment_is_not_stored_as_the_whole_document(
+        self, tmp_path: Path
+    ) -> None:
+        """The server asks for full-content synchronisation (``change: 1``); a
+        ``contentChanges`` entry that carries a ``range`` is an incremental edit sent anyway,
+        and its ``text`` is a fragment, not the document. Storing it as the whole buffer would
+        answer every later request against a few characters instead of a description file."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed")),
+            },
+        )
+        disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        on_disk = Document(disk).text_range_of("component.interface[0].definition.name")
+        assert on_disk is not None
+        uri = (tmp_path / "a.ddd.json").as_uri()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {"uri": uri, "languageId": "json", "version": 1, "text": disk}
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 0, "character": 0},
+                                "end": {"line": 0, "character": 0},
+                            },
+                            "text": "x",
+                        }
+                    ],
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/prepareRename",
+                "params": {"textDocument": {"uri": uri}, "position": on_disk["start"]},
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answer = next(m for m in sent(writer) if m.get("id") == 2)
+        # Unaffected by the fragment: the buffer is still the text the didOpen carried.
+        assert answer["result"]["placeholder"] == "Speed"
+
     def test_a_rename_is_refused_while_a_buffer_has_moved_the_declaration(
         self, tmp_path: Path
     ) -> None:
@@ -3687,7 +3765,7 @@ class TestServer:
         assert "c.ddd.json" in answer["error"]["message"]
         assert "result" not in answer
 
-    def test_a_quick_fix_skips_a_buffer_where_the_pointer_no_longer_names_the_object(
+    def test_no_quick_fix_is_offered_while_another_buffer_has_moved_the_declaration(
         self, tmp_path: Path
     ) -> None:
         write_tree(
@@ -3743,8 +3821,9 @@ class TestServer:
         writer = io.BytesIO()
         assert Server(stream, writer, root=tmp_path).run() == 0
         answer = next(m for m in sent(writer) if m.get("id") == 2)
-        for action in answer["result"]:
-            assert b_uri not in action["edit"].get("changes", {}), action["title"]
+        # B is the only other declaration, and it cannot be read at its indexed pointer: no
+        # fix can claim to have reconciled with "the other declarations" that unattributably.
+        assert answer["result"] == []
 
     def test_a_client_that_takes_versioned_edits_is_told_which_version_they_are_for(
         self, tmp_path: Path
@@ -3916,8 +3995,9 @@ class TestServer:
         writer = io.BytesIO()
         assert Server(stream, writer, root=tmp_path).run() == 0
         answer = next(m for m in sent(writer) if m.get("id") == 2)
-        for action in answer["result"]:
-            assert not action["title"].startswith("Remove this unit"), action["title"]
+        # A already states "rpm", so nothing is missing for it to adopt, and the removal this
+        # docstring is about cannot claim uniqueness while B sits behind a moved declaration.
+        assert answer["result"] == []
 
     def test_adopting_the_others_value_is_not_offered_while_one_of_them_is_unreadable(
         self, tmp_path: Path

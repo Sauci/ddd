@@ -673,8 +673,14 @@ class TestPackaging:
         )
         assert manifest["capabilities"]["untrustedWorkspaces"]["supported"] is False
         stated = {
-            ROOT / "docs" / "editor_integration.rst": ("What the server runs",),
-            ROOT / "editors" / "vscode" / "README.md": ("## Trust",),
+            ROOT / "docs" / "editor_integration.rst": (
+                "What the server runs",
+                "a plugin is imported when its project is read",
+            ),
+            ROOT / "editors" / "vscode" / "README.md": (
+                "## Trust",
+                "trust the workspace when you would run its build",
+            ),
             ROOT / "docs" / "plugins.rst": ("Naming a plugin runs it",),
             ROOT / "SPEC.md": (
                 "Naming a plugin runs its module",

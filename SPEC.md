@@ -965,7 +965,9 @@ one on the project, and contributing checks, comparison rules and an artefact of
   component, and the hooks run in the order the project files name the plugins, a module
   named twice keeping its first place. Naming a plugin runs its module: on every command
   over the project, and in the language server whenever a file of the project is opened or
-  saved ([section 7.2](#72-editor-integration)). A module that cannot be found is
+  saved, and whenever the server reads the project description to find out whether it
+  includes an opened file
+  ([section 7.2](#72-editor-integration)). A module that cannot be found is
   `plugin-not-found`; one that raises on import, exposes no `PLUGIN`, exposes a malformed
   one, or claims a name another plugin already has is `plugin-invalid`. Both have a fixed
   severity, because a project cannot be interpreted without the plugins it names.
@@ -1683,12 +1685,14 @@ initial value included; renaming an object, a declared type or a declared consta
 everywhere the project writes it - the declaration and every reference, `typename`,
 dimension or axis `size` spelling it - refused up front for a name the C language does not
 allow, a type name spelling a base datatype, or one the project already uses, whether for
-another object, an enum, an enumerator, a type or a constant,
-because a rename that silently merges two objects compiles, links, and shares storage
-nobody intended to share; and quick fixes that reconcile one key across the declarations of one object, in either
-direction, including removing a key the others do not have; and, on a `missing-id`, a fix that
-gives the declaration an identity, writing what `ddd id --assign` would write and offered only
-where that finding is reported.
+another object, an enum, an enumerator, a type or a constant, or while an open document has
+unsaved changes that moved a declaration the rename would touch, in which case the refusal
+names the file rather than renaming the rest of the project around it, because a rename that
+silently merges two objects compiles, links, and shares storage nobody intended to share;
+and quick fixes that reconcile one key across the declarations of one object, in either
+direction, including removing a key the others do not have; and, on a `missing-id`, a fix
+that gives the declaration an identity, writing what `ddd id --assign` would write and
+offered only where that finding is reported.
 
 Which project a file belongs to comes from the build records of
 [section 3.6](#36-build-record), found by searching the build directories the client names,
@@ -1710,11 +1714,15 @@ modes cannot drift apart.
 The server re-reads a file from disk when it is opened or saved, and analyses nothing per
 keystroke: read from disk, the editor and the server agree exactly at the moment of a save,
 and a half-typed document never produces a screenful of findings about a mistake nobody has
-finished making. Each finding is also published at the locations of its notes, so that both
-sides of a conflict carry a mark. The build records a search discovers are announced as log
-messages, and a record that cannot be read is skipped. A plugin hook that raises while a
-file is checked is reported as a `plugin-invalid` finding at the project file rather than
-ending the session ([section 3.11](#311-plugins)).
+finished making. The findings are therefore the disk's. The text of every open document is
+nonetheless kept current as it is typed, and every position the client sends and every edit
+the server answers - a rename, a quick fix - is read from and written for that text, so that
+an edit lands where the editor shows it; a client that takes versioned edits is told which
+version of each document an edit was computed for. Each finding is also published at the
+locations of its notes, so that both sides of a conflict carry a mark. The build records a
+search discovers are announced as log messages, and a record that cannot be read is skipped.
+A plugin hook that raises while a file is checked is reported as a `plugin-invalid` finding
+at the project file rather than ending the session ([section 3.11](#311-plugins)).
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server; a corrupted frame header, after which

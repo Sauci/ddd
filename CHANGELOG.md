@@ -14,7 +14,8 @@ not, and the templates a project provides are its own.
   Windows file as `file:///c%3A/...`, drive lower-cased and colon escaped, and the server read
   that as the relative path `/c:/...`: it analysed a file that does not exist and exited on
   the first `didOpen`, trying to publish under a uri it could not form.  The escaped drive
-  colon is now restored before the path is decoded, and the extension works on Windows.
+  colon is now restored before the path is decoded, and the server no longer dies on the uri
+  a Windows client sends.
 
 * **Edits are computed against the editor's buffer.**  Rename and the quick fixes read
   positions from, and wrote edits for, the file on disk, while the client applies an edit to

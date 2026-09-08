@@ -50,10 +50,10 @@ nobody has tried.
 ## Trust
 
 A description file names the plugins the server runs, and the server runs the plugins of
-every project it finds above a file you open. Opening a repository is therefore running its
-python, the way `ddd check` on it would. The extension does not start in a workspace VS Code
-has not been told to trust (*Restricted Mode*): trust the workspace when you would run its
-build, and not before.
+every description file it finds at or above a file you open, whether or not that file turns
+out to belong to it. Opening a repository is therefore running its python, the way `ddd
+check` on it would. The extension does not start in a workspace VS Code has not been told to
+trust (*Restricted Mode*): trust the workspace when you would run its build, and not before.
 
 ## What it gives you
 

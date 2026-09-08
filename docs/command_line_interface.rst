@@ -110,6 +110,9 @@ The commands
        built-in artefact out while still producing the plugins' - the run a build wants when
        the a2l is written later, once the addresses are known. Naming ``c`` instead is not the
        same thing: it produces no plugin artefact at all, and says nothing about it.
+       Subtracting an artefact takes its options with it, so ``--without a2l`` beside an
+       ``--address-map`` is refused rather than quietly ignored, and a run that has subtracted
+       the c neither wants nor accepts ``-t``.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
        generates in spite of errors.
    * - ``ddd list FILE``
@@ -163,13 +166,7 @@ without it is refused rather than falling back to templates of DDD's own.
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen
-   usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
-                           [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
-                           [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
-                           [--dry-run] [--force]
-                           project
-   ddd generate all: error: the following arguments are required: -t/--template-dir
+   ddd: the c sources are part of this run, so -t/--template-dir is required
 
 A default would have to be somebody's house style, and a project that inherited one without
 choosing it would find out which one only by reading the generated code; :doc:`templates`

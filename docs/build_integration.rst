@@ -301,7 +301,7 @@ else a build sees is there, and so is every edge between them:
    headers ..> generation : build order
    image ..> generation : the descriptions of the\nlink closure are collected
 
-   components --> headers : PROPAGATE_HEADERS:\nevery component links it
+   components --> headers : propagated by default:\nevery component links it
    headers ..> components : and reads back each one's\ninterface include directories,\ncompile definitions and\ncompile options
 
    legend bottom
@@ -527,8 +527,9 @@ declarations are covered in both of their states.
 
 The script takes the project and the output directory as arguments, so it also runs on a real
 project rather than only on the demo, and the environment variables ``CDEFS``, ``GENFLAGS``,
-``TEMPLATES``, ``CFLAGS`` and ``CC`` change the defines, the ``ddd generate`` flags, the
-templates, the warning set and the compiler:
+``TEMPLATES``, ``CFLAGS``, ``CC`` and ``INCLUDES`` change the defines, the ``ddd generate``
+flags, the templates, the warning set, the compiler, and where the headers of the project's
+external types are looked for on top of the nearest ``include`` directory:
 
 .. code-block:: bash
 

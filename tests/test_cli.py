@@ -191,7 +191,8 @@ class TestGenerateAll:
         capsys: pytest.CaptureFixture[str],
         *extra: str,
     ) -> list[str]:
-        templates = ["-t", str(EXAMPLES / "templates")] if artefact != "a2l" else []
+        renders_c = artefact != "a2l" and "c" not in extra
+        templates = ["-t", str(TEMPLATES)] if renders_c else []
         arguments = ["generate", artefact, str(LAYOUT), "-o", str(tmp_path), *templates, *extra]
         assert main([*arguments, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
         return [
@@ -235,6 +236,32 @@ class TestGenerateAll:
         assert "LayoutDevice.a2l" in written and "ddd_layout.h" in written
         assert "ddd_globals.c" not in written
 
+    @pytest.mark.parametrize(
+        ("option", "value", "artefact"),
+        [
+            ("--address-map", "map.json", "a2l"),
+            ("--byte-order", "big", "a2l"),
+        ],
+    )
+    def test_an_option_of_a_subtracted_artefact_is_refused(
+        self,
+        tmp_path: Path,
+        option: str,
+        value: str,
+        artefact: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Subtracting an artefact takes its options with it, rather than ignoring them.
+
+        The address map is the one that matters: loading it is what a two-run build wants to
+        avoid before the link, and a run that accepted and ignored it would also drop the
+        address coverage check without saying so.
+        """
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path), "-t", str(TEMPLATES)]
+        arguments += ["--without", artefact, option, value, "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert option in capsys.readouterr().err
+
     def test_a_run_left_with_nothing_to_write_is_refused(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -243,19 +270,8 @@ class TestGenerateAll:
         Reporting success while writing nothing is what this whole option is about, so the one
         combination that would still do it is a usage error.
         """
-        arguments = [
-            "generate",
-            "all",
-            str(DEMO),
-            "-o",
-            str(tmp_path),
-            "-t",
-            str(EXAMPLES / "templates"),
-            "--without",
-            "c",
-            "--without",
-            "a2l",
-        ]
+        arguments = ["generate", "all", str(DEMO), "-o", str(tmp_path)]
+        arguments += ["--without", "c", "--without", "a2l"]
         assert main(arguments) == EXIT_USAGE
         assert "would write nothing" in capsys.readouterr().err
 
@@ -303,10 +319,19 @@ class TestGenerate:
     def test_whatever_renders_c_requires_the_template_directory(
         self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Structurally, by the parser of the artefact: there is no fallback to relax."""
-        with pytest.raises(SystemExit) as exit_code:
-            main(["generate", artefact, str(DEMO), "-o", str(tmp_path / "gen")])
-        assert exit_code.value.code == EXIT_USAGE
+        """There is no fallback to relax, only a difference in where the refusal comes from.
+
+        ``c`` cannot be anything but a c run, so its parser demands the directory. ``all`` can
+        subtract the c, so it is asked for once the subtraction has been applied - which is why
+        the one refuses before parsing finishes and the other after.
+        """
+        arguments = ["generate", artefact, str(DEMO), "-o", str(tmp_path / "gen")]
+        if artefact == "all":
+            assert main(arguments) == EXIT_USAGE
+        else:
+            with pytest.raises(SystemExit) as exit_code:
+                main(arguments)
+            assert exit_code.value.code == EXIT_USAGE
         assert "-t/--template-dir" in capsys.readouterr().err
 
     def test_the_a2l_artefact_refuses_the_options_of_the_c_one(

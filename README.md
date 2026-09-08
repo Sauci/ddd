@@ -865,7 +865,7 @@ declarations are covered in both states:
 
 Point it at your own project with
 `docker compose run --rm compile ddd-compile path/to/project.ddd.json build/mine`, and use the
-`CDEFS`, `GENFLAGS`, `CFLAGS` and `CC` environment variables to change the defines,
+`CDEFS`, `GENFLAGS`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change the defines,
 the `ddd generate` flags, the warning set or the compiler.
 
 The working tree is bind mounted at `/work` and `PYTHONPATH=/work/src` shadows the copy

@@ -11,10 +11,13 @@ rule - so a project that cannot be read, or whose plugin raises out of a hook, p
 findings, not an exception. A server that wrapped it in a catch-all would be insuring against
 a thing the design already prevents, and would hide it if that ever stopped being true.
 
-Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the files are
-read from disk, so the editor and the server agree exactly at the moment of a save, and a
-half-typed document never produces a screenful of findings about a mistake nobody has finished
-making yet.
+Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the analysis
+reads the files from disk, so the editor and the server agree exactly at the moment of a
+save, and a half-typed document never produces a screenful of findings about a mistake
+nobody has finished making yet. The *text* of every open document is nonetheless kept, and
+kept current through ``didChange``: a position the client sends, and an edit the client
+will apply, are about what is on screen, and an edit computed from a stale file and applied
+to a buffer with one extra line rewrote an unrelated line.
 """
 
 from __future__ import annotations
@@ -65,6 +68,10 @@ from ddd.lsp.ranges import Document, read
 
 _REFRESHING: Final = frozenset({"textDocument/didOpen", "textDocument/didSave"})
 """The two moments the text on disk is known to be the text on screen."""
+
+_DID_OPEN: Final = "textDocument/didOpen"
+_DID_CHANGE: Final = "textDocument/didChange"
+_DID_CLOSE: Final = "textDocument/didClose"
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
@@ -158,6 +165,14 @@ class Server:
         question is entitled to the first one's answer; :meth:`_forget` is where that stops.
         """
 
+        self._open: dict[Path, tuple[str, int | None]] = {}
+        """The text and version of every open document, keyed by its resolved path.
+
+        What positions and edits are computed against. The analysis still reads the disk - a
+        finding is about what is saved - but a rename box opens where the caret is, and the
+        edit that follows is applied to the buffer, so both have to be read from it.
+        """
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
 
@@ -200,6 +215,13 @@ class Server:
             write_message(self.writer, response(request_id, None))
         elif method == "exit":
             return False
+        elif method == _DID_OPEN:
+            self._remember(message)
+            self.refresh(self._document(message))
+        elif method == _DID_CHANGE:
+            self._remember(message)
+        elif method == _DID_CLOSE:
+            self._open.pop(self._document(message).resolve(), None)
         elif method in _REFRESHING:
             self.refresh(self._document(message))
         elif method in _NAVIGATING:
@@ -226,6 +248,45 @@ class Server:
         params = _field(message.get("params"), dict, "params")
         target = _field(params.get("textDocument"), dict, "params.textDocument")
         return uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri"))
+
+    def _remember(self, message: dict[str, Any]) -> None:
+        """Keep what the client says the document now contains.
+
+        ``didOpen`` carries the whole text; ``didChange`` carries it too, because the server
+        asks for full-content synchronisation (``change: 1``): a description file is small,
+        and applying incremental edits to a kept copy is a second place to get a position
+        wrong. A notification without text - a client that sends none - leaves the disk copy
+        in charge, which is what the server did for everything before it kept buffers.
+        """
+        params = _field(message.get("params"), dict, "params")
+        target = _field(params.get("textDocument"), dict, "params.textDocument")
+        path = uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri")).resolve()
+        version = target.get("version")
+        text = target.get("text")
+        changes = params.get("contentChanges")
+        if isinstance(changes, list) and changes and isinstance(changes[-1], dict):
+            text = changes[-1].get("text")
+        if isinstance(text, str):
+            self._open[path] = (text, version if isinstance(version, int) else None)
+
+    def _cache(self, path: Path | None = None) -> dict[Path, Document]:
+        """A document cache seeded with every open buffer, under both spellings of its path.
+
+        The index is built from resolved paths and a request names the path the client
+        spelled, so the buffer is filed under both; anything not open is read from disk on
+        first use, as before.
+        """
+        cache: dict[Path, Document] = {}
+        for resolved, (text, _) in self._open.items():
+            cache[resolved] = Document(text)
+        if path is not None and path.resolve() in cache:
+            cache[path] = cache[path.resolve()]
+        return cache
+
+    def _version_of(self, path: Path) -> int | None:
+        """The version the client last announced for a document, or ``None`` if it is not open."""
+        entry = self._open.get(path.resolve())
+        return entry[1] if entry is not None else None
 
     def _at(self, message: dict[str, Any], key: str = "position") -> dict[str, int]:
         """The position a request is about, which a code action sends as the start of a range."""
@@ -349,7 +410,7 @@ class Server:
         reads as "no jump from here" and shows as nothing happening.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message))
         found: list[Site] = []
@@ -368,7 +429,7 @@ class Server:
         name no component declares - which a client shows by doing nothing at all.
         """
         path = self._document(message)
-        document = read(path, {})
+        document = read(path, self._cache(path))
         pointer = document.pointer_at(self._at(message))
         # A dimension spelled as a constant name is about the constant, not about the
         # object dimensioned by it - the reference wins over the declaration holding it,
@@ -407,7 +468,7 @@ class Server:
         not is worse than no box at all.
         """
         path = self._document(message)
-        document = read(path, {})
+        document = read(path, self._cache(path))
         pointer = document.pointer_at(self._at(message))
         subject = renameable_at(document, pointer)
         if subject is None:
@@ -422,7 +483,7 @@ class Server:
         empty edit looks like a rename that quietly did nothing.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message))
         params = _field(message.get("params"), dict, "params")
@@ -458,7 +519,7 @@ class Server:
         what decides: an author asking for a fix has put the caret on the thing they mean.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message, "range"))
         params = _field(message.get("params"), dict, "params")
@@ -478,10 +539,12 @@ class Server:
 
     def _capabilities(self) -> dict[str, Any]:
         return {
-            # change 0 is TextDocumentSyncKind.None: the server reads files from disk, so
-            # sending it every keystroke would be traffic nothing looks at.
+            # change 1 is TextDocumentSyncKind.Full: the analysis reads from disk on open and
+            # save, but positions and edits are computed against the buffer, so the server
+            # has to be told what the buffer holds. Full rather than incremental because a
+            # description file is small and applying deltas is a second place to be wrong.
             "capabilities": {
-                "textDocumentSync": {"openClose": True, "change": 0, "save": True},
+                "textDocumentSync": {"openClose": True, "change": 1, "save": True},
                 "definitionProvider": True,
                 "referencesProvider": True,
                 "hoverProvider": True,

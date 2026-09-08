@@ -3329,9 +3329,10 @@ class TestServer:
         assert answer["error"]["code"] == METHOD_NOT_FOUND
 
     def test_a_notification_it_does_not_know_is_simply_ignored(self, tmp_path: Path) -> None:
+        """``didClose`` is now one the server knows; ``willSave`` still is not."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "method": "textDocument/didClose", "params": {}}),
+            framed({"jsonrpc": "2.0", "method": "textDocument/willSave", "params": {}}),
             writer,
             root=tmp_path,
         ).run()
@@ -3368,6 +3369,160 @@ class TestServer:
         monkeypatch.setattr("sys.stdin", Stream(io.BytesIO()))
         monkeypatch.setattr("sys.stdout", Stream(io.BytesIO()))
         assert main(["lsp", "-b", str(tmp_path)]) == EXIT_OK
+
+    def test_a_position_is_read_from_the_editors_buffer_not_the_disk(self, tmp_path: Path) -> None:
+        """The client applies an edit to what is on screen, so that is what the edit must be
+        computed against. The disk is what the *analysis* reads - that promise stays - but a
+        rename computed from a stale file and applied to a buffer with one extra line rewrote
+        five characters of an unrelated line."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        disk = (tmp_path / "b.ddd.json").read_text(encoding="utf-8")
+        on_disk = Document(disk).text_range_of("component.interface[0].definition.name")
+        assert on_disk is not None
+        # The unsaved buffer: one blank line inserted at the top, nothing else changed.
+        buffer = "\n" + disk
+        in_buffer = {
+            "line": on_disk["start"]["line"] + 1,
+            "character": on_disk["start"]["character"],
+        }
+        uri = (tmp_path / "b.ddd.json").as_uri()
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {"uri": uri, "languageId": "json", "version": 3, "text": buffer}
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/prepareRename",
+                "params": {"textDocument": {"uri": uri}, "position": in_buffer},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": uri},
+                    "position": in_buffer,
+                    "newName": "Velocity",
+                },
+            },
+            {"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {m["id"]: m for m in sent(writer) if "id" in m}
+        # prepareRename answers at the buffer's line, and the placeholder is the name there.
+        assert answers[2]["result"]["placeholder"] == "Speed"
+        assert answers[2]["result"]["range"]["start"]["line"] == in_buffer["line"]
+        edits = answers[3]["result"]["changes"]
+        # b.ddd.json is edited where the buffer has the name, one line below the disk.
+        edit_in_b = edits[uri][0]
+        assert edit_in_b["range"]["start"]["line"] == on_disk["start"]["line"] + 1
+        assert edit_in_b["newText"] == "Velocity"
+        # a.ddd.json is not open, so its edit is computed from the disk.
+        on_disk_a = Document((tmp_path / "a.ddd.json").read_text(encoding="utf-8")).text_range_of(
+            "component.interface[0].definition.name"
+        )
+        assert edits[(tmp_path / "a.ddd.json").as_uri()][0]["range"] == on_disk_a
+
+    def test_a_change_notification_replaces_the_buffer_and_a_close_forgets_it(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Speed")),
+            },
+        )
+        disk = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        on_disk = Document(disk).text_range_of("component.interface[0].definition.name")
+        assert on_disk is not None
+        uri = (tmp_path / "a.ddd.json").as_uri()
+        two_lines_down = {
+            "line": on_disk["start"]["line"] + 2,
+            "character": on_disk["start"]["character"],
+        }
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {"uri": uri, "languageId": "json", "version": 1, "text": disk}
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [{"text": "\n\n" + disk}],
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/prepareRename",
+                "params": {"textDocument": {"uri": uri}, "position": two_lines_down},
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didClose",
+                "params": {"textDocument": {"uri": uri}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "textDocument/prepareRename",
+                "params": {"textDocument": {"uri": uri}, "position": two_lines_down},
+            },
+            {"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {m["id"]: m for m in sent(writer) if "id" in m}
+        assert answers[2]["result"]["placeholder"] == "Speed"  # the changed buffer
+        assert answers[3]["result"] is None  # closed: the disk again, where that line is not a name
+
+    def test_the_server_asks_for_the_full_text_on_every_change(self, tmp_path: Path) -> None:
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri()},
+            },
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        Server(stream, writer, root=tmp_path).run()
+        sync = sent(writer)[0]["result"]["capabilities"]["textDocumentSync"]
+        assert sync == {"openClose": True, "change": 1, "save": True}
 
 
 UNSTAMPED = [{"code": "missing-id", "source": "ddd", "message": "has no 'id'"}]

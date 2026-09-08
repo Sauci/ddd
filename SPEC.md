@@ -146,6 +146,8 @@ run.
 | **declaration** | one entry of a component interface: a scope, an optional condition and a definition |
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
 | **data object** | the subject of a declaration: a measurement, parameter, value block, curve, map or axis |
+| **instance** | a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path |
+| **leaf** | one value-holding member of an instance, as the dictionary and the A2L see it; a member naming an external type is opaque and is no leaf |
 | **measurement** | a data object the software writes and reads, the producer writing and the consumers reading; a calibration tool can both read and write it as well |
 | **calibration object** | a data object the software never writes: a parameter, value block, curve, map or axis, generated `const` and changed, if at all, by a calibration tool |
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
@@ -186,22 +188,27 @@ decides what the file is: `project` ([section 3.1](#31-project-description)),
 `sections` ([section 3.5](#35-memory-placement)),
 `constants` ([section 3.9](#39-constant-vocabulary)) or
 `rasters` ([section 3.10](#310-measurement-rasters)); only the first two can be the root of
-a run. A file stating none of these keys, or several at once, is refused (`file-kind`).
+a run. Handed any other kind as the root, the tool reports `file-kind` with a hint that the
+file belongs in the `includes` of a project, and exits 1 ([section 7](#7-tool-interface)).
+A file stating none of these keys, or several at once, is refused (`file-kind`).
 JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
 and parsers generally resolve the duplication silently in favour of the last spelling, so
 the value the author reads first is not the value a tool would use, and in a grown
 description file such a divergence is costly to locate. A key **must not** be
 repeated inside one object; the file is refused (`json-syntax`) rather than read with the
 surviving value. A file that is not valid UTF-8, or whose nesting exceeds the depth the
-parser accepts, is refused the same way (`json-syntax`). Unknown keys are rejected, with one exception: a top level `$schema` key
-**shall** be accepted and ignored, because it is the standard way an editor binds a JSON
-file to its schema and thereby turns the published contract into completion, hover
-documentation and validation while typing. The formal contract is published by the tool
-itself as a JSON schema (`ddd schema`), in one file per format, covering project,
+parser accepts, is refused the same way (`json-syntax`). So is a file spelling `NaN` or
+`Infinity`, which JSON does not define; a number too large for the parser's floating point,
+such as `1e400`, reads as infinity and is refused as `schema` where it is written. A file
+whose top level is not an object is `file-kind`. Unknown keys are rejected, with one
+exception: a top level `$schema` key **shall** be accepted and ignored, because it is the
+standard way an editor binds a JSON file to its schema and thereby turns the published
+contract into completion, hover documentation and validation while typing. The key carries
+a string or `null`; any other value is `schema`. The formal contract is published by the
+tool itself as a JSON schema (`ddd schema`), in one file per format, covering project,
 component, types, units, sections, constants, rasters and the data dictionary, and every
-authored field of it
-**shall** carry its documentation. The binding is per file rather than per directory
-because the kind of a description is stated in its content, not in its name.
+authored field of it **shall** carry its documentation. The binding is per file rather than
+per directory because the kind of a description is stated in its content, not in its name.
 
 ### 3.1 Project description
 
@@ -228,7 +235,7 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
   that is the absolute path with symbolic links followed, compared as the platform compares
-  paths. Include cycles are an error.
+  paths. Include cycles are an error (`include-cycle`).
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
@@ -247,7 +254,8 @@ cannot expand counts as matching nothing. An entry without a wildcard
 character is a literal path naming exactly one file, and if that file does not exist, or
 names a directory, the
 finding is `file-not-found` rather than `include-empty`: a pattern **may** legitimately be
-empty, while a named file **must not** be missing.
+empty, while a named file **must not** be missing. A file that is not named `*.ddd.json`
+is `file-extension`, reported after the file is read; loading continues.
 
 ### 3.2 Software component description
 
@@ -456,7 +464,7 @@ stable rather than an accident of the file system.
 
 ##### 3.3.1.1 Interface
 
-The interface keys are `kind`, the storage (`datatype` or `typename`), `unit`,
+The interface keys are `kind`, the datatype, stated as `datatype` or as `typename`, `unit`,
 `conversion`, the shape (`dimensions` or `size`), the referenced objects (`axis`, `x_axis`,
 `y_axis` and the `input` of an axis) and `volatile`. Every declaration **must** state the
 same thing, and a disagreement is `definition-mismatch`. `volatile` is interface rather
@@ -526,14 +534,14 @@ declaring component.
 
 #### 3.3.2 Naming a declared type
 
-A definition states its storage exactly once: `datatype` names one of the eleven base
-datatypes, and `typename` names a type the project declares in a types file
-([section 3.7](#37-type-description)); stating both, or neither, is refused (`schema`). Two
-keys are used rather than one union so that each key keeps a single meaning. The published
-schema keeps `datatype` at exactly eleven values: an editor completes and documents
-precisely them, and a mistyped `uint166` is refused as it is typed rather than reported as
-a type nobody declares one build later. In addition, the use site tells base storage from a
-declared type at a glance, which one key accepting both never could.
+A definition states its datatype exactly once, as `datatype` or as `typename`: `datatype`
+names one of the eleven base datatypes, and `typename` names a type the project declares in
+a types file ([section 3.7](#37-type-description)); stating both, or neither, is refused
+(`schema`). Two keys are used rather than one union so that each key keeps a single meaning.
+The published schema keeps `datatype` at exactly eleven values: an editor completes and
+documents precisely them, and a mistyped `uint166` is refused as it is typed rather than
+reported as a type nobody declares one build later. In addition, the use site tells base
+storage from a declared type at a glance, which one key accepting both never could.
 
 A `typename` **must not** spell a base datatype, compared without regard to case
 (`schema`): a type called `uint16`, or `UINT16`, wears the name of storage it is not, and
@@ -750,12 +758,12 @@ each stating its `type`: `scalar`, `struct` or `external`.
   aliases, and with it a scalar cycle, cannot be written at all.
 - A **struct** type declares `members` (required and non-empty), in the order they are
   laid out. Two members of one structure **must not** share a name (`schema`). Every
-  member states `name`, `member` and its storage, and beside a `datatype` also its
-  `conversion` (required). `member` is the shape. A `value` member holds a base `datatype`
-  or a declared `typename`, optionally as an array (`dimensions`). A `bits` member holds a
-  base integer `datatype` (a declared type carries no bitfield) and a width (`bits`,
-  required there) of at least one bit and at most what that datatype holds; a `bits`
-  member takes no `dimensions`.
+  member states `name`, `member` and its datatype, as `datatype` or as `typename`, and
+  beside a `datatype` also its `conversion` (required). `member` is the shape. A `value`
+  member holds a base `datatype` or a declared `typename`, optionally as an array
+  (`dimensions`). A `bits` member holds a base integer `datatype` (a declared type carries
+  no bitfield) and a width (`bits`, required there) of at least one bit and at most what
+  that datatype holds; a `bits` member takes no `dimensions`.
 - An **external** type names a C type that DDD does not declare: `name` (required) is the
   type's C identifier, and `header` (required) is the header that defines it, spelled as
   the generated `#include` writes it, `"my_driver.h"` for the quoted form and
@@ -766,7 +774,7 @@ each stating its `type`: `scalar`, `struct` or `external`.
 Two entries of one file **must not** share a name (`schema`); the same name declared by
 two files is `duplicate-type` ([section 4](#4-consistency-checks)).
 
-A member naming an external type is opaque storage: it **must not** state `unit`,
+A member naming an external type is opaque bytes: it **must not** state `unit`,
 `conversion`, `limits` or an `a2l` block (`schema`), because DDD does not check meaning it
 cannot see, and no A2L record exists for the block to shape. It **may** carry
 `dimensions`. The member reaches the generated structure verbatim, through the header the

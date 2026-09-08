@@ -1539,6 +1539,11 @@ nothing to write is refused rather than reporting success;
 table stating the physical reading of a stated initial value beside the raw one, or, in
 JSON, as an object carrying `project`, `components` and `variables` beside
 the findings);
+reporting the artefacts a project can be asked to generate (`ddd artefacts`: the built-in
+`c` and `a2l`, and the name of every plugin the project names that provides one, or the
+plugins named with `--plugin` when there is no project description to read yet; what each
+artefact writes is not among them, since a plugin's file names follow from the resolved
+dictionary and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`

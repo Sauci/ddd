@@ -54,6 +54,15 @@ not, and the templates a project provides are its own.
   for.  A command line spelling `ddd generate c` to avoid the a2l keeps its meaning, and
   should become `ddd generate all --without a2l` if the project names a plugin.
 
+* **`ddd artefacts` reports what a project can be asked to generate.**  It prints the built-in
+  `c` and `a2l` and the name of every plugin the project names that provides one, in text or
+  json, and is tolerant the way `ddd sources` is: which artefacts exist follows from the
+  plugins a project names, not from whether its interfaces agree.  Given `--plugin` instead of
+  a project it answers the same question for a build that has not assembled its project
+  description yet, which is the spelling the CMake integration can use at configure time.
+  What each artefact *writes* is deliberately not reported: a plugin's file names follow from
+  the resolved dictionary, and `ddd generate all --dry-run` already lists them.
+
 * **A structure DDD only carries is no longer reported as an undeclared symbol.**  The symbol
   check behind `ddd-compile` read `ddd list`, which reports what can be *described*: the leaves
   of a structured variable, and none at all for an external member.  A structure whose members

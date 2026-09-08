@@ -58,6 +58,7 @@ from ddd.models import (
 from ddd.models.schema import PublishedSchema
 from ddd.plugins import (
     BUILT_IN_ARTEFACTS,
+    BUILT_IN_GENERATED,
     PLUGIN_NAME_PATTERN,
     Plugin,
     PluginInvalidError,
@@ -332,6 +333,28 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     _add_plugin_argument(schema)
     schema.set_defaults(handler=_command_schema)
 
+    artefact_listing = subparsers.add_parser(
+        "artefacts",
+        help="list the artefacts a project can generate",
+        description=(
+            "Prints the artefacts 'ddd generate' accepts for this project: the built-in "
+            "'c' and 'a2l', and the name of every plugin the project names that provides "
+            "one. What each artefact writes is not listed here, because a plugin's file "
+            "names follow from the resolved project rather than from the plugin alone; "
+            "'ddd generate all --dry-run' reports those. Named with --plugin instead of a "
+            "project, it answers the same question for a build that has not assembled its "
+            "project description yet."
+        ),
+    )
+    artefact_listing.add_argument(
+        "project", type=Path, nargs="?", help="project or component description file"
+    )
+    _add_plugin_argument(artefact_listing)
+    artefact_listing.add_argument(
+        "--format", choices=["text", "json"], default="text", help="output format"
+    )
+    artefact_listing.set_defaults(handler=_command_artefacts)
+
     sources = subparsers.add_parser(
         "sources",
         help="list every description file a project is built out of",
@@ -441,9 +464,8 @@ def _add_generate_arguments(
         parser.add_argument(
             "--without",
             action="append",
-            choices=["c", "a2l"],
+            choices=list(BUILT_IN_GENERATED),
             default=[],
-            metavar="{c,a2l}",
             help=(
                 "leave one of the built-in artefacts out of this run, repeatable. The plugins' "
                 "artefacts are produced either way, so 'generate all --without a2l' is how a "
@@ -986,6 +1008,56 @@ def _command_templates_dir(args: argparse.Namespace) -> int:
         print("ddd: the example templates are not part of this installation", file=sys.stderr)
         return EXIT_USAGE
     print(directory.as_posix())
+    return EXIT_OK
+
+
+def _command_artefacts(args: argparse.Namespace) -> int:
+    """The artefacts this project can be asked to generate, by name.
+
+    Tolerant in the same way as ``sources`` and for the same reason: which artefacts exist
+    follows from the plugins a project names, not from whether its interfaces agree, and a
+    build asking what it can produce deserves an answer while the project is still being
+    fixed. Only a root file that cannot be read at all is fatal.
+
+    The files an artefact writes are deliberately not reported. A plugin decides them from
+    the resolved dictionary, so they are knowable only once the project has been assembled,
+    which is exactly what ``ddd generate all --dry-run`` does.
+    """
+    bag = DiagnosticBag()
+    if args.project is not None and args.plugin:
+        msg = "--plugin cannot be given together with a project, which names its own plugins"
+        raise ValueError(msg)
+
+    if args.project is None:
+        plugins: tuple[Plugin, ...] = _plugins_from_arguments(args.plugin)
+        unreadable = False
+    else:
+        workspace = load_workspace(args.project, bag)
+        plugins = () if workspace is None else workspace.plugins
+        unreadable = workspace is None
+
+    # Nothing at all when the root file could not be read: the built-in pair exists whatever
+    # happens, but the question asked was what *this* project generates, and that is unanswered.
+    # Reporting half of it would invite a build to act on an answer DDD does not have.
+    listed: list[dict[str, str]] = []
+    if not unreadable:
+        listed = [{"name": name, "kind": "built-in"} for name in BUILT_IN_GENERATED]
+        listed += [
+            {"name": plugin.name, "kind": "plugin"}
+            for plugin in plugins
+            if plugin.backend is not None
+        ]
+
+    if args.format == "json":
+        print(json.dumps({"artefacts": listed, **_diagnostics_payload(bag)}, indent=2))
+        return EXIT_FINDINGS if unreadable else EXIT_OK
+    if unreadable:
+        _report(bag, "text")
+        return EXIT_FINDINGS
+    width = max(len(entry["name"]) for entry in listed)
+    for entry in listed:
+        print(f"{entry['name']:<{width}}  {entry['kind']}")
+    _report(bag, "text")
     return EXIT_OK
 
 

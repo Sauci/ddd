@@ -17,9 +17,9 @@ nothing has to be filtered out of a redirection: ``ddd dump project.ddd.json >
 baseline.json`` archives the dictionary and nothing else, even on a run that had something to
 say about it.
 
-For a job that files findings rather than reads them, seven commands understand
-``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources`` and
-``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
+For a job that files findings rather than reads them, eight commands understand
+``--format json``: ``check``, ``compare``, ``generate``, ``list``, ``dump``, ``sources``,
+``artefacts`` and ``checks``. That leaves out ``schema`` and ``build-info``, whose output is json already,
 ``lsp``, which speaks json-rpc, ``cmake-dir`` and ``templates-dir``, which print one path, and
 ``id``, which reports the files it skipped and one total rather than findings. In json the
 diagnostics become part of the document the command prints, next to whatever else it has to
@@ -137,6 +137,13 @@ The commands
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
        the plugins it names - for the dependency list of a build system.
+   * - ``ddd artefacts [FILE]``
+     - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
+       ``a2l``, and the name of every plugin it names that provides one. What each writes is
+       not listed, because a plugin's file names follow from the resolved project rather than
+       from the plugin alone - ``ddd generate all --dry-run`` reports those. With ``--plugin``
+       and no file it answers the same question for a build that has not assembled its project
+       description yet.
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see

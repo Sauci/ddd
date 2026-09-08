@@ -1035,6 +1035,58 @@ class TestList:
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
 
 
+class TestArtefacts:
+    """What ``ddd generate`` will accept for a project, which only the project can say."""
+
+    def test_a_project_naming_a_plugin_reports_its_artefact(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(LAYOUT)]) == EXIT_OK
+        lines = capsys.readouterr().out.splitlines()
+        assert [line.split()[0] for line in lines] == ["c", "a2l", "layout"]
+        assert lines[-1].split()[1] == "plugin"
+
+    def test_a_project_without_plugins_reports_the_built_in_pair(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(DEMO)]) == EXIT_OK
+        assert [line.split()[0] for line in capsys.readouterr().out.splitlines()] == ["c", "a2l"]
+
+    def test_the_plugins_can_be_named_without_a_project(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The question a build asks before it has assembled a project description of its own."""
+        arguments = ["artefacts", "--plugin", str(EXAMPLES / "plugins" / "ddd_layout.py")]
+        assert main(arguments) == EXIT_OK
+        assert "layout" in capsys.readouterr().out
+
+    def test_a_project_and_plugins_together_are_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A project names its own, so the two spellings would be two sources of truth."""
+        arguments = ["artefacts", str(LAYOUT), "--plugin", "ddd_layout"]
+        assert main(arguments) == EXIT_USAGE
+        assert "--plugin cannot be given together with a project" in capsys.readouterr().err
+
+    def test_json_carries_the_artefacts_and_the_diagnostics_contract(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["artefacts", str(LAYOUT), "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert {"name": "layout", "kind": "plugin"} in payload["artefacts"]
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+
+    def test_an_unreadable_project_is_a_finding_in_both_formats(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Tolerant like ``sources``: only a root file nothing can read is fatal."""
+        missing = str(tmp_path / "nope.ddd.json")
+        assert main(["artefacts", missing]) == EXIT_FINDINGS
+        capsys.readouterr()
+        assert main(["artefacts", missing, "--format", "json"]) == EXIT_FINDINGS
+        assert json.loads(capsys.readouterr().out)["artefacts"] == []
+
+
 class TestSchemaAndChecks:
     def test_schema_to_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["schema", "component"]) == EXIT_OK

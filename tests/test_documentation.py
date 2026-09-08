@@ -273,6 +273,7 @@ class TestCommands:
             "cmake-dir",
             "templates-dir",
             "sources",
+            "artefacts",
         }
 
 

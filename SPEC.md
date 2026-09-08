@@ -153,7 +153,7 @@ run.
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
 | **producer** | the component that owns a data object; its declaration is the authoritative one |
 | **consumer** | a component that declares a data object as its `input`; it reads what another component produces |
-| **declared type** | a scalar, structure or external type declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where storage is stated |
+| **declared type** | a scalar, structure or external type declared by a types file ([section 3.7](#37-type-description)) and named by `typename` where a definition's datatype is stated by name |
 | **constant** | a named integer declared by a constants file ([section 3.9](#39-constant-vocabulary)); a shape names it where it would state a number |
 | **access path** | the C expression that reads a member of a structured object, for example `Inlet.latest`, or `Inlet[2].raw` for an element of an array of structures; it is the name under which the A2L and the address map know the member ([section 5.2](#52-a2l)) |
 | **conversion** | the rule that maps the raw (implementation) value to the physical value |
@@ -322,7 +322,7 @@ Attributes common to every kind:
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
-| `a2l` | `{}`, exported unless a declaration states `export` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier` |
+| `a2l` | `{}`; exported unless every stated `export` is `false` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier` |
 | `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
@@ -480,9 +480,9 @@ otherwise from the first declaration in load order that states them, and otherwi
 are derived; every other declaration that states limits is compared against that stated
 reference. An omitted `unit` is the empty unit and compares as such: a consumer stating none
 against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
-it fixes - the datatype, unit, conversion and limits of the scalar type - so a declaration
-naming `Speed_t` and one spelling `uint16` with the same unit, conversion and limits agree;
-a structured object compares by its type name.
+it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
+declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and
+limits agree; a structured object compares by its type name.
 
 ##### 3.3.1.2 Storage
 
@@ -547,11 +547,11 @@ a types file ([section 3.7](#37-type-description)); stating both, or neither, is
 (`schema`). Two keys are used rather than one union so that each key keeps a single meaning.
 The published schema keeps `datatype` at exactly eleven values: an editor completes and
 documents precisely them, and a mistyped `uint166` is refused as it is typed rather than
-reported as a type nobody declares one build later. In addition, the use site tells base
-storage from a declared type at a glance, which one key accepting both never could.
+reported as a type nobody declares one build later. In addition, the use site tells a base
+datatype from a declared type at a glance, which one key accepting both never could.
 
 A `typename` **must not** spell a base datatype, compared without regard to case
-(`schema`): a type called `uint16`, or `UINT16`, wears the name of storage it is not, and
+(`schema`): a type called `uint16`, or `UINT16`, wears the name of a datatype it is not, and
 every declaration naming it would read like a typo. Any other name is simply a name;
 `Int16_t` is unambiguous, because the key already says that it is declared. The same rule
 holds where a type is named into being, that is on the `name` of a types file entry. A
@@ -595,7 +595,7 @@ member ([section 5.2](#52-a2l)).
   `factor` or `offset` is `linear`, and one stating nothing, `{}`, is the identity. Unknown
   keys are rejected here as everywhere, so a conversion cannot match two kinds at once.
 
-A conversion **must** be stated wherever storage is named by `datatype`, that is on a
+A conversion **must** be stated wherever the datatype is stated as `datatype`, that is on a
 definition, on a member and on a scalar type, although the identity would be derivable
 (`schema`). That it is derivable is exactly why it is asked for: raw equalling physical is
 an engineering claim about the data, not a formatting accident, and a forgotten scaling on

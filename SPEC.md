@@ -1501,8 +1501,10 @@ ASAM MCD-2 MC output containing:
   `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion, unit and default display
-  format - an integer and a float object scaled alike get one method each, because the
-  method states the format - and `COMPU_VTAB` per enum.
+  format - an integer and a float object under one conversion therefore share a method
+  unless that conversion is an identity or a linear one whose `factor` and `offset` are
+  whole numbers, where the integer defaults to `%8.0` and the float to `%8.3` and each
+  gets its own method - and `COMPU_VTAB` per enum.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
@@ -1520,8 +1522,8 @@ ASAM MCD-2 MC output containing:
   component order of the project. Inside the `MODULE` the record kinds come in a fixed
   order: `MOD_COMMON`, `MOD_PAR`, the `RECORD_LAYOUT`s, the `COMPU_VTAB`s, the
   `COMPU_METHOD`s, the `MEASUREMENT`s, the `AXIS_PTS`s, the `CHARACTERISTIC`s and the
-  `GROUP`s; within a kind the plain objects by name, then the leaves of structured objects
-  by access path.
+  `GROUP`s; within a kind other than `GROUP`, the plain objects by name, then the leaves of
+  structured objects by access path.
 
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
 sources; a component generated on its own names the file after the component. The file
@@ -1543,12 +1545,12 @@ Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
 `_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. The
 suffix is added when the generated name collides - two linear conversions in one unit, or
-one conversion used by an integer and by a float object - and the unsuffixed name goes to
-the method of the object that reaches the file first, the plain objects in name order
-before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`. A linear
-conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so the
-stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and one
-without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
+one whole-number conversion used by an integer and by a float object - and the unsuffixed
+name goes to the method of the object that reaches the file first, the plain objects in
+name order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
+the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
+one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
 description files do not carry is emitted neutrally: resolution and accuracy of a
 `MEASUREMENT` and the `MaxDiff` of a `CHARACTERISTIC` and of an `AXIS_PTS` are 0. The
 display format defaults to `%8.0` for an integer or `boolean` datatype under an identity

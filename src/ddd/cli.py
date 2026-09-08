@@ -341,11 +341,11 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "'c' and 'a2l', and the name of every plugin the project names that provides "
             "one. What each artefact writes is not listed here, because a plugin's file "
             "names follow from the resolved project rather than from the plugin alone; "
-            "'ddd generate all --dry-run' reports those. A plugin contributing only checks "
-            "or a block generates nothing and is no artefact, and is named in a note rather "
-            "than passed over in silence. Named with --plugin instead of a project, it "
-            "answers the same question for a build that has not assembled its project "
-            "description yet."
+            "'ddd generate all --dry-run' reports those. A plugin providing no backend is "
+            "no artefact of its own, and is named in a note rather than passed over: its "
+            "block is still part of what the project's templates render under 'c'. Named "
+            "with --plugin instead of a project, it answers the same question for a build "
+            "that has not assembled its project description yet."
         ),
     )
     artefact_listing.add_argument(
@@ -1050,8 +1050,10 @@ def _command_artefacts(args: argparse.Namespace) -> int:
             for plugin in plugins
             if plugin.backend is not None
         ]
-        # A plugin that generates nothing is not an artefact, but leaving it out in silence
-        # reads as the plugin having failed to load. Naming it says which of the two it is.
+        # A plugin with no backend is not an artefact, but leaving it out in silence reads as
+        # the plugin having failed to load, and calling it one that generates nothing reads as
+        # a plugin with no effect. Neither is true: its block is part of the vocabulary the
+        # project's own templates render, so the note says where its output comes from.
         silent = [plugin.name for plugin in plugins if plugin.backend is None]
 
     if args.format == "json":
@@ -1075,8 +1077,8 @@ def _command_artefacts(args: argparse.Namespace) -> int:
         sys.stdout.flush()
         print(
             f"note: the project also names {_listed(silent)}, which "
-            f"{'contributes' if one else 'contribute'} checks or a block but "
-            f"{'generates' if one else 'generate'} nothing",
+            f"{'provides' if one else 'provide'} no artefact of its own; the c artefact "
+            f"renders any template reading such a plugin's block",
             file=sys.stderr,
         )
     _report(bag, "text")

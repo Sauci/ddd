@@ -142,9 +142,10 @@ The commands
        ``a2l``, and the name of every plugin it names that provides one. What each writes is
        not listed, because a plugin's file names follow from the resolved project rather than
        from the plugin alone - ``ddd generate all --dry-run`` reports those. A plugin that
-       contributes only checks or a block generates nothing and is therefore no artefact; it
-       is named in a note rather than left out in silence, which would read as the plugin
-       having failed to load. With ``--plugin`` and no file it answers the same question for a
+       provides no backend is no artefact of its own; it is named in a note rather than left
+       out in silence, which would read as the plugin having failed to load. Such a plugin is
+       not idle: the block it contributes is part of the vocabulary a project's own templates
+       read, and those are rendered by ``c``. With ``--plugin`` and no file it answers the same question for a
        build that has not assembled its project description yet.
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,

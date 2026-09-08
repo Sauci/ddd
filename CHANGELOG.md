@@ -62,9 +62,10 @@ not, and the templates a project provides are its own.
   description yet, which is the spelling the CMake integration can use at configure time.
   What each artefact *writes* is deliberately not reported: a plugin's file names follow from
   the resolved dictionary, and `ddd generate all --dry-run` already lists them.  A plugin that
-  contributes only checks or a block generates nothing and is therefore no artefact; it is
-  named in a note rather than passed over, since an unexplained absence reads as a plugin that
-  failed to load.
+  provides no backend is no artefact of its own; it is named in a note rather than passed over,
+  since an unexplained absence reads as a plugin that failed to load.  The note says where its
+  output does come from: the block such a plugin contributes is part of the vocabulary the
+  project's own templates read, and those are rendered by the `c` artefact.
 
 * **A structure DDD only carries is no longer reported as an undeclared symbol.**  The symbol
   check behind `ddd-compile` read `ddd list`, which reports what can be *described*: the leaves

@@ -1060,13 +1060,14 @@ class TestArtefacts:
         assert main(arguments) == EXIT_OK
         assert "layout" in capsys.readouterr().out
 
-    def test_a_plugin_that_generates_nothing_is_named_rather_than_omitted(
+    def test_a_plugin_without_a_backend_is_named_rather_than_omitted(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A plugin may contribute only checks and a block, so it is no artefact.
+        """A plugin may contribute only checks and a block, so it is no artefact of its own.
 
-        Leaving it out in silence reads as the plugin having failed to load, which is the one
-        thing a reader most wants to rule out; the note says which of the two it is.
+        Leaving it out in silence reads as the plugin having failed to load, and calling it
+        one that generates nothing reads as a plugin with no effect. Neither is true, so the
+        note says what it is and where the files that do carry its block come from.
         """
         module = tmp_path / "ddd_quiet.py"
         module.write_text(
@@ -1076,7 +1077,8 @@ class TestArtefacts:
         assert main(["artefacts", "--plugin", str(module)]) == EXIT_OK
         captured = capsys.readouterr()
         assert [line.split()[0] for line in captured.out.splitlines()] == ["c", "a2l"]
-        assert "'quiet'" in captured.err and "generates nothing" in captured.err
+        assert "'quiet'" in captured.err and "no artefact of its own" in captured.err
+        assert "the c artefact renders" in captured.err, "the note says where its block lands"
 
         assert main(["artefacts", "--plugin", str(module), "--format", "json"]) == EXIT_OK
         payload = json.loads(capsys.readouterr().out)

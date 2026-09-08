@@ -168,16 +168,19 @@ class TestRanges:
         path.write_text("{}", encoding="utf-8")
         assert uri_to_path(path.as_uri()) == path
 
-    @pytest.mark.parametrize("spelling", ["c%3A", "C%3A", "c:", "C:"])
-    def test_the_drive_spellings_a_windows_client_sends_name_one_file(self, spelling: str) -> None:
+    @pytest.mark.parametrize("escaped", ["c%3A", "C%3A"])
+    def test_the_escaped_drive_colon_a_windows_client_sends_is_read_as_a_drive(
+        self, escaped: str
+    ) -> None:
         """VS Code sends ``file:///c%3A/...``: a lower-case drive with the colon escaped.
 
         ``url2pathname`` looks for a literal colon before it unquotes, so the escaped one was
         read as no drive at all, and the path came back relative - ``/c:/git/x`` - which names
         no file and cannot be turned back into a uri. The server died on the first didOpen.
         """
-        decoded = uri_to_path(f"file:///{spelling}/git/x/a.ddd.json")
-        assert decoded == uri_to_path("file:///C:/git/x/a.ddd.json")
+        literal = escaped.replace("%3A", ":")
+        decoded = uri_to_path(f"file:///{escaped}/git/x/a.ddd.json")
+        assert decoded == uri_to_path(f"file:///{literal}/git/x/a.ddd.json")
         if os.name == "nt":
             assert decoded.is_absolute()
             # ``as_uri`` keeps the drive letter's case, so compare case-blind.

@@ -116,6 +116,18 @@ three stages:
   construction rather than by mistake. Each check declares whether it needs the whole
   project, so the two modes cannot drift apart.
 
+What the server runs
+--------------------
+
+A project names its :doc:`plugins <plugins>` in its description, and the server runs the
+plugins of every project it analyses: the ones the build records name, and the ones lying
+above an opened file that turn out to include it. Opening a description file in a checked
+out repository is therefore running the python that repository ships, exactly as ``ddd
+check`` on it would - the difference is that nobody typed the command. Open a repository in
+the editor only when you would run its build. The VS Code extension declines a workspace
+that has not been trusted (VS Code's *Restricted Mode*), so the server starts only once you
+have said so; an editor that launches the server itself has to make the same decision.
+
 VS Code
 -------
 

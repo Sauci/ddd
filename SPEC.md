@@ -963,11 +963,12 @@ one on the project, and contributing checks, comparison rules and an artefact of
   project names it, never because it is installed. A sub-project **may** name plugins too;
   the set in play is the union, because the blocks a plugin interprets may sit in any
   component, and the hooks run in the order the project files name the plugins, a module
-  named twice keeping its first place. A module that cannot be found is
-  `plugin-not-found`; one that raises on
-  import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another plugin
-  already has is `plugin-invalid`. Both have a fixed severity, because a project cannot be
-  interpreted without the plugins it names.
+  named twice keeping its first place. Naming a plugin runs its module: on every command
+  over the project, and in the language server whenever a file of the project is opened or
+  saved ([section 7.2](#72-editor-integration)). A module that cannot be found is
+  `plugin-not-found`; one that raises on import, exposes no `PLUGIN`, exposes a malformed
+  one, or claims a name another plugin already has is `plugin-invalid`. Both have a fixed
+  severity, because a project cannot be interpreted without the plugins it names.
 - `"extensions"` (optional): the settings of each plugin, keyed by plugin name, validated
   against the plugin's project model with defaults filled in. A plugin with a project model
   and no stated settings is validated as if the project stated `{}`, so a setting the plugin
@@ -1726,4 +1727,7 @@ repeatable `-b` arguments; the shipped VS Code extension exposes them as the set
 
 An editor extension **shall** do no more than launch the server and point it at the build
 directories: everything a reader sees is the tool's answer, so that an editor DDD ships
-nothing for is not at a disadvantage.
+nothing for is not at a disadvantage. It **shall** launch the server only in a workspace the
+reader has trusted, where the editor has such a notion: the server runs the plugins of every
+project it analyses ([section 3.11](#311-plugins)), so opening a repository is running its
+python, and that is a decision the reader makes, not the extension.

@@ -10,6 +10,27 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **The language server decodes the uri VS Code sends on Windows.**  A client spells a
+  Windows file as `file:///c%3A/...`, drive lower-cased and colon escaped, and the server read
+  that as the relative path `/c:/...`: it analysed a file that does not exist and exited on
+  the first `didOpen`, trying to publish under a uri it could not form.  The escaped drive
+  colon is now restored before the path is decoded, and the extension works on Windows.
+
+* **Edits are computed against the editor's buffer.**  Rename and the quick fixes read
+  positions from, and wrote edits for, the file on disk, while the client applies an edit to
+  what is on screen; one unsaved line above a declaration was enough to rewrite an unrelated
+  line.  The server now keeps the text of every open document (`textDocumentSync.change` is
+  `1`, full content), computes positions and edits against it, leaves a file alone where an
+  open buffer has moved the declaration the index knew, and answers a client that takes
+  `documentChanges` with the version each edit was computed for.  The analysis still reads
+  the disk on open and save, as before.
+
+* **Opening a repository runs its plugins, and the pages now say so.**  A description names
+  the plugins the server runs, and the server runs the plugins of every project it finds above
+  an opened file.  The VS Code extension declines a workspace that has not been trusted
+  (Restricted Mode), and the editor page, the extension's README, the plugins page and the
+  specification state the boundary.
+
 * **Renaming a type or a constant from the editor.**  `F2` on the `name` of a declared type
   or on any `typename` spelling it rewrites the declaration and every definition and member
   naming it; on a declared constant or any dimension or axis `size` spelling it, the

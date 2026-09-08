@@ -672,16 +672,21 @@ class TestPackaging:
             (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
         )
         assert manifest["capabilities"]["untrustedWorkspaces"]["supported"] is False
-        for page in (
-            ROOT / "docs" / "editor_integration.rst",
-            ROOT / "editors" / "vscode" / "README.md",
-            ROOT / "docs" / "plugins.rst",
-            ROOT / "SPEC.md",
-        ):
-            text = page.read_text(encoding="utf-8").lower()
-            assert "trust" in text and "plugin" in text, (
-                f"{page.name} does not state the trust boundary"
-            )
+        stated = {
+            ROOT / "docs" / "editor_integration.rst": ("What the server runs",),
+            ROOT / "editors" / "vscode" / "README.md": ("## Trust",),
+            ROOT / "docs" / "plugins.rst": ("Naming a plugin runs it",),
+            ROOT / "SPEC.md": (
+                "Naming a plugin runs its module",
+                "reader has trusted, where the editor has such a notion",
+            ),
+        }
+        for page, phrases in stated.items():
+            text = page.read_text(encoding="utf-8")
+            for phrase in phrases:
+                assert phrase in text, (
+                    f"{page.name} no longer states the trust boundary: {phrase!r}"
+                )
 
 
 class TestCommandLineHelp:

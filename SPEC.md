@@ -322,7 +322,7 @@ Attributes common to every kind:
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
-| `a2l` | export | `export`, `format`, `display_identifier` |
+| `a2l` | `{}`, exported unless a declaration states `export` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier` |
 | `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
@@ -368,8 +368,9 @@ point of derived limits:
 The C column is the ISO spelling the tool offers to the templates as `c_type`; the
 datatype's own name is offered beside it as `datatype`, so a platform whose header already
 provides these names - AUTOSAR's `Platform_Types.h` spells them exactly like the first
-column - renders them without any mapping. A `boolean` initial value is emitted as `1`/`0`,
-which is a valid initialiser for either spelling and requires no header in any C dialect.
+column - renders them without any mapping. A `boolean` initial value is written as
+`true`/`false` or as `1`/`0`, and is emitted as `1`/`0`, which is a valid initialiser for
+either spelling of the type and requires no header in any C dialect.
 
 Derived limits are the raw range pushed through the conversion: under the identity they are
 the raw ends themselves, and under a linear conversion each end is converted, the pair
@@ -396,15 +397,14 @@ Kind specific attributes:
 | `curve` | `axis` (required) | `const` or `const volatile` array `[size of the axis]` | `CHARACTERISTIC ... CURVE` |
 | `map` | `x_axis`, `y_axis` (both required) | `const` or `const volatile` array `[size of y][size of x]` | `CHARACTERISTIC ... MAP` |
 
-- `dimensions` is a non-empty list of array dimensions, each an integer of at least 1
-  (`schema`) or the name of a declared constant
-  ([section 3.9](#39-constant-vocabulary)), for
-  example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
-  rule, and a
-  measurement without `dimensions` is a scalar. In the A2L the same object is described by a
-  `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
-  because describing it in C order would state a transposed object; the list is padded with
-  ones to the three entries version 1.6.1 expects.
+- `dimensions` is a list of sizes, `[]` or absent for a scalar, each an integer of at least
+  1 (`schema`) or the name of a declared constant ([section 3.9](#39-constant-vocabulary)),
+  for example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
+  rule, and a value block, which is an array, states at least one size (`schema`). In the
+  A2L the same object is described by a `MATRIX_DIM` listing the fastest running index
+  first, that is in the reverse order, because describing it in C order would state a
+  transposed object; the list is padded with ones to the three entries version 1.6.1
+  expects.
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
   whole object only, not to a nested position. An initial value **must** fit the raw
@@ -478,11 +478,16 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference.
+reference. An omitted `unit` is the empty unit and compares as such: a consumer stating none
+against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
+it fixes - the datatype, unit, conversion and limits of the scalar type - so a declaration
+naming `Speed_t` and one spelling `uint16` with the same unit, conversion and limits agree;
+a structured object compares by its type name.
 
 ##### 3.3.1.2 Storage
 
-The storage keys are `init` and `section` ([section 3.5](#35-memory-placement)). What an
+The storage keys are `init` and `section` ([section 3.5](#35-memory-placement)); the group
+also holds `id`, `raster` and `extensions`, the keys a consumer **must not** state. What an
 object starts out as, and where it lives, is decided by the component that produces it, so
 a declaration whose scope is `input` **must not** state either key (`consumer-storage`).
 This is not an opinion to be outvoted: it is a claim over storage the component does not
@@ -491,8 +496,7 @@ decided by the same component for the same reason, so a declaration whose scope 
 **must not** state it either (`consumer-identity`). The measurement raster
 ([section 3.10](#310-measurement-rasters)) and a plugin's `extensions` block
 ([section 3.11](#311-plugins)) are the producer's on the same reasoning, reported as
-`consumer-raster` and `consumer-extension`: this group holds exactly the keys a consumer
-**must not** state.
+`consumer-raster` and `consumer-extension`.
 
 ##### 3.3.1.3 Presentation
 
@@ -511,12 +515,15 @@ state it, whether it produces the object or not, because which signals a calibra
 engineer needs to see is not a property of whoever happens to produce the object, and a
 component reading a value out of a library it does not own has an equal claim to measuring
 it. The stated answers are combined rather than ranked: the object is exported if any
-declaration states `true`, and it is left out only when every stated answer is `false`;
-when no declaration states it, the object is exported. Two consumers can therefore never
-conflict over it, there is no finding to invent for a disagreement between them, and the
-verdict does not depend on which components an image happens to link. A dictionary that
-omits the `a2l` block altogether therefore exports its objects, which is what makes an
-older or third party dictionary readable without rewriting it.
+declaration states `true`, and it is left out only when every stated answer is `false`, with
+one exception the A2L needs: an axis an exported curve or map refers to, and the measurement
+an exported axis is indexed by, are carried whatever they state ([section 5.2](#52-a2l)).
+When no declaration states it, the object is exported. `export` **may** also be stated as
+`null`, which counts as unstated. Two consumers can therefore never conflict over it, there
+is no finding to invent for a disagreement between them, and the verdict does not depend on
+which components an image happens to link. A dictionary that omits the `a2l` block
+altogether therefore exports its objects, which is what makes an older or third party
+dictionary readable without rewriting it.
 
 ##### 3.3.1.4 Description and condition
 
@@ -573,13 +580,16 @@ member ([section 5.2](#52-a2l)).
 - `enum` requires an integer datatype. `name` is required: it is the C identifier of the
   generated `typedef enum`, the identity under which `enum-conflict` compares enumerator
   lists, and the name of the A2L `COMPU_VTAB`. `enumerators` is required and non-empty;
-  it **may** also be given as a list of `{"name", "value", "description"}` objects. An
-  enumerator name **must not** repeat within one conversion (`schema`), and every
-  enumerator value **must** fit the datatype of the object naming the conversion and, even
-  where that datatype would hold more, a 32 bit C `int`, the type C gives an enumerator
-  (`init-invalid`); a value outside the datatype earns one finding, against the datatype.
-  An enum converts nothing: physical and raw value coincide, so the limits of an enum
-  object, stated or derived, are enumerator values.
+  it **may** also be given as a list of `{"name", "value", "description"}` objects. The
+  textual order of the enumerators counts in both forms: two declarations listing the same
+  pairs in a different order disagree (`enum-conflict`). An enumerator name **must not**
+  repeat within one conversion (`schema`), and every enumerator value **must** fit the
+  datatype of the object naming the conversion and, even where that datatype would hold
+  more, a 32 bit C `int`, the type C gives an enumerator (`init-invalid`); a value outside
+  the datatype earns one finding, against the datatype. The variable itself is declared
+  with its base datatype, never with the enum type; the `typedef enum` exists for the
+  enumerators ([section 5.1](#51-c-code)). An enum converts nothing: physical and raw value
+  coincide, so the limits of an enum object, stated or derived, are enumerator values.
 - `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys
   decide it: a conversion stating `enumerators` or `name` is an `enum`, one stating
   `factor` or `offset` is `linear`, and one stating nothing, `{}`, is the identity. Unknown
@@ -651,12 +661,13 @@ defaults, which is what makes the vocabulary adoptable gradually.
 
 Two checks tie placement to what the description already says. A measurement is written by
 the software, so placing one in a `read-only` section is `section-access`. An object whose
-datatype needs stricter alignment than its section guarantees is `section-alignment`; for a
-structured object the need is estimated as the strictest of its members' datatypes, a
-structure containing a member of an external type getting no estimate, because that
-member's alignment is unknown, and the
-compiler's word is final, because reading the real layout back is what the address
-information of [section 6](#6-address-information) is for.
+datatype needs stricter alignment than its section guarantees is `section-alignment`. The
+need of a base datatype is its size in bytes, `boolean` counting one; an array needs what
+its element needs; a structure the strictest of its members, nested structures included. A
+structure reaching an external type, whose alignment DDD cannot see, or one that nests
+itself, has no known need and earns no `section-alignment`. The compiler's word is final,
+because reading the real layout back is what the address information of
+[section 6](#6-address-information) is for.
 
 The generated C carries the placement in whatever spelling the toolchain wants, such as an
 `__attribute__((section(...)))` or a pragma; the spelling is left to the templates, exactly
@@ -751,25 +762,28 @@ each stating its `type`: `scalar`, `struct` or `external`.
 
 - A **scalar** type fixes `datatype`, `unit`, `conversion` and `limits`, which is exactly
   what makes two declarations interchangeable, and nothing else; `name`, `datatype` and
-  `conversion` are required, `unit` and `limits` are optional. `kind`, `dimensions`,
-  `init`, `volatile` and `a2l` stay on the declaration, because two measurements of one
-  type can differ in whether an interrupt writes one of them. Its `datatype` is a base
-  datatype: a scalar type cannot be declared in terms of a second one, so a chain of
-  aliases, and with it a scalar cycle, cannot be written at all.
+  `conversion` are required, `unit`, `limits` and `description` are optional. `kind`,
+  `dimensions`, `init`, `volatile` and `a2l` stay on the declaration, because two
+  measurements of one type can differ in whether an interrupt writes one of them. Its
+  `datatype` is a base datatype: a scalar type cannot be declared in terms of a second
+  one, so a chain of aliases, and with it a scalar cycle, cannot be written at all.
 - A **struct** type declares `members` (required and non-empty), in the order they are
-  laid out. Two members of one structure **must not** share a name (`schema`). Every
-  member states `name`, `member` and its datatype, as `datatype` or as `typename`, and
-  beside a `datatype` also its `conversion` (required). `member` is the shape. A `value`
-  member holds a base `datatype` or a declared `typename`, optionally as an array
-  (`dimensions`). A `bits` member holds a base integer `datatype` (a declared type carries
-  no bitfield) and a width (`bits`, required there) of at least one bit and at most what
-  that datatype holds; a `bits` member takes no `dimensions`.
+  laid out; `description` is optional. Two members of one structure **must not** share a
+  name (`schema`). Every member states `name`, `member` and its datatype, as `datatype` or
+  as `typename`, and beside a `datatype` also its `conversion` (required); a member's
+  `description` is optional as well. `member` is the shape. A `value` member holds a base
+  `datatype` or a declared `typename`, optionally as an array (`dimensions`). A `bits`
+  member holds a base integer `datatype` (a declared type carries no bitfield) and a width
+  (`bits`, required there) of at least one bit and at most what that datatype holds; a
+  `bits` member takes no `dimensions`.
 - An **external** type names a C type that DDD does not declare: `name` (required) is the
   type's C identifier, and `header` (required) is the header that defines it, spelled as
   the generated `#include` writes it, `"my_driver.h"` for the quoted form and
-  `"<os_types.h>"` for the angle form; `description` is optional. DDD generates no typedef
-  for an external type and knows neither its layout nor its meaning: only a structure
-  member **may** name it, and a definition naming one is `type-kind`.
+  `"<os_types.h>"` for the angle form; a spelling containing whitespace, a quote inside
+  the name, or angle brackets that do not wrap the whole name is `schema`. `description`
+  is optional. DDD generates no typedef for an external type and knows neither its layout
+  nor its meaning: only a structure member **may** name it, and a definition naming one is
+  `type-kind`.
 
 Two entries of one file **must not** share a name (`schema`); the same name declared by
 two files is `duplicate-type` ([section 4](#4-consistency-checks)).
@@ -831,10 +845,10 @@ like a types file, and only there: handed to the tool as the root of a run, it i
 with a hint at the include that carries it. The file declares at least one unit
 (`schema`). An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
-of being implied by every object that happens to use it. Case counts: `mV` and `MV` are
-different units. A unit is declared exactly once: every declaration after the first,
-whether it appears in the same file or in another, is `duplicate-unit`, with a note at the
-first.
+of being implied by every object that happens to use it. An empty spelling is `schema`.
+Case counts: `mV` and `MV` are different units. A unit is declared exactly once: every
+declaration after the first, whether it appears in the same file or in another, is
+`duplicate-unit`, with a note at the first.
 
 Declaring the vocabulary is opt-in: a project without a units file keeps its units free.
 With a vocabulary, every stated unit, whether on a definition, on a structure member or on
@@ -881,13 +895,15 @@ A shape then names a constant where it would state a number: an entry of `dimens
 the `size` of an axis, is either an integer or the name of a declared constant
 ([section 3.3](#33-data-object-definition)), and a list mixes the two freely. Naming a
 constant that no file of the project declares is `unknown-constant`, with the nearest name
-suggested. A name and its value are different spellings of one size: declarations of one
-object **must** agree on the spelling (`definition-mismatch`), exactly as conversions
-compare as written ([section 3.4](#34-conversions)), because the spelling is what reaches
-every consumer's header. In a delivery comparison a dimension likewise compares as its
-spelling and its value ([section 4.1](#41-comparing-two-deliveries)); a baseline archived
-before the dictionary carried spellings states none, so against it the values alone
-compare, exactly as an unstated answer defers everywhere else.
+suggested. A structure member's `dimensions` **may** name a constant as well, and the
+finding is then reported at the member ([section 3.7](#37-type-description)). A name and
+its value are different spellings of one size: declarations of one object **must** agree on
+the spelling (`definition-mismatch`), exactly as conversions compare as written
+([section 3.4](#34-conversions)), because the spelling is what reaches every consumer's
+header. In a delivery comparison a dimension likewise compares as its spelling and its
+value ([section 4.1](#41-comparing-two-deliveries)); a baseline archived before the
+dictionary carried spellings states none, so against it the values alone compare, exactly
+as an unstated answer defers everywhere else.
 
 A declaration whose shape does not resolve is dropped from the resolved dictionary
 whatever severity the finding is reported with; its shape independent validity, such as an
@@ -945,8 +961,10 @@ The raster follows the producer, since it is the producing task that updates the
 consumer stating one is refused as `consumer-raster`, the way it is refused for `init` and
 `section`, and a consumer's own default never applies to a variable it merely reads. No DAQ
 list carries a calibration object, so a `raster` stated on one is `raster-kind`, while a
-component default that happens to cover one does not apply to it. A structured variable
-carries one raster for the whole object and every member inherits it.
+component default that happens to cover one does not apply to it. An `input` declaration of
+a calibration object stating a `raster` earns both `consumer-raster` and `raster-kind`,
+because both rules are broken. A structured variable carries one raster for the whole object
+and every member inherits it.
 
 ### 3.11 Plugins
 

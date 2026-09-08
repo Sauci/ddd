@@ -28,8 +28,17 @@ set(descriptions "${CMAKE_CURRENT_SOURCE_DIR}/../demo")
 # `ddd templates-dir` prints.
 set(templates "${CMAKE_CURRENT_SOURCE_DIR}/../templates")
 
+# sensor_hub owns the sensor driver, so it is the component that publishes the vendor header
+# declaring the driver's state type, and the flag that header's layout depends on. Its types file
+# names that type, which puts the header's include line in ddd_types.h - and every component's
+# generated header includes ddd_types.h, event_logger's among them, although event_logger does not
+# link sensor_hub. Nothing here wires that up: ddd_generate() hands the registered components the
+# compile usage it collected, which is what makes the include and the flag reach all of them.
 add_library(sensor_hub STATIC components/sensor_hub.c)
-ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json")
+target_include_directories(sensor_hub PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
+target_compile_definitions(sensor_hub PUBLIC SENSOR_HUB_DRIVER_V2=1)
+ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json"
+                                  "${CMAKE_CURRENT_SOURCE_DIR}/sensor_hub_types.ddd.json")
 
 add_library(controller STATIC components/controller.c)
 target_link_libraries(controller PRIVATE sensor_hub)

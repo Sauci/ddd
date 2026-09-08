@@ -42,6 +42,13 @@ not, and the templates a project provides are its own.
   **Migration:** a component that wired up an external type's header by hand, only so that its
   own generated header would compile, can drop that wiring.
 
+* **The shipped cmake example exercises an external type.**  `sensor_hub` publishes a vendor
+  header, and the flag that header's layout depends on, and registers a types file naming the
+  type it declares.  `ddd_types.h` therefore includes that header, and every component compiles
+  it - `event_logger` among them, which does not link `sensor_hub` and names nothing of its own
+  from it.  The example, and with it the cmake test that builds it, now fails if the collected
+  compile usage stops reaching the registered components.
+
 ## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that

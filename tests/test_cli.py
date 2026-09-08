@@ -941,10 +941,19 @@ class TestList:
         assert main(["list", str(DEMO), "--format", "json", "-W", "missing-id=ignore"]) == EXIT_OK
         payload = json.loads(capsys.readouterr().out)
         assert payload["project"] == "DemoDevice"
-        entry = next(v for v in payload["variables"] if v["name"] == "ValueE")
+        entry = next(v for v in payload["variables"] if v.get("name") == "ValueE")
         assert entry["owner"] == "Controller"
         assert entry["consumers"] == ["EventLogger", "UserInterface"]
         assert entry["conversion"] == {"kind": "linear", "factor": 0.25, "offset": 0.0}
+        # A structured variable is listed by its leaves. They carry the path and the instance
+        # they belong to rather than a name of their own, and an external member contributes
+        # none at all: DDD does not know what is inside it.
+        leaf = next(v for v in payload["variables"] if v.get("path") == "Diagnosis.faults")
+        assert leaf["instance"] == "Diagnosis" and leaf["owner"] == "SensorHub"
+        assert "name" not in leaf
+        assert not [
+            v for v in payload["variables"] if v.get("path", "").startswith("Diagnosis.driver")
+        ]
         # The json contract of every reporting command: diagnostics and their summary.
         assert payload["diagnostics"] == []
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}

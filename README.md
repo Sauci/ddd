@@ -856,10 +856,10 @@ declarations are covered in both states:
 
 ```text
 == symbols   [base]
-19 of 20 declared variables are defined
+20 of 21 declared variables are defined
   conditional, absent : ValueG
 == symbols   [defines]
-20 of 20 declared variables are defined
+21 of 21 declared variables are defined
   conditional, present: ValueG
 ```
 

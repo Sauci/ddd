@@ -100,10 +100,8 @@ comments removed; it is what the ``cmake`` compose service configures and builds
    set(templates "${CMAKE_CURRENT_SOURCE_DIR}/../templates")
 
    add_library(sensor_hub STATIC components/sensor_hub.c)
-   target_include_directories(sensor_hub PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
-   target_compile_definitions(sensor_hub PUBLIC SENSOR_HUB_DRIVER_V2=1)
-   ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json"
-                                     "${CMAKE_CURRENT_SOURCE_DIR}/sensor_hub_types.ddd.json")
+   target_include_directories(sensor_hub PUBLIC "${descriptions}/include")
+   ddd_add_component(sensor_hub JSON "${descriptions}/components/sensor_hub.ddd.json")
 
    add_library(controller STATIC components/controller.c)
    target_link_libraries(controller PRIVATE sensor_hub)
@@ -130,14 +128,13 @@ a variable it never declared. The include directory travels to the components au
 and with it, in the collected mode, the compile usage those headers need to be read - which is
 what keeps the integration down to two lines per component.
 
-That last part is what the example's one external type is for. ``sensor_hub`` publishes a
-vendor header under ``vendor/``, and the flag that header's layout depends on, and registers a
-types file naming the type it declares. DDD writes the include line for it into
-``ddd_types.h``, and every component's generated header includes that file - so
-``event_logger`` compiles it too, although it neither links ``sensor_hub`` nor names anything
-of its own from it. Nothing wires the header or the flag to ``event_logger`` by hand. Take
-either out of what ``ddd_generate()`` collects and the build stops, once on a missing include
-and once on the vendor header's own ``#error``.
+That last part is what the demo's external type is for. ``SensorHub`` declares one, so
+``sensor_hub`` is the component that publishes the directory holding the vendor header defining
+it. DDD writes that header's include line into ``ddd_types.h``, and every component's generated
+header includes ``ddd_types.h`` - so ``event_logger`` compiles it too, although it neither
+links ``sensor_hub`` nor names the type itself. Nothing hands that directory to
+``event_logger`` here. Take it out of what ``ddd_generate()`` collects and the build stops on a
+header it cannot find.
 
 The templates this example points at are the ones DDD ships as examples, since it sits next to
 them in the source tree. A real project keeps its own under version control, next to its

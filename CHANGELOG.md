@@ -42,12 +42,24 @@ not, and the templates a project provides are its own.
   **Migration:** a component that wired up an external type's header by hand, only so that its
   own generated header would compile, can drop that wiring.
 
-* **The shipped cmake example exercises an external type.**  `sensor_hub` publishes a vendor
-  header, and the flag that header's layout depends on, and registers a types file naming the
-  type it declares.  `ddd_types.h` therefore includes that header, and every component compiles
-  it - `event_logger` among them, which does not link `sensor_hub` and names nothing of its own
-  from it.  The example, and with it the cmake test that builds it, now fails if the collected
-  compile usage stops reaching the registered components.
+* **The demo declares an external type.**  `SensorHub` declares `DriverState_t`, whose header
+  the demo keeps beside its descriptions in `examples/demo/include`, and a `SensorDiagnosis_t`
+  structure that carries it next to an ordinary member; `Diagnosis` is a variable of that
+  structure.  The generated `ddd_types.h` therefore includes the vendor header, which is what
+  the feature looks like in the generated code, and the demo now shows the rest of it too: an
+  external member reaches no a2l record, contributes no leaf to `ddd list`, and is storage DDD
+  carries without describing.  The shipped cmake example publishes the directory holding that
+  header from `sensor_hub` alone, so `event_logger`, which does not link `sensor_hub`, compiles
+  the generated headers only because `ddd_generate()` hands the registered components the
+  compile usage it collected - the cmake test that builds the example now fails if it stops.
+  `ddd-compile` takes an `INCLUDES` variable for the same reason, defaulting to the project's
+  own `include` directory when it has one.
+
+* **`ddd-compile` counts a structured variable as the one symbol it is.**  Its symbol check read
+  a `name` off every entry of `ddd list --format json`.  The leaves of a structured variable
+  carry no `name`, only the path and the instance they belong to, so the check crashed on the
+  first project that had one; it now takes the instance, and one structure counts as the one
+  object the linker sees however many leaves it has.
 
 ## 0.8.0
 

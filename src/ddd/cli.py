@@ -341,9 +341,11 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "'c' and 'a2l', and the name of every plugin the project names that provides "
             "one. What each artefact writes is not listed here, because a plugin's file "
             "names follow from the resolved project rather than from the plugin alone; "
-            "'ddd generate all --dry-run' reports those. Named with --plugin instead of a "
-            "project, it answers the same question for a build that has not assembled its "
-            "project description yet."
+            "'ddd generate all --dry-run' reports those. A plugin contributing only checks "
+            "or a block generates nothing and is no artefact, and is named in a note rather "
+            "than passed over in silence. Named with --plugin instead of a project, it "
+            "answers the same question for a build that has not assembled its project "
+            "description yet."
         ),
     )
     artefact_listing.add_argument(
@@ -1040,6 +1042,7 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     # happens, but the question asked was what *this* project generates, and that is unanswered.
     # Reporting half of it would invite a build to act on an answer DDD does not have.
     listed: list[dict[str, str]] = []
+    silent: list[str] = []
     if not unreadable:
         listed = [{"name": name, "kind": "built-in"} for name in BUILT_IN_GENERATED]
         listed += [
@@ -1047,9 +1050,17 @@ def _command_artefacts(args: argparse.Namespace) -> int:
             for plugin in plugins
             if plugin.backend is not None
         ]
+        # A plugin that generates nothing is not an artefact, but leaving it out in silence
+        # reads as the plugin having failed to load. Naming it says which of the two it is.
+        silent = [plugin.name for plugin in plugins if plugin.backend is None]
 
     if args.format == "json":
-        print(json.dumps({"artefacts": listed, **_diagnostics_payload(bag)}, indent=2))
+        payload = {
+            "artefacts": listed,
+            "plugins_without_artefact": silent,
+            **_diagnostics_payload(bag),
+        }
+        print(json.dumps(payload, indent=2))
         return EXIT_FINDINGS if unreadable else EXIT_OK
     if unreadable:
         _report(bag, "text")
@@ -1057,6 +1068,17 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     width = max(len(entry["name"]) for entry in listed)
     for entry in listed:
         print(f"{entry['name']:<{width}}  {entry['kind']}")
+    if silent:
+        one = len(silent) == 1
+        # After the listing, which goes to stdout: the note is commentary, like every other
+        # line this tool writes about what it did, and the two must not interleave.
+        sys.stdout.flush()
+        print(
+            f"note: the project also names {_listed(silent)}, which "
+            f"{'contributes' if one else 'contribute'} checks or a block but "
+            f"{'generates' if one else 'generate'} nothing",
+            file=sys.stderr,
+        )
     _report(bag, "text")
     return EXIT_OK
 

@@ -141,9 +141,11 @@ The commands
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is
        not listed, because a plugin's file names follow from the resolved project rather than
-       from the plugin alone - ``ddd generate all --dry-run`` reports those. With ``--plugin``
-       and no file it answers the same question for a build that has not assembled its project
-       description yet.
+       from the plugin alone - ``ddd generate all --dry-run`` reports those. A plugin that
+       contributes only checks or a block generates nothing and is therefore no artefact; it
+       is named in a note rather than left out in silence, which would read as the plugin
+       having failed to load. With ``--plugin`` and no file it answers the same question for a
+       build that has not assembled its project description yet.
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see

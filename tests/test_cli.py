@@ -1060,6 +1060,29 @@ class TestArtefacts:
         assert main(arguments) == EXIT_OK
         assert "layout" in capsys.readouterr().out
 
+    def test_a_plugin_that_generates_nothing_is_named_rather_than_omitted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A plugin may contribute only checks and a block, so it is no artefact.
+
+        Leaving it out in silence reads as the plugin having failed to load, which is the one
+        thing a reader most wants to rule out; the note says which of the two it is.
+        """
+        module = tmp_path / "ddd_quiet.py"
+        module.write_text(
+            "from ddd.plugins import Plugin" + chr(10) + "PLUGIN = Plugin(name='quiet')" + chr(10),
+            encoding="utf-8",
+        )
+        assert main(["artefacts", "--plugin", str(module)]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert [line.split()[0] for line in captured.out.splitlines()] == ["c", "a2l"]
+        assert "'quiet'" in captured.err and "generates nothing" in captured.err
+
+        assert main(["artefacts", "--plugin", str(module), "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["plugins_without_artefact"] == ["quiet"]
+        assert [entry["name"] for entry in payload["artefacts"]] == ["c", "a2l"]
+
     def test_a_project_and_plugins_together_are_refused(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

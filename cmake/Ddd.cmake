@@ -538,31 +538,41 @@ function(ddd_generate image)
     target_include_directories(${image_stem}_ddd_headers INTERFACE "${arg_OUTPUT_DIRECTORY}")
     add_dependencies(${image_stem}_ddd_headers ${image_stem}_ddd_generation)
 
-    # The single definition file is compiled as an object library, so that every variable really ends up in the
-    # image: a static library would drop the members whose symbols nobody references, and a measurement written only
-    # by the calibration tool has no referencing code at all.
-    add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
-    # In the collected mode the definition file is compiled with the interface compile usage of every registered
-    # component - include directories, compile definitions and compile options, but never link edges - so that a
-    # header an external type names is found *and read the way the component reads it* without further wiring. The
-    # includes alone would not be safe: a hand written header may change its layout under the component's interface
-    # flags, and a definition file compiled without them finds every header, compiles cleanly, and lays the variables
-    # out differently than the image using them - the failure that compiles. Each $<TARGET_PROPERTY:...> resolves
-    # transitively over the component's own interface link closure, and a component publishing nothing expands to an
-    # empty entry, which every one of these properties drops at generate time. LINK_LIBRARIES remains for the hand
-    # written PROJECT mode and for what no description implies, such as a header the project's own templates include.
+    # ddd_types.h includes the headers declaring the external types, so the generated headers cannot be compiled by
+    # the include directory alone: in the collected mode this target also carries the interface compile usage of
+    # every registered component - include directories, compile definitions and compile options, but never link
+    # edges - so that a header an external type names is found *and read the way the component reads it* without
+    # further wiring. The includes alone would not be safe: a hand written header may change its layout under the
+    # component's interface flags, and a file compiled without them finds every header, compiles cleanly, and lays
+    # the variables out differently than the image using them - the failure that compiles. Carrying this here rather
+    # than on each consumer is what keeps the integration a two-liner: linking <image>_ddd_headers is enough, and a
+    # file including a generated header never has to mirror the flags of a component it does not otherwise know
+    # about. Each $<TARGET_PROPERTY:...> resolves transitively over the component's own interface link closure, and
+    # a component publishing nothing expands to an empty entry, which every one of these properties drops at
+    # generate time. PROPAGATE_HEADERS below links this target back into the components, so the reference runs both
+    # ways; that is not a cycle, because the transitive evaluation visits each target once. LINK_LIBRARIES remains
+    # for the hand written PROJECT mode and for what no description implies, such as a header the project's own
+    # templates include.
     if(NOT arg_PROJECT)
         get_property(ddd_registered_components GLOBAL PROPERTY DDD_COMPONENT_TARGETS)
         list(REMOVE_DUPLICATES ddd_registered_components)
         foreach(component IN LISTS ddd_registered_components)
-            target_include_directories(${image_stem}_ddd_globals PRIVATE
+            target_include_directories(${image_stem}_ddd_headers INTERFACE
                                        "$<TARGET_PROPERTY:${component},INTERFACE_INCLUDE_DIRECTORIES>")
-            target_compile_definitions(${image_stem}_ddd_globals PRIVATE
+            target_compile_definitions(${image_stem}_ddd_headers INTERFACE
                                        "$<TARGET_PROPERTY:${component},INTERFACE_COMPILE_DEFINITIONS>")
-            target_compile_options(${image_stem}_ddd_globals PRIVATE
+            target_compile_options(${image_stem}_ddd_headers INTERFACE
                                    "$<TARGET_PROPERTY:${component},INTERFACE_COMPILE_OPTIONS>")
         endforeach()
     endif()
+
+    # The single definition file is compiled as an object library, so that every variable really ends up in the
+    # image: a static library would drop the members whose symbols nobody references, and a measurement written only
+    # by the calibration tool has no referencing code at all.
+    add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
+    # The compile usage the definition file needs - the external type headers, read under the flags of the component
+    # that declares them - reaches it through <image>_ddd_headers, which it links below like any other consumer of
+    # the generated headers.
     if(arg_LINK_LIBRARIES)
         target_link_libraries(${image_stem}_ddd_globals PRIVATE ${arg_LINK_LIBRARIES})
     endif()

@@ -106,6 +106,10 @@ The commands
        templates the c sources are rendered from, required wherever c is rendered and with no
        default, because which files the project wants and what they look like is not
        something DDD can guess; ``--address-map`` and ``--byte-order`` belong to the a2l.
+       ``all`` alone takes ``--without c`` or ``--without a2l``, repeatable, which leaves that
+       built-in artefact out while still producing the plugins' - the run a build wants when
+       the a2l is written later, once the addresses are known. Naming ``c`` instead is not the
+       same thing: it produces no plugin artefact at all, and says nothing about it.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
        generates in spite of errors.
    * - ``ddd list FILE``
@@ -162,7 +166,8 @@ without it is refused rather than falling back to templates of DDD's own.
    usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
                            [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
                            [--const-inputs] [--byte-order {little,big}]
-                           [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                           [--address-map ADDRESS_MAP] [--without {c,a2l}]
+                           [--dry-run] [--force]
                            project
    ddd generate all: error: the following arguments are required: -t/--template-dir
 

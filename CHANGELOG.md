@@ -42,6 +42,18 @@ not, and the templates a project provides are its own.
   **Migration:** a component that wired up an external type's header by hand, only so that its
   own generated header would compile, can drop that wiring.
 
+* **`NO_A2L` no longer silently drops the plugins' artefacts.**  In the cmake integration it
+  selected the `c` artefact instead of `all`, and `all` is the only run that produces a
+  plugin's artefact, so a build that asked for no a2l quietly got no plugin output either -
+  quietly because a plugin's files are its own and are not declared as outputs, so nothing
+  failed until a consumer looked for one.  `ddd generate all` now takes a repeatable
+  `--without c|a2l`, which leaves that built-in artefact out of the run and produces
+  everything else, and `NO_A2L` passes `--without a2l` rather than narrowing the run.  A run
+  that `--without` leaves with nothing to write is refused instead of reporting success.
+  **Migration:** none for a build using `NO_A2L`; it now gets the plugin artefacts it asked
+  for.  A command line spelling `ddd generate c` to avoid the a2l keeps its meaning, and
+  should become `ddd generate all --without a2l` if the project names a plugin.
+
 * **The demo declares an external type.**  `SensorHub` declares `DriverState_t`, whose header
   the demo keeps beside its descriptions in `examples/demo/include`, and a `SensorDiagnosis_t`
   structure that carries it next to an ordinary member; `Diagnosis` is a variable of that

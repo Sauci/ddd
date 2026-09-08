@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="584px" preserveAspectRatio="none" style="width:1086px;height:584px;" version="1.1" viewBox="0 0 1086 584" width="1086px" zoomAndPan="magnify"><defs><filter height="300%" id="f1alrpfnkn1dan" width="300%" x="-1" y="-1"><feGaussianBlur result="blurOut" stdDeviation="2.0"/><feColorMatrix in="blurOut" result="blurOut2" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .4 0"/><feOffset dx="4.0" dy="4.0" in="blurOut2" result="blurOut3"/><feBlend in="SourceGraphic" in2="blurOut3" mode="normal"/></filter></defs><g><!--MD5=[67a6735b2a5707e03290b64fb931c9ce]
+cluster components--><polygon fill="#FFFFFF" filter="url(#f1alrpfnkn1dan)" points="30,115,445,115,452,137.2969,455,137.2969,455,489,30,489,30,115" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="30" x2="452" y1="137.2969" y2="137.2969"/><text fill="#000000" font-family="sans-serif" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="409" x="34" y="129.9951">components, registered with ddd_add_component()</text><!--MD5=[f35b00b815861318141505187a0222d3]
+cluster generated--><polygon fill="#FFFFFF" filter="url(#f1alrpfnkn1dan)" points="623,123,936,123,943,145.2969,946,145.2969,946,481,623,481,623,123" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="623" x2="943" y1="145.2969" y2="145.2969"/><text fill="#000000" font-family="sans-serif" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="307" x="627" y="137.9951">created by ddd_generate(firmware.elf)</text><!--MD5=[6bb542b58011e44fc5bec0219497e249]
+entity user_interface--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="118" x="89" y="158"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="98" x="99" y="180.9951">user_interface</text><!--MD5=[c05fcadc036a699206cfdfa4a4fdb889]
+entity controller--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="85" x="105.5" y="316"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="65" x="115.5" y="338.9951">controller</text><!--MD5=[69c0820ef94d451ffbc7f0400b784ada]
+entity sensor_hub--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="102" x="97" y="429"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="82" x="107" y="451.9951">sensor_hub</text><!--MD5=[b55ff1cdd52ae8dd919d4fc5489bb367]
+entity event_logger--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="110" x="242" y="158"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="90" x="252" y="180.9951">event_logger</text><!--MD5=[4153f88db833cf5a3912c706c3d7fd73]
+entity globals--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="168" x="694" y="158"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="148" x="704" y="180.9951">firmware_ddd_globals</text><!--MD5=[f223be40ea48a5427c8043c1d55519e9]
+entity headers--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="176" x="689" y="316"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="156" x="699" y="338.9951">firmware_ddd_headers</text><!--MD5=[b66830e0b7d88bb50a6249086913f8dd]
+entity generation--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="194" x="687" y="429"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="174" x="697" y="451.9951">firmware_ddd_generation</text><!--MD5=[edc5ac89098b4c99541bc21d84646db1]
+entity image--><rect fill="#FEFECE" filter="url(#f1alrpfnkn1dan)" height="36.2969" style="stroke: #000000; stroke-width: 1.5;" width="98" x="548" y="8"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="78" x="558" y="30.9951">firmware.elf</text><!--MD5=[bb8079678f36c7393217bd94cf63290e]
+link image to user_interface--><path d="M547.79,27.47 C473.42,30.1 329.87,42.79 224,99 C199.23,112.15 177.36,136.05 163.51,153.54 " fill="none" id="image-&gt;user_interface" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="160.17,157.84,168.8482,153.1829,163.2358,153.8902,162.5285,148.2777,160.17,157.84" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[734ab4a7a7955f12472b41bd8af2b66a]
+link image to event_logger--><path d="M547.94,32.68 C496.37,40.59 414.73,58.78 356,99 C335.59,112.98 319.05,136.21 308.74,153.32 " fill="none" id="image-&gt;event_logger" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="305.99,157.97,314.0142,152.2593,308.5351,153.6662,307.1281,148.1871,305.99,157.97" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[c76516ce69a9c0a5a735577fcea4b1d4]
+link user_interface to controller--><path d="M148,194.29 C148,222.64 148,278.98 148,310.43 " fill="none" id="user_interface-&gt;controller" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="148,315.63,152,306.63,148,310.63,144,306.63,148,315.63" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[a68c0985e845043cba332f66fbb0d3f4]
+link controller to sensor_hub--><path d="M148,352.34 C148,371.57 148,402.63 148,423.66 " fill="none" id="controller-&gt;sensor_hub" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="148,428.78,152,419.78,148,423.78,144,419.78,148,428.78" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[d9d08a25d461fbbf8fae70e1b63eee65]
+link image to globals--><path d="M618.12,44.27 C651.63,71.67 716.87,125.02 752.79,154.38 " fill="none" id="image-&gt;globals" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="757.02,157.84,752.5732,149.0522,753.1451,154.68,747.5173,155.252,757.02,157.84" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="52" x="672" y="87.0669">PRIVATE</text><!--MD5=[6d8b059bf8f3547edb7432549cd422d6]
+link globals to headers--><path d="M784.41,194.14 C787.36,202.93 790.53,213.89 792,224 C795.97,251.27 796.24,258.77 792,286 C790.72,294.25 788.23,303.04 785.65,310.75 " fill="none" id="globals-&gt;headers" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="783.86,315.9,790.5921,308.7112,785.5009,311.1769,783.0352,306.0857,783.86,315.9" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="46" x="796" y="259.5669">PUBLIC</text><!--MD5=[ffd3e790a9d0755437cee27caf2d9d3e]
+link headers to generation--><path d="M778.09,352.34 C779.31,371.57 781.26,402.63 782.59,423.66 " fill="none" id="headers-&gt;generation" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="782.91,428.78,786.3375,419.5468,782.5963,423.7898,778.3533,420.0487,782.91,428.78" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="68" x="781" y="395.0669">build order</text><!--MD5=[73b571b9879ed4a1f50b4f4687a575a3]
+link image to generation--><path d="M646.2,32.38 C719.37,41.49 851.32,62.63 880,99 C949.63,187.3 910.21,242.89 883,352 C877.27,374.96 874.07,381.64 858,399 C848.15,409.64 835.37,418.87 823.22,426.27 " fill="none" id="image-&gt;generation" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="818.78,428.91,828.56,427.7478,823.0775,426.3543,824.471,420.8718,818.78,428.91" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="143" x="924" y="252.0669">the descriptions of the</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="157" x="917" y="267.1997">link closure are collected</text><!--MD5=[8c9d2bbb60cd609265c5b4bae91d18c8]
+link components to headers--><path d="M455.1964,302.4645 C456.4851,302.7228 457.7935,302.9796 459.1208,303.2347 C464.4304,304.2553 470.0439,305.25 475.9155,306.2189 C487.6589,308.1566 500.435,309.9909 513.8775,311.7213 C567.6475,318.6425 632.08,323.9 683.73,327.46 " fill="none" id="components-&gt;headers" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="688.91,327.81,680.2056,323.202,683.9218,327.467,679.6568,331.1831,688.91,327.81" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="150" x="412" y="252.0669">PROPAGATE_HEADERS:</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="156" x="409" y="267.1997">every component links it</text><!--MD5=[0d3587ebb84ef96362729ff9aa8683fb]
+link headers to components--><path d="M688.98,324 C658.88,317.35 626.62,305.84 602,286 C577.86,266.54 593.56,244.17 570,224 C545.305,202.855 510.7625,191.14 482.0488,184.6938 C474.8703,183.0822 468.0562,181.7999 461.8513,180.7819 C460.3,180.5274 458.7869,180.2895 457.3157,180.067 C456.58,179.9557 455.8549,179.8484 455.1407,179.7448 " fill="none" id="headers-&gt;components" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="455.1407,179.7448,463.4731,184.9955,460.0889,180.4626,464.6218,177.0784,455.1407,179.7448" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="171" x="607.5" y="237.0669">and reads back each one's</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="180" x="603" y="252.1997">interface include directories,</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="147" x="619.5" y="267.3325">compile definitions and</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="101" x="642.5" y="282.4653">compile options</text><rect fill="#DDDDDD" height="42.5938" rx="5" ry="5" style="stroke: #000000; stroke-width: 1.0;" width="381" x="355.5" y="531"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="306" x="361.5" y="548.9951">solid arrow = link edge, target_link_libraries()</text><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="369" x="361.5" y="565.292">dashed arrow = a reference that creates no link edge</text><!--MD5=[ee42a5e602d27f42a868bc4e405671e4]
+@startuml
+top to bottom direction
+
+rectangle "firmware.elf" as image
+
+package "components, registered with ddd_add_component()" as components {
+    rectangle "user_interface" as user_interface
+    rectangle "controller" as controller
+    rectangle "sensor_hub" as sensor_hub
+    rectangle "event_logger" as event_logger
+}
+
+package "created by ddd_generate(firmware.elf)" as generated {
+    rectangle "firmware_ddd_globals" as globals
+    rectangle "firmware_ddd_headers" as headers
+    rectangle "firmware_ddd_generation" as generation
+}
+
+image - -> user_interface
+image - -> event_logger
+user_interface - -> controller
+controller - -> sensor_hub
+image - -> globals : PRIVATE
+
+globals - -> headers : PUBLIC
+headers ..> generation : build order
+image ..> generation : the descriptions of the\nlink closure are collected
+
+components - -> headers : PROPAGATE_HEADERS:\nevery component links it
+headers ..> components : and reads back each one's\ninterface include directories,\ncompile definitions and\ncompile options
+
+legend bottom
+  solid arrow = link edge, target_link_libraries()
+  dashed arrow = a reference that creates no link edge
+endlegend
+
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 10:22:07 UTC 2020)
+(GPL source distribution)
+Java Runtime: OpenJDK Runtime Environment
+JVM: OpenJDK 64-Bit Server VM
+Java Version: 17.0.20.1+1
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>

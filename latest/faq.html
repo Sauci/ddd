@@ -687,10 +687,12 @@ produces each of its inputs, and that answer depends on what else is in the imag
 </pre></div>
 </div>
 <p>This is why the cmake integration refuses the ambiguous case instead of letting an include
-order decide it: only one <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> call may hand its headers to the registered
-components automatically, and a project with several images has to give
+order decide it: only one <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> call may hand its <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> to the
+registered components automatically, and a project with several images has to give
 <code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> to <em>both</em> calls and link the wanted <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> into
-each component explicitly. See <a class="reference internal" href="build_integration.html"><span class="doc">build integration</span></a>.</p>
+each component explicitly. That target carries the registered components’ compile usage as
+well as the include directory, so linking it by hand hands a component those flags too. See
+<a class="reference internal" href="build_integration.html"><span class="doc">build integration</span></a>.</p>
 </section>
 <section id="why-does-regenerating-not-retrigger-my-build">
 <h2>Why does regenerating not retrigger my build?<a class="headerlink" href="#why-does-regenerating-not-retrigger-my-build" title="Link to this heading"></a></h2>

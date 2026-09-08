@@ -653,10 +653,12 @@ produces each of its inputs, and that answer depends on what else is in the imag
    extern uint8_t ValueA;  /* produced by <unresolved> */
 
 This is why the cmake integration refuses the ambiguous case instead of letting an include
-order decide it: only one ``ddd_generate`` call may hand its headers to the registered
-components automatically, and a project with several images has to give
+order decide it: only one ``ddd_generate`` call may hand its ``<image>_ddd_headers`` to the
+registered components automatically, and a project with several images has to give
 ``NO_PROPAGATE_HEADERS`` to *both* calls and link the wanted ``<image>_ddd_headers`` into
-each component explicitly. See :doc:`build integration </build_integration>`.
+each component explicitly. That target carries the registered components' compile usage as
+well as the include directory, so linking it by hand hands a component those flags too. See
+:doc:`build integration </build_integration>`.
 
 Why does regenerating not retrigger my build?
 ----------------------------------------------

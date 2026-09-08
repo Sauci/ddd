@@ -243,8 +243,8 @@ definition not part of the file.</p>
 <p>An enum conversion, a declared constant and a declared structure are the parts of a
 description that become a c type or a macro rather than a c declaration, and the example
 templates emit them in a header of their own so that every component sharing them sees one
-definition. The demo declares neither constants nor structures, so its type header holds the
-enum alone:</p>
+definition. The demo declares no constants, so its type header holds the enum, the structure
+<code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> declares, and the include line of the vendor header its external member names:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/*</span>
 <span class="cm"> * ddd_types.h</span>
 <span class="cm"> *</span>
@@ -259,6 +259,9 @@ enum alone:</p>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdint.h&gt;</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdbool.h&gt;</span>
 
+<span class="cm">/* headers defining the external types */</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">"sensor_hub_driver.h"</span>
+
 <span class="cm">/* StateA_t */</span>
 <span class="k">typedef</span><span class="w"> </span><span class="k">enum</span>
 <span class="p">{</span>
@@ -269,9 +272,22 @@ enum alone:</p>
 <span class="w">    </span><span class="n">STATE_FAULT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span>
 <span class="p">}</span><span class="w"> </span><span class="n">StateA_t</span><span class="p">;</span>
 
+<span class="cm">/* SensorDiagnosis_t - What the sensor hub keeps for the vendor's own diagnosis code */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">DriverState_t</span><span class="w"> </span><span class="n">driver</span><span class="p">;</span><span class="w"> </span><span class="cm">/**&lt; Raw driver state, kept verbatim for the vendor's diagnosis code */</span>
+<span class="w">    </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">faults</span><span class="p">;</span><span class="w"> </span><span class="cm">/**&lt; Faults the driver has reported since the last reset */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">SensorDiagnosis_t</span><span class="p">;</span>
+
 <span class="cp">#endif </span><span class="cm">/* DDD_TYPES_H */</span>
 </pre></div>
 </div>
+<p>That <code class="docutils literal notranslate"><span class="pre">#include</span></code> is the whole of what DDD does about an external type. It knows the type’s
+name and the header defining it and nothing else - no datatype, no unit, no conversion, no size
+- so <code class="docutils literal notranslate"><span class="pre">DriverState_t</span></code> is emitted as written and the vendor’s header is left to define it. What
+follows is worth stating plainly: an external member reaches no a2l record and no <code class="docutils literal notranslate"><span class="pre">GROUP</span></code>, it
+contributes no leaf to <a class="reference internal" href="command_line_interface.html"><span class="doc">ddd list</span></a>, and a structure containing one
+gets no section alignment estimate. It is storage DDD carries into the image without describing.</p>
 <p>The variable itself keeps the storage its <code class="docutils literal notranslate"><span class="pre">datatype</span></code> asks for - <code class="docutils literal notranslate"><span class="pre">StateA</span></code> is declared
 <code class="docutils literal notranslate"><span class="pre">uint8_t</span></code>, not <code class="docutils literal notranslate"><span class="pre">StateA_t</span></code> - because the size of an enumerated type is up to the compiler
 and a global variable whose width depends on the toolchain is not something an interface
@@ -414,7 +430,8 @@ the possibility of doing it <em>without noticing</em>: the include line of a for
 a hand-written <code class="docutils literal notranslate"><span class="pre">extern</span></code> in the middle of a component, is a visible thing that a reviewer
 can object to. The <a class="reference internal" href="build_integration.html"><span class="doc">cmake integration</span></a> reinforces this by putting
 the generated directory on the include path of the components and expecting each of them
-to include its own header.</p>
+to include its own header. What travels to a component is that directory and the compile
+usage needed to read what is in it, never a link edge.</p>
 </div>
 </section>
 <section id="const-inputs">
@@ -485,10 +502,10 @@ where another does not define it.</p>
 generates the demo, compiles it, links it and then compares the symbols of the binary
 against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code>, once without defines and once with <code class="docutils literal notranslate"><span class="pre">-DFEATURE_X</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">==</span> <span class="n">symbols</span>   <span class="p">[</span><span class="n">base</span><span class="p">]</span>
-<span class="mi">19</span> <span class="n">of</span> <span class="mi">20</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
+<span class="mi">20</span> <span class="n">of</span> <span class="mi">21</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
   <span class="n">conditional</span><span class="p">,</span> <span class="n">absent</span> <span class="p">:</span> <span class="n">ValueG</span>
 <span class="o">==</span> <span class="n">symbols</span>   <span class="p">[</span><span class="n">defines</span><span class="p">]</span>
-<span class="mi">20</span> <span class="n">of</span> <span class="mi">20</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
+<span class="mi">21</span> <span class="n">of</span> <span class="mi">21</span> <span class="n">declared</span> <span class="n">variables</span> <span class="n">are</span> <span class="n">defined</span>
   <span class="n">conditional</span><span class="p">,</span> <span class="n">present</span><span class="p">:</span> <span class="n">ValueG</span>
 </pre></div>
 </div>
@@ -760,7 +777,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 <p>The record layouts and the compu methods are shared rather than repeated per object, because
 they describe <em>how</em> a value is stored and scaled rather than <em>which</em> value it is, and two
 objects that agree on both have no reason to carry two copies. The seven calibration objects
-of the demo share five record layouts, and its twenty objects share eight compu methods:</p>
+of the demo share five record layouts, and its twenty-one objects share eight compu methods:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin RECORD_LAYOUT RL_AXIS_UWORD
   AXIS_PTS_X 1 UWORD INDEX_INCR DIRECT
 /end RECORD_LAYOUT

@@ -171,8 +171,9 @@ of the image, writes the project description tying them together, runs the gener
 built-in files - and links the result back into the image. A plugin’s file names are its own
 and are not declared as outputs, so a target that consumes one depends on
 <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_generation</span></code>. It has to be called in the <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that
-defines the image, and after the components have been added, because it hands the generated
-headers to the components registered up to that point.</p>
+defines the image, and after the components have been added, because it hands
+<code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> to the components registered up to that point - which settles both
+which components get the generated headers and whose compile usage travels with them.</p>
 <p>Besides the image it needs one thing: <code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
 alternative would be a build whose generated sources change the day the tool is upgraded. What
@@ -198,6 +199,7 @@ comments removed; it is what the <code class="docutils literal notranslate"><spa
 <span class="nb">set</span><span class="p">(</span><span class="s">templates</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_SOURCE_DIR}/../templates"</span><span class="p">)</span>
 
 <span class="nb">add_library</span><span class="p">(</span><span class="s">sensor_hub</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/sensor_hub.c</span><span class="p">)</span>
+<span class="nb">target_include_directories</span><span class="p">(</span><span class="s">sensor_hub</span><span class="w"> </span><span class="s">PUBLIC</span><span class="w"> </span><span class="s2">"${descriptions}/include"</span><span class="p">)</span>
 <span class="nb">ddd_add_component</span><span class="p">(</span><span class="s">sensor_hub</span><span class="w"> </span><span class="s">JSON</span><span class="w"> </span><span class="s2">"${descriptions}/components/sensor_hub.ddd.json"</span><span class="p">)</span>
 
 <span class="nb">add_library</span><span class="p">(</span><span class="s">controller</span><span class="w"> </span><span class="s">STATIC</span><span class="w"> </span><span class="s">components/controller.c</span><span class="p">)</span>
@@ -222,8 +224,16 @@ comments removed; it is what the <code class="docutils literal notranslate"><spa
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">sensor_hub.c</span></code> then writes <code class="docutils literal notranslate"><span class="pre">#include</span> <span class="pre">&quot;SensorHub.h&quot;</span></code> and nothing else: the header DDD
 generated for that component is the only one on its include path, so a component cannot reach
-a variable it never declared. The include directory travels to the components automatically,
-which is what keeps the integration down to two lines per component.</p>
+a variable it never declared. The include directory travels to the components automatically -
+and with it, in the collected mode, the compile usage those headers need to be read - which is
+what keeps the integration down to two lines per component.</p>
+<p>That last part is what the demo’s external type is for. <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> declares one, so
+<code class="docutils literal notranslate"><span class="pre">sensor_hub</span></code> is the component that publishes the directory holding the vendor header defining
+it. DDD writes that header’s include line into <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code>, and every component’s generated
+header includes <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> - so <code class="docutils literal notranslate"><span class="pre">event_logger</span></code> compiles it too, although it neither
+links <code class="docutils literal notranslate"><span class="pre">sensor_hub</span></code> nor names the type itself. Nothing hands that directory to
+<code class="docutils literal notranslate"><span class="pre">event_logger</span></code> here. Take it out of what <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> collects and the build stops on a
+header it cannot find.</p>
 <p>The templates this example points at are the ones DDD ships as examples, since it sits next to
 them in the source tree. A real project keeps its own under version control, next to its
 sources, and starts them off as a copy of that set.</p>
@@ -338,6 +348,49 @@ where it would land.</p>
 <h3>The targets it creates<a class="headerlink" href="#the-targets-it-creates" title="Link to this heading"></a></h3>
 <p>The helper targets are named after the image without its file extension, because an image is
 usually named like its artefact: <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> yields <code class="docutils literal notranslate"><span class="pre">firmware_ddd_headers</span></code>.</p>
+<p>The example above builds the graph below. The check targets are left out of it; everything
+else a build sees is there, and so is every edge between them:</p>
+<p class="plantuml">
+<img src="_images/plantuml-a886f8c38198dc52aaa19db14e2f2167a786ba20.svg" alt="top to bottom direction
+
+rectangle &quot;firmware.elf&quot; as image
+
+package &quot;components, registered with ddd_add_component()&quot; as components {
+    rectangle &quot;user_interface&quot; as user_interface
+    rectangle &quot;controller&quot; as controller
+    rectangle &quot;sensor_hub&quot; as sensor_hub
+    rectangle &quot;event_logger&quot; as event_logger
+}
+
+package &quot;created by ddd_generate(firmware.elf)&quot; as generated {
+    rectangle &quot;firmware_ddd_globals&quot; as globals
+    rectangle &quot;firmware_ddd_headers&quot; as headers
+    rectangle &quot;firmware_ddd_generation&quot; as generation
+}
+
+image --&gt; user_interface
+image --&gt; event_logger
+user_interface --&gt; controller
+controller --&gt; sensor_hub
+image --&gt; globals : PRIVATE
+
+globals --&gt; headers : PUBLIC
+headers ..&gt; generation : build order
+image ..&gt; generation : the descriptions of the\nlink closure are collected
+
+components --&gt; headers : PROPAGATE_HEADERS:\nevery component links it
+headers ..&gt; components : and reads back each one's\ninterface include directories,\ncompile definitions and\ncompile options
+
+legend bottom
+  solid arrow = link edge, target_link_libraries()
+  dashed arrow = a reference that creates no link edge
+endlegend"/></p>
+<p>The two arrows between the components and <code class="docutils literal notranslate"><span class="pre">firmware_ddd_headers</span></code> are what reduce the
+integration to two lines per component, and they are not a cycle. The components link the
+interface library; the interface library names their usage through <code class="docutils literal notranslate"><span class="pre">$&lt;TARGET_PROPERTY:...&gt;</span></code>,
+which is read at generate time and visits each target once. It is also the picture of what the
+propagation costs: the usage collected on the right reaches every component on the left,
+including the ones this image happens not to link.</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 34.0%" />
@@ -356,20 +409,26 @@ re-runs when a component changes its declarations and not otherwise.</p></td>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code></p></td>
 <td><p>interface library carrying the include directory of the generated headers, and
 depending on the generation. Every registered component links it, so a component
-includes its interface header without knowing where the image put it.</p></td>
+includes its interface header without knowing where the image put it. In the collected
+mode it carries the <em>interface compile usage</em> of every registered component as well -
+include directories, compile definitions and compile options, but never link edges - so
+that a header an <a class="reference internal" href="file_formats/types.html"><span class="doc">external type</span></a> names is found <em>and read the
+way the component declaring it reads it</em>. The flags matter as much as the paths: a hand
+written header may change its layout under the component’s interface defines, and a
+file compiled without them finds every header, compiles cleanly, and lays the variables
+out differently than the image using them. Carrying it here is what keeps the
+integration a two-liner, since linking this one target is then enough; the price is
+that every registered component compiles under the union of those flags, including
+components it does not link itself. <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> holds the external includes of the
+whole project and every component header includes it, so they all have to read those
+headers alike.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_globals</span></code></p></td>
 <td><p>object library compiling every generated <code class="docutils literal notranslate"><span class="pre">.c</span></code> file, linked into the image. It is an
 object library on purpose: a static library would drop the members whose symbols
 nobody references, and a measurement that only the calibration tool ever reads has no
-referencing code at all. In the collected mode it is compiled with the <em>interface
-compile usage</em> of every registered component - include directories, compile
-definitions and compile options, but never link edges - so that a header an
-<a class="reference internal" href="file_formats/types.html"><span class="doc">external type</span></a> names is found <em>and read the way the
-component reads it</em> without further wiring. The flags matter as much as the paths: a
-hand written header may change its layout under the component’s interface defines,
-and a definition file compiled without them finds every header, compiles cleanly,
-and lays the variables out differently than the image using them.</p></td>
+referencing code at all. It links <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> publicly, which is where the
+compile usage it needs to read the external type headers comes from.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_check</span></code></p></td>
 <td><p>runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> on the collected project on its own, for a ci job that wants the
@@ -459,11 +518,13 @@ generation and the check target.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
 <td><p>usage requirements for compiling the generated definition file, stated by hand. The
-manual fallback: in the collected mode the definition file already gets the interface
-compile usage of every registered component - include directories, compile
+manual fallback: in the collected mode <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> already carries the
+interface compile usage of every registered component - include directories, compile
 definitions and compile options, resolved through each component’s public link
-closure - so this remains for the hand written <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> mode and for what no
-description implies, such as a header the project’s own c templates include.</p></td>
+closure - and the definition file links it, so this remains for the hand written
+<code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> mode and for what no description implies, such as a header the project’s
+own c templates include. These libraries reach the definition file alone, so a
+component that includes a generated header needing one of them has to link it itself.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>
@@ -478,16 +539,18 @@ description implies, such as a header the project’s own c templates include.</
 <td><p>treat DDD warnings as errors.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
-<td><p>do not hand the generated headers to the registered components.</p></td>
+<td><p>do not hand <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code>, and the compile usage it carries, to the
+registered components.</p></td>
 </tr>
 </tbody>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> is the option a project building <strong>several</strong> images from the same
 components cannot avoid. A component’s interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include
-directory reached it first would silently decide which set it compiles against. Rather than
-letting an include order settle that, the second <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> stops the configure step
-with a fatal error. Such a project gives <code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> to <strong>both</strong> calls and links
+directory reached it first would silently decide which set it compiles against - and, since
+<code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> carries the components’ compile usage too, under which flags. Rather
+than letting an include order settle that, the second <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> stops the configure
+step with a fatal error. Such a project gives <code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> to <strong>both</strong> calls and links
 the wanted <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;_ddd_headers</span></code> into each component explicitly - opting out of only one of
 the two would leave the same ambiguity in place, because the automatic set still reaches every
 registered component rather than only the ones that image links.</p>

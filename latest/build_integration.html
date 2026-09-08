@@ -533,7 +533,10 @@ component that includes a generated header needing one of them has to link it it
 <td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
-<td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then.</p></td>
+<td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then. The run still
+produces everything else the project has, the artefacts of the plugins named with
+<code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> included: the a2l is subtracted from the run rather than the run being
+narrowed to the c sources.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
 <td><p>treat DDD warnings as errors.</p></td>

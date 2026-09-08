@@ -220,6 +220,10 @@ artefact takes only its own options - <code class="docutils literal notranslate"
 templates the c sources are rendered from, required wherever c is rendered and with no
 default, because which files the project wants and what they look like is not
 something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to the a2l.
+<code class="docutils literal notranslate"><span class="pre">all</span></code> alone takes <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">c</span></code> or <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code>, repeatable, which leaves that
+built-in artefact out while still producing the plugins’ - the run a build wants when
+the a2l is written later, once the addresses are known. Naming <code class="docutils literal notranslate"><span class="pre">c</span></code> instead is not the
+same thing: it produces no plugin artefact at all, and says nothing about it.
 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> reports what would be written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code>
 generates in spite of errors.</p></td>
 </tr>
@@ -284,7 +288,8 @@ without it is refused rather than falling back to templates of DDD’s own.</p>
 usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]
                         [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR
                         [--const-inputs] [--byte-order {little,big}]
-                        [--address-map ADDRESS_MAP] [--dry-run] [--force]
+                        [--address-map ADDRESS_MAP] [--without {c,a2l}]
+                        [--dry-run] [--force]
                         project
 ddd generate all: error: the following arguments are required: -t/--template-dir
 </pre></div>
@@ -636,7 +641,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-generate">
 <h4>ddd generate<a class="headerlink" href="#ddd-generate" title="Link to this heading"></a></h4>
-<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both, and the artefact of every plugin the project names that provides one; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
+<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both, and the artefact of every plugin the project names that provides one, and takes –without to leave one of the built-in artefacts out of that; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all,&lt;plugin&gt;} ...</span>
 </pre></div>
 </div>
@@ -722,7 +727,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
 <span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
-<span class="go">                        [--address-map ADDRESS_MAP] [--dry-run] [--force]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--without {c,a2l}]</span>
+<span class="go">                        [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -784,6 +790,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-address-map">
 <span class="sig-name descname"><span class="pre">--address-map</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address_map&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-address-map" title="Link to this definition"></a></dt>
 <dd><p>json file mapping variable names to their address in the target</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-without">
+<span class="sig-name descname"><span class="pre">--without</span></span><span class="sig-prename descclassname"> <span class="pre">{c,a2l}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-without" title="Link to this definition"></a></dt>
+<dd><p>leave one of the built-in artefacts out of this run, repeatable. The plugins’ artefacts are produced either way, so ‘generate all –without a2l’ is how a build that writes the a2l later, once the addresses are known, asks for everything else</p>
 </dd></dl>
 
 <dl class="std option">

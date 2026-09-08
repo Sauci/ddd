@@ -1313,3 +1313,146 @@ Not covered: the extension was not run inside VS Code and its `npm test` was not
 ### Assessment
 
 The tool interface is implemented with more care than the spec records it: every option, exit code, format and ordering I exercised behaves as the documentation says, the CMake flow completes end to end on this machine, and the language server holds up under malformed input and misbehaving plugins. The conformance problems are almost all on the spec's side - it still denies `--standalone`, names none of the module's per-component targets, `DDD_A2L`, the tolerant exit of `sources`/`artefacts`, or the plugin name grammar - with two code-side items worth fixing: the server dying on a build record with an unknown check, and `ddd sources` hiding in text what it reports in JSON.
+
+## Pass 6: the remaining documentation and the repository machinery
+
+### Scope covered
+
+Read in full, sentence by sentence against the code: `docs/getting_started.rst`, `docs/concept.rst`, `docs/faq.rst`, `docs/data_contracts.rst`, `docs/developer_documentation.rst`, `docs/acronyms.rst`, `docs/index.rst`, `docs/conf.py`; `README.md` whole (lines 1-95 and 876-939 in detail, the rest for disagreements with the pages); `CHANGELOG.md` whole; `SPEC.md` section 2 for the concept page's vocabulary; every file under `examples/` (all nine projects, the plugin, the cmake example, the templates); `docker/Dockerfile`, `docker/compile.sh`, `docker/verify_symbols.py`, `docker-compose.yml`, `.dockerignore`; `.github/workflows/ci.yml`, `docs.yml`, `publish.yml`; `pyproject.toml`, the three `requirements*.txt`, `LICENSE`, `.gitattributes`, `.gitignore`, `assets/logo/README.md`, `editors/vscode/package.json` and `LICENSE`, `docs/_static/js/versions.js`, `docs/_templates/versions.html`; `tests/test_transcripts.py` in full and the relevant parts of `tests/test_documentation.py`, `tests/test_backends.py`, `tests/test_cmake.py`; the deferred and status sections of the four plans and four designs under `docs/superpowers/`; the titles of every finding of passes 1-5 in `docs/superpowers/reviews/2026-09-08-complete-review.md`, so as not to repeat them (the `ddd list`/`ddd dump` naming at `README.md:852` and `docs/developer_documentation.rst:314`, the pre-commit hook, and pass 2's "a calibration tool only reads a measurement" at `docs/acronyms.rst:108-110` / `README.md:332-333` are all left out here).
+
+Ran, from the repository root with the scratchpad venv (Python 3.13.15, ruff 0.16.6, mypy 2.3.1):
+
+- `ruff check .` - **All checks passed!**; `ruff format --check .` - **81 files already formatted**; `mypy` - **Success: no issues found in 46 source files**.
+- `pip install -r requirements-docs.txt` then `python -m sphinx -b html docs <scratchpad> -W --keep-going` (Sphinx 9.1.0, autodoc-pydantic 2.2.0, erdantic 1.2.1, graphviz 15.1.1 from the PATH, plantuml 2.18.1 through `JAVA`/`PLANTUML_JAR`) - **build succeeded, exit 0, zero warnings**; 55 figures and 5 plantuml diagrams rendered, every page in the toctree.
+- The getting-started walkthrough, followed in order in a scratch directory with the three files exactly as the page shows them: every command printed what the page shows, including the `missing-id` infos, `wrote 2 ids`, the `-t` refusal (exit 2), the five template names, the six `created` then six `unchanged` lines, the three generated files and the two a2l excerpts, the `definition-mismatch` + `limits-out-of-range` pair after the edit (exit 1, no `gen2` directory), `--force` writing six files and exiting 1, and `--const-inputs` declaring the input `extern const volatile`.
+- `ddd check` on all nine example projects, `ddd compare` on the pressure deliveries, `ddd list` on the demo, `ddd checks`, `ddd check --standalone`, `ddd artefacts` (text, json, `--plugin`), `ddd sources`, `ddd dump`, `ddd generate` with `--without`, `--dry-run`, three address maps and an empty one, `-W` on an unknown and on a fixed check; the hand-written transcripts of `data_contracts.rst` and of the FAQ reproduced on files written for the purpose.
+- `pip wheel . --no-deps` into the scratchpad (`ddd_tool-0.8.0-py3-none-any.whl`, 241 963 bytes), listed, installed into a fresh venv: `ddd cmake-dir` and `ddd templates-dir` resolve to `site-packages/ddd/cmake/Ddd.cmake` and `site-packages/ddd/templates/` (five files); `python -m build --sdist` into the scratchpad, unpacked, its documentation tests and its docs build tried from there.
+- `gh`: the CI and Documentation workflows are green on master (run 34220439120: lint, extension and the four matrix cells; run 34220439174); the v0.8.0 release ran Publish (test, build, extension, publish-pypi all success) and Documentation (success); `https://sauci.github.io/ddd/v0.8.0/` answers 200 and `versions.json` lists latest, v0.8.0, v0.7.0, v0.6.0, v0.5.0 with `stable: v0.8.0`; Pages is configured `build_type: legacy`, source `gh-pages` `/`; every release since v0.5.0 carries its `ddd-<version>.vsix`.
+- `git diff v0.8.0..HEAD` on `src/ddd/ir.py`, `src/ddd/models/`, `src/ddd/diagnostics.py` and `schemas/`: empty. `DICTIONARY_FORMAT = 7` (`src/ddd/ir.py:568`).
+
+Not covered: the docker services were not run (this machine runs Windows containers; the compose file, the image and the scripts were checked by reading, and pygraphviz's `manylinux_2_28` wheels were confirmed on PyPI so the `docs` service can install erdantic on bookworm); the language server's rename mechanics beyond its refusal message (pass 5's domain); the CANape statements of the developer page; the full test suite was not re-run here (CI ran it on master at `441c600` on both platforms, and the review baseline records the local run).
+
+### Strengths
+
+- The transcripts are real. `tests/test_transcripts.py` re-runs every `$ ddd` command a page runs over the shipped examples and the whole tutorial through `bash`; followed by hand, the tutorial reproduced byte for byte, error path included.
+- The changelog is accurate in detail. Every command, option, identifier, refusal message and format number it names exists as described; the Unreleased section claims no format change and there is none.
+- The packaging does what the pages say: the wheel carries the cmake module and the example templates under the package, the two `*-dir` commands find them after a clean install, the wheel name in the pages is the one built, `Requires-Python >=3.12` and the two runtime dependencies match the README.
+- The release machinery delivered v0.8.0 exactly as `docs.yml`, `publish.yml` and the developer page describe it: docs under the tag's directory, the root redirect to the newest release, the read-back, the `.vsix` on the release, Pages served from the branch.
+- The static checks, the docs build with warnings as errors and the coverage gate are all clean on master.
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **The README tells a project with several images to opt out of header propagation on the second call only; the module and both docs pages say both.**
+   - Where: `README.md:808-812` ("only one image may hand its `<image>_ddd_headers` to the components automatically - the second call has to opt out and be wired explicitly"); `docs/build_integration.rst:445-454` ("gives `NO_PROPAGATE_HEADERS` to **both** calls ... opting out of only one of the two would leave the same ambiguity in place"); `docs/faq.rst:655-661` (both calls); `cmake/Ddd.cmake:607-621` (the fatal error reads "Give NO_PROPAGATE_HEADERS to *both* ... propagating from only one of the two leaves that same ambiguity in place").
+   - What: the module only refuses when *both* calls propagate (`Ddd.cmake:611-620`); a first call that propagates and a second that opts out configures without a word, and the first image's headers reach every registered component, including the ones only the second image links.
+   - Why it matters: a reader following the README gets a build that configures cleanly and compiles the second image's components against the wrong headers - the `produced by <unresolved>` case the FAQ itself describes at `docs/faq.rst:647-654`.
+   - Fix: rewrite `README.md:808-812` to what the module says: both calls take `NO_PROPAGATE_HEADERS` and each component links the wanted `<image>_ddd_headers` explicitly.
+
+2. **The sdist ships tests and documentation that cannot run from it.**
+   - Where: `pyproject.toml:64-79` (the include list carries `/docs` and `/tests` but not `/assets`, `/editors`, `/.github` or `/.pre-commit-hooks.yaml`); `tests/test_documentation.py:36-37` (reads `.github/workflows/docs.yml` and `ci.yml` at import), `:527,546,555,604` (`editors/vscode`), `:1254` (`.github`), `:1415` (`.pre-commit-hooks.yaml`); `docs/conf.py:58-59` (`html_logo`/`html_favicon` under `../assets/logo/`).
+   - What: from the unpacked `ddd_tool-0.8.0.tar.gz`, `pytest tests/test_documentation.py` stops at collection with `FileNotFoundError: ... .github/workflows/docs.yml`, and `sphinx-build -b html docs out -W` fails with `WARNING: logo file '../assets/logo/ddd-logo-dark.svg' does not exist` and the same for the favicon (exit 1).
+   - Why it matters: the sdist is the "source distribution" `docs/getting_started.rst:50-52` sends an evaluator to, and it carries the tests and the docs on purpose; whoever tries either finds them broken, and `twine check --strict` in `publish.yml:62` cannot see it.
+   - Fix: add `/assets`, `/editors/vscode` (sources, `package.json`, `package-lock.json`, `LICENSE`, `icon.png`), `/.github/workflows` and `/.pre-commit-hooks.yaml` to the sdist include list - or drop `/tests` and `/docs` from it and say so in the comment at `pyproject.toml:60-63`.
+
+3. **`data_contracts.rst` promises "the generated reference for every model" and renders 21 of the 31; ten models are rendered nowhere in the documentation.**
+   - Where: `docs/data_contracts.rst:52-53` ("and the generated reference for every model"), `:183`, and the directives at `:199-288`; `src/ddd/models/__init__.py` `__all__` exports `ScalarType`, `ExternalType`, `UnitsFile`, `UnitDeclaration`, `SectionsFile`, `SectionDeclaration`, `ConstantsFile`, `ConstantDeclaration`, `RastersFile`, `RasterDeclaration`; a grep of `autopydantic_model::` over `docs/` finds none of the ten on any page.
+   - What: the "Structured datatype description" section (`:217-230`) renders `TypesFile`, `StructType` and `Member` only, so the scalar and external types the FAQ (`docs/faq.rst:287-297`) and the types page build on have no field list, no schema and no diagram; four of the seven file kinds named at `:96-98` have no reference at all.
+   - Why it matters: this is the page the prose pages send readers to for the exact schema of a field; for a units, sections, constants or rasters file the answer today is only `ddd schema <kind>`.
+   - Fix: add `.. autopydantic_model::` directives for the ten (with `:field-show-constraints: False` where an identifier pattern would trip docutils, as the comment at `:193-197` explains), or narrow the claim at `:52-53` and say where the rest lives.
+
+#### Minor
+
+1. **A FAQ address-map transcript is one object stale.**
+   - Where: `docs/faq.rst:506-508` shows `'AxisB', 'BlockA', 'CurveA', 'CurveB', 'FlagA' and 10 others`; the same map over the shipped demo prints `'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 11 others` (run here). The demo gained `Diagnosis` after the transcript was written (`CHANGELOG.md:98-109`), and because the command names `demo.ddd.json` rather than `examples/demo/demo.ddd.json`, `tests/test_transcripts.py:87-89` reads it as an illustration and does not pin it. The concept page's twin at `docs/concept.rst:409-412` is pinned and current.
+   - Fix: update the line, or spell `examples/demo/demo.ddd.json` and `-t examples/templates` so the test owns it.
+
+2. **The FAQ says the per-component cmake target uses "the same two overrides".**
+   - Where: `docs/faq.rst:88-91`; `cmake/Ddd.cmake:247` (`check "${description}" --standalone`); `docs/build_integration.rst:53`; `CHANGELOG.md:119-123` ("instead of naming two checks by hand").
+   - Fix: "wires exactly this invocation, `ddd check --standalone`, into the `<target>.ddd` target".
+
+3. **The README omits `--without`, the option the changelog names as the migration path, and `TEMPLATES`.**
+   - Where: `README.md:660-668` lists the artefacts and "Useful ones: `--dry-run`, `--force`, `--byte-order big`, `--address-map`"; `CHANGELOG.md:45-55` ("should become `ddd generate all --without a2l` if the project names a plugin"); `docs/command_line_interface.rst:109-116` documents it. `README.md:867-870` names `CDEFS`, `GENFLAGS`, `CFLAGS`, `CC` and `INCLUDES` but not `TEMPLATES`, which `docker/compile.sh:11,25` takes and `docs/developer_documentation.rst:318-319` documents.
+   - Fix: add both.
+
+4. **The developer page's "Adding an output format" names a tuple that is now derived, says the cmake module generates "all or c", and the module docstring it builds on says "nothing else has to change".**
+   - Where: `docs/developer_documentation.rst:176-179` ("Add the name to `BUILT_IN_ARTEFACTS` in `src/ddd/plugins.py`") vs `src/ddd/plugins.py:40-45` (`BUILT_IN_GENERATED = ("c", "a2l")`, `BUILT_IN_ARTEFACTS = (*BUILT_IN_GENERATED, "all")`), `src/ddd/cli.py:469` (`--without` choices from `BUILT_IN_GENERATED`) and `:1047` (`ddd artefacts` lists it); `docs/developer_documentation.rst:185-187` ("`cmake/Ddd.cmake` keeps generating `all` or `c`") vs `cmake/Ddd.cmake:467-473` (`set(artefact all)`, `NO_A2L` appends `--without a2l`); `src/ddd/backends/base.py:6-8` ("adding it to the list `_command_generate` assembles in `ddd.cli`. Nothing else has to change") vs the four steps on the page.
+   - Fix: name `BUILT_IN_GENERATED`; say the module always asks for `all` and a new built-in artefact is produced until `--without` leaves it out; point the docstring at the page.
+
+5. **Two Unreleased entries describe successive states of the same script, the later one superseding the earlier.**
+   - Where: `CHANGELOG.md:111-115` ("`ddd-compile` counts a structured variable as the one symbol it is ... read ... `ddd list --format json` ... it now takes the instance") and `CHANGELOG.md:70-75` ("It now reads `ddd dump`"); `docker/verify_symbols.py:6,32` reads the dump's `objects` and `instances`.
+   - Fix: one entry stating the shipped behaviour.
+
+6. **The changelog header's definition of the public interface is narrower than what the changelog itself treats as interface.**
+   - Where: `CHANGELOG.md:7-9` (check identifiers, command names, json file formats; "anything else ... is not") and `README.md:42-43`; migration notes are nevertheless written for command options (`CHANGELOG.md:289-291`), for cmake options (`:42-43`, `:53-55`), for the `--renames` file (`:196-199`) and for the template model (`:303-311`); `docs/developer_documentation.rst:53` calls the template naming rules "part of the interface a project depends on".
+   - Fix: extend the sentence to the command options, the `ddd_generate`/`ddd_add_component` signatures, the template model, and the `--renames` and `ddd-build.json` formats.
+
+7. **The version is spelled in thirteen places across the pages and only some are pinned; the release section does not list them.**
+   - Where: pinned - `pyproject.toml:11`, `src/ddd/__init__.py:16`, `editors/vscode/package.json` (`tests/test_documentation.py:517-529`), `docs/getting_started.rst:39,57` (the transcript test); not pinned - the wheel file name at `README.md:53` and `docs/getting_started.rst:29`, the banners at `docs/getting_started.rst:399,433,466`, `docs/generated_artefacts.rst:134,516,592,599`, `docs/faq.rst:572`, `docs/templates.rst:180`. The release commit `5b84aad` touched all of them by hand; `docs/developer_documentation.rst:436-501` ("Publishing a release") does not say where the version lives.
+   - Fix: a sentence in that section, or a test asserting the pages' wheel name and banners carry `__version__`.
+
+8. **The developer page describes an environment rule the repository's environments do not carry.**
+   - Where: `docs/developer_documentation.rst:494-501` ("GitHub creates an environment with its deployments restricted to the default branch ... choose *Selected branches and tags* for each and add a tag rule for `v*`"); `gh api repos/Sauci/ddd/environments` reports `deployment_branch_policy: null` (no restriction) for both `pypi` and `testpypi`, and the v0.8.0 release deployed to `pypi` from its tag with that setting.
+   - Fix: describe the state the repository is in; the page is the only record of a setting that lives outside the files.
+
+9. **The Dockerfile installs cmake and ninja twice since the dev requirements gained them.**
+   - Where: `docker/Dockerfile:38` (`ninja-build` from apt), `:43-45` (`pip install "cmake>=3.30"`, "the current release comes from pypi"), `:55` (`pip install ".[dev]"`); `requirements-dev.txt:8-13` (`cmake>=3.30`, `ninja>=1.11`, added with `tests/test_cmake.py`). Harmless, but the comment at `:43-44` now explains a step `.[dev]` repeats.
+   - Fix: drop `:43-45` and `ninja-build`, move the comment to the `.[dev]` line.
+
+10. **The demo's own description overstates it.**
+    - Where: `examples/demo/demo.ddd.json:5` "Demonstration project showing every DDD feature"; the demo uses no units, sections, constants or rasters file (`examples/vocabulary` does) and no plugin (`examples/layout` does). `docs/getting_started.rst:63` says it accurately: "exercises every kind of data object DDD knows".
+    - Fix: "showing every kind of data object".
+
+11. **The developer page names four documentation-guarding suites and leaves out the transcript test the README names.**
+    - Where: `docs/developer_documentation.rst:263-273` vs `README.md:898-908` and `tests/test_transcripts.py:1-7`; the transcript test is the stronger of the two guards.
+    - Fix: one sentence.
+
+### Changelog audit
+
+**Unreleased**
+
+- Renaming a type or a constant from the editor - verified in part: `renameable_at` in `src/ddd/lsp/server.py`, the refusal "spells a base datatype, which a declared type may not be called" at `src/ddd/lsp/navigation.py:433`; the edit mechanics are pass 5's domain.
+- Plugins in the build - verified: `ddd sources examples/layout/project.ddd.json` lists `examples/plugins/ddd_layout.py` after the two description files; `ddd generate all --dry-run` lists `ddd_layout.h` after the built-in files; `cmake/Ddd.cmake:355-369` takes `PLUGINS`, `:535` depends on `plugin_files`, `PLUGINS` beside `PROJECT` is refused (`tests/test_cmake.py:335-358`).
+- Compile usage travels with `<image>_ddd_headers` - verified: `cmake/Ddd.cmake:571-575` sets the include directories, definitions and options `INTERFACE` on `_ddd_headers` (the diff from v0.8.0 shows them moving off `_ddd_globals PRIVATE`).
+- `NO_A2L` / `--without c|a2l` - verified: `--without c --without a2l` is refused with "this run would write nothing ... this project provides none", exit 2; `cmake/Ddd.cmake:470-473`.
+- `ddd artefacts` - verified: text and json output, `--plugin` form, `plugins_without_artefact` in the json.
+- A structure DDD only carries - verified: `docker/compile.sh:53` runs `ddd dump --format json`, `docker/verify_symbols.py:32` counts objects and instances; the demo dumps 20 objects and 1 instance, which matches the README's "20 of 21 declared variables".
+- `--without` subtracts the options - verified: "`--address-map` belongs to the a2l artefact, left out by `--without`" (exit 2), the same for `--byte-order`; `--without c` runs without `-t` and writes the a2l alone.
+- Refusal before the gate - verified: the inconsistent project gets the same usage error, not its findings.
+- `ddd-compile` finds the headers - verified by reading `docker/compile.sh:32-42` (the walk up to `include/`, `INCLUDES` appended, the derived path kept as one element); not run.
+- `NO_A2L` and the address map - verified: `cmake/Ddd.cmake:483` guards the dependency with `NOT arg_NO_A2L`.
+- The demo declares an external type - verified: `examples/demo/components/sensor_hub.ddd.json` (`DriverState_t`, `SensorDiagnosis_t`, `Diagnosis`), `examples/demo/include/sensor_hub_driver.h`, `ddd list` shows `Diagnosis.faults` only, `examples/cmake/CMakeLists.txt:37-39` publishes the directory from `sensor_hub`, `tests/test_cmake.py:238-280` builds it.
+- `ddd-compile` counts a structured variable as one symbol - superseded by the `ddd dump` entry above (Minor 5).
+
+**0.8.0**
+
+- `--standalone` - verified (`ok: 12 variables in 1 component are consistent`; `cmake/Ddd.cmake:247`); an empty address map raises no `address-missing` - verified.
+- Published schemas accept the shorthands, `anyOf` for the conversion - verified through `tests/test_documentation.py:840-930` and the page; the examples carry identities - verified; the transcripts are re-run - verified.
+- Quick fixes on `limits` - not re-tested (pass 5).
+- Fixes from a whole-project review - spot-checked: the section pattern `^[A-Za-z0-9_.$]+$` (`schemas/ddd_sections.schema.json:24`); `ddd id --assign` fills an explicit `"id": null` and keeps a CRLF file's and a mixed file's endings (tested by byte count: 18 CR before and after; the inserted line follows its neighbour's ending); a plugin named `c`, `a2l` or `all` is refused (`src/ddd/plugins.py:116`); the cmake module passes the a2l options only when the a2l is generated (`cmake/Ddd.cmake:483`); the example plugin reports a key claimed twice in a baseline and honours a condition (`examples/plugins/ddd_layout.py:135-160,254-259`). The a2l, comparison and language-server items are passes 3-5's domain.
+- Plugins - verified: the five checks are in `ddd checks`; `--plugin` on `schema`, `compare` and `checks`; `DICTIONARY_FORMAT = 7`; the example plugin.
+- `id` - verified: `duplicate-id`, `consumer-identity`, `missing-id` registered; `ddd id --assign` writes and is idempotent (`wrote 2 ids`, then `wrote 0 ids`); the README's "twelve lowercase base32 characters" agrees.
+- `ddd id --assign FILE...` - verified.
+- `ddd compare --renames PATH` - the option is there; its output is pass 3's.
+
+**Version and format.** `0.8.0` in `pyproject.toml`, `src/ddd/__init__.py` and `editors/vscode/package.json`; `DICTIONARY_FORMAT = 7` and nothing in `ir.py`, the models or the schemas changed since `v0.8.0`, so the Unreleased section is right to claim no format bump. It adds a command and an option, which is a minor-version change at the next release.
+
+**Changes since `v0.8.0` the changelog does not record.** The source changes are all covered (`loading.py`'s `plugin_paths` is the `ddd sources` entry, `plugins.py`'s `plugin_source`/`BUILT_IN_GENERATED` are internal, the lsp change is the rename entry, `cli.py` is `artefacts` and `--without`). Not recorded, and not public interface by the header's definition: the three `examples/pressure` deliveries the comparison page and the README now rely on (`034a395`), `tests/test_cmake.py` with `cmake` and `ninja` in the dev requirements (`5e4f912`), and the review document. Nothing the header's definition requires is missing.
+
+### Untracked follow-ups from the planning documents
+
+Issues are disabled on the repository (`gh issue list`: "has disabled issues"), so nothing outside these documents tracks them:
+
+- `docs/superpowers/specs/2026-09-02-xcp-measurement-rasters-design.md:386-394`: the module-level `DAQ` block (a `daq` key beside `rasters`); `FIXED_EVENT_LIST`; several rasters per variable.
+- `docs/superpowers/specs/2026-09-03-object-identity-design.md:374-386`: member renames (an id on a type's member - `docs/superpowers/plans/2026-09-03-object-identity.md:961` calls it a known gap); `ddd id --verify`; renames across a merge of two projects (`duplicate-id` says nothing about which is the original).
+- `docs/superpowers/specs/2026-09-04-plugins-design.md:432-452`: extension blocks on a component, member, section or raster; blocks stated by a consumer; a block on a leaf; entry-point discovery; language-server features for a block; positions in the dictionary. "Plugin backends under `all`" in the same list is now done (Unreleased) but still listed as deferred, and the status line at `:4` still says "approved design, not yet implemented" although 0.8.0 shipped it.
+- `docs/superpowers/specs/2026-09-05-plugins-in-the-build-design.md:153-157`: declaring a plugin's artefacts as build outputs (via `--dry-run --format json` at configure time); a per-build `PLUGIN_ARTEFACTS` selection. Its status line (`:4`) also says "not yet implemented" although PR #11 merged it, and its section 2 (`:36-38`) says CMake is not run in CI while `tests/test_cmake.py` now does.
+
+### Assessment
+
+The pages of this pass hold up almost sentence for sentence: the tutorial reproduces exactly, the FAQ's answers are true today with one stale number, the developer page describes the repository as it is, and the changelog is reliable in every detail I could exercise; the static checks, the docs build and the release machinery are all clean and did what they promise for v0.8.0. What remains is at the edges - a README paragraph that contradicts the module it summarises, an sdist whose shipped tests and docs cannot run, a reference page missing a third of its models, and a handful of sentences the last three features left behind.

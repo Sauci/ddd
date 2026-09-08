@@ -21,8 +21,9 @@ not, and the templates a project provides are its own.
   positions from, and wrote edits for, the file on disk, while the client applies an edit to
   what is on screen; one unsaved line above a declaration was enough to rewrite an unrelated
   line.  The server now keeps the text of every open document (`textDocumentSync.change` is
-  `1`, full content), computes positions and edits against it, leaves a file alone where an
-  open buffer has moved the declaration the index knew, and answers a client that takes
+  `1`, full content), computes positions and edits against it, refuses a rename that an open
+  buffer with unsaved changes would leave half applied, naming the file, withholds a quick
+  fix it cannot check against every other declaration, and answers a client that takes
   `documentChanges` with the version each edit was computed for.  The analysis still reads
   the disk on open and save, as before.
 

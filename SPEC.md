@@ -419,10 +419,12 @@ Kind specific attributes:
   the physical reading beside the raw value.
 - `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (A2L `COM_AXIS`).
-  Referring is not using: the reference resolves against every declaration of the project
-  and obliges the referring component to nothing, so an axis that no `input` declaration
+  Referring is not reading: the reference resolves against every declaration of the project
+  and makes the referring component no consumer, so an axis that no `input` declaration
   reads is still `unused-output`, and a component that wants the axis in its own header
-  declares it as its `input`.
+  declares it as its `input`. It is a use of the object all the same, so a reference into
+  another component's `local` object is `local-conflict`
+  ([section 4](#4-consistency-checks)).
 - `input` names the measurement that indexes an axis (A2L input quantity); when omitted,
   the A2L uses `NO_INPUT_QUANTITY`.
 - Calibration objects (every kind except `measurement`) are always generated `const`,

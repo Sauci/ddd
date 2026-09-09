@@ -1025,6 +1025,8 @@ class TestTheCheckHook:
     def test_a_hook_that_raises_is_a_usage_error_naming_the_plugin(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """The findings gathered before the hook ran - here, the fixture's `missing-id` - must
+        still reach the reader; the hook's own failure is not this project's only news."""
         write_plugin(tree / "tools", source=RAISING_PLUGIN)
         write_tree(
             tree,
@@ -1034,7 +1036,10 @@ class TestTheCheckHook:
             },
         )
         assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
-        assert "plugin 'tag' failed in its check hook: boom" in capsys.readouterr().err
+        captured = capsys.readouterr().err
+        assert "info[missing-id]" in captured
+        assert "plugin 'tag' failed in its check hook: boom" in captured
+        assert captured.index("missing-id") < captured.index("failed in its check hook")
 
     def test_the_language_server_runs_the_hook_too(self, tree: Path) -> None:
         tagged(

@@ -1383,7 +1383,131 @@ class TestOutputDirectory:
             str(TEMPLATES),
         ]
         assert main(arguments) == EXIT_USAGE
-        assert "cannot write into" in capsys.readouterr().err
+        captured = capsys.readouterr().err
+        # The old wording named the output directory generically ("cannot write into"); the
+        # new one names the actual path that failed - here, that is the directory itself.
+        assert "cannot write '" in captured
+        assert (tmp_path / "blocked").as_posix() in captured
+
+
+class TestFindingsSurviveAFailedStep:
+    """A step that fails after the analysis must not take the findings down with it.
+
+    The one run that fails is the one whose findings the reader needs; and the failing step
+    - a file that cannot be written, a template that cannot render - is usually unrelated to
+    what the findings say.
+    """
+
+    def files(self) -> dict[str, Any]:
+        # An info finding (`missing-id`) on an otherwise clean project: what has to survive.
+        return {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+        }
+
+    def test_a_renames_file_that_cannot_be_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "blocked").mkdir()
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--renames",
+                str(tree / "blocked"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "cannot write the --renames file" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("--renames file")
+
+    def test_a_template_that_fails_to_render(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "ddd_globals.c.jinja2").write_text(
+            "{{ model.no_such_attribute.deeper }}", encoding="utf-8"
+        )
+        code = main(
+            [
+                "generate",
+                "c",
+                str(tree / "project.ddd.json"),
+                "-t",
+                str(templates),
+                "-o",
+                str(tree / "out"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "ddd_globals.c.jinja2" in captured.err
+
+    def test_an_address_map_that_cannot_be_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "map.json").write_text("{ not json", encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--address-map",
+                str(tree / "map.json"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "not valid json" in captured.err
+
+    def test_an_output_file_that_cannot_be_written_is_named(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The directory is fine; one target inside it is a directory itself. Naming the
+        directory sent the reader to check its permissions."""
+        write_tree(tree, self.files())
+        out = tree / "out"
+        (out / "ddd_globals.h").mkdir(parents=True)
+        code = main(
+            ["generate", "c", str(tree / "project.ddd.json"), "-t", str(TEMPLATES), "-o", str(out)]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "cannot write '" in captured.err and "ddd_globals.h'" in captured.err
+
+    def test_json_output_carries_the_findings_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "blocked").mkdir()
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--renames",
+                str(tree / "blocked"),
+                "--format",
+                "json",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        payload = json.loads(captured.out)
+        assert [entry["check"] for entry in payload["diagnostics"]] == ["missing-id"]
+        assert "cannot write the --renames file" in captured.err
 
 
 class TestVersion:

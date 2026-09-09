@@ -6,7 +6,7 @@ import argparse
 import contextlib
 import json
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -549,7 +549,8 @@ def _command_check(args: argparse.Namespace) -> int:
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
     if resolved is not None and args.baseline is not None:
-        baseline = _read_baseline(args.baseline, bag)
+        with _reported_on_failure(bag, args.format):
+            baseline = _read_baseline(args.baseline, bag)
         if baseline is not None:
             compare(baseline, resolved.dictionary, bag, location=Location(args.project))
             run_compare_hooks(
@@ -580,8 +581,9 @@ def _command_compare(args: argparse.Namespace) -> int:
     # The baseline is a delivery that has already gone out; its own findings are not this
     # run's business. The candidate's are, which is why only it shares the bag - checking a
     # project description and comparing it are both reported by one `ddd compare`.
-    baseline = _read_baseline(args.baseline, bag)
-    candidate = _read_dictionary(args.candidate, bag)
+    with _reported_on_failure(bag, args.format):
+        baseline = _read_baseline(args.baseline, bag)
+        candidate = _read_dictionary(args.candidate, bag)
     if baseline is None or candidate is None:
         _report(bag, args.format)
         return EXIT_FINDINGS
@@ -603,9 +605,17 @@ def _command_compare(args: argparse.Namespace) -> int:
     if args.renames is not None:
         # Written whether or not the comparison found errors: a delivery that cannot be
         # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        args.renames.write_text(
-            json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
-        )
+        with _reported_on_failure(bag, args.format):
+            try:
+                args.renames.write_text(
+                    json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
+                )
+            except OSError as error:
+                msg = (
+                    f"cannot write the --renames file '{args.renames.as_posix()}': "
+                    f"{error.strerror or error}"
+                )
+                raise OSError(msg) from None
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
@@ -723,60 +733,66 @@ def _command_generate(args: argparse.Namespace) -> int:
         )
         raise ValueError(msg)
 
-    # Guarded on the artefact, not just on the option: a run that does not write the a2l has
-    # no use for the map and must not be killed by one it was never going to read.
-    wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
-    addresses = load_address_map(args.address_map) if wants_addresses else {}
-    if wants_addresses:
-        # Before the gate below, so that a --strict build stops rather than writing a file
-        # whose addresses it has just been told are incomplete.
-        _check_address_coverage(dictionary, addresses, args.address_map, bag)
-    if bag.has_errors and not args.force:
-        _report(bag, args.format)
-        return EXIT_FINDINGS
+    with _reported_on_failure(bag, args.format):
+        # Guarded on the artefact, not just on the option: a run that does not write the a2l
+        # has no use for the map and must not be killed by one it was never going to read.
+        wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
+        addresses = load_address_map(args.address_map) if wants_addresses else {}
+        if wants_addresses:
+            # Before the gate below, so that a --strict build stops rather than writing a
+            # file whose addresses it has just been told are incomplete.
+            _check_address_coverage(dictionary, addresses, args.address_map, bag)
+        if bag.has_errors and not args.force:
+            _report(bag, args.format)
+            return EXIT_FINDINGS
 
-    backends: list[Backend] = []
-    if args.render_c:
-        backends.append(
-            CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
-        )
-    if args.render_a2l:
-        backends.append(
-            A2lBackend(
-                A2lOptions(
-                    byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
-                    addresses=addresses,
-                ),
-                GENERATOR,
+        backends: list[Backend] = []
+        if args.render_c:
+            backends.append(
+                CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
             )
-        )
-    if getattr(args, "render_plugins", False):
-        # After the built-in backends and in the order the project names the plugins, which
-        # is the order their hooks run in; the renderer refuses a path two backends claim.
-        backends.extend(
-            backend_of(plugin, dictionary, GENERATOR)
-            for plugin in resolved.plugins
-            if plugin.backend is not None
-        )
-    name = getattr(args, "plugin_artefact", None)
-    if name is not None:
-        plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
-        if plugin is None:
-            provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
-            msg = (
-                f"'{name}' is not an artefact of this project; it provides: "
-                f"{provided or 'no plugin artefact'}"
+        if args.render_a2l:
+            backends.append(
+                A2lBackend(
+                    A2lOptions(
+                        byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
+                        addresses=addresses,
+                    ),
+                    GENERATOR,
+                )
             )
-            raise ValueError(msg)
-        backends.append(backend_of(plugin, dictionary, GENERATOR))
-    files = render(dictionary, backends, args.output_dir)
-    try:
-        results = write(files, dry_run=args.dry_run)
-    except OSError as error:
-        # The output directory is the one thing a caller gets wrong regularly - a path that
-        # is a file, or one nothing may be written to. Naming it beats the bare errno text.
-        msg = f"cannot write into '{args.output_dir.as_posix()}': {error.strerror or error}"
-        raise OSError(msg) from None
+        if getattr(args, "render_plugins", False):
+            # After the built-in backends and in the order the project names the plugins,
+            # which is the order their hooks run in; the renderer refuses a path two backends
+            # claim.
+            backends.extend(
+                backend_of(plugin, dictionary, GENERATOR)
+                for plugin in resolved.plugins
+                if plugin.backend is not None
+            )
+        name = getattr(args, "plugin_artefact", None)
+        if name is not None:
+            plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
+            if plugin is None:
+                provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
+                msg = (
+                    f"'{name}' is not an artefact of this project; it provides: "
+                    f"{provided or 'no plugin artefact'}"
+                )
+                raise ValueError(msg)
+            backends.append(backend_of(plugin, dictionary, GENERATOR))
+        files = render(dictionary, backends, args.output_dir)
+        try:
+            results = write(files, dry_run=args.dry_run)
+        except OSError as error:
+            # The target is the one thing a caller gets wrong regularly - a path that is a
+            # directory, or one nothing may be written to. Naming the file beats the bare
+            # errno text, and beats naming the directory, which is usually fine.
+            target = (
+                Path(error.filename).as_posix() if error.filename else args.output_dir.as_posix()
+            )
+            msg = f"cannot write '{target}': {error.strerror or error}"
+            raise OSError(msg) from None
 
     if args.format == "json":
         payload = _diagnostics_payload(bag)
@@ -1166,7 +1182,10 @@ def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
     if workspace is None or bag.has_errors:
         return None, bag
     bag.policy.verify(bag.registered)
-    dictionary = analyze(workspace, bag)
+    with _reported_on_failure(bag, args.format):
+        # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
+        # findings collected before the hook ran are the project's, and are printed first.
+        dictionary = analyze(workspace, bag)
     return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
 
 
@@ -1248,6 +1267,22 @@ def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
         print(diagnostic.render(root), file=sys.stderr)
     if len(bag):
         print(bag.summary(), file=sys.stderr)
+
+
+@contextlib.contextmanager
+def _reported_on_failure(bag: DiagnosticBag, output_format: str) -> Iterator[None]:
+    """Print the findings gathered so far if what follows turns into a usage error.
+
+    Every command analyses first and produces something second - a rename list, an address
+    map read, the artefacts - and ``main`` turns a failure of the second half into one line
+    and exit 2. Without this the findings of the first half were gone with it, and the run
+    that failed is exactly the run whose findings the reader needs.
+    """
+    try:
+        yield
+    except (OSError, ValueError):
+        _report(bag, output_format)
+        raise
 
 
 def _init_cell(entry: Comparable) -> str:

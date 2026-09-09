@@ -496,6 +496,77 @@ class TestSeverityPolicy:
         }
 
 
+class TestDroppedDeclarations:
+    """A declaration that cannot resolve is still a declaration.
+
+    Dropping one used to erase it from every census, so the ownership checks reasoned about
+    a project in which it had never been written: a producer of an unknown type made every
+    consumer a `missing-producer`, pointing at a file another team owns and telling them to
+    add a producer that exists.
+    """
+
+    def test_a_dropped_producer_is_not_a_missing_producer(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+        )
+        assert checks(bag) == ["unknown-type"], messages(bag)
+
+    def test_a_dropped_consumer_is_not_an_unused_output(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", dimensions=[2])),
+                "b.ddd.json": component("B", declare("input", "x", dimensions=["NOPE"])),
+            },
+        )
+        assert checks(bag) == ["unknown-constant"], messages(bag)
+
+    def test_an_object_whose_producer_was_dropped_is_left_out_whole(self, tree: Path) -> None:
+        """The producer's declaration is the one that says what the object is; without it
+        the consumers' copies describe nothing that has storage."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+            severities=["unknown-type=warning"],
+        )
+        assert dictionary is not None, messages(bag)
+        assert dictionary.objects == ()
+        assert [d.name for c in dictionary.components for d in c.declarations] == []
+
+    def test_two_dropped_producers_are_still_two_producers(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("output", "x", typename="Nope_t")),
+            },
+        )
+        assert sorted(checks(bag)) == ["multiple-producers", "unknown-type", "unknown-type"]
+
+    def test_a_second_declaration_of_a_dropped_name_is_a_duplicate(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Nope_t"), declare("local", "X", "uint16")
+                ),
+            },
+        )
+        assert checks(bag) == ["unknown-type", "duplicate-declaration"]
+
+
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(
         self, tree: Path

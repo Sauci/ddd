@@ -1901,3 +1901,97 @@ class TestScalarTypeChecks:
         finding = first(bag)
         assert "does not fit into uint8" in finding.render()
         assert finding.location.pointer == "component.interface[0].definition.init"
+
+    def test_a_declared_types_enum_reaches_the_types_header(self, tree: Path) -> None:
+        """A structure member's enum reaches the a2l as the instance's ``COMPU_VTAB``, so a
+        header that omitted the matching ``typedef enum`` would leave the two disagreeing
+        about what the name means; a scalar type's own enum is registered on the same terms,
+        whether or not anything yet exists to name it.
+        """
+        mode_t = scalar(
+            "Mode_t",
+            "uint8",
+            conversion={
+                "kind": "enum",
+                "name": "Mode_e",
+                "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 1},
+            },
+        )
+
+        # (a) the type on its own, named by no declaration.
+        lone, bag = run_analysis(
+            tree / "lone",
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(mode_t),
+            },
+        )
+        assert lone is not None, messages(bag)
+        header = {f.path.name: f.content for f in render_files(lone, tree / "lone" / "gen")}
+        assert "typedef enum" in header["ddd_types.h"]
+        assert "Mode_e" in header["ddd_types.h"]
+
+        # (b) a structure member naming the type, with an instance of the structure.
+        instantiated, bag = run_analysis(
+            tree / "member",
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "s.ddd.json"),
+                "types.ddd.json": types(mode_t, struct("Sensor_t", val("mode", typename="Mode_t"))),
+                "s.ddd.json": component("S", declare("local", "X", typename="Sensor_t")),
+            },
+        )
+        assert instantiated is not None, messages(bag)
+        header = {
+            f.path.name: f.content for f in render_files(instantiated, tree / "member" / "gen")
+        }
+        assert "typedef enum" in header["ddd_types.h"]
+        assert "Mode_e" in header["ddd_types.h"]
+
+    def test_an_inline_enum_disagreeing_with_a_types_enum_is_a_conflict(self, tree: Path) -> None:
+        """Silent before 7415032: a type's enum reached no registry for an inline one to
+        disagree with. Now it does, and the disagreement is real - the header carries the
+        type's spelling while this declaration's own a2l ``COMPU_VTAB`` would carry the other.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    scalar(
+                        "Mode_t",
+                        "uint8",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 1},
+                        },
+                    )
+                ),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "X",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 7},
+                        },
+                    ),
+                ),
+            },
+        )
+        assert checks(bag) == ["enum-conflict"]
+        finding = first(bag)
+        assert finding.location.path.name == "a.ddd.json"
+        assert finding.location.pointer == "component.interface[0].definition.conversion"
+        note_text, note_location = finding.notes[1]
+        assert note_text == "first defined as: MODE_IDLE=0, MODE_RUNNING=1"
+        assert note_location.path.name == "types.ddd.json"
+        assert note_location.pointer == "types[0].conversion"
+
+        # The registry keeps the type's spelling; the header has no way to carry both.
+        assert dictionary is not None, messages(bag)
+        header = {f.path.name: f.content for f in render_files(dictionary, tree / "gen")}
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 7" not in header["ddd_types.h"]

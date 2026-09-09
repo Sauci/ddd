@@ -785,9 +785,10 @@ each stating its `type`: `scalar`, `struct` or `external`.
   one, so a chain of aliases, and with it a scalar cycle, cannot be written at all. Its
   `limits` and its enumerators are checked where the type is declared, once and whether or
   not any declaration names it: `limits-out-of-range` at its `limits`, and the names and
-  values of an enum at its `conversion`. A declaration naming the type restates none of
-  what the type fixes ([section 3.3.2](#332-naming-a-declared-type)), so what is checked
-  there is what it adds of its own, its `init`.
+  values of an enum at its `conversion`; its enum reaches the types header on the same
+  terms as a structure member's ([section 5.1](#51-c-code)). A declaration naming the type
+  restates none of what the type fixes ([section 3.3.2](#332-naming-a-declared-type)), so
+  what is checked there is what it adds of its own, its `init`.
 - A **struct** type declares `members` (required and non-empty), in the order they are
   laid out; `description` is optional. Two members of one structure **must not** share a
   name (`schema`). Every member states `name`, `member` and its datatype, as `datatype` or
@@ -1501,7 +1502,8 @@ warning set containing `-Wcast-qual`. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
 every declaration; the example templates emit each constant as a `#define`. The enum
-conversions in use ([section 3.4](#34-conversions)) are offered with their enumerators, and
+conversions a declaration states, or a declared type carries whether or not any declaration
+names it ([section 3.4](#34-conversions)) are offered with their enumerators, and
 the example templates emit a `typedef enum` for each; a variable under an enum conversion is
 declared with its base datatype, the `typedef enum` being for the enumerators alone. The
 headers of the external types in use ([section 3.7](#37-type-description)) are offered too,

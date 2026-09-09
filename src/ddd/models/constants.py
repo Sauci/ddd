@@ -33,13 +33,14 @@ class ConstantDeclaration(BaseModel):
     the templates receive every declared constant to emit.
     """
 
-    value: Annotated[int, Field(strict=True, ge=1)]
+    value: Annotated[int, Field(strict=True, ge=1, le=2**64 - 1)]
     """The value, an integer of at least 1, written as a number.
 
     A literal only: an expression would put a parser and an evaluation order into a
     description format, and a constant cannot name another constant, so what cannot be
     written cannot cycle.  At least 1 because the value is an array dimension, and an array
-    of no elements is no array.
+    of no elements is no array.  At most what 64 bits can hold, because this value becomes a
+    dimension - itself bounded the same way - and no datatype DDD offers counts higher.
     """
 
     description: str = ""

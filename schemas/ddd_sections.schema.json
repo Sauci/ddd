@@ -30,7 +30,8 @@
           "description": "``read-write`` or ``read-only``, from the running software's point of view."
         },
         "alignment": {
-          "description": "The alignment the section guarantees, in bytes; a power of two.\n\nWhat it is checked against: an object whose datatype needs stricter alignment than the\nsection guarantees would be padded or faulting, and either is worth a finding.",
+          "description": "The alignment the section guarantees, in bytes; a power of two.\n\nWhat it is checked against: an object whose datatype needs stricter alignment than the\nsection guarantees would be padded or faulting, and either is worth a finding.  Bounded\nto what 64 bits can hold: an alignment no address on a real target could satisfy is\nrefused here rather than accepted as a power of two nothing could ever place.",
+          "maximum": 18446744073709551615,
           "minimum": 1,
           "title": "Alignment",
           "type": "integer"

@@ -11,7 +11,7 @@ import dataclasses
 import difflib
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
@@ -63,6 +63,42 @@ from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
+
+_MAX_TYPE_NESTING = 64
+"""How many levels of structure DDD reads.
+
+A level is one structure: a structure whose members all hold values is one level deep, and
+one nesting an *n* level structure is *n* + 1 - a scalar, an external type and a name nobody
+declares are not structures and add no level. The limit exists because the walks over a
+structure descend one call per level, so a chain a few hundred deep ends the run in python's
+``RecursionError`` - a traceback rather than a finding - and no c compiler would accept the
+generated header anyway.
+"""
+
+_MAX_ELEMENTS = 10_000_000
+"""How many elements one array holds.
+
+The dictionary, the a2l and the generated code carry every element, so a shape is not a
+number DDD can hold at arm's length: the c backend broadcasts a scalar ``init`` into one
+literal per element, and every element of an array of structures is spread out into leaves of
+its own. An array of a billion is a run that writes no file and reports no finding for as
+long as anybody cares to wait, so the shape is refused where it is written instead. The limit
+sits well past any array a description means to state, and already past what a build would
+enjoy - ten million literals is a generated file no compiler is happy with - because a shape
+larger than this is a constant that resolved to the wrong number rather than storage anybody
+planned.
+"""
+
+_MAX_LEAVES = 100_000
+"""How many leaves an array of structures contributes.
+
+A leaf is one value member of one element, and it reaches the dictionary as an object of its
+own, the a2l as a record of its own and ``ddd list`` as a row of its own, because no single
+address describes ``cell[0].raw`` and ``cell[1].raw`` at once. Far below
+:data:`_MAX_ELEMENTS`, and for the reason the two differ in the outputs: an array of values
+is one declaration and one ``MATRIX_DIM`` however long it is, where an array of structures
+costs the outputs one entry per member per element.
+"""
 
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
@@ -368,25 +404,35 @@ def _ordered_structures(declared: dict[str, LoadedType]) -> list[LoadedType]:
     A depth first walk in name order, so the result is stable whichever way the includes
     happened to expand. The graph is known to be acyclic by the time this runs; a cycle is
     reported by :meth:`_Analysis._check_types` and the structures in it are left out.
+
+    Walked with an explicit stack rather than by recursion, because this one runs over every
+    declared type - the ones :data:`_MAX_TYPE_NESTING` refused included, since they still
+    reach the dictionary as declarations - and so cannot lean on that cap the way the walks
+    inside the analysis do.
     """
     ordered: list[LoadedType] = []
     placed: set[str] = set()
     walking: set[str] = set()
+    stack: list[tuple[str, Iterator[str]]] = []
 
-    def visit(name: str) -> None:
-        entry = declared.get(name)
-        if entry is None or name in placed or name in walking:
-            return
-        walking.add(name)
-        for _, _, nested in _nested_types(entry):
-            visit(nested)
-        walking.discard(name)
-        if entry.structure is not None:
-            ordered.append(entry)
-        placed.add(name)
-
-    for name in sorted(declared):
-        visit(name)
+    for start in sorted(declared):
+        if start in placed:
+            continue
+        walking.add(start)
+        stack.append((start, iter(_nested_names(declared[start]))))
+        while stack:
+            name, pending = stack[-1]
+            nested = next(pending, None)
+            if nested is None:
+                stack.pop()
+                walking.discard(name)
+                entry = declared[name]
+                if entry.structure is not None:
+                    ordered.append(entry)
+                placed.add(name)
+            elif nested in declared and nested not in placed and nested not in walking:
+                walking.add(nested)
+                stack.append((nested, iter(_nested_names(declared[nested]))))
     return ordered
 
 
@@ -407,31 +453,114 @@ def _nested_types(entry: LoadedType) -> list[tuple[int, Member, str]]:
     ]
 
 
-def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ...]:
+def _nested_names(entry: LoadedType) -> list[str]:
+    """The names the members of a structure nest, in the order the members are written."""
+    return [nested for _, _, nested in _nested_types(entry)]
+
+
+def _nesting_cycle(
+    start: str, declared: dict[str, LoadedType], settled: set[str]
+) -> tuple[str, ...]:
     """The chain of nested structures leading from ``start`` back to a name already on it.
 
     Returns the cycle itself rather than a bare yes, because the chain is the only useful part
     of the finding: ``A -> B -> C -> A`` says which member to remove, where "A is recursive"
-    leaves the reader to work out how.
+    leaves the reader to work out how. An undeclared name met on the way has no members to
+    follow and is not one; it is reported as ``unknown-type``.
+
+    ``start`` is a declared name - the walk is run once per declared type. Walked with an
+    explicit stack, because the chain leading *into* a cycle is as long as somebody wrote it:
+    a type that nests itself has no depth at all, so :data:`_MAX_TYPE_NESTING` refuses nothing
+    here and a recursive walk would run out of stack before it found the cycle to report.
+
+    Nesting is not a tree, though: two members of one structure can nest the same name, which
+    doubles as a route to whatever *it* nests, and so on - so sharing a few levels deep costs
+    as much again as walking it out in full would for each route, and enough levels of it is
+    exponential. ``settled`` is what stops that: the classic three-colour walk's black, a name
+    added to it only once every name it nests, however deep, has been walked without meeting
+    the chain that was open at the time. A settled name can never be *on* a cycle - reaching
+    one from it would mean that walk had met the chain first, rather than running out of names
+    to try - so it is skipped wherever it is met rather than walked again. It is the caller's
+    to keep, and shared rather than made fresh here, because the sharing this guards against is
+    not only within one ``start``'s own walk: :meth:`_Analysis._check_types` keeps one
+    ``settled`` across every ``start`` in its pass, so a name one type's search has already
+    cleared is not walked again from the next. A cycle only reachable from that next type is
+    still found regardless - reaching it at all means walking its members, and a name only
+    joins ``settled`` once its own walk found none, so nothing on an unreported cycle ever is.
+    ``on_chain`` mirrors ``chain`` for the plainer reason that a long chain with nothing shared
+    to remember still walks every name on it once: searching the list for each of those cost
+    the square of the chain's length, where a set costs one.
     """
-    chain: list[str] = []
+    chain: list[str] = [start]
+    on_chain: set[str] = {start}
+    stack: list[Iterator[str]] = [iter(_nested_names(declared[start]))]
+    while stack:
+        nested = next(stack[-1], None)
+        if nested is None:
+            stack.pop()
+            name = chain.pop()
+            on_chain.discard(name)
+            settled.add(name)
+        elif nested in on_chain:
+            return (*chain[chain.index(nested) :], nested)
+        elif nested in settled:
+            continue
+        elif nested in declared:
+            chain.append(nested)
+            on_chain.add(nested)
+            stack.append(iter(_nested_names(declared[nested])))
+    return ()
 
-    def walk(name: str) -> tuple[str, ...]:
-        if name in chain:
-            return (*chain[chain.index(name) :], name)
-        entry = declared.get(name)
-        if entry is None:
-            # An undeclared type has no members to follow; it is reported as unknown-type.
-            return ()
-        chain.append(name)
-        for _, _, nested in _nested_types(entry):
-            found = walk(nested)
-            if found:
-                return found
-        chain.pop()
-        return ()
 
-    return walk(start)
+def _nesting_depths(declared: dict[str, LoadedType]) -> tuple[dict[str, int], set[str]]:
+    """How many levels deep each declared type nests, and separately, which never bottom out.
+
+    Levels as :data:`_MAX_TYPE_NESTING` counts them: a structure whose members all hold values
+    is one level, a structure nesting an *n* level structure is *n* + 1, and anything that is
+    not a structure - a scalar, an external type, a name no file declares - is no level at
+    all. A type that nests itself, however far down, is left out of the depths rather than
+    given a number: it has no bottom, it is reported as ``type-cycle``, and a second finding
+    about it would say the same mistake twice under another identifier. It is put in the
+    second set instead, together with every type that nests it - the mark travels outwards as
+    each name on the path is popped - because that fact matters beyond the finding: a walk
+    that does not know to stop at a cyclic type has as little a bottom to reach as the type
+    does. Returned rather than resolved into a finding here, because that is
+    :meth:`_Analysis._refuse_deep_nesting`'s to make - this function only answers the question
+    its name asks.
+
+    Walked with an explicit stack, for the very reason the answer is wanted: a recursive walk
+    over a chain deep enough to be worth reporting is the traceback this exists to prevent.
+    """
+    depths: dict[str, int] = {}
+    cyclic: set[str] = set()
+    stack: list[tuple[str, Iterator[str]]] = []
+
+    for start in sorted(declared):
+        if start in depths or start in cyclic:
+            continue
+        chain: set[str] = {start}
+        stack.append((start, iter(_nested_names(declared[start]))))
+        while stack:
+            name, pending = stack[-1]
+            nested = next(pending, None)
+            if nested is None:
+                stack.pop()
+                chain.discard(name)
+                names = _nested_names(declared[name])
+                if any(found in cyclic for found in names):
+                    # Whatever reaches a cycle has no bottom either, so the mark travels up
+                    # the chain as each name on it is popped.
+                    cyclic.add(name)
+                elif declared[name].structure is None:
+                    depths[name] = 0
+                else:
+                    depths[name] = 1 + max((depths.get(n, 0) for n in names), default=0)
+            elif nested in chain:
+                cyclic.add(nested)
+            elif nested in declared and nested not in depths and nested not in cyclic:
+                chain.add(nested)
+                stack.append((nested, iter(_nested_names(declared[nested]))))
+    return depths, cyclic
 
 
 def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
@@ -487,6 +616,33 @@ class _Analysis:
         declaration naming such a type is dropped, so nothing downstream reasons about a
         leaf it cannot have. Each carries the cause that poisoned it, so that a variable of
         the type can say, when the cause was silenced, what nobody reported."""
+        self._unwalkable_types: set[str] = set()
+        """A type no walk may descend into: it nests deeper than :data:`_MAX_TYPE_NESTING`,
+        or it never bottoms out at all, which is what nesting a cycle means.
+
+        Kept apart from the poison because it says a second thing about them that poison does
+        not. Everything else that is unusable is unusable about its leaves - a walk over it
+        terminates, and the alignment estimate for one still answers from the members it does
+        understand - while these are the ones a walk cannot reach the bottom of at all: the
+        over-deep ones because :data:`_MAX_TYPE_NESTING` is where DDD stops reading, the
+        cyclic ones because there is no bottom to reach. Both are computed once, by
+        :func:`_nesting_depths`, and every type nesting one of them is added here too, in
+        :meth:`_refuse_deep_nesting` - the same walk-safety invariant a poisoned type gives
+        the rest of the analysis, stated over "unwalkable" instead of "unusable"."""
+        self._type_leaves: dict[str, int] = {}
+        """How many leaves one variable of each declared type contributes, by name.
+
+        Filled by :meth:`_check_types`, and holding an entry for every type a variable can
+        still be declared as: a type left out of it - one poisoned before the count, or one
+        nesting such a type - is one no declaration resolves as, so :meth:`_shape_fits` never
+        asks about a name that is missing here."""
+        self._external_reach: dict[str, bool] = {}
+        """Whether a variable of a type contains an external member, for each name walked so far.
+
+        Filled by :meth:`_reaches_external` as the placement checks ask it, and never
+        invalidated: the answer is a property of the declared nesting, which nothing changes
+        after the types are read. What keeps the alignment estimate linear - see that method
+        for why one walk answers for every type under the one it starts at."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -551,6 +707,7 @@ class _Analysis:
         self._report_absences(absent, owners)
         resolved = [(name, refs) for name, refs in ordered if name not in absent]
         shapes = {name: self._resolve_shape(self._effective[name]) for name, _ in resolved}
+        resolved = self._refuse_wide_maps(resolved, shapes, owners)
 
         structured = [(name, refs) for name, refs in resolved if self._is_structured(name)]
         plain = [(name, refs) for name, refs in resolved if not self._is_structured(name)]
@@ -670,15 +827,38 @@ class _Analysis:
                 continue
             assert member.conversion is not None
             low, high = physical_range(member.conversion, *_member_raw_range(member))
-            if _below(member.limits.min, low) or _above(member.limits.max, high):
-                self._bag.add(
-                    "limits-out-of-range",
-                    f"limits [{format_number(member.limits.min)}, "
-                    f"{format_number(member.limits.max)}] exceed the range "
-                    f"[{format_number(low)}, {format_number(high)}] that "
-                    f"{member.datatype.value} can represent with this conversion",
-                    entry.location(f"members[{index}].limits"),
-                )
+            self._check_limits_fit(
+                member.limits,
+                low,
+                high,
+                member.datatype,
+                entry.location(f"members[{index}].limits"),
+            )
+
+    def _check_scalar_type(self, entry: LoadedType) -> None:
+        """A scalar type's own limits and enum, answered where the type is declared.
+
+        Once, and whether or not a declaration names it. What a type fixes is the type's to
+        answer: asking every declaration instead reported one mistake once per component, at
+        files whose authors cannot fix it - the limits are not written there and may not be -
+        and said nothing at all about a type the project has declared and nobody names yet.
+        The members of a structure are already checked here for the same reason, by
+        :meth:`_register_member_enums` and :meth:`_check_member_limits`.
+        """
+        declared = entry.declared
+        if not isinstance(declared, ScalarType):
+            return
+        datatype = declared.datatype
+        conversion = declared.conversion
+        if isinstance(conversion, EnumConversion):
+            location = entry.location("conversion")
+            self._register_enum(conversion, location, datatype)
+            self._check_enum_fits(
+                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
+            )
+        if declared.limits is not None:
+            low, high = conversion_range(conversion, datatype)
+            self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
 
     def _is_structure(self, named: str) -> bool:
         """Whether that type name is a structure; false for a scalar and for one nobody declared."""
@@ -887,6 +1067,14 @@ class _Analysis:
     def _type_alignment(self, name: str, seen: set[str]) -> int | None:
         if name in seen:  # a cycle is reported as type-cycle; no alignment to give
             return None
+        if name in self._unwalkable_types:
+            # The placement checks ask this of every declaration that states a section,
+            # dropped ones included, which is the one walk that still starts at a type the
+            # nesting cap refused, or one that nests a cycle without crossing the cap itself
+            # - and the chain under either is what no walk here may follow. Met at the start
+            # of a walk and never below it: a type nesting an unwalkable one is unwalkable as
+            # well, so nothing that gets past this line meets one further down.
+            return None
         seen.add(name)
         loaded = self._types.get(name)
         if loaded is None:
@@ -917,26 +1105,51 @@ class _Analysis:
     def _reaches_external(self, name: str, seen: set[str]) -> bool:
         """Whether a variable of that type contains an external member, however deeply.
 
-        A cycle is not this walk's business - it is reported as ``type-cycle`` - so a name
-        already seen is simply not followed again, exactly as in :meth:`_poison_of`.
+        Memoised in :attr:`_external_reach`, because the answer closes upwards: a type reaches
+        an external member exactly when one of the types its members name does, so the one
+        walk that answers for a type has answered for every type under it as well. That is
+        what makes the estimate linear. :meth:`_type_alignment` asks this at every type it
+        visits and the placement checks start it again for every declaration that states a
+        section, so answered afresh each time it was a walk of the whole graph per type per
+        declaration - seconds of it on a project of a few hundred deeply nested structures.
+
+        A name already on ``seen`` is one this walk reached by a second route: a diamond,
+        which the ``any`` below has already got past, so the answer for it was no. It is not
+        followed again, exactly as in :meth:`_poison_of`, and a cycle is not this walk's
+        business either way - it is reported as ``type-cycle``.
+
+        Unguarded by :attr:`_unwalkable_types`, and safe without it: the walk is entered from
+        :meth:`_type_alignment` and nowhere else, straight after that guard, so it always
+        starts at a walkable name, and the recursion below never leaves that set - a walkable
+        name has no unwalkable name under it, because :meth:`_refuse_deep_nesting` and the
+        cyclic union it makes mark every type that nests an unwalkable one as unwalkable too.
         """
         if name in seen:
             return False
+        cached = self._external_reach.get(name)
+        if cached is not None:
+            return cached
         seen.add(name)
         entry = self._types.get(name)
         if entry is None:
             return False
         if entry.external is not None:
-            return True
-        return any(self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry))
+            answer = True
+        else:
+            answer = any(
+                self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry)
+            )
+        self._external_reach[name] = answer
+        return answer
 
     def _check_types(self) -> None:
-        """Every nested structure is declared, and no structure contains itself.
+        """Every nested structure is declared, nests no more than DDD reads, and not itself.
 
-        Both are refused rather than resolved as far as possible. A member whose structure is
-        unknown has no size, so every offset after it in the enclosing structure would be wrong
-        and the generated addresses would silently point at the wrong bytes; a structure that
-        contains itself has no size at all.
+        All three are refused rather than resolved as far as possible. A member whose structure
+        is unknown has no size, so every offset after it in the enclosing structure would be
+        wrong and the generated addresses would silently point at the wrong bytes; a structure
+        that contains itself has no size at all; and one nesting deeper than
+        :data:`_MAX_TYPE_NESTING` is more than the walks below can follow.
         """
         declared = self._types
         for entry in self._workspace.types:
@@ -951,6 +1164,7 @@ class _Analysis:
             self._check_opaque_members(entry)
             self._register_member_enums(entry)
             self._check_member_limits(entry)
+            self._check_scalar_type(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
@@ -969,13 +1183,28 @@ class _Analysis:
                         entry.name, _Cause("unknown-type", reported, location)
                     )
 
+        # Before the cycle walk and everything after it: what those walk into is what the cap
+        # bounds, so a type too deep to follow has to be poisoned before anybody follows it.
+        depths, cyclic = _nesting_depths(declared)
+        self._refuse_deep_nesting(depths, cyclic)
+
+        # After the depth refusal, because the count walks the nesting graph and so may only
+        # start at a type a walk can reach the bottom of; the depths it reports in are that
+        # walk's answer as well.
+        self._type_leaves = self._leaves_of_types()
+        self._refuse_wide_types(depths)
+
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
         # and keying on the start would report it once per route into it - so the cause is made
         # when the cycle is first met and reused by every later type that reaches it.
         causes: dict[frozenset[str], _Cause] = {}
+        # One `settled` for the whole pass, not one per start: it is what keeps a name shared
+        # between types from being walked again for every type that shares it - see
+        # `_nesting_cycle`.
+        settled: set[str] = set()
         for entry in self._workspace.types:
-            cycle = _nesting_cycle(entry.name, declared)
+            cycle = _nesting_cycle(entry.name, declared, settled)
             if not cycle:
                 continue
             cause = causes.get(frozenset(cycle))
@@ -1008,14 +1237,180 @@ class _Analysis:
             if cause is not None:
                 self._poisoned_types.setdefault(entry.name, cause)
 
+    def _refuse_deep_nesting(self, depths: dict[str, int], cyclic: set[str]) -> None:
+        """A structure nesting deeper than DDD reads is refused, and so is every one over it.
+
+        Reported once, at the innermost type that is already too deep - the one whose own
+        nesting crosses the limit - because every type nesting that one is too deep for
+        exactly the same reason, and a finding per level would answer one mistake with
+        hundreds. All of them are poisoned with that one cause, so a variable of any of them
+        is dropped the way a variable of a recursive structure is, and so that no walk after
+        this one descends a chain the stack cannot take: a type this leaves alone nests at
+        most :data:`_MAX_TYPE_NESTING` levels, and following it to the bottom is safe.
+
+        ``cyclic`` is folded into :attr:`_unwalkable_types` here too, without a cause of its
+        own: a type that nests a cycle has no depth, so the loop below never meets it, and it
+        is reported as ``type-cycle`` a few lines below this method's caller rather than as
+        ``schema`` here. What it needs from this method is only the same walk-safety mark the
+        over-deep types get, not a second finding - the invariant a later walk relies on is
+        "unwalkable", not "why".
+        """
+        self._unwalkable_types.update(cyclic)
+        deep: dict[str, _Cause] = {}
+        # In depth order, so that a type over the limit meets the cause of the nested type
+        # that is over it as well before it would make one of its own.
+        for entry in sorted(self._workspace.types, key=lambda item: depths.get(item.name, 0)):
+            depth = depths.get(entry.name, 0)
+            if depth <= _MAX_TYPE_NESTING:
+                # A type with no depth at all is one that nests itself, or nests a cycle -
+                # folded into the guard set above already, and left to the cycle walk below
+                # for its finding; it is not this one's to answer.
+                continue
+            cause = next((deep[name] for name in _nested_names(entry) if name in deep), None)
+            if cause is None:
+                location = entry.location()
+                # What the bag made of the finding rather than what this check's severity is
+                # today, exactly as :meth:`_refuse_infinite_type_limits` asks it.
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"structure '{entry.name}' nests {depth} levels deep; DDD reads at "
+                        f"most {_MAX_TYPE_NESTING}",
+                        location,
+                    )
+                    is not None
+                )
+                cause = _Cause("schema", reported, location)
+            deep[entry.name] = cause
+            self._unwalkable_types.add(entry.name)
+            self._poisoned_types.setdefault(entry.name, cause)
+
+    def _leaves_of_types(self) -> dict[str, int]:
+        """How many leaves one variable of each declared type would contribute, by name.
+
+        Counted over the nesting graph and never by spreading an instance out, which is the
+        whole point of counting at all: two members of one structure may nest the same type,
+        so the routes an instance takes double at every level that shares a name, and a
+        ladder of twenty such levels is a million leaves that a walk over the *instance*
+        would visit one at a time. Here every type is counted once, from the bottom up, and
+        the answer for a member is multiplied by the elements of that member rather than
+        walked once per element.
+
+        A type already refused when this runs - poisoned, or one of the ones no walk may
+        descend into - is skipped rather than counted: no variable resolves as it, so it has
+        no leaves to contribute, and the two sets are also where the cyclic types are, which
+        have no bottom to count from. A type nesting one of those has no count either, and
+        that answer is recorded like any other so a shared name is not re-walked for every
+        route into it; it is left out of the result, which is sound because every such type
+        is poisoned by the end of :meth:`_check_types` - by :meth:`_poison_of`, which walks
+        the same graph - so nothing declares a variable of one.
+
+        Walked with an explicit stack, like the depths and for the same reason: the graph is
+        as deep as :data:`_MAX_TYPE_NESTING` allows, and this walk is what a run has instead
+        of the traceback.
+        """
+        # A snapshot, and nothing below poisons anything, so it stays the answer throughout.
+        refused = self._poisoned_types.keys() | self._unwalkable_types
+        walked: dict[str, int | None] = {}
+        stack: list[tuple[str, Iterator[str]]] = []
+        for start in sorted(self._types):
+            if start in walked or start in refused:
+                continue
+            stack.append((start, iter(_nested_names(self._types[start]))))
+            while stack:
+                name, pending = stack[-1]
+                nested = next(pending, None)
+                if nested is None:
+                    stack.pop()
+                    walked[name] = self._leaves_of(self._types[name], walked)
+                elif nested not in walked and nested not in refused:
+                    stack.append((nested, iter(_nested_names(self._types[nested]))))
+        return {name: count for name, count in walked.items() if count is not None}
+
+    def _leaves_of(self, entry: LoadedType, walked: dict[str, int | None]) -> int | None:
+        """The leaves one variable of this type contributes, from the answers for what it nests.
+
+        Counted the way :meth:`_flatten` spreads a variable out, which is what the number has
+        to describe: a member naming an external type is opaque storage and contributes no
+        leaf at all, a member holding a value contributes exactly one however many dimensions
+        it has - an array of values is one record with a ``MATRIX_DIM`` - and only a member
+        nesting a structure multiplies, contributing that structure's leaves once per element.
+        A scalar type is one leaf and an external type is none, which is what a member naming
+        either is worth to the structure above it.
+
+        ``None`` when a name it nests has no answer, which is what a name refused before the
+        count leaves behind; the caller records that as the answer for this type too. Every
+        dimension resolves here, because a member dimensioned by a constant nobody declares
+        poisons its structure before this runs, and a poisoned type is not counted.
+        """
+        structure = entry.structure
+        if structure is None:
+            return 0 if entry.external is not None else 1
+        total = 0
+        for member in structure.members:
+            if self._member_external(member) is not None:
+                continue
+            nested = self._member_structure(member)
+            if nested is None:
+                total += 1
+                continue
+            count = walked.get(nested)
+            if count is None:
+                return None
+            total += count * math.prod(self._numeric_shape(member.dimensions))
+        return total
+
+    def _refuse_wide_types(self, depths: dict[str, int]) -> None:
+        """A structure of more leaves than the outputs carry, and every one over it, is refused.
+
+        Refused at the type rather than at each variable of it, for the reason the nesting cap
+        is: the type is unusable, and saying so once where it is declared beats saying it at
+        every declaration that names it. Reported at the innermost type that is already too
+        wide - a type nesting it has at least as many leaves for exactly the same reason -
+        and all of them are poisoned with that one cause, so a variable of any of them is
+        dropped the way a variable of a recursive structure is.
+
+        A type with no count is one that was refused before the count and is poisoned
+        already; the limit has nothing to add about it.
+        """
+        wide: dict[str, _Cause] = {}
+        # In depth order, so that a type over the limit meets the cause of the nested type
+        # that is over it as well before it would make one of its own.
+        for entry in sorted(self._workspace.types, key=lambda item: depths.get(item.name, 0)):
+            leaves = self._type_leaves.get(entry.name, 0)
+            if leaves <= _MAX_LEAVES:
+                continue
+            cause = next((wide[name] for name in _nested_names(entry) if name in wide), None)
+            if cause is None:
+                location = entry.location()
+                # What the bag made of the finding rather than what this check's severity is
+                # today, exactly as :meth:`_refuse_infinite_type_limits` asks it.
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"structure '{entry.name}' has {leaves} leaves; DDD carries at most "
+                        f"{_MAX_LEAVES}",
+                        location,
+                    )
+                    is not None
+                )
+                cause = _Cause("schema", reported, location)
+            wide[entry.name] = cause
+            self._poisoned_types.setdefault(entry.name, cause)
+
     def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:
         """What makes a variable of that type unresolvable, if anything does.
 
         The type's own cause when it has one; else the first cause found walking its nested
-        structures, however deep. A cycle is not this walk's business - it is reported and
-        recorded as ``type-cycle`` before this runs - so a name already seen is not followed
-        again. A nested name nobody declares was recorded as ``unknown-type`` on the type
-        naming it, so the walk only ever gets past a name this project declares.
+        structures. A cycle is not this walk's business - it is reported and recorded as
+        ``type-cycle`` before this runs - so a name already seen is not followed again. A
+        nested name nobody declares was recorded as ``unknown-type`` on the type naming it, so
+        the walk only ever gets past a name this project declares.
+
+        Still recursive, and bounded by the cap rather than by an explicit stack: it stops at
+        the first poisoned name, and by the time it runs a name that is not poisoned nests at
+        most :data:`_MAX_TYPE_NESTING` levels - one deeper, or one on a cycle, was poisoned by
+        the two walks above.
         """
         if name in seen:
             return None
@@ -1405,6 +1800,109 @@ class _Analysis:
                 resolves = False
         return resolves
 
+    def _shape_fits(self, ref: DeclarationRef) -> bool:
+        """Whether the array this declaration describes is one the outputs could carry.
+
+        Asked once the shape has resolved to numbers and the type it names is known, which is
+        the earliest either limit can be applied, and before anything expands the shape: the
+        c backend broadcasts a scalar ``init`` into one literal per element, and a structured
+        variable is flattened into one leaf per member per element. Both used to be reached
+        with whatever the file said, so an array of a billion was a run with no output and no
+        end rather than a finding.
+
+        Two limits, because the two arrays cost the outputs differently. An array of values
+        is one declaration and one ``MATRIX_DIM`` however long it is, so only
+        :data:`_MAX_ELEMENTS` speaks about it; an array of structures is spread out, so it is
+        weighed in leaves first - the tighter and the more telling of the two answers - and
+        by its elements after, which is what still bounds the element paths of a structure
+        whose members are every one of them opaque and so contributes no leaf at all.
+
+        Reported where the shape is written, which is ``size`` on an axis and ``dimensions``
+        everywhere else, and routed through :meth:`_refuse` so that the declaration is
+        dropped and the objects referring to it follow it out.
+        """
+        definition = ref.definition
+        spelled = definition.declared_shape
+        if spelled is None:
+            # A curve or a map is shaped by its axes, and each axis is an array of its own,
+            # weighed here when its own declaration is collected. That bounds a curve, whose
+            # shape is one axis, but not a map, whose shape is the product of two - only
+            # known once every axis has resolved, which `_refuse_wide_maps` weighs once `run`
+            # has turned axes into numbers.
+            return True
+        elements = math.prod(self._numeric_shape(spelled))
+        location = ref.location(
+            "definition.size" if isinstance(definition, Axis) else "definition.dimensions"
+        )
+        named = definition.declared_type
+        if named is not None and self._is_structure(named):
+            # Present for every structure a declaration can still resolve as: one refused
+            # before the count was poisoned, and this declaration was dropped at its type.
+            leaves = elements * self._type_leaves[named]
+            if leaves > _MAX_LEAVES:
+                self._refuse(
+                    "schema",
+                    f"'{ref.name}' would contribute {leaves} leaves; DDD carries at most "
+                    f"{_MAX_LEAVES}",
+                    location,
+                    ref,
+                )
+                return False
+        if elements > _MAX_ELEMENTS:
+            self._refuse(
+                "schema",
+                f"'{ref.name}' has {elements} elements; DDD carries at most {_MAX_ELEMENTS}",
+                location,
+                ref,
+            )
+            return False
+        return True
+
+    def _refuse_wide_maps(
+        self,
+        resolved: list[tuple[str, list[DeclarationRef]]],
+        shapes: dict[str, tuple[Shape, WrittenShape]],
+        owners: dict[str, DeclarationRef | None],
+    ) -> list[tuple[str, list[DeclarationRef]]]:
+        """Drop a map whose two axes multiply past `_MAX_ELEMENTS`, keeping everything else.
+
+        `_shape_fits` weighs every other shape while a declaration is still being collected,
+        but a curve and a map write no `declared_shape` of their own and pass through it
+        unweighed. A curve is safe left that way: its one axis already passed `_shape_fits`
+        at the cap on its own account, so the curve's shape can never exceed it either. A map
+        is not - each axis is bounded, but their product is not, and the product is only a
+        number once `_resolve_shape` has turned both axes into one, which `run` does after
+        ownership and `_effective` are settled. So this runs as a second pass over
+        `resolved`, the earliest point a map's shape is known, rather than moving
+        `_shape_fits` itself to after axis resolution and reworking how a drop there reaches
+        referrers.
+
+        Refused at the owning declaration's whole `definition`: a map states no field a
+        finding could sit at the way `dimensions` or an axis's `size` can. The name is
+        dropped from what is returned exactly as one absent for any other reason is, so
+        nothing after this builds a variable, an a2l record or a generated literal for it -
+        and nothing needs re-running, because a map is never a reference target and `schema`
+        is a fixed error, always reported.
+        """
+        oversized: set[str] = set()
+        for name, refs in resolved:
+            definition = self._effective[name]
+            if definition.declared_shape is not None:
+                continue
+            elements = math.prod(shapes[name][0])
+            if elements <= _MAX_ELEMENTS:
+                continue
+            oversized.add(name)
+            owner = owners[name] or refs[0]
+            self._refuse(
+                "schema",
+                f"{definition.kind.value} '{name}' would hold {elements} elements over its "
+                f"axes; DDD carries at most {_MAX_ELEMENTS}",
+                owner.location("definition"),
+                owner,
+            )
+        return [(name, refs) for name, refs in resolved if name not in oversized]
+
     def _dimension_value(self, dimension: int | str) -> int:
         """The number a dimension resolves to; a name looks its constant up.
 
@@ -1621,6 +2119,13 @@ class _Analysis:
                 # silencing unknown-constant must not silence that.
                 self._check_declaration(ref)
                 continue
+            if not self._shape_fits(ref):
+                # More elements, or more leaves, than anything downstream could carry. The
+                # declaration is dropped for the same reason as above and the checks that do
+                # not need the shape still run, which is also what keeps the refusal ahead of
+                # every expansion: what an init says is read here, and never broadcast.
+                self._check_declaration(ref)
+                continue
             self._refs[ref.name].append(ref)
             self._check_declaration(ref)
 
@@ -1686,6 +2191,15 @@ class _Analysis:
             return
 
         self._check_init(definition, ref.location("definition.init"))
+
+        if ref.resolved is not None:
+            # The limits and the conversion were filled in from the scalar type this names,
+            # and the type has already answered for both where it is declared - once, at the
+            # file that would have to be edited. Repeating them here would report one mistake
+            # once per component and point every copy at a key nobody wrote. What is the
+            # declaration's own is its ``init``, checked above.
+            return
+
         self._check_limits(definition, ref.location("definition.limits"))
 
         conversion = definition.conversion
@@ -1730,13 +2244,24 @@ class _Analysis:
             return
         assert definition.conversion is not None
         low, high = conversion_range(definition.conversion, definition.storage)
-        limits = definition.limits
+        self._check_limits_fit(definition.limits, low, high, definition.storage, location)
+
+    def _check_limits_fit(
+        self, limits: Limits, low: float, high: float, datatype: Datatype, location: Location
+    ) -> None:
+        """Report limits the storage cannot hold, in one spelling wherever they are written.
+
+        Three places write a datatype, a conversion and limits side by side - a declaration, a
+        structure member and a scalar type - and the mistake is the same one in all three: the
+        a2l carries a range the calibration tool offers and the storage cannot take. Shaped
+        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way.
+        """
         if _below(limits.min, low) or _above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
                 f"range [{format_number(low)}, {format_number(high)}] that "
-                f"{definition.storage.value} can represent with this conversion",
+                f"{datatype.value} can represent with this conversion",
                 location,
             )
 

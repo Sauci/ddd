@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from conftest import (
     checks,
@@ -153,6 +154,151 @@ def test_include_cycle(tree: Path) -> None:
         },
     )
     assert checks(bag) == ["include-cycle"]
+
+
+def _include_chain(depth: int) -> dict[str, Any]:
+    """A root project over ``depth`` sub-projects, each including the next one.
+
+    Two components hang off it: ``Top`` beside the chain and ``Deep`` under its last project,
+    so which of them the workspace carries says how far down the loader read.
+    """
+    files: dict[str, Any] = {
+        "project.ddd.json": project("P0", "p1.ddd.json", "top.ddd.json"),
+        "top.ddd.json": component("Top", declare("local", "X")),
+        f"p{depth}.ddd.json": project(f"P{depth}", "deep.ddd.json"),
+        "deep.ddd.json": component("Deep", declare("local", "Y")),
+    }
+    for index in range(1, depth):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    return files
+
+
+def test_an_include_tree_deeper_than_the_cap_stops_where_it_crosses(tree: Path) -> None:
+    """Sixty five projects deep: the entry naming the sixty fifth is refused, and that is all.
+
+    The rest of the run stands - ``Top``, included beside the chain, is loaded - because a
+    tree DDD will not follow says nothing about the files it can read.
+    """
+    write_tree(tree, _include_chain(64))
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == ["include-depth"]
+    rendered = messages(bag)
+    assert "p63.ddd.json#project.includes[0]" in rendered
+    assert "'p64.ddd.json' is included 65 levels deep; DDD reads at most 64" in rendered
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Top"]
+
+
+def test_five_hundred_nested_projects_are_a_finding_rather_than_a_traceback(tree: Path) -> None:
+    """The loader walks the include tree by recursion, and python gives up long before 500."""
+    write_tree(tree, _include_chain(500))
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == ["include-depth"]
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Top"]
+
+
+def test_the_deepest_tree_there_is_gets_read_whole(tree: Path) -> None:
+    """The root counts as the first level, so this one is exactly 64 levels deep.
+
+    Sixty two sub-projects under the root, and ``Deep`` included by the last of them; nothing
+    is refused, and a level of any kind counts, not only a level of projects.
+    """
+    write_tree(tree, _include_chain(62))
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == []
+    assert workspace is not None
+    assert len(workspace.projects) == 63
+    assert [loaded.name for loaded in workspace.components] == ["Deep", "Top"]
+
+
+def test_a_file_already_seen_through_a_shallow_route_is_not_reported_for_depth(
+    tree: Path,
+) -> None:
+    """A diamond that closes on an over-deep route is still a diamond, not a depth refusal.
+
+    ``leaf.ddd.json`` is read once, directly, at level two. A second, sixty three project
+    chain reaches for the same file again from a project at level sixty four - the deepest a
+    project loads - so naming ``leaf.ddd.json`` there sits at level sixty five, one past the
+    cap; no other file on that chain is over the limit, so the leaf is the only over-deep
+    entry. Testing ``_seen_paths`` before the depth cap means that second attempt finds the
+    file already in the workspace and reuses it in silence, rather than reporting
+    ``include-depth`` and saying everything under it was left out - false, since it was
+    already read whole through the shallow route.
+    """
+    files: dict[str, Any] = {
+        "project.ddd.json": project("P", "leaf.ddd.json", "p1.ddd.json"),
+        "leaf.ddd.json": component("Leaf", declare("local", "X")),
+    }
+    for index in range(1, 63):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p63.ddd.json"] = project("P63", "leaf.ddd.json")
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == []
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Leaf"]
+
+
+def test_a_file_reached_deep_before_shallow_is_not_reported_for_depth_either(
+    tree: Path,
+) -> None:
+    """The same tree as above with the two entries of the root written the other way round.
+
+    The over-deep route is walked first now, so ``leaf.ddd.json`` is not in ``_seen_paths``
+    yet when the entry at level sixty five names it, and the diamond test cannot excuse it.
+    Held back rather than reported, that crossing is answered once the whole tree is read -
+    by which time the root's own entry has read the file - so the run is as silent as it is
+    the other way round. Which of two includes an author happened to write first is not a
+    fact about the tree, and cannot be what decides whether the tree has a finding.
+    """
+    files: dict[str, Any] = {
+        "project.ddd.json": project("P", "p1.ddd.json", "leaf.ddd.json"),
+        "leaf.ddd.json": component("Leaf", declare("local", "X")),
+    }
+    for index in range(1, 63):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p63.ddd.json"] = project("P63", "leaf.ddd.json")
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == []
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Leaf"]
+
+
+def test_two_over_deep_entries_naming_the_same_unread_file_are_two_findings(
+    tree: Path,
+) -> None:
+    """One finding per entry that crosses the cap, not one per file left out.
+
+    ``left.ddd.json`` and ``right.ddd.json`` sit at level sixty four, the deepest DDD reads,
+    and both name ``deep.ddd.json``; no shallower entry does, so the file really is left out
+    and both entries are lines someone wrote and can shorten. Reporting the file once would
+    have to pick one of the two, and the one it picks is whichever route the loader walked
+    first - which is the ordering holding the finding back is here to make invisible.
+    """
+    files: dict[str, Any] = {"project.ddd.json": project("P", "p1.ddd.json")}
+    for index in range(1, 62):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p62.ddd.json"] = project("P62", "left.ddd.json", "right.ddd.json")
+    files["left.ddd.json"] = project("Left", "deep.ddd.json")
+    files["right.ddd.json"] = project("Right", "deep.ddd.json")
+    files["deep.ddd.json"] = component("Deep", declare("local", "X"))
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == ["include-depth", "include-depth"]
+    rendered = messages(bag)
+    assert "left.ddd.json#project.includes[0]" in rendered
+    assert "right.ddd.json#project.includes[0]" in rendered
+    assert "'deep.ddd.json' is included 65 levels deep" in rendered
+    assert workspace is not None
+    assert workspace.components == ()
 
 
 def test_diamond_include_loads_the_component_once(tree: Path) -> None:

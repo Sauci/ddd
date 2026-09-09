@@ -375,3 +375,363 @@ class TestQuotedNumbers:
             SectionsFile.model_validate(
                 {"sections": [{"section": ".x", "access": "read-write", "alignment": "4"}]}
             )
+
+
+class TestSixtyFourBitBound:
+    """No datatype DDD offers holds more than 64 bits, so neither does any integer field.
+
+    Before this bound, an integer beyond it reached an arithmetic comparison somewhere
+    downstream instead of being refused where it was written: ``_below``/``_above`` on a
+    stated ``limits``, or ``float(...)`` in ``physical_range`` on an enum's values, raised
+    ``OverflowError``; a ``constants`` value, a bare ``dimensions`` entry or a section
+    ``alignment`` that big was silently accepted instead, with no finding at all.
+    """
+
+    HUGE = 10**400  # 401 digits: far beyond even a float, let alone a 64 bit datatype
+
+    def test_a_huge_limit_on_a_definition_is_a_schema_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", limits={"min": 0, "max": self.HUGE})
+                ),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.limits.max" in messages(bag), messages(bag)
+
+    def test_a_limit_one_past_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """``2**64``, not ``HUGE``: the narrowest value the silent-widening band starts at.
+
+        Between ``2**64 - 1`` (the bound) and roughly ``1.8e308`` (the largest a float64 can
+        hold), a value failed only the int arm's own ``le`` and was still small enough to
+        survive the union's ``Real`` arm - so it was quietly accepted as a ``float`` instead
+        of refused. ``HUGE`` is far past that band and does not exercise it.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", limits={"min": 0, "max": 2**64})
+                ),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.limits.max" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_a_limit_one_below_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """The bottom edge, mirrored: one less than ``-(2**63)`` is refused the same way."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", limits={"min": -(2**63) - 1, "max": 0})
+                ),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.limits.min" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_a_huge_limit_on_a_structure_member_is_a_schema_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "types.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [
+                                {
+                                    "name": "m",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": {"kind": "identity"},
+                                    "limits": {"min": 0, "max": self.HUGE},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "types[0].members[0].limits.max" in messages(bag), messages(bag)
+
+    def test_a_huge_enumerator_value_on_a_definition_is_a_schema_finding(self, tree: Path) -> None:
+        enum = {
+            "kind": "enum",
+            "name": "E",
+            "enumerators": [{"name": "OFF", "value": 0}, {"name": "BIG", "value": self.HUGE}],
+        }
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", conversion=enum)),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.conversion.enumerators[1].value" in messages(bag), messages(bag)
+
+    def test_a_huge_enumerator_value_on_a_member_is_a_schema_finding(self, tree: Path) -> None:
+        enum = {
+            "kind": "enum",
+            "name": "E",
+            "enumerators": [{"name": "OFF", "value": 0}, {"name": "BIG", "value": self.HUGE}],
+        }
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "types.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "S_t",
+                            "members": [
+                                {
+                                    "name": "m",
+                                    "member": "value",
+                                    "datatype": "uint8",
+                                    "conversion": enum,
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "types[0].members[0].conversion.enumerators[1].value" in messages(bag), messages(bag)
+
+    def test_a_huge_enumerator_value_on_a_scalar_type_is_a_schema_finding(self, tree: Path) -> None:
+        enum = {
+            "kind": "enum",
+            "name": "E",
+            "enumerators": [{"name": "OFF", "value": 0}, {"name": "BIG", "value": self.HUGE}],
+        }
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "types.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {"type": "scalar", "name": "E_t", "datatype": "uint8", "conversion": enum}
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "X", typename="E_t")),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "types[0].conversion.enumerators[1].value" in messages(bag), messages(bag)
+
+    def test_a_huge_constant_is_a_schema_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "constants.ddd.json"),
+                "constants.ddd.json": {"constants": [{"name": "N", "value": self.HUGE}]},
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "constants[0].value" in messages(bag), messages(bag)
+
+    def test_a_huge_dimension_is_a_schema_finding(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", dimensions=[self.HUGE])),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.dimensions[0]" in messages(bag), messages(bag)
+
+    def test_a_huge_init_value_is_a_schema_finding(self, tree: Path) -> None:
+        """``init`` is bounded too, listed as one of the fields the plan calls out by name.
+
+        Unlike the fields above, ``init`` shares its union with ``Real``: before the integer
+        arm was moved ahead of ``bool`` (see ``InitValue``), the reported error was "Input
+        should be a valid boolean", which is technically a ``schema`` finding but a
+        confusing one for a value the author plainly wrote as a whole number.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", init=self.HUGE)),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.init" in messages(bag), messages(bag)
+        assert "valid boolean" not in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_an_init_one_past_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """The same silent-widening band as the limit above, for ``init``.
+
+        ``init`` is a raw value, not a physical one, so the consequence of missing this band
+        is worse than for ``limits``: before this check ran ahead of the union, ``2**64``
+        here would have been quietly reinterpreted as a ``float`` and reached
+        ``_check_init``'s "is written as a fractional number" branch - misleading, since the
+        author wrote a plain integer.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", init=2**64)),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.init" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_a_huge_section_alignment_is_a_schema_finding(self, tree: Path) -> None:
+        """A power of two, so the pre-existing "not a power of two" check cannot catch it.
+
+        ``2**500`` is a legal power of two and used to sail through with no finding at all -
+        no crash, but no complaint either, which is worse: a project could ship a linker
+        section aligned to something no real target could satisfy.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "sections.ddd.json"),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".x", "access": "read-write", "alignment": 2**500}]
+                },
+                "a.ddd.json": component("A", declare("local", "X", section=".x")),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "sections[0].alignment" in messages(bag), messages(bag)
+
+    # -- the bound is exactly 64 bits: the datatype still decides within it ----------------
+
+    def test_uint64_max_is_still_accepted_as_an_init_where_uint64_allows(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "uint64", init=2**64 - 1)),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_uint64_max_is_still_init_invalid_on_a_smaller_datatype(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "uint8", init=2**64 - 1)),
+            },
+        )
+        assert checks(bag) == ["init-invalid"]
+
+    def test_sint64_min_is_still_accepted_as_an_init_where_sint64_allows(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "sint64", init=-(2**63))),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_limits_at_the_full_uint64_range_are_still_accepted(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", "uint64", limits={"min": 0, "max": 2**64 - 1})
+                ),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_limits_at_the_full_sint64_range_are_still_accepted(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X", "sint64", limits={"min": -(2**63), "max": 2**63 - 1}),
+                ),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_a_float_init_written_with_an_exponent_is_still_accepted(self, tree: Path) -> None:
+        """Not every large ``init`` is a whole number in disguise.
+
+        ``1.8e19`` is a ``float`` from the moment the json parser reads it - it has no
+        integer form to begin with - so the new check, which only ever looks at Python
+        ``int``, has nothing to say about it: it is a ``Real`` on its own terms.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "float64", init=1.8e19)),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_a_bool_init_on_a_boolean_definition_is_still_accepted(self, tree: Path) -> None:
+        """``bool`` is a python subclass of ``int``, so the new check has to exclude it by hand.
+
+        Without that exclusion, ``isinstance(value, int)`` alone would be true for ``True``
+        and ``False`` too, and every boolean ``init`` would be refused as out of range.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "boolean", init=True)),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    # -- direct against the contract, no project tree needed ------------------------------
+
+    def test_a_dimension_beyond_64_bits_is_rejected_directly(self) -> None:
+        with pytest.raises(ValidationError, match="less than or equal"):
+            definition(dimensions=[self.HUGE])
+
+    def test_a_constant_beyond_64_bits_is_rejected_directly(self) -> None:
+        from ddd.models import ConstantsFile
+
+        with pytest.raises(ValidationError, match="less than or equal"):
+            ConstantsFile.model_validate({"constants": [{"name": "N", "value": self.HUGE}]})

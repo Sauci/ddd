@@ -101,6 +101,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                overridable=False),
         _check("include-cycle", Severity.ERROR, "projects include each other recursively",
                overridable=False),
+        _check("include-depth", Severity.ERROR,
+               "a project's include tree goes more than 64 levels deep", overridable=False),
         _check("include-empty", Severity.ERROR, "an include pattern matches no file"),
         _check("plugin-not-found", Severity.ERROR,
                "a project names a plugin that cannot be found", overridable=False),
@@ -277,13 +279,13 @@ def _pointer_order(pointer: str) -> tuple[tuple[bool, int | str], ...]:
     findings of one file are listed in an order that has nothing to do with the file.
     Each part carries whether it is text, so that two pointers whose shapes differ at one
     position - an index against a key - still compare, where a bare number and a bare string
-    would not and the sort would raise instead of listing anything.
+    would not and the sort would raise instead of listing anything. Whether a part is an
+    index comes from its position in the split, not from what it looks like: a key can look
+    like a number and still not be one - ``str.isdigit`` is true of superscripts and other
+    Unicode digits that ``int`` refuses.
     """
-    return tuple(
-        (False, int(part)) if part.isdigit() else (True, part)
-        for part in re.split(r"\[(\d+)\]", pointer)
-        if part
-    )
+    parts = re.split(r"\[(\d+)\]", pointer)
+    return tuple((False, int(p)) if i % 2 else (True, p) for i, p in enumerate(parts) if p)
 
 
 @dataclass(frozen=True, slots=True, order=True)

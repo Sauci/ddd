@@ -6,7 +6,14 @@ from collections.abc import Container, Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from ddd.models.common import (
     SECTION_NAME_PATTERN,
@@ -19,22 +26,38 @@ from ddd.models.common import (
     TypeName,
     format_number,
     hash_excluding_mappings,
+    within_64_bits,
 )
 from ddd.models.conversion import Conversion, EnumConversion, conversion_range
 
-type InitValue = bool | int | Real | tuple[InitValue, ...]
-"""A scalar, or a (nested) sequence of scalars matching the shape of the object."""
+type InitValue = Annotated[
+    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
+    BeforeValidator(within_64_bits),
+]
+"""A scalar, or a (nested) sequence of scalars matching the shape of the object.
+
+The integer arm is bounded to what 64 bits can hold, the same bound every other integer a
+description states carries: no datatype DDD offers stores more, so a value past that is
+refused here rather than compared against a raw range it could never fit once the object's
+own datatype is known. Listed before ``bool`` so that an out of range whole number is
+reported against that bound rather than as "not a valid boolean": pydantic still tells a
+json ``true``/``false`` from a ``1``/``0`` by their own type regardless of this order, so
+moving the integer arm first changes only which of several failing branches a wildly wrong
+value is reported against.
+"""
 
 type Shape = tuple[int, ...]
 """A fully numeric array shape, as the analysis resolves it."""
 
-Dimension = Annotated[int, Field(strict=True, ge=1)] | Identifier
+Dimension = Annotated[int, Field(strict=True, ge=1, le=2**64 - 1)] | Identifier
 """One array dimension as a definition writes it: a number, or the name of a constant.
 
 An integer of at least 1, or the name of a constant the project declares.  Strict on the
 integer side so that the two spellings stay two: without it, a quoted
 ``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,
-and the file would say something its author did not write.
+and the file would say something its author did not write.  At most what 64 bits can hold,
+because no datatype DDD offers counts higher, and an array that size would exhaust any real
+target's memory long before it exhausted this bound.
 """
 
 type WrittenShape = tuple[int | str, ...]

@@ -49,11 +49,13 @@ class SectionDeclaration(BaseModel):
     access: SectionAccess
     """``read-write`` or ``read-only``, from the running software's point of view."""
 
-    alignment: int = Field(strict=True, ge=1)
+    alignment: int = Field(strict=True, ge=1, le=2**64 - 1)
     """The alignment the section guarantees, in bytes; a power of two.
 
     What it is checked against: an object whose datatype needs stricter alignment than the
-    section guarantees would be padded or faulting, and either is worth a finding.
+    section guarantees would be padded or faulting, and either is worth a finding.  Bounded
+    to what 64 bits can hold: an alignment no address on a real target could satisfy is
+    refused here rather than accepted as a power of two nothing could ever place.
     """
 
     description: str = ""

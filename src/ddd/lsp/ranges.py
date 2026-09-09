@@ -45,9 +45,10 @@ class Document:
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
-        except ValueError:
-            # Caught mid edit. There are no spans to offer and no values to read, which every
-            # caller reads as "nothing here", rather than as an error of its own.
+        except (ValueError, RecursionError):
+            # Caught mid edit, or nested too deeply for python to parse at all. Either way
+            # there are no spans to offer and no values to read, which every caller reads as
+            # "nothing here", rather than as an error of its own.
             self.data = None
             self._spans: dict[str, tuple[int, int]] = {}
             self._texts: dict[str, tuple[int, int]] = {}

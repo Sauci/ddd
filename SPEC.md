@@ -236,7 +236,12 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
   that is the absolute path with symbolic links followed, compared as the platform compares
-  paths. Include cycles are an error (`include-cycle`).
+  paths. Include cycles are an error (`include-cycle`). Includes nest at most 64 levels; a
+  deeper tree is `include-depth` at the entry that crosses the limit, and neither that file
+  nor anything it includes is read - unless some shallower route read that file, in which
+  case nothing is reported and it is used once, as any diamond is. The root of the run is
+  the first level, and a level of any kind counts, a component file as much as a
+  sub-project.
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
@@ -382,6 +387,10 @@ stated limits could repair a conversion that overflows by itself. `boolean` does
 datatype: an enum conversion refuses it, and so does a `bits` member
 ([section 3.7](#37-type-description)).
 
+Every integer a description states - an initial value, a limit, an enumerator's value, a
+constant, a dimension - fits 64 bits; a larger one is `schema` where it is written, because
+no datatype could hold it.
+
 Every name is a C identifier of at most 128 characters, the bound the A2L format places on
 an identifier, which is tighter than the bound of C. The cap holds wherever a name is
 written: objects, components, projects, enums, enumerators, types, members and
@@ -401,11 +410,15 @@ Kind specific attributes:
 - `dimensions` is a list of sizes, `[]` or absent for a scalar, each an integer of at least
   1 (`schema`) or the name of a declared constant ([section 3.9](#39-constant-vocabulary)),
   for example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
-  rule, and a value block, which is an array, states at least one size (`schema`). In the
-  A2L the same object is described by a `MATRIX_DIM` listing the fastest running index
-  first, that is in the reverse order, because describing it in C order would state a
-  transposed object; the list is padded with ones to the three entries version 1.6.1
-  expects.
+  rule, and a value block, which is an array, states at least one size (`schema`). An array,
+  or a map over its two axes, holds at most 10 000 000 elements, the product of its
+  dimensions, because the dictionary, the A2L and the generated code carry every element; a
+  larger one is `schema` where the shape is written, at `dimensions`, at the `size` of an axis
+  or, for a map, at the whole declaration, and the declaration is dropped. In the A2L the same
+  object is described by a
+  `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
+  because describing it in C order would state a transposed object; the list is padded with
+  ones to the three entries version 1.6.1 expects.
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
   whole object only, not to a nested position. An initial value **must** fit the raw
@@ -772,7 +785,13 @@ each stating its `type`: `scalar`, `struct` or `external`.
   `dimensions`, `init`, `volatile` and `a2l` stay on the declaration, because two
   measurements of one type can differ in whether an interrupt writes one of them. Its
   `datatype` is a base datatype: a scalar type cannot be declared in terms of a second
-  one, so a chain of aliases, and with it a scalar cycle, cannot be written at all.
+  one, so a chain of aliases, and with it a scalar cycle, cannot be written at all. Its
+  `limits` and its enumerators are checked where the type is declared, once and whether or
+  not any declaration names it: `limits-out-of-range` at its `limits`, and the names and
+  values of an enum at its `conversion`; its enum reaches the types header on the same
+  terms as a structure member's ([section 5.1](#51-c-code)). A declaration naming the type
+  restates none of what the type fixes ([section 3.3.2](#332-naming-a-declared-type)), so
+  what is checked there is what it adds of its own, its `init`.
 - A **struct** type declares `members` (required and non-empty), in the order they are
   laid out; `description` is optional. Two members of one structure **must not** share a
   name (`schema`). Every member states `name`, `member` and its datatype, as `datatype` or
@@ -793,6 +812,23 @@ each stating its `type`: `scalar`, `struct` or `external`.
 
 Two entries of one file **must not** share a name (`schema`); the same name declared by
 two files is `duplicate-type` ([section 4](#4-consistency-checks)).
+
+A structure nests at most 64 levels; a deeper one is `schema` at the type that crosses the
+limit. One level is one structure: a structure whose members all hold values is one level
+deep, and one nesting an *n* level structure is *n* + 1, a member naming a scalar or an
+external type adding none. The type the finding sits at is the innermost one that is
+already over the limit, and every type nesting it is unusable for the same reason, so a
+declaration naming any of them is dropped.
+
+An array of structures contributes at most 100 000 leaves, because the dictionary, the A2L
+and the generated code carry every element. A leaf is one value member of one element: a
+member holding a value is one leaf however many dimensions it has, since an array of values
+is described by a single `MATRIX_DIM`, a member naming an external type is none, and a
+member nesting a structure contributes that structure's leaves once per element of the
+member. A structure of more leaves than the limit is `schema` where it is declared, at the
+innermost type that is already over it and with every type nesting it unusable for the same
+reason, exactly as a structure nesting too deep is; a declaration whose elements times the
+leaves of its structure are more is `schema` at its `dimensions`, and is dropped.
 
 A member naming an external type is opaque bytes: it **must not** state `unit`,
 `conversion`, `limits` or an `a2l` block (`schema`), because DDD does not check meaning it
@@ -1227,9 +1263,14 @@ Errors:
   the same C namespace in the types header are not compared yet: an enum and a declared
   type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
-- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`: the file tree
-  cannot be read. These five, with `plugin-not-found` and `plugin-invalid` above, are the
-  seven checks whose severity cannot be changed.
+- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`, `include-depth`:
+  the file tree cannot be read. These six, with `plugin-not-found` and `plugin-invalid`
+  above, are the eight checks whose severity cannot be changed.
+- `include-depth`: the include tree of a project goes deeper than DDD reads
+  ([section 3.1](#31-project-description)). The entry that crosses the limit is not
+  followed, and the rest of the project is read as usual, so the finding is one rather than
+  one per file below it. Fixed severity, because the entry is not followed whatever the
+  finding is reported as: relaxing it would hide an absence instead of allowing it.
 - `include-empty`: a wildcard include matches no file. It is relaxable, because a pattern
   that is empty in one variant of a project is legitimate. A
   literal include naming a missing file is `file-not-found` instead
@@ -1464,14 +1505,15 @@ warning set containing `-Wcast-qual`. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
 every declaration; the example templates emit each constant as a `#define`. The enum
-conversions in use ([section 3.4](#34-conversions)) are offered with their enumerators, and
-the example templates emit a `typedef enum` for each; a variable under an enum conversion is
-declared with its base datatype, the `typedef enum` being for the enumerators alone. The
-headers of the external types in use ([section 3.7](#37-type-description)) are offered too,
-deduplicated and in the sorted order of the spellings the types files give, so the angle
-forms come first, and the example templates emit them as `#include` lines in the types
-header, so that a structure whose member comes from a hand written header compiles without
-the template being edited.
+conversions a declaration states, or a structure member carries, or a declared type carries
+whether or not any declaration names it ([section 3.4](#34-conversions)), are offered with
+their enumerators, and the example templates emit a `typedef enum` for each; a variable
+under an enum conversion is declared with its base datatype, the `typedef enum` being for
+the enumerators alone. The headers of the external types in use
+([section 3.7](#37-type-description)) are offered too, deduplicated and in the sorted order
+of the spellings the types files give, so the angle forms come first, and the example
+templates emit them as `#include` lines in the types header, so that a structure whose
+member comes from a hand written header compiles without the template being edited.
 
 The example templates generate the definitions into one file per project and the
 declarations into one header per component, and the build integration of

@@ -42,8 +42,14 @@ class Enumerator(_Frozen):
     name: Identifier
     """C identifier of the enumerator; enumerators of all enums share one c namespace."""
 
-    value: Annotated[int, Field(strict=True)]
-    """The raw value; every enumerator of one enum needs a value of its own."""
+    value: Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)]
+    """The raw value; every enumerator of one enum needs a value of its own.
+
+    Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no
+    storage could ever represent is refused here rather than overflowing a comparison once
+    it is checked against the c ``int`` every enumerator has to fit, or against the
+    datatype carrying it.
+    """
 
     description: str = ""
     """What the value means; documentation, not interface."""

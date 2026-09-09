@@ -10,9 +10,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+)
 
 
 class FileRoot(BaseModel):
@@ -111,12 +118,42 @@ on the way there, because every comparison against it is false: a NaN limit pass
 range check in silence instead of failing one.
 """
 
-Number = int | Real
-"""A finite number that keeps whole values exact.
+
+def within_64_bits(value: Any) -> Any:
+    """Refuse a whole number outside 64 bits before the union it guards can try its float arm.
+
+    Sitting ahead of the union rather than left as a bound on the int arm alone: an integer
+    just past that bound fails only the int arm, and a union tries every arm in turn, so it
+    goes on to the float arm next - which most such values are still small enough to
+    survive. Without this check, a value the int arm refused would quietly be accepted a few
+    bits later, as a ``float`` rather than the whole number its author wrote. Checking here,
+    before either arm runs, closes that gap instead of leaving it to whichever arm happens
+    to try the value first. ``bool`` is excluded because ``isinstance(value, int)`` is true
+    for it as well, and a plain truth value is never out of range.
+    """
+    if (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and not (-(2**63) <= value <= 2**64 - 1)
+    ):
+        msg = "does not fit 64 bits"
+        raise ValueError(msg)
+    return value
+
+
+Number = Annotated[
+    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | Real, BeforeValidator(within_64_bits)
+]
+"""A finite number that keeps whole values exact, bounded to what 64 bits can hold.
 
 ``int`` first on purpose: the range of a 64 bit datatype does not survive a float, and a
 limit rendered as 18446744073709551616 - one more than uint64 can hold - is a value the
-calibration tool would refuse.
+calibration tool would refuse. Bounded for the same reason every other integer a
+description states is bounded: no datatype DDD offers holds more than 64 bits, so a whole
+number past that is refused here, at the key that states it, rather than overflowing an
+arithmetic comparison several passes downstream. Not ``strict``: whether a quoted or
+fractional spelling should also be refused here is a separate question, left for its own
+change.
 """
 
 

@@ -588,6 +588,27 @@ closes on rather than whichever one the search happened to start from - a sound 
 nesting a recursive one reaches the same cycle, and keying the report on where the walk began
 would report it once per route.
 
+A chain that is deep rather than circular does end, but not within what DDD reads. A structure
+nests at most 64 levels - one level per structure, so a structure whose members all hold values
+is one and a member naming a scalar or an external type adds none - and a deeper one is
+``schema``, reported at the innermost type that is already over the limit:
+
+.. code-block:: text
+
+   $ ddd check project.ddd.json   # a chain of sixty five structures, each nesting the next
+   types.ddd.json#types[64]: error[schema]: structure 'T65_t' nests 65 levels deep; DDD reads at most 64
+   1 error
+
+Every structure nesting that one is over the limit for the same reason, so this is one finding
+rather than one per level, and a declaration naming any of them is dropped exactly as one
+naming a recursive structure is.
+
+A structure carries at most 100 000 leaves, and a variable that is an array of structures the
+same in total - its elements times the leaves of one - because the dictionary, the a2l and the
+generated code carry every leaf; a wider structure is ``schema`` at the innermost type already
+over the limit, a wider array is ``schema`` at the ``dimensions`` of the declaration, and both
+are dropped the way a chain too deep is.
+
 ``type-kind`` is reported against the declaration and not against the type, because the type is
 usually perfectly good and the use made of it is not; the note points at the declaration of the
 type so that both ends are on screen:

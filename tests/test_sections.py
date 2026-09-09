@@ -37,6 +37,37 @@ def section(name: str, access: str = "read-write", alignment: int = 4) -> dict[s
     return {"section": name, "access": access, "alignment": alignment}
 
 
+def wide_ladder(levels: int, wide: int) -> list[dict[str, Any]]:
+    """``levels`` rungs of ``wide`` structures, each nesting every structure of the rung below.
+
+    The last rung holds a value instead, so the ladder bottoms out on its own. Every type of
+    a rung is reached by ``wide`` routes from the rung above, which is what tells a walk done
+    once for the declaration from one restarted at every type it visits: the first is linear
+    in the ladder, the second is a walk of the whole ladder for every type in it.
+    """
+    entries: list[dict[str, Any]] = []
+    for level in range(levels):
+        if level + 1 == levels:
+            members = [
+                {
+                    "name": "value",
+                    "member": "value",
+                    "datatype": "uint16",
+                    "conversion": {"kind": "identity"},
+                }
+            ]
+        else:
+            members = [
+                {"name": f"n{index}", "member": "value", "typename": f"T{level + 1}_{index}_t"}
+                for index in range(wide)
+            ]
+        entries.extend(
+            {"type": "struct", "name": f"T{level}_{index}_t", "members": members}
+            for index in range(wide)
+        )
+    return entries
+
+
 class TestTheFile:
     def test_a_section_carries_its_properties(self) -> None:
         model = SectionsFile.model_validate(sections(section(".calib", "read-only", 2)))
@@ -251,6 +282,82 @@ class TestTheChecks:
             },
         )
         assert checks(bag) == ["type-cycle"]
+
+    def test_a_diamond_shaped_structure_still_gets_an_alignment_estimate(self, tree: Path) -> None:
+        """Two members naming the same type are not the type nesting itself.
+
+        The walk meets ``Inner_t`` a second time already seen on this path and simply does
+        not follow it again - the way the type graph walks treat a diamond everywhere else -
+        so the estimate still comes through, from the member DDD did look at. The section
+        guarantees less than the ``uint64`` inside needs, so the estimate that came through
+        is what the finding below says: an estimate the walk lost would report nothing.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "sections.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "sections.ddd.json": sections(section(".small", "read-write", 4)),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Inner_t",
+                            "members": [
+                                {
+                                    "name": "wide",
+                                    "member": "value",
+                                    "datatype": "uint64",
+                                    "conversion": {},
+                                }
+                            ],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Outer_t",
+                            "members": [
+                                {"name": "first", "member": "value", "typename": "Inner_t"},
+                                {"name": "second", "member": "value", "typename": "Inner_t"},
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Outer_t", section=".small")
+                ),
+            },
+        )
+        assert checks(bag) == ["section-alignment"]
+        assert "needs an alignment of 8" in messages(bag)
+
+    def test_a_placed_object_settles_its_type_graph_once(self, tree: Path) -> None:
+        """A shared type is asked once whether it reaches an external member, not once a route.
+
+        The estimate refuses to guess for a structure that reaches an external type, and the
+        walk that answers that was restarted at every type the estimate visited - a walk of
+        the whole graph under each of them, which on this ladder of 600 types was a second of
+        it for one declaration and grew with the square of the types. The findings pinned
+        below are the leaf cap refusing a ladder that wide; what this test watches is the
+        clock, so it belongs with the placement checks that ask for the estimate.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "sections.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "sections.ddd.json": sections(section(".small", "read-write", 4)),
+                "types.ddd.json": {"types": wide_ladder(30, 20)},
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="T0_0_t", section=".small")
+                ),
+            },
+        )
+        # One per type of the innermost rung that crosses the cap; everything above it is
+        # poisoned with that cause and says nothing more, the declaration included.
+        assert checks(bag) == ["schema"] * 20
+        assert "has 160000 leaves" in messages(bag)
 
     def test_a_consumer_stating_a_section_claims_storage_it_does_not_own(self, tree: Path) -> None:
         _, bag = run_analysis(

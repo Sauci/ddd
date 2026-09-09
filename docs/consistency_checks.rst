@@ -49,6 +49,7 @@ down should be read after a DDD upgrade:
    file-extension         error    a description file is not named '*.ddd.json'
    schema                 error    a file does not match the DDD contract (fixed)
    include-cycle          error    projects include each other recursively (fixed)
+   include-depth          error    a project's include tree goes more than 64 levels deep (fixed)
    include-empty          error    an include pattern matches no file
    plugin-not-found       error    a project names a plugin that cannot be found (fixed)
    plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
@@ -187,19 +188,22 @@ built-in check is.
       $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
       ok: 12 variables in 1 component are consistent
 
-The seven checks whose severity is fixed
+The eight checks whose severity is fixed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Seven checks cannot be relaxed: ``file-not-found``, ``json-syntax``, ``file-kind``,
-``schema``, ``include-cycle``, ``plugin-not-found`` and ``plugin-invalid``. Five of them
+Eight checks cannot be relaxed: ``file-not-found``, ``json-syntax``, ``file-kind``,
+``schema``, ``include-cycle``, ``include-depth``, ``plugin-not-found`` and
+``plugin-invalid``. Six of them
 report that a description could not be *read*, and a file that cannot be read has nothing
 further to say. Downgrading them would not make the project more permissive, it would make
 the rest of the run meaningless: a file that is not valid json contributes no declarations,
 so every variable it produces would be reported as having no producer and every name it
 defines would look free. The tool would bury the one real finding - "this file has a comma
-too many on line 4" - under a page of consequences. The other two report that a project
-names a plugin that cannot be found, or that is not well formed - a project cannot be
-interpreted without the plugins it names, for the same reason.
+too many on line 4" - under a page of consequences. ``include-depth`` is the same story
+told about a tree rather than a file: the entry that goes too deep is not followed whatever
+the finding is reported as, so relaxing it would hide the absence rather than allow it. The
+other two report that a project names a plugin that cannot be found, or that is not well
+formed - a project cannot be interpreted without the plugins it names, for the same reason.
 
 The same reasoning explains why the two other load time checks *are* relaxable.
 ``file-extension`` and ``include-empty`` complain about a file tree DDD can read perfectly
@@ -272,13 +276,19 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``schema``
      - error (fixed)
      - the document does not match the DDD contract: a missing or unknown key, a value of the
-       wrong type, a datatype that does not exist. One finding per violated constraint, each
-       pointing at the offending key. It also fires on an archived dictionary written by a
-       newer DDD than the one reading it.
+       wrong type, a datatype that does not exist, a shape or a nesting beyond what DDD
+       carries. One finding per violated constraint, each pointing at the offending key. It
+       also fires on an archived dictionary written by a newer DDD than the one reading it.
    * - ``include-cycle``
      - error (fixed)
      - a project includes a file which, directly or indirectly, includes it again. A diamond -
        the same component reached through two paths - is not a cycle and is quietly used once.
+   * - ``include-depth``
+     - error (fixed)
+     - the include tree of a project goes more than 64 levels deep, counting the root as the
+       first and a file of any kind as a level. One finding, at the entry that crosses the
+       limit; that file and everything under it is left out, and the rest of the project is
+       read as usual.
    * - ``include-empty``
      - error
      - an ``includes`` pattern matches no file, which usually means a renamed directory or a
@@ -721,7 +731,7 @@ declaration of the variable therefore has to say the same thing, and a disagreem
 ``definition-mismatch`` error. There is no leaving it out, either: unlike ``limits``, which
 DDD derives when a declaration omits them, there is nothing here to derive, so the key is
 required on every definition of every kind and a definition without it does not load at all.
-That is reported as ``schema``, one of the seven checks whose severity cannot be relaxed,
+That is reported as ``schema``, one of the eight checks whose severity cannot be relaxed,
 which is why a project adopting this version of DDD adds the key everywhere in one go rather
 than phasing it in.
 
@@ -930,6 +940,6 @@ usage error:
      ...
    ]
 
-``overridable`` is the machine readable form of the ``(fixed)`` marker: ``false`` for the seven
-checks whose severity cannot be changed - the five of load time and the two plugin checks -
+``overridable`` is the machine readable form of the ``(fixed)`` marker: ``false`` for the eight
+checks whose severity cannot be changed - the six of load time and the two plugin checks -
 ``true`` for every other check.

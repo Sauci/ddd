@@ -23,7 +23,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import load_workspace
+from ddd.loading import LoadedType, load_workspace
 
 
 def val(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
@@ -49,6 +49,23 @@ def scalar(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
 
 def types(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"types": list(entries)}
+
+
+def ladder(depth: int) -> list[dict[str, Any]]:
+    """``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``; both nest ``L{i+1}_t`` in turn.
+
+    The last rung's ``A`` and ``B`` hold a value instead of nesting a further ``L``, so the
+    ladder bottoms out on its own. Three types a rung, and two routes down every rung: the
+    walks over it are what :class:`TestDiamondShapedNesting` is about, and the ``2 ** depth``
+    leaves an instance of ``L0_t`` would contribute are what :class:`TestTooManyLeaves` is.
+    """
+    entries: list[dict[str, Any]] = []
+    for index in range(depth):
+        entries.append(struct(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t")))
+        tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else val("value")
+        entries.append(struct(f"A{index}_t", tail))
+        entries.append(struct(f"B{index}_t", tail))
+    return entries
 
 
 def load(tree: Path, files: dict[str, Any], root: str = "project.ddd.json") -> Any:
@@ -291,6 +308,421 @@ class TestTypeGraph:
         assert not dictionary.instances
         assert not dictionary.leaves
         assert [entry.name for entry in dictionary.objects] == ["Fine"]
+
+
+class TestNestingTooDeep:
+    """A structure nesting deeper than DDD reads is refused at the type that crosses the limit.
+
+    Everything that walks a structure used to follow it as deep as it was written, so a chain
+    a few hundred long ended ``ddd check`` in a ``RecursionError`` traceback - at whatever
+    walk ran out of stack first - instead of in a finding anybody could act on. The cap turns
+    that into one finding, at the innermost type that is already too deep to read; every type
+    nesting it is unusable for the same reason and is dropped without a second finding.
+    """
+
+    @staticmethod
+    def chain(depth: int) -> list[dict[str, Any]]:
+        """``T1_t`` holds a value and ``Tn_t`` nests ``T(n-1)_t``, so ``Tn_t`` is ``n`` deep."""
+        return [
+            struct("T1_t", val("value")),
+            *(
+                struct(f"T{index}_t", nest("down", f"T{index - 1}_t"))
+                for index in range(2, depth + 1)
+            ),
+        ]
+
+    def files(self, depth: int, *includes: str, **extra: Any) -> dict[str, Any]:
+        """The chain, and one variable of the type at the top of it."""
+        return {
+            "project.ddd.json": project("P", "types.ddd.json", *includes, "a.ddd.json"),
+            "types.ddd.json": types(*self.chain(depth)),
+            "a.ddd.json": component("A", declare("local", "X", typename=f"T{depth}_t", **extra)),
+        }
+
+    def test_a_structure_at_the_limit_still_resolves(self, tree: Path) -> None:
+        """Sixty four levels is the deepest structure there is, and it flattens as any does."""
+        dictionary, bag = run_analysis(tree, self.files(64))
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert [leaf.path for leaf in dictionary.leaves] == ["X" + ".down" * 63 + ".value"]
+
+    def test_one_level_deeper_is_refused_at_the_type_that_crosses_the_limit(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(tree, self.files(65))
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types.ddd.json#types[64]" in rendered
+        assert "structure 'T65_t' nests 65 levels deep; DDD reads at most 64" in rendered
+        # The variable of it is dropped, the way one of any other unusable type is; `schema`
+        # cannot be silenced, so there is no `incomplete-project` to report its absence.
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
+
+    def test_the_types_nesting_the_offender_are_dropped_without_a_second_finding(
+        self, tree: Path
+    ) -> None:
+        """Reported once, where the nesting first goes over; ``T70_t`` inherits the cause.
+
+        Variables pinned either side of the limit, not only at the outermost type: ``T63_t``
+        and ``T64_t`` are still within it and keep their instances, while ``T65_t`` - the one
+        the finding names - and everything nesting it, ``T66_t`` and ``T70_t`` among them,
+        are dropped without a finding of their own.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*self.chain(70)),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X63", typename="T63_t"),
+                    declare("local", "X64", typename="T64_t"),
+                    declare("local", "X65", typename="T65_t"),
+                    declare("local", "X66", typename="T66_t"),
+                    declare("local", "X70", typename="T70_t"),
+                ),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "'T65_t' nests 65 levels deep" in messages(bag)
+        assert dictionary is not None
+        assert [instance.name for instance in dictionary.instances] == ["X63", "X64"]
+
+    def test_a_variable_of_an_over_deep_type_is_placed_without_walking_it(self, tree: Path) -> None:
+        """The alignment a section guarantees is compared against a walk of the structure.
+
+        It is asked of every declaration that states a section, dropped ones included, which
+        is the one walk that still starts at a type the cap refused.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                **self.files(500, "sections.ddd.json", section=".data"),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+            },
+        )
+        assert checks(bag) == ["schema"]
+
+    def test_five_hundred_levels_are_a_finding_rather_than_a_traceback(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(500))
+        assert checks(bag) == ["schema"]
+        assert "'T65_t' nests 65 levels deep" in messages(bag)
+        assert dictionary is not None
+        assert not dictionary.instances
+
+    def test_a_deep_chain_that_closes_into_a_cycle_is_left_to_type_cycle(self, tree: Path) -> None:
+        """No depth is reported on a cycle: a structure that contains itself has no depth.
+
+        Characterises the finding alone - ``type-cycle`` and nothing else - at a depth
+        chosen to be cheap rather than to prove anything about the walk: three hundred is
+        comfortably past :data:`_MAX_TYPE_NESTING`, so the cycle is the only thing left to
+        report. That the walk behind this finding is iterative, and copes with a chain far
+        longer than any real project would write, is proved directly and far more cheaply
+        by ``test_nesting_cycle_walks_a_three_thousand_deep_ring_in_one_call`` below, which
+        calls ``_nesting_cycle`` once instead of running a whole analysis over the ring.
+        """
+        entries = self.chain(300)
+        entries[0] = struct("T1_t", nest("up", "T300_t"))
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*entries),
+                "a.ddd.json": component("A", declare("local", "X", typename="T300_t")),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+    def test_nesting_cycle_walks_a_three_thousand_deep_ring_in_one_call(self, tree: Path) -> None:
+        """A direct call, once, proves the walk itself is iterative - the pass over it does not.
+
+        A recursive ``_nesting_cycle`` survived to somewhere around a thousand levels on the
+        machine the cap was measured on (see the task 3 report); three thousand is
+        comfortably past that, so surviving it here is evidence the walk no longer recurses.
+        Called once, directly, rather than through :func:`run_analysis`: ``_check_types``
+        calls it once per declared type, which is quadratic over a ring where nothing ever
+        settles, and that pass is already characterised - cheaply, at a depth of three
+        hundred - by the test above. One call is linear in the ring's length, so proving the
+        walk itself needs no more than that.
+        """
+        # Private: the walk this proves iterative is `_check_types`'s alone to call; nothing
+        # public exposes it.
+        from ddd.analysis import _nesting_cycle
+
+        entries = self.chain(3000)
+        entries[0] = struct("T1_t", nest("up", "T3000_t"))
+        workspace, bag = load(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*entries),
+            },
+        )
+        assert not checks(bag)
+        assert workspace is not None
+        # Built the way `_Analysis.__init__` builds `self._types`, which is what
+        # `_check_types` passes as `declared`.
+        declared: dict[str, LoadedType] = {entry.name: entry for entry in workspace.types}
+        cycle = _nesting_cycle("T1_t", declared, set())
+        # The cycle is the chain from the first repeated name back to it (see the
+        # docstring), so a ring of 3000 distinct types comes back as all 3000 names plus
+        # `T1_t` once more, closing the loop it started.
+        assert len(cycle) == 3001
+        assert cycle[0] == cycle[-1] == "T1_t"
+        assert len(set(cycle)) == 3000
+
+    def test_a_cyclic_chain_with_a_variable_in_a_section_does_not_recurse_without_bound(
+        self, tree: Path
+    ) -> None:
+        """A cycle has no depth, so the old guard - keyed on depth alone - let it through.
+
+        ``_reaches_external`` had no guard of its own, and ``_check_sections`` asks the
+        alignment of every declaration naming a declared section, dropped ones included: a
+        variable of a type that closes a long chain into a cycle used to walk the whole
+        chain, unguarded, looking for an external member, and ran out of stack before
+        ``_check_types`` ever reported the cycle. The type is left to ``type-cycle``, and
+        there is no alignment estimate to give.
+        """
+        entries = self.chain(400)
+        entries[0] = struct("T1_t", nest("up", "T400_t"))
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "types.ddd.json", "sections.ddd.json", "a.ddd.json"
+                ),
+                "types.ddd.json": types(*entries),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="T400_t", section=".data")
+                ),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+    def test_a_self_nesting_type_over_a_deep_chain_does_not_recurse_without_bound(
+        self, tree: Path
+    ) -> None:
+        """Two defects, not one: the self-nest is ``type-cycle``, the chain is ``schema``.
+
+        ``Self_t`` is unusable for its own reason and never reaches the cap-based guard at
+        all - it has no depth, being cyclic - so before the fix, asking its alignment still
+        walked ``_reaches_external`` down its *other* member into a five hundred level chain
+        with nothing to stop it. The chain crosses the limit on its own and is reported
+        exactly as it would be without ``Self_t`` nesting it.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "types.ddd.json", "sections.ddd.json", "a.ddd.json"
+                ),
+                "types.ddd.json": types(
+                    struct("Self_t", nest("self", "Self_t"), nest("chain", "T500_t")),
+                    *self.chain(500),
+                ),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Self_t", section=".data")
+                ),
+            },
+        )
+        assert checks(bag) == ["schema", "type-cycle"]
+
+
+class TestDiamondShapedNesting:
+    """A name two members of one structure nest is walked once, not once per member.
+
+    Nesting is not a tree: ``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``, and both nest
+    ``L{i+1}_t`` in turn, so a ladder of these diamonds shares one name between two routes
+    at every rung. A walk with no memory of where it has already been re-explores a shared
+    name from the second route exactly as it did from the first, and everything shared
+    beneath *that* besides - doubling the work at every rung of diamond stacked on the last,
+    so a ladder of them only a couple of dozen rungs deep used to take minutes rather than
+    the fraction of a second it costs once a name already cleared is remembered instead of
+    walked again.
+    """
+
+    def test_a_deep_ladder_of_diamonds_is_answered_in_a_fraction_of_a_second(
+        self, tree: Path
+    ) -> None:
+        """No instance of any of it - ``_check_types`` walks every declared type regardless.
+
+        Depth 24 is the seventy-two types the performance report measures; before a walk
+        remembered a name it had already cleared, this did not return inside two minutes.
+        Nothing about the time is asserted here - a timing assertion is a flaky test waiting
+        to happen - report the duration with ``--durations=5`` instead.
+
+        The one finding is the leaf count of :class:`TestTooManyLeaves`: a rung doubles the
+        leaves of the rung below it, so twenty-four of them are 16 777 216 leaves and the
+        ladder is refused whether or not anything declares a variable of it - at ``L7_t``,
+        the innermost rung that is already over the limit. It says nothing about what this
+        test is about: every one of the seventy-two types is still walked, by the depth walk
+        and the cycle walk before the count and by the count itself.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*ladder(24)),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "structure 'L7_t' has 131072 leaves" in messages(bag)
+
+    def test_a_cycle_behind_the_diamond_is_still_reported_once(self, tree: Path) -> None:
+        """The last rung also nests ``L0_t``, closing every route down the ladder into a cycle.
+
+        Settling a name a walk has cleared must never stop a *later* start from finding a
+        cycle a route through that name reaches - and none of these seventy-two types is
+        ever settled, since every one of them sits on the single cycle the extra member
+        closes: reaching a name at all means walking it, and a name is only settled once its
+        own walk found no cycle. What keeps this to one finding rather than one per starting
+        type is not new here either: ``_check_types`` keys the finding on the cycle's
+        participants, not on the type whose walk found it, exactly as it did before this
+        change for a cycle two starts both happened to reach.
+        """
+        entries = ladder(24)
+        entries[-3] = struct(
+            "L23_t", nest("a", "A23_t"), nest("b", "B23_t"), nest("closes", "L0_t")
+        )
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*entries),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+
+class TestTooManyLeaves:
+    """An array of structures larger than the outputs could carry is refused before it is spread.
+
+    A structure reaches the dictionary and the a2l one leaf per member per element - there is
+    no single address describing ``cell[0].raw`` and ``cell[1].raw`` - so a hundred thousand
+    by a thousand array of a two member structure is two hundred million leaves to build,
+    sort and write. It used to be built: ``ddd check`` on that project returned no answer at
+    all, and the diamond ladder above reached a million leaves through a types file of sixty
+    lines. Both are now refused, the array where its dimensions are written and the type
+    where it is declared.
+    """
+
+    CELL = struct("Cell_t", val("a"), val("b"))
+
+    def files(self, *entries: dict[str, Any], **definition: Any) -> dict[str, Any]:
+        """The types, and one variable declared over them."""
+        return {
+            "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+            "types.ddd.json": types(*entries),
+            "a.ddd.json": component("A", declare("local", "V", **definition)),
+        }
+
+    def test_an_array_of_structures_larger_than_the_outputs_carry_is_refused(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree, self.files(self.CELL, typename="Cell_t", dimensions=[100000, 1000])
+        )
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "a.ddd.json#component.interface[0].definition.dimensions" in rendered
+        assert "'V' would contribute 200000000 leaves; DDD carries at most 100000" in rendered
+        # Dropped like any other declaration that cannot resolve: `schema` cannot be
+        # silenced, so nothing has to report the absence a second time.
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
+
+    def test_an_array_of_structures_at_the_limit_is_flattened_whole(self, tree: Path) -> None:
+        """Sixty four by sixty four of a twenty member structure: 81 920 leaves, all kept."""
+        wide = struct("Wide_t", *(val(f"m{index}") for index in range(20)))
+        dictionary, bag = run_analysis(
+            tree, self.files(wide, typename="Wide_t", dimensions=[64, 64])
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert len(dictionary.leaves) == 81920
+
+    def test_a_structure_with_no_leaves_of_its_own_is_still_capped_by_its_elements(
+        self, tree: Path
+    ) -> None:
+        """Every member opaque: no leaf to count, and one element path each all the same.
+
+        The leaf cap says nothing about an array of these - it contributes none - so the cap
+        that answers is the one every array has.
+        """
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                {"type": "external", "name": "Opaque_t", "header": "opaque.h"},
+                struct("Box_t", nest("held", "Opaque_t")),
+                typename="Box_t",
+                dimensions=[20000000],
+            ),
+        )
+        assert checks(bag) == ["schema"]
+        assert "'V' has 20000000 elements; DDD carries at most 10000000" in messages(bag)
+
+    def test_a_type_of_more_leaves_than_the_outputs_carry_is_refused_where_it_is_declared(
+        self, tree: Path
+    ) -> None:
+        """Twenty rungs of diamond: 1 048 576 leaves out of a types file of sixty lines.
+
+        Counted over the nesting graph rather than by spreading an instance out, which is
+        what makes the answer immediate: every rung is counted once, where walking the
+        routes an instance takes would be the two-to-the-depth the ladder is built to be.
+        Before the count, ``ddd check`` on this project took the best part of a minute and
+        then reported a million perfectly consistent leaves.
+
+        At ``L3_t`` rather than at the ``L0_t`` the variable names, for the reason the
+        nesting cap reports at the type that crosses it: a rung doubles the rung below it,
+        so ``L4_t`` is 65 536 leaves and still within the limit while ``L3_t`` is 131 072 and
+        is the innermost type that is already over it. Every rung above it is over it for
+        that same reason and is dropped without a finding of its own.
+        """
+        dictionary, bag = run_analysis(tree, self.files(*ladder(20), typename="L0_t"))
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types.ddd.json#types[9]" in rendered
+        assert "structure 'L3_t' has 131072 leaves; DDD carries at most 100000" in rendered
+        assert dictionary is not None
+        assert not dictionary.instances
+
+    def test_a_type_nesting_the_offender_is_dropped_without_a_second_finding(
+        self, tree: Path
+    ) -> None:
+        """One mistake, one finding, at the innermost type that is already over the limit.
+
+        A type nesting it has at least as many leaves for exactly the same reason, so it
+        takes the cause of the type it nests rather than making one of its own - which holds
+        for the rungs of the ladder above ``L3_t`` and for the ``Wrap_t`` declared over the
+        whole of it alike. A variable of any of them is dropped.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*ladder(20), struct("Wrap_t", nest("held", "L0_t"))),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "V", typename="L0_t"),
+                    declare("local", "W", typename="Wrap_t"),
+                ),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "structure 'L3_t' has 131072 leaves" in messages(bag)
+        assert dictionary is not None
+        assert not dictionary.instances
 
 
 class TestInfiniteDerivedLimits:
@@ -1387,3 +1819,183 @@ class TestMemberStorageChecks:
         )
         assert "limits-out-of-range" in checks(bag)
         assert "[0, 1000] exceed the range [0, 255]" in messages(bag)
+
+
+class TestScalarTypeChecks:
+    """What a scalar type fixes is answered at the type, the way a member's keys are.
+
+    A declaration naming a scalar type restates none of what the type fixes - the contract
+    refuses it - so a finding about the unit, the conversion or the limits at a declaration
+    would point at a key that is not written there, once per component naming the type, and
+    a type nobody has started naming yet would be checked by nobody at all.
+    """
+
+    def wide(self) -> dict[str, Any]:
+        """``Pct_t`` offers 300 percent of a ``uint8`` that stops counting at 255."""
+        return scalar("Pct_t", "uint8", limits={"min": 0, "max": 300})
+
+    def test_the_limits_are_reported_once_where_the_type_is_declared(self, tree: Path) -> None:
+        """Two components naming the type are two copies of one mistake in a third file."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "types.ddd.json": types(self.wide()),
+                "a.ddd.json": component("A", declare("local", "X", typename="Pct_t")),
+                "b.ddd.json": component("B", declare("local", "Y", typename="Pct_t")),
+            },
+        )
+        assert checks(bag) == ["limits-out-of-range"]
+        finding = first(bag)
+        assert finding.location.path.name == "types.ddd.json"
+        assert finding.location.pointer == "types[0].limits"
+        assert "[0, 300] exceed the range [0, 255]" in finding.render()
+
+    def test_a_type_nobody_names_yet_is_checked_all_the_same(self, tree: Path) -> None:
+        """A type is written before the first component names it, which is when to say so."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(self.wide()),
+            },
+        )
+        assert checks(bag) == ["limits-out-of-range"]
+        assert first(bag).location.pointer == "types[0].limits"
+
+    def test_an_enumerator_is_screened_at_the_conversion_declaring_it(self, tree: Path) -> None:
+        """As a member's enumerators are: the enum reaches the types header either way."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    scalar(
+                        "Mode_t",
+                        "uint8",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"register": 0, "RUNNING": 1},
+                        },
+                    )
+                ),
+            },
+        )
+        assert checks(bag) == ["reserved-identifier"]
+        finding = first(bag)
+        assert "enumerator 'register' of enum 'Mode_e' is reserved" in finding.render()
+        assert finding.location.pointer == "types[0].conversion"
+
+    def test_a_declaration_still_answers_for_its_own_init(self, tree: Path) -> None:
+        """The ``init`` belongs to the variable rather than to the type, so it stays here."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(scalar("Level_t", "uint8")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Level_t", init=300)),
+            },
+        )
+        assert checks(bag) == ["init-invalid"]
+        finding = first(bag)
+        assert "does not fit into uint8" in finding.render()
+        assert finding.location.pointer == "component.interface[0].definition.init"
+
+    def test_a_declared_types_enum_reaches_the_types_header(self, tree: Path) -> None:
+        """A structure member's enum reaches the a2l as the instance's ``COMPU_VTAB``, so a
+        header that omitted the matching ``typedef enum`` would leave the two disagreeing
+        about what the name means; a scalar type's own enum is registered on the same terms,
+        whether or not anything yet exists to name it.
+        """
+        mode_t = scalar(
+            "Mode_t",
+            "uint8",
+            conversion={
+                "kind": "enum",
+                "name": "Mode_e",
+                "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 1},
+            },
+        )
+
+        # (a) the type on its own, named by no declaration.
+        lone, bag = run_analysis(
+            tree / "lone",
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(mode_t),
+            },
+        )
+        assert lone is not None, messages(bag)
+        header = {f.path.name: f.content for f in render_files(lone, tree / "lone" / "gen")}
+        assert "typedef enum" in header["ddd_types.h"]
+        assert "} Mode_e;" in header["ddd_types.h"]
+        assert "MODE_IDLE = 0" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
+
+        # (b) a structure member naming the type, with an instance of the structure.
+        instantiated, bag = run_analysis(
+            tree / "member",
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "s.ddd.json"),
+                "types.ddd.json": types(mode_t, struct("Sensor_t", val("mode", typename="Mode_t"))),
+                "s.ddd.json": component("S", declare("local", "X", typename="Sensor_t")),
+            },
+        )
+        assert instantiated is not None, messages(bag)
+        header = {
+            f.path.name: f.content for f in render_files(instantiated, tree / "member" / "gen")
+        }
+        assert "typedef enum" in header["ddd_types.h"]
+        assert "} Mode_e;" in header["ddd_types.h"]
+        assert "MODE_IDLE = 0" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
+
+    def test_an_inline_enum_disagreeing_with_a_types_enum_is_a_conflict(self, tree: Path) -> None:
+        """Silent before 7415032: a type's enum reached no registry for an inline one to
+        disagree with. Now it does, and the disagreement is real - the header carries the
+        type's spelling while this declaration's own a2l ``COMPU_VTAB`` would carry the other.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(
+                    scalar(
+                        "Mode_t",
+                        "uint8",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 1},
+                        },
+                    )
+                ),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "X",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"MODE_IDLE": 0, "MODE_RUNNING": 7},
+                        },
+                    ),
+                ),
+            },
+        )
+        assert checks(bag) == ["enum-conflict"]
+        finding = first(bag)
+        assert finding.location.path.name == "a.ddd.json"
+        assert finding.location.pointer == "component.interface[0].definition.conversion"
+        note_text, note_location = finding.notes[1]
+        assert note_text == "first defined as: MODE_IDLE=0, MODE_RUNNING=1"
+        assert note_location.path.name == "types.ddd.json"
+        assert note_location.pointer == "types[0].conversion"
+
+        # The registry keeps the type's spelling; the header has no way to carry both.
+        assert dictionary is not None, messages(bag)
+        header = {f.path.name: f.content for f in render_files(dictionary, tree / "gen")}
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 7" not in header["ddd_types.h"]

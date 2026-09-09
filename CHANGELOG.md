@@ -23,6 +23,108 @@ not, and the templates a project provides are its own.
   `output` in its owning component, so that the reference is a legitimate shared use, or moves
   the referring object into that component.
 
+* **Every integer a description states fits 64 bits.**  A `limits` bound or an enumerator's
+  value too large for a float ended the run in an `OverflowError` traceback, because both are
+  converted to a float before they are weighed against the range of a datatype; a constant, a
+  bare dimension or a section's `alignment` of the same size was accepted in silence, with no
+  finding of any kind; and a whole number between `2**64` and the largest float - past every
+  datatype, but small enough to survive the conversion - was quietly read as a float, so an
+  oversized `limits.max` was answered with `limits-out-of-range` and an oversized `init` as a
+  number written fractionally, neither of which is what the author wrote.  Every integer a
+  description states - a limit, an initial value, an enumerator's value, a constant, a
+  dimension, a section's `alignment` - is now bounded to `-2**63 .. 2**64-1`, what a `sint64`
+  and a `uint64` span together, and a wider one is `schema` where it is written, "does not fit
+  64 bits", before any arithmetic sees it.
+  **Migration:** a limit or an initial value written as a whole number between `2**64` and the
+  largest float used to be accepted as a float and answered, if at all, several passes later;
+  it is refused now, at the key that states it.  No datatype DDD offers holds such a value, so
+  the number itself is the mistake: state one the object's datatype can carry.
+
+* **A json document nested too deeply to read is a finding, not a traceback.**  The reader
+  that loads description files already reported `json-syntax` for a document nested deeper
+  than python's parser goes; four other paths ran that parser without catching what it raises
+  there, so `ddd compare` on a dumped dictionary, the sniff that decides whether a side of a
+  comparison is a project, a component or a dictionary, the language server's document reader
+  and `ddd id --assign` each ended in a `RecursionError`, at whatever line the stack happened
+  to run out on.  Each now
+  answers the way an unreadable file already was answered: `json-syntax`, "the json is nested
+  too deeply to read", from `ddd compare`; "not readable as json, skipped" from
+  `ddd id --assign`; no spans, and the rest of the workspace still served, in the language
+  server.  A `ddd compare` side that is not valid utf-8 was a usage error - exit 2, as though
+  the command line were wrong - because the sniff let the decoding error out; the file now
+  reaches the reader that has a message for it, and is a finding, exit 1, like any other
+  unreadable file.
+
+* **An include tree and a structure nest at most 64 levels.**  Five hundred projects each
+  including the next ended in a `RecursionError`, two frames a level; a thousand structures
+  nesting each other did the same in the walks over the type graph, and five hundred were
+  enough when a variable of the outermost sat in a declared section, which walks the chain a
+  third time.  Includes now nest at most 64 levels - the root of the run is the first, and a
+  component file counts as a level like any other - and a deeper entry is the new check
+  `include-depth`, at the entry that crosses the limit; that entry is not followed, the rest
+  of the project is read as usual, and the severity is fixed, because the entry is left out
+  whatever the finding is called.  It is reported once the whole tree has loaded, and only for
+  a file no shallower route read, so which of two includes was written first cannot decide
+  whether it is reported.  A structure nests at most 64 levels too - one level is one
+  structure, a member naming a scalar or an external type adding none - and a deeper one is
+  `schema` at the innermost type that crosses the limit, with every type nesting it unusable
+  for the same reason and every declaration naming one of them dropped.  The walks over the
+  type graph are iterative now, and each type is walked once a pass rather than once per route
+  into it: a diamond - a type that two members of one structure both nest - used to be
+  re-entered from every branch, so seventy-two types took more than two minutes to answer and
+  now take milliseconds.
+  **Migration:** an include tree deeper than 64 levels, or a structure nesting deeper than
+  that, was read before if the interpreter's stack happened to hold, and is refused now:
+  flatten the tree, or the type, to stay inside the limit.
+
+* **An array, a map and a structure are capped before anything expands them.**  Nothing
+  bounded a shape.  A `uint8` array of `[1000000000]` with a scalar `init` passed the check in
+  half a second and was then broadcast into one c literal per element: `ddd generate c` had
+  written nothing after three minutes.  A two member structure over `[100000, 1000]` was still
+  being flattened when it was killed after two and a half minutes, and twenty rungs of types
+  each nesting the rung below twice - 1 048 576 leaves - were reported consistent after 39
+  seconds.  A 5000 by 5000 map with a scalar `init` wrote 125 MB of `ddd_globals.c` in 19
+  seconds.  An array now holds at most 10 000 000 elements, a map at most 10 000 000 over the
+  product of its two axes, a structure type at most 100 000 leaves - whether or not anything
+  declares a variable of it - and an array of structures at most 100 000 leaves in total, a
+  leaf being one value member of one element, which the dictionary, the a2l and the generated
+  code each carry an entry of.  Each is `schema` where the shape is written: at `dimensions`,
+  at the `size` of an axis, at the whole declaration of a map, which states no shape of its
+  own, and at the innermost type that crosses it for a structure.  The declaration is dropped,
+  so each of the runs above is one finding in half a second now, with nothing written.
+  **Migration:** a project declaring an array, a map or a structure past one of these limits
+  used to be analysed and generated, slowly, and is refused now.  A shape that large is
+  usually a constant that resolved to the wrong number; one that is meant needs splitting into
+  objects a calibration tool can carry.
+
+* **A finding on a key that only looks numeric is reported.**  The findings of one file are
+  ordered by their json pointer, so that `interface[10]` follows `interface[2]` rather than
+  preceding it, and whether a part of a pointer was an index was decided by `str.isdigit`,
+  which is true of a superscript two and of every other unicode digit `int` refuses.  A
+  document with such a key has a finding of its own to report - an extra top-level key is
+  `schema` - and sorting the findings for display raised instead: the run printed
+  `ddd: invalid literal for int() with base 10: '²'` and exited 2, the code for a mistyped
+  command line.  A part is an index by its position in the split now, not by what it looks
+  like, so the finding is reported at the key it belongs to and the run exits 1.
+
+* **A scalar type is checked where it is declared.**  The `limits` and the enumerators of a
+  declared scalar type were checked once per declaration naming it, and each finding was
+  rendered at `component.interface[N].definition.limits` - a pointer into a file that does not
+  contain a `limits` key, and may not state one, since a declaration naming a type restates
+  none of what the type fixes.  A type no declaration named was not checked at all.  Both are
+  checked where the type is declared now, once and whether or not anything names it:
+  `limits-out-of-range` at its `limits`, the names and values of its enum at its `conversion`;
+  a declaration naming a type is still checked for what it adds of its own, its `init`.  The
+  enum of a declared type reaches the types header on the same terms as a structure member's:
+  a member naming a scalar enum type used to give the a2l a `COMPU_VTAB` for a name the
+  generated `ddd_types.h` declared no `typedef enum` for, two artefacts of one run disagreeing
+  about what the name means.  An inline enum that disagrees with a declared type's enum of the
+  same name is `enum-conflict`, with a note at the type, even when nothing names that type.
+  **Migration:** two spellings of one enum name, one on a declared type nobody names and one
+  written inline on a declaration, were silent before and are `enum-conflict` now.  The header
+  carries the type's spelling, so either make the declaration agree with it or give one of the
+  two enums a name of its own.
+
 * **A dangling reference drops the referring object.**  With `unknown-reference` or
   `reference-kind` relaxed, a curve whose axis nobody declares was kept anyway: the c
   backend declared it as a scalar, and the a2l backend wrote no `CHARACTERISTIC` for it

@@ -51,6 +51,17 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
+_MAX_INCLUDE_DEPTH = 64
+"""How many projects deep a run follows the ``includes`` of a project.
+
+The loader walks the tree by recursion, one pair of frames per level, so a chain a few
+hundred long ends the run in python's ``RecursionError`` - a traceback, at whatever file the
+stack happened to run out on, rather than a finding at the entry that went too far. The limit
+is written into the specification instead of being left to the interpreter: a tree this deep
+is a mistake, most often a project that includes a sibling which includes it back under a
+second spelling of one path, and a mistake deserves an answer that names it.
+"""
+
 FILE_KINDS = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """Top level keys that identify a description file, in the order they are offered."""
 
@@ -430,10 +441,15 @@ def _dictionary_format_is_supported(text: str, path: Path, bag: DiagnosticBag) -
     """Whether the ``format`` of a dumped dictionary is one this version can read.
 
     Tolerant about everything except the version itself: a document that is not json, or not
-    an object, or carries no ``format``, is left to the real validation to report properly.
+    an object, or carries no ``format``, is left to the real validation to report properly -
+    except a document nested too deeply for python to parse at all, which pydantic cannot
+    validate either, so it is reported here instead.
     """
     try:
         data = json.loads(text, parse_constant=_reject_constant)
+    except RecursionError:
+        bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
+        return False
     except ValueError:
         return True
     if not isinstance(data, dict):
@@ -473,6 +489,7 @@ class _Loader:
         self._constants_by_name: dict[str, LoadedConstant] = {}
         self._seen_paths: set[Path] = set()
         self._read_paths: set[Path] = set()
+        self._deep_includes: list[tuple[Path, Location, int]] = []
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
 
@@ -522,6 +539,7 @@ class _Loader:
         project = self._load_project(root, data, parents=(), stack=())
         if project is None:
             return None
+        self._report_deep_includes()
         self._validate_blocks(root)
         return Workspace(
             root=root,
@@ -1004,7 +1022,16 @@ class _Loader:
             self._bag.add("include-cycle", f"include cycle: {chain}", origin)
             return
         if path in self._seen_paths:
-            # Diamond shaped include graphs are fine, the file is simply used once.
+            # Diamond shaped include graphs are fine, the file is simply used once. Kept ahead
+            # of the depth cap below as the cheap half of the same rule: a file already read is
+            # in the workspace whatever route reaches for it next, so it is never held back as
+            # too deep and _report_deep_includes has one crossing fewer to weigh.
+            return
+        if len(stack) >= _MAX_INCLUDE_DEPTH:
+            # Not reported here: this entry is not followed either way, but some other, shallower
+            # entry may still read the file, and then nothing is left out and the finding would
+            # be false. Recorded and answered by _report_deep_includes once the tree is read.
+            self._deep_includes.append((path, origin, len(stack) + 1))
             return
         self._seen_paths.add(path)
 
@@ -1027,6 +1054,32 @@ class _Loader:
             self._load_rasters(path, data)
         elif kind == "constants":
             self._load_constants(path, data)
+
+    def _report_deep_includes(self) -> None:
+        """Report the entries that crossed the depth cap on a file nothing else read.
+
+        Held back until the whole tree is read because the loader walks the entries in the
+        order they are written, and a file refused at the cap on one route is often read
+        within the cap on another - so reporting at the crossing makes the finding depend on
+        which of two includes the author happened to write first, and says a file was left
+        out while it sits in the workspace. A file in ``_seen_paths`` by the end was read,
+        wherever from, so its crossings are dropped.
+
+        One finding per crossing entry rather than per file left out: an entry is a line
+        someone wrote and can shorten, and two over-deep routes onto the same file are two
+        of them. Reporting the file once would have to pick one of the two entries to point
+        at, and the one it picks is whichever route was walked first - which is the ordering
+        this holding back is here to make invisible.
+        """
+        for path, origin, depth in self._deep_includes:
+            if path in self._seen_paths:
+                continue
+            self._bag.add(
+                "include-depth",
+                f"'{path.name}' is included {depth} levels deep; DDD reads at most "
+                f"{_MAX_INCLUDE_DEPTH}, so this entry and everything under it is left out",
+                origin,
+            )
 
     def _report_validation_error(
         self, path: Path, error: ValidationError, document: Any = None

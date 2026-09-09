@@ -63,6 +63,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Editor integration</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#what-the-server-offers">What the server offers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#which-project-a-file-belongs-to">Which project a file belongs to</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-server-runs">What the server runs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#vs-code">VS Code</a></li>
 </ul>
 </li>
@@ -207,6 +208,20 @@ because a component read alone has inputs nobody produces and outputs nobody rea
 construction rather than by mistake. Each check declares whether it needs the whole
 project, so the two modes cannot drift apart.</p></li>
 </ul>
+</section>
+<section id="what-the-server-runs">
+<h2>What the server runs<a class="headerlink" href="#what-the-server-runs" title="Link to this heading"></a></h2>
+<p>A project names its <a class="reference internal" href="plugins.html"><span class="doc">plugins</span></a> in its description, and the server runs the
+plugins of every project it analyses: the ones the build records name, the ones lying at or
+above an opened file that turn out to include it, and, in the asking, every description file
+it opens at or above that file to find out whether it does:
+a plugin is imported when its project is read, whether or not that project is then analysed.
+Opening a description file in a checked out repository is therefore running the python that
+repository ships, exactly as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> on it would - the difference is that nobody typed
+the command. Open a repository in the editor only when you would run its build. The VS Code
+extension declines a workspace that has not been trusted (VS Code’s <em>Restricted Mode</em>), so
+the server starts only once you have said so; an editor that launches the server itself has
+to make the same decision.</p>
 </section>
 <section id="vs-code">
 <h2>VS Code<a class="headerlink" href="#vs-code" title="Link to this heading"></a></h2>

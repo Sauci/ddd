@@ -267,6 +267,10 @@ returns from <code class="docutils literal notranslate"><span class="pre">genera
 dump may predate a field the plugin added since - <code class="docutils literal notranslate"><span class="pre">model_validate</span></code> fills it from the
 model’s default if there is one, and raises otherwise - and what to do about that gap is the
 plugin’s own decision, not one the api makes for it.</p>
+<p>Naming a plugin runs it. That is true of every <code class="docutils literal notranslate"><span class="pre">ddd</span></code> command on the project, and of the
+language server, which runs the plugins of every project it analyses when a file is opened
+or saved; the <a class="reference internal" href="editor_integration.html"><span class="doc">editor page</span></a> says what that means for a repository
+you did not write, and why the server will not run there until you trust the workspace.</p>
 </section>
 </section>
 <section id="what-the-dictionary-carries">

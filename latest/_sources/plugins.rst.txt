@@ -170,6 +170,11 @@ dump may predate a field the plugin added since - ``model_validate`` fills it fr
 model's default if there is one, and raises otherwise - and what to do about that gap is the
 plugin's own decision, not one the api makes for it.
 
+Naming a plugin runs it. That is true of every ``ddd`` command on the project, and of the
+language server, which runs the plugins of every project it analyses when a file is opened
+or saved; the :doc:`editor page <editor_integration>` says what that means for a repository
+you did not write, and why the server will not run there until you trust the workspace.
+
 What the dictionary carries
 ---------------------------
 

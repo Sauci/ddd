@@ -174,6 +174,13 @@ def _path_of(spelling: str, base: Path) -> Path:
     return (raw if raw.is_absolute() else base / raw).resolve()
 
 
+def _exit_text(error: SystemExit) -> str:
+    """``SystemExit(0)``, ``SystemExit(None)`` or ``SystemExit('bye')`` - ``str()`` alone
+    loses the distinction: ``str(SystemExit(0))`` is just ``'0'``, indistinguishable from a
+    hook that raised ``ValueError('0')``."""
+    return f"SystemExit({error.code!r})"
+
+
 def _load_from_path(spelling: str, base: Path) -> Any:
     path = _path_of(spelling, base)
     if not path.is_file():
@@ -198,12 +205,26 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception as error:
+    except (Exception, SystemExit) as error:
         # Not left cached half-run: a second load must retry it and report again, rather than
-        # hand out a module whose body never finished.
+        # hand out a module whose body never finished. A plugin body that calls sys.exit(...)
+        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
+        # that than one that raises: it is reported the same way, naming the code it exited
+        # with rather than the empty or misleading text str(SystemExit(...)) would give.
         sys.modules.pop(name, None)
-        msg = f"plugin '{spelling}' failed to import: {error}"
+        if isinstance(error, SystemExit):
+            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
+        else:
+            msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
+    except BaseException:
+        # Anything else - KeyboardInterrupt above all - is not this plugin's error to own, and
+        # still has to interrupt. Only the cache is this function's business: left registered,
+        # a second load in the same process (the language server re-analysing after every
+        # keystroke) would find a module that never finished running and skip re-running its
+        # body at all, rather than trying again.
+        sys.modules.pop(name, None)
+        raise
     return module
 
 
@@ -372,6 +393,12 @@ class _GuardedBackend:
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
         return function(context)
-    except Exception as error:
-        msg = f"plugin '{plugin.name}' failed in its {hook} hook: {error}"
+    except (Exception, SystemExit) as error:
+        # SystemExit is not an Exception: sys.exit() in a hook would otherwise escape _call
+        # uncaught, taking ddd check's exit code and printing none of the run's findings, and
+        # killing the language server outright. It is a defect of the plugin like any other
+        # here. KeyboardInterrupt is not listed and still propagates - it is the user's
+        # interrupt to own, never the plugin's error to be blamed for.
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{plugin.name}' failed in its {hook} hook: {detail}"
         raise PluginError(msg) from error

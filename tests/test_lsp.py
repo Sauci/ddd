@@ -337,6 +337,20 @@ class TestDiscovery:
         assert load_builds([tmp_path / "absent.json"]) == []
 
 
+EXITING_CHECK_PLUGIN = """
+import sys
+
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    sys.exit(0)
+
+
+PLUGIN = Plugin(name="exiting", check=check)
+"""
+
+
 class TestDiagnostics:
     """What the editor draws, and on which file."""
 
@@ -582,6 +596,34 @@ class TestDiagnostics:
             "schema", Severity.ERROR, "unreadable", Location(tmp_path / "gone.json", "a.b")
         )
         assert service._as_lsp(finding, {})["range"]["start"] == {"line": 0, "character": 0}
+
+    def test_a_hook_that_exits_is_reported_and_the_server_keeps_running(
+        self, tmp_path: Path
+    ) -> None:
+        """``sys.exit()`` in a hook is not a ``PluginError`` by itself - only wrapped as one at
+        the ``_call`` boundary - so before that wrapping this used to propagate out of
+        ``collect`` as a bare ``SystemExit`` and end the server process. The project promises
+        findings and never an exception; this project file opened with no build claiming it is
+        exactly what an editor hands the server on the first keystroke of a new file."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        document = tmp_path / "project.ddd.json"
+        reports = service.collect([], [document])
+        # collect() returned at all, rather than the process going down with it: the server
+        # keeps running.
+        findings = reports[document]
+        plugin_invalid = [entry for entry in findings if entry["code"] == "plugin-invalid"]
+        assert len(plugin_invalid) == 1
+        assert (
+            "plugin 'exiting' failed in its check hook: SystemExit(0)"
+            in plugin_invalid[0]["message"]
+        )
 
 
 class TestNavigation:

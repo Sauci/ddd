@@ -51,6 +51,7 @@ from ddd.loading import load_dictionary, load_workspace
 from ddd.lsp import analyse_standalone
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import (
+    CheckContext,
     Plugin,
     PluginError,
     PluginInvalidError,
@@ -237,6 +238,40 @@ class TestLoading:
         __future__ import annotations`` needs, to resolve its own forward references."""
         write_plugin(tmp_path, "selfaware.py", SELF_AWARE_PLUGIN)
         assert load_plugin("selfaware.py", tmp_path).name == "selfaware"
+
+    def test_a_plugin_exiting_during_import_is_not_cached_so_a_second_load_reports_again(
+        self, tmp_path: Path
+    ) -> None:
+        """The same half-run gap a broken plugin was fixed against: ``SystemExit`` is not an
+        ``Exception``, so it used to skip the pop that keeps a failed import from being cached,
+        and a second load in the same process - the language server re-analysing after every
+        keystroke - found the half-run module already registered and reported 'exposes no
+        PLUGIN' instead of the real failure."""
+        write_plugin(tmp_path, "exits.py", "import sys\n\nsys.exit(3)\n")
+        with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(3\)"):
+            load_plugin("exits.py", tmp_path)
+        with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(3\)"):
+            load_plugin("exits.py", tmp_path)
+
+    def test_a_keyboardinterrupt_during_import_still_interrupts_and_is_not_cached(
+        self, tmp_path: Path
+    ) -> None:
+        """Only ``SystemExit`` becomes the plugin's own error; anything else - a
+        ``KeyboardInterrupt`` above all - is not this plugin's failure and still has to
+        interrupt. The half-run module must not be left cached either: the plugin's body
+        records the name ``_load_from_path`` registered it under (``__name__``, read from
+        inside its own execution) before interrupting, so the test can confirm that name is
+        gone from ``sys.modules`` afterwards without reproducing the digest scheme itself."""
+        marker = tmp_path / "name.txt"
+        source = (
+            "from pathlib import Path\n\n"
+            f"Path({marker.as_posix()!r}).write_text(__name__, encoding='utf-8')\n"
+            "raise KeyboardInterrupt\n"
+        )
+        write_plugin(tmp_path, "interrupts.py", source)
+        with pytest.raises(KeyboardInterrupt):
+            load_plugin("interrupts.py", tmp_path)
+        assert marker.read_text(encoding="utf-8") not in sys.modules
 
     def test_a_module_whose_own_import_is_missing_is_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1051,6 +1086,13 @@ RAISING_PLUGIN = TAG_PLUGIN.replace(
     'def check(context: CheckContext) -> None:\n    raise RuntimeError("boom")\n',
 )
 
+EXITING_PLUGIN = TAG_PLUGIN.replace(
+    "from pathlib import Path\n", "import sys\nfrom pathlib import Path\n"
+).replace(
+    "def check(context: CheckContext) -> None:\n",
+    "def check(context: CheckContext) -> None:\n    sys.exit(0)\n",
+)
+
 
 class TestTheCheckHook:
     def test_a_hook_reports_through_the_bag_at_the_producing_declaration(self, tree: Path) -> None:
@@ -1134,6 +1176,80 @@ class TestTheCheckHook:
             },
         )
         assert checks(bag) == []
+
+    def test_a_hook_that_exits_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sys.exit()`` is not an ``Exception``; unhandled, it would take ``ddd check``'s
+        exit code and leave the findings gathered so far unprinted. It is the plugin's failure
+        like any other raised by a hook, named the same way, down to the findings that were
+        gathered before it ran still reaching the reader first."""
+        write_plugin(tree / "tools", source=EXITING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "info[missing-id]" in captured
+        assert "plugin 'tag' failed in its check hook: SystemExit(0)" in captured
+        assert captured.index("missing-id") < captured.index("failed in its check hook")
+
+    def test_the_language_server_survives_a_hook_that_exits(self, tree: Path) -> None:
+        """The server promises findings and never an exception; a hook calling ``sys.exit()``
+        used to kill it outright, the same gap a hook that raised was already closed against."""
+        write_plugin(tree / "tools", source=EXITING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag, _ = analyse_standalone(tree / "project.ddd.json")
+        assert "plugin-invalid" in checks(bag)
+        assert "failed in its check hook: SystemExit(0)" in messages(bag)
+
+
+class TestTheHookBoundary:
+    """``_call`` wraps every hook - check, compare, generate - the same way; pinned once here
+    through ``run_check_hooks`` rather than once per hook kind."""
+
+    def test_a_keyboardinterrupt_in_a_hook_still_interrupts(self, tree: Path) -> None:
+        """Not caught alongside ``SystemExit``: a hook is not to blame for the user's own
+        Ctrl-C, and it must still be able to stop a run in progress."""
+        from ddd.plugins import run_check_hooks
+
+        def interrupting(context: CheckContext) -> None:
+            raise KeyboardInterrupt
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="interrupting", check=interrupting)
+        with pytest.raises(KeyboardInterrupt):
+            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+
+    @pytest.mark.parametrize(
+        ("code", "rendered"),
+        [(None, "SystemExit(None)"), ("bye", "SystemExit('bye')"), (7, "SystemExit(7)")],
+    )
+    def test_the_exit_code_is_rendered_whatever_shape_it_is(
+        self, tree: Path, code: object, rendered: str
+    ) -> None:
+        """``SystemExit.code`` is ``None``, an int or whatever the plugin passed ``sys.exit``;
+        ``str()`` alone would print an empty string for ``None`` and lose the quotes a string
+        code needs to be told apart from an int one, so it is rendered explicitly instead."""
+        from ddd.plugins import run_check_hooks
+
+        def exiting(context: CheckContext) -> None:
+            raise SystemExit(code)
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="exiting", check=exiting)
+        with pytest.raises(PluginError, match=re.escape(f"failed in its check hook: {rendered}")):
+            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
 
 
 class TestSettings:

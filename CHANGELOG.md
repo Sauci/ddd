@@ -12,15 +12,17 @@ not, and the templates a project provides are its own.
 
 * **A dangling reference drops the referring object.**  With `unknown-reference` or
   `reference-kind` relaxed, a curve whose axis nobody declares was kept anyway: the c
-  backend declared it as a scalar, and the a2l backend left it out entirely.  An axis
-  whose `input` nobody declares was kept whole instead: the a2l backend wrote its
-  `AXIS_PTS` with an input quantity naming a measurement that does not exist, a file a
-  calibration tool refuses whole.  The referring object is now dropped the way an object
-  referring to a dropped declaration already was, transitively, and `incomplete-project`
-  reports the absence when the finding is silenced.  **Migration:** a project relaxing
-  either check, or simply reading the dictionary with `ddd list` or `ddd dump`, now gets
-  a smaller, consistent result instead; an unforced `ddd generate` left at error severity
-  already wrote nothing and still does.
+  backend declared it as a scalar, and the a2l backend wrote no `CHARACTERISTIC` for it
+  while its component's `GROUP` still named it.  An axis whose `input` nobody declares was
+  kept whole instead: the a2l backend wrote its `AXIS_PTS` with an input quantity naming a
+  measurement that does not exist, a file a calibration tool refuses whole.  The referring
+  object is now dropped the way an object referring to a dropped declaration already was,
+  transitively, and `incomplete-project` reports the absence when the finding is silenced.
+  **Migration:** a project relaxing either check, or simply reading the dictionary with
+  `ddd list` or `ddd dump`, now gets a smaller, consistent result instead; an unforced
+  `ddd generate` left at error severity already wrote nothing and still does.  A baseline
+  dumped by an older DDD that still carries such an object compares against the same
+  project as a `removed-object`, which is the honest verdict, since the object is gone.
 
 * **A failed step after the analysis no longer discards the findings.**  A plugin hook
   that raised, an address map that could not be read, a `--renames` file or an artefact

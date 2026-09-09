@@ -1274,9 +1274,10 @@ Information:
   already says the declaration could not resolve. It is reported for every declaration
   the dictionary omits on that account: the dropped declaration itself, a variable of a
   type whose cycle, unknown member type or unknown member constant was silenced, the
-  consumers of an object whose producing declaration was dropped, and an object
-  referring to one that went - a curve over such an axis, an axis indexed by such a
-  measurement - at the reference that pulled it down on its producing declaration, and
+  consumers of an object whose producing declaration was dropped, an object whose own
+  reference names nothing or names the wrong kind, and an object referring to one that
+  went - a curve over such an axis, an axis indexed by such a measurement - at the
+  reference that pulled it down on its producing declaration, and
   at the declaration on every other declaration of it.
 - `missing-id`: a producing declaration or instance states no `id`. The key is an adoption a
   project takes up one component at a time, so its absence is reported at `info` rather than

@@ -580,8 +580,9 @@ Information
        out rather than generated wrong, and this is the trace that leaves, so that a dictionary
        short of a variable is never a surprise. It fires once for every declaration the
        dictionary omits this way, not only the one that was dropped: a variable of a poisoned
-       type, the consumers of a dropped producer, and a curve or an axis referring to one that
-       went are each reported in turn.
+       type, the consumers of a dropped producer, a curve or an axis whose own reference names
+       nothing or names the wrong kind, and a curve or an axis referring to one that went are
+       each reported in turn.
    * - ``missing-id``
      - info
      - a declaration that produces a variable states no ``id``, so a delivery that renames the

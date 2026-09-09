@@ -820,15 +820,38 @@ class _Analysis:
                 continue
             assert member.conversion is not None
             low, high = physical_range(member.conversion, *_member_raw_range(member))
-            if _below(member.limits.min, low) or _above(member.limits.max, high):
-                self._bag.add(
-                    "limits-out-of-range",
-                    f"limits [{format_number(member.limits.min)}, "
-                    f"{format_number(member.limits.max)}] exceed the range "
-                    f"[{format_number(low)}, {format_number(high)}] that "
-                    f"{member.datatype.value} can represent with this conversion",
-                    entry.location(f"members[{index}].limits"),
-                )
+            self._check_limits_fit(
+                member.limits,
+                low,
+                high,
+                member.datatype,
+                entry.location(f"members[{index}].limits"),
+            )
+
+    def _check_scalar_type(self, entry: LoadedType) -> None:
+        """A scalar type's own limits and enum, answered where the type is declared.
+
+        Once, and whether or not a declaration names it. What a type fixes is the type's to
+        answer: asking every declaration instead reported one mistake once per component, at
+        files whose authors cannot fix it - the limits are not written there and may not be -
+        and said nothing at all about a type the project has declared and nobody names yet.
+        The members of a structure are already checked here for the same reason, by
+        :meth:`_register_member_enums` and :meth:`_check_member_limits`.
+        """
+        declared = entry.declared
+        if not isinstance(declared, ScalarType):
+            return
+        datatype = declared.datatype
+        conversion = declared.conversion
+        if isinstance(conversion, EnumConversion):
+            location = entry.location("conversion")
+            self._register_enum(conversion, location, datatype)
+            self._check_enum_fits(
+                conversion, datatype.raw_min, datatype.raw_max, datatype.value, location
+            )
+        if declared.limits is not None:
+            low, high = conversion_range(conversion, datatype)
+            self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
 
     def _is_structure(self, named: str) -> bool:
         """Whether that type name is a structure; false for a scalar and for one nobody declared."""
@@ -1115,6 +1138,7 @@ class _Analysis:
             self._check_opaque_members(entry)
             self._register_member_enums(entry)
             self._check_member_limits(entry)
+            self._check_scalar_type(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
@@ -2141,6 +2165,15 @@ class _Analysis:
             return
 
         self._check_init(definition, ref.location("definition.init"))
+
+        if ref.resolved is not None:
+            # The limits and the conversion were filled in from the scalar type this names,
+            # and the type has already answered for both where it is declared - once, at the
+            # file that would have to be edited. Repeating them here would report one mistake
+            # once per component and point every copy at a key nobody wrote. What is the
+            # declaration's own is its ``init``, checked above.
+            return
+
         self._check_limits(definition, ref.location("definition.limits"))
 
         conversion = definition.conversion
@@ -2185,13 +2218,24 @@ class _Analysis:
             return
         assert definition.conversion is not None
         low, high = conversion_range(definition.conversion, definition.storage)
-        limits = definition.limits
+        self._check_limits_fit(definition.limits, low, high, definition.storage, location)
+
+    def _check_limits_fit(
+        self, limits: Limits, low: float, high: float, datatype: Datatype, location: Location
+    ) -> None:
+        """Report limits the storage cannot hold, in one spelling wherever they are written.
+
+        Three places write a datatype, a conversion and limits side by side - a declaration, a
+        structure member and a scalar type - and the mistake is the same one in all three: the
+        a2l carries a range the calibration tool offers and the storage cannot take. Shaped
+        like :meth:`_check_enum_fits`, whose callers vary the bounds the same way.
+        """
         if _below(limits.min, low) or _above(limits.max, high):
             self._bag.add(
                 "limits-out-of-range",
                 f"limits [{format_number(limits.min)}, {format_number(limits.max)}] exceed the "
                 f"range [{format_number(low)}, {format_number(high)}] that "
-                f"{definition.storage.value} can represent with this conversion",
+                f"{datatype.value} can represent with this conversion",
                 location,
             )
 

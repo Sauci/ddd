@@ -1819,3 +1819,85 @@ class TestMemberStorageChecks:
         )
         assert "limits-out-of-range" in checks(bag)
         assert "[0, 1000] exceed the range [0, 255]" in messages(bag)
+
+
+class TestScalarTypeChecks:
+    """What a scalar type fixes is answered at the type, the way a member's keys are.
+
+    A declaration naming a scalar type restates none of what the type fixes - the contract
+    refuses it - so a finding about the unit, the conversion or the limits at a declaration
+    would point at a key that is not written there, once per component naming the type, and
+    a type nobody has started naming yet would be checked by nobody at all.
+    """
+
+    def wide(self) -> dict[str, Any]:
+        """``Pct_t`` offers 300 percent of a ``uint8`` that stops counting at 255."""
+        return scalar("Pct_t", "uint8", limits={"min": 0, "max": 300})
+
+    def test_the_limits_are_reported_once_where_the_type_is_declared(self, tree: Path) -> None:
+        """Two components naming the type are two copies of one mistake in a third file."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "types.ddd.json": types(self.wide()),
+                "a.ddd.json": component("A", declare("local", "X", typename="Pct_t")),
+                "b.ddd.json": component("B", declare("local", "Y", typename="Pct_t")),
+            },
+        )
+        assert checks(bag) == ["limits-out-of-range"]
+        finding = first(bag)
+        assert finding.location.path.name == "types.ddd.json"
+        assert finding.location.pointer == "types[0].limits"
+        assert "[0, 300] exceed the range [0, 255]" in finding.render()
+
+    def test_a_type_nobody_names_yet_is_checked_all_the_same(self, tree: Path) -> None:
+        """A type is written before the first component names it, which is when to say so."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(self.wide()),
+            },
+        )
+        assert checks(bag) == ["limits-out-of-range"]
+        assert first(bag).location.pointer == "types[0].limits"
+
+    def test_an_enumerator_is_screened_at_the_conversion_declaring_it(self, tree: Path) -> None:
+        """As a member's enumerators are: the enum reaches the types header either way."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    scalar(
+                        "Mode_t",
+                        "uint8",
+                        conversion={
+                            "kind": "enum",
+                            "name": "Mode_e",
+                            "enumerators": {"register": 0, "RUNNING": 1},
+                        },
+                    )
+                ),
+            },
+        )
+        assert checks(bag) == ["reserved-identifier"]
+        finding = first(bag)
+        assert "enumerator 'register' of enum 'Mode_e' is reserved" in finding.render()
+        assert finding.location.pointer == "types[0].conversion"
+
+    def test_a_declaration_still_answers_for_its_own_init(self, tree: Path) -> None:
+        """The ``init`` belongs to the variable rather than to the type, so it stays here."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(scalar("Level_t", "uint8")),
+                "a.ddd.json": component("A", declare("local", "X", typename="Level_t", init=300)),
+            },
+        )
+        assert checks(bag) == ["init-invalid"]
+        finding = first(bag)
+        assert "does not fit into uint8" in finding.render()
+        assert finding.location.pointer == "component.interface[0].definition.init"

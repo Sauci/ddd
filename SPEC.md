@@ -782,7 +782,12 @@ each stating its `type`: `scalar`, `struct` or `external`.
   `dimensions`, `init`, `volatile` and `a2l` stay on the declaration, because two
   measurements of one type can differ in whether an interrupt writes one of them. Its
   `datatype` is a base datatype: a scalar type cannot be declared in terms of a second
-  one, so a chain of aliases, and with it a scalar cycle, cannot be written at all.
+  one, so a chain of aliases, and with it a scalar cycle, cannot be written at all. Its
+  `limits` and its enumerators are checked where the type is declared, once and whether or
+  not any declaration names it: `limits-out-of-range` at its `limits`, and the names and
+  values of an enum at its `conversion`. A declaration naming the type restates none of
+  what the type fixes ([section 3.3.2](#332-naming-a-declared-type)), so what is checked
+  there is what it adds of its own, its `init`.
 - A **struct** type declares `members` (required and non-empty), in the order they are
   laid out; `description` is optional. Two members of one structure **must not** share a
   name (`schema`). Every member states `name`, `member` and its datatype, as `datatype` or

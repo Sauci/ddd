@@ -1750,10 +1750,12 @@ alone in both formats. The exit code distinguishes clean runs (0), findings (1) 
 errors (2). A usage error raised by a step that follows the analysis - a plugin hook that
 raises, an address map that cannot be read, a `--renames` file or an artefact that cannot
 be written, a `--plugin` refused beside a description, or a run that would write nothing -
-is printed after the findings of the analysis, reported in the requested format first,
-because a failed run is exactly the run whose findings its reader needs; the exit code
-is still 2. A findings exit is reserved for findings reported *as errors*: a run whose
-findings are all warnings is a clean run unless `--strict` says otherwise. `ddd sources`
+is printed after the findings gathered so far - a comparison's own findings and a
+baseline's carried errors included - are reported in the requested format first, because a
+failed run is exactly the run whose findings its reader needs; the exit code is still 2.
+`dump` reports them on stderr, as it reports everything. A findings exit is reserved for
+findings reported *as errors*: a run whose findings are all warnings is a clean run unless
+`--strict` says otherwise. `ddd sources`
 and `ddd artefacts` exit 0 whatever the findings, because what a project is built out
 of does not depend on whether it is consistent; they exit 1 only when the root cannot
 be read. `ddd generate` with error findings writes nothing, because a stale artefact is

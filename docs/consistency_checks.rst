@@ -832,13 +832,15 @@ DDD is meant to be a build step, so the verdict is in the exit code and not only
      - At least one finding was reported with the severity ``error``, whatever its default
        severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given.
    * - ``2``
-     - The command was used wrongly: an unknown check identifier or severity in ``-W``, an
-       attempt to change one of the fixed checks, a missing or unrecognized argument, an output
-       directory that cannot be written to. The command line itself could not be used - nothing
-       was checked, and nothing but the error is printed; or a plugin, a file or an output
-       could not be used after the analysis ran, in which case the findings gathered before the
-       failure are still printed. This case stays distinguishable from "checked, and found
-       wanting" by its exit code alone, not by what it printed.
+     - The command was used wrongly: an unknown severity, or an unknown check that names
+       no plugin, in ``-W``, an attempt to change one of the fixed checks, a missing or
+       unrecognized argument, an output directory that cannot be written to. The command
+       line itself could not be used - nothing was checked, and nothing but the error is
+       printed; or a plugin, a file or an output could not be used after the analysis
+       ran, or an override naming a plugin check no loaded plugin registers, in which
+       case the findings gathered before the failure are still printed. This case stays
+       distinguishable from "checked, and found wanting" by its exit code alone, not by
+       what it printed.
 
 A ci job therefore needs no output parsing at all to decide whether it passes:
 

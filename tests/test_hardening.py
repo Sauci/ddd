@@ -25,6 +25,7 @@ from conftest import (
 )
 from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
+from ddd.cli import EXIT_FINDINGS, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.loading import load_dictionary, load_workspace
@@ -564,6 +565,55 @@ class TestInputTheToolMustSurvive:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert "nested too deeply" in messages(bag)
+
+    def test_a_dumped_dictionary_nested_beyond_what_python_can_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Neither side of this comparison names a project or a component, so both reach
+        the dictionary reader through ``_holds_a_description``'s own sniff - which used to
+        run ``json.loads`` unguarded and end the run with an uncaught ``RecursionError``
+        before ``load_dictionary`` ever had a chance to report anything."""
+        deep = "[" * 100_000 + "]" * 100_000
+        (tree / "baseline.json").write_text(deep, encoding="utf-8")
+        (tree / "candidate.json").write_text(deep, encoding="utf-8")
+        code = main(["compare", str(tree / "baseline.json"), str(tree / "candidate.json")])
+        captured = capsys.readouterr()
+        assert code == EXIT_FINDINGS
+        assert "json-syntax" in captured.err
+        assert "nested too deeply" in captured.err
+        assert "Traceback" not in captured.err
+        assert "Traceback" not in captured.out
+
+    def test_assigning_ids_to_a_document_nested_beyond_what_python_can_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd id --assign`` delegates its parse to ``Document``, which used to catch
+        only ``ValueError`` - so a ``RecursionError`` from a document nested this deeply
+        ended the run instead of being reported the way any other unparsable file is."""
+        (tree / "a.ddd.json").write_text("[" * 100_000 + "]" * 100_000, encoding="utf-8")
+        code = main(["id", "--assign", str(tree / "a.ddd.json")])
+        captured = capsys.readouterr()
+        assert code == EXIT_FINDINGS
+        assert "not readable as json, skipped" in captured.err
+        assert "Traceback" not in captured.err
+        assert "Traceback" not in captured.out
+
+    def test_a_non_utf8_compare_candidate_is_a_finding_not_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``_holds_a_description`` used to raise the bare ``UnicodeDecodeError`` its own
+        read hit, which is a ``ValueError`` that ``main`` already catches - so the file was
+        refused as a usage error (exit 2) instead of the located finding every other
+        unreadable file gets."""
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+        (tree / "candidate.json").write_bytes(b"\xff\xfe\x00")
+        code = main(["compare", str(tree / "a.ddd.json"), str(tree / "candidate.json")])
+        captured = capsys.readouterr()
+        assert code == EXIT_FINDINGS
+        assert "json-syntax" in captured.err
+        assert "not valid utf-8" in captured.err
+        assert "Traceback" not in captured.err
+        assert "Traceback" not in captured.out
 
     @pytest.mark.parametrize(
         "condition", ["defined(X)\n#include <stdio.h>", "defined(A) /* c */", "defined(A) // c"]

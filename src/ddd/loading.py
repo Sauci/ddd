@@ -430,10 +430,15 @@ def _dictionary_format_is_supported(text: str, path: Path, bag: DiagnosticBag) -
     """Whether the ``format`` of a dumped dictionary is one this version can read.
 
     Tolerant about everything except the version itself: a document that is not json, or not
-    an object, or carries no ``format``, is left to the real validation to report properly.
+    an object, or carries no ``format``, is left to the real validation to report properly -
+    except a document nested too deeply for python to parse at all, which pydantic cannot
+    validate either, so it is reported here instead.
     """
     try:
         data = json.loads(text, parse_constant=_reject_constant)
+    except RecursionError:
+        bag.add("json-syntax", "the json is nested too deeply to read", Location(path))
+        return False
     except ValueError:
         return True
     if not isinstance(data, dict):

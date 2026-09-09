@@ -1244,11 +1244,14 @@ def _holds_a_description(path: Path) -> bool:
 
     ``utf-8-sig`` for the reason the loader reads with it: a description file carrying a byte
     order mark is accepted by ``ddd check``, and sniffing it with plain utf-8 would misroute
-    it here as a dumped dictionary.
+    it here as a dumped dictionary. Every way this sniff can fail - not valid json, not valid
+    utf-8, nested too deeply to parse at all - answers ``False`` rather than raising, because
+    this is only a sniff: whichever reader the file actually reaches is what has something to
+    say about it.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError, RecursionError, UnicodeDecodeError):
         return False
     return isinstance(data, dict) and ("project" in data or "component" in data)
 

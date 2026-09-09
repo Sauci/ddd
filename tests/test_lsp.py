@@ -265,6 +265,17 @@ class TestRanges:
             "end": {"line": 0, "character": 0},
         }
 
+    def test_a_document_nested_beyond_what_python_can_read_answers_nothing(self) -> None:
+        """``RecursionError`` is caught the same way a plain ``ValueError`` is: there is no
+        data to read and no spans to offer, exactly as for a file caught mid edit."""
+        document = Document("[" * 100_000 + "]" * 100_000)
+        assert document.data is None
+        assert document.value_at("component") is None
+        assert document.range_of("component") == {
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 0, "character": 0},
+        }
+
     def test_a_pointer_naming_nothing_has_no_value_to_point_at(self) -> None:
         """The three views of a value all answer nothing for a pointer that is not there."""
         document = Document(self.DOCUMENT)

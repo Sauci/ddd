@@ -785,7 +785,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -882,7 +883,9 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -917,10 +920,12 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -940,6 +945,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -952,6 +959,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -1113,6 +1122,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -1311,6 +1321,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -1507,6 +1518,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -1638,6 +1650,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -2174,6 +2187,7 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">               </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -2421,7 +2435,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -2456,10 +2472,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -2479,6 +2497,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -2491,6 +2511,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>

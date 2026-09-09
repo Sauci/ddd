@@ -59,7 +59,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#severity-policy">Severity policy</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-seven-checks-whose-severity-is-fixed">The seven checks whose severity is fixed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-eight-checks-whose-severity-is-fixed">The eight checks whose severity is fixed</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-checks">The checks</a><ul>
@@ -157,6 +157,7 @@ file-kind              error    the top level key of a file names no description
 file-extension         error    a description file is not named '*.ddd.json'
 schema                 error    a file does not match the DDD contract (fixed)
 include-cycle          error    projects include each other recursively (fixed)
+include-depth          error    a project's include tree goes more than 64 levels deep (fixed)
 include-empty          error    an include pattern matches no file
 plugin-not-found       error    a project names a plugin that cannot be found (fixed)
 plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
@@ -278,18 +279,21 @@ ok: 12 variables in 1 component are consistent
 </pre></div>
 </div>
 </div>
-<section id="the-seven-checks-whose-severity-is-fixed">
-<h3>The seven checks whose severity is fixed<a class="headerlink" href="#the-seven-checks-whose-severity-is-fixed" title="Link to this heading"></a></h3>
-<p>Seven checks cannot be relaxed: <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>,
-<code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code> and <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>. Five of them
+<section id="the-eight-checks-whose-severity-is-fixed">
+<h3>The eight checks whose severity is fixed<a class="headerlink" href="#the-eight-checks-whose-severity-is-fixed" title="Link to this heading"></a></h3>
+<p>Eight checks cannot be relaxed: <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, <code class="docutils literal notranslate"><span class="pre">json-syntax</span></code>, <code class="docutils literal notranslate"><span class="pre">file-kind</span></code>,
+<code class="docutils literal notranslate"><span class="pre">schema</span></code>, <code class="docutils literal notranslate"><span class="pre">include-cycle</span></code>, <code class="docutils literal notranslate"><span class="pre">include-depth</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code> and
+<code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>. Six of them
 report that a description could not be <em>read</em>, and a file that cannot be read has nothing
 further to say. Downgrading them would not make the project more permissive, it would make
 the rest of the run meaningless: a file that is not valid json contributes no declarations,
 so every variable it produces would be reported as having no producer and every name it
 defines would look free. The tool would bury the one real finding - “this file has a comma
-too many on line 4” - under a page of consequences. The other two report that a project
-names a plugin that cannot be found, or that is not well formed - a project cannot be
-interpreted without the plugins it names, for the same reason.</p>
+too many on line 4” - under a page of consequences. <code class="docutils literal notranslate"><span class="pre">include-depth</span></code> is the same story
+told about a tree rather than a file: the entry that goes too deep is not followed whatever
+the finding is reported as, so relaxing it would hide the absence rather than allow it. The
+other two report that a project names a plugin that cannot be found, or that is not well
+formed - a project cannot be interpreted without the plugins it names, for the same reason.</p>
 <p>The same reasoning explains why the two other load time checks <em>are</em> relaxable.
 <code class="docutils literal notranslate"><span class="pre">file-extension</span></code> and <code class="docutils literal notranslate"><span class="pre">include-empty</span></code> complain about a file tree DDD can read perfectly
 well, it just does not like the shape of it: a description named <code class="docutils literal notranslate"><span class="pre">foo.json</span></code> instead of
@@ -367,32 +371,39 @@ kinds (<code class="docutils literal notranslate"><span class="pre">project</spa
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schema</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>the document does not match the DDD contract: a missing or unknown key, a value of the
-wrong type, a datatype that does not exist. One finding per violated constraint, each
-pointing at the offending key. It also fires on an archived dictionary written by a
-newer DDD than the one reading it.</p></td>
+wrong type, a datatype that does not exist, a shape or a nesting beyond what DDD
+carries. One finding per violated constraint, each pointing at the offending key. It
+also fires on an archived dictionary written by a newer DDD than the one reading it.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">include-cycle</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>a project includes a file which, directly or indirectly, includes it again. A diamond -
 the same component reached through two paths - is not a cycle and is quietly used once.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">include-empty</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">include-depth</span></code></p></td>
+<td><p>error (fixed)</p></td>
+<td><p>the include tree of a project goes more than 64 levels deep, counting the root as the
+first and a file of any kind as a level. One finding, at the entry that crosses the
+limit; that file and everything under it is left out, and the rest of the project is
+read as usual.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">include-empty</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">includes</span></code> pattern matches no file, which usually means a renamed directory or a
 typo rather than a component that genuinely has no description.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-component</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-component</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two different files declare a component of the same name. Component names have to be
 unique: each component gets a generated header named after it.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-type</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two different files declare a type of the same name. Which of two answers the generated
 c would get is not something an include order should decide, so the second is refused
 rather than allowed to win.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-type</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a <code class="docutils literal notranslate"><span class="pre">typename</span></code> names no type any file of the project declares - on a component
 declaration or on a structure member alike. It is refused rather than skipped, because
@@ -400,45 +411,45 @@ an object of unknown storage has no limits, no size and nothing later to check
 against. The nearest known name is suggested, which is what answers a transposition
 like <code class="docutils literal notranslate"><span class="pre">unit16</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-unit</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a unit is declared more than once, in one file or across files. The vocabulary is a set of spellings, so a
 second entry is either a copy that will drift or a disagreement about the description,
 and neither is worth keeping quiet.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-section</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a memory section is declared more than once, in one file or across files: either a copy that will drift or
 a disagreement about its properties, and neither is worth keeping quiet.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-constant</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a constant is declared more than once, in one file or across files (see the
 <a class="reference internal" href="file_formats/constants.html"><span class="doc">constants file</span></a>): either a copy that will drift or a
 disagreement about the value, and a size that depends on which file loads first is
 exactly what the vocabulary exists to prevent.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-section</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a definition names a memory section no file declares (see the
 <a class="reference internal" href="file_formats/sections.html"><span class="doc">sections file</span></a>). Unlike a unit there is no free text
 fallback: a section without declared properties is a name the placement checks can
 say nothing about. The nearest declared name is suggested.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section-access</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a measurement, which the software writes, is placed in a <code class="docutils literal notranslate"><span class="pre">read-only</span></code> section. A
 calibration object may live in either direction: <code class="docutils literal notranslate"><span class="pre">const</span></code> data in RAM is a mirrored
 calibration.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">raster-kind</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">raster-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a raster is stated on a calibration object (see the
 <a class="reference internal" href="file_formats/rasters.html"><span class="doc">rasters file</span></a>). A calibration object becomes a
 <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> rather than a <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code> in the generated a2l, and no DAQ
 list - the schedule a raster names - carries one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a shape - a <code class="docutils literal notranslate"><span class="pre">dimensions</span></code> entry, or the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis - names a constant no
 file of the project declares (see the
@@ -446,44 +457,44 @@ file of the project declares (see the
 text fallback, because a name without a value is a dimension nothing can resolve.
 The nearest declared name is suggested.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a definition or a component names a measurement raster no file declares (see the
 <a class="reference internal" href="file_formats/rasters.html"><span class="doc">rasters file</span></a>). Like a section and unlike a unit there
 is no free text fallback: an event nothing describes is a name the a2l could only
 write as a number nobody chose. The nearest declared name is suggested.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-raster</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-raster</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a measurement raster is declared more than once, in one file or across files - the
 rule a unit, a section or a constant obey, since a raster is vocabulary like them.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-id</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-id</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two data objects of one project carry the same <code class="docutils literal notranslate"><span class="pre">id</span></code>. An identity relates an object
 to its predecessor in a delivery comparison, so one shared by two objects can relate
 neither, and a declaration copied with its <code class="docutils literal notranslate"><span class="pre">id</span></code> still in it is refused rather than
 paired wrongly.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-event</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-event</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two measurement rasters claim the same event channel number (see the
 <a class="reference internal" href="file_formats/rasters.html"><span class="doc">rasters file</span></a>), which would put two rasters on one
 event.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>a project names a plugin, in <code class="docutils literal notranslate"><span class="pre">plugins</span></code>, that cannot be found at the path or as the
 module it names. A project cannot be interpreted without the plugins it names, so
 there is nothing further to say.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code></p></td>
 <td><p>error (fixed)</p></td>
 <td><p>a plugin module raises while it is imported, exposes no <code class="docutils literal notranslate"><span class="pre">PLUGIN</span></code>, exposes one that
 is not a well formed <code class="docutils literal notranslate"><span class="pre">ddd.plugins.Plugin</span></code>, or claims a name another loaded plugin
 already has. Fixed for the same reason as <code class="docutils literal notranslate"><span class="pre">plugin-not-found</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block, on the project or on a definition, names a plugin the
 project does not load. A block only means something to the plugin that owns it, so a
@@ -491,7 +502,7 @@ misspelled or removed name is refused rather than kept as dead configuration;
 relaxing the check is how a project deliberately keeps a block that no installed
 plugin currently reads.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a unit is not in the vocabulary the project declares (see the
 <a class="reference internal" href="file_formats/units.html"><span class="doc">units file</span></a>). Declared nowhere, units stay free text and
@@ -499,7 +510,7 @@ the check never fires; declared anywhere, every stated unit is checked where it 
 written, with the nearest declared spelling suggested. The empty unit is always
 allowed - a dimensionless value states no unit rather than a spelling of one.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a declared type is used where its shape does not fit: a declaration naming a structure
 while being a curve, a map, an axis or a value block, all of which refer to other
@@ -508,13 +519,13 @@ structure is written by the code that starts it rather than by the description. 
 declaration naming an external type is refused the same way: DDD knows neither its
 layout nor its meaning, so only a structure member may name one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">type-cycle</span></code></p></td>
 <td><p>error</p></td>
 <td><p>structures nest each other, directly or through others. The finding names the chain,
 <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">-&gt;</span> <span class="pre">B</span> <span class="pre">-&gt;</span> <span class="pre">C</span> <span class="pre">-&gt;</span> <span class="pre">A</span></code>, because that says which member to remove; a structure that
 contains itself has no size at all.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a project, component, variable, type, structure member, enum, enumerator or constant
 name is a c keyword, or is declared by one of the headers the generated code includes
@@ -523,7 +534,7 @@ bring in, so <code class="docutils literal notranslate"><span class="pre">uint16
 any name containing a double underscore, or starting with an underscore followed by a
 capital letter.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two names that are distinct in the description files would become the same c identifier
 or the same generated file: an enumerator and a variable, a variable and the name of an
@@ -534,12 +545,12 @@ enumerator or a declared type (the constant reaches the generated code as an ide
 of its own, in that same namespace), or two component names differing only in case,
 which ask for the same header on a case insensitive filesystem.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
 <td><p>error</p></td>
 <td><p>one component declares the same variable twice, for instance once as <code class="docutils literal notranslate"><span class="pre">input</span></code> and once
 as <code class="docutils literal notranslate"><span class="pre">output</span></code>. The second declaration is ignored for the rest of the run.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code> or <code class="docutils literal notranslate"><span class="pre">section</span></code>. What a variable starts out
 as, and which memory it lives in, is decided by the component that produces it, so a
@@ -548,7 +559,7 @@ different thing from the disagreements above, and is reported where the claim is
 written rather than where it is overruled. Relaxable, so a project migrating existing
 descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> keys are removed.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states a measurement raster (see the
 <a class="reference internal" href="file_formats/rasters.html"><span class="doc">rasters file</span></a>). Which event updates a variable is
@@ -557,7 +568,7 @@ so a reader stating one is claiming an authority it does not have. Kept a separa
 identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published description says storage,
 which a raster is not.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states an <code class="docutils literal notranslate"><span class="pre">id</span></code>. Which earlier delivery a variable continues
 is decided by the component that produces it, exactly as <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> are,
@@ -565,7 +576,7 @@ so a reader stating one is claiming an identity it does not have. Kept a separat
 identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published description says storage, which
 an identity is not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states an <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block. What a plugin knows about a
 variable is decided by the component that produces it, exactly as <code class="docutils literal notranslate"><span class="pre">init</span></code>,
@@ -573,19 +584,19 @@ variable is decided by the component that produces it, exactly as <code class="d
 not own. Kept a separate identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published
 description says storage, which a block is not.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by more than one component. Exactly one component owns
 the storage of a variable; two definitions would not even link.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is read as <code class="docutils literal notranslate"><span class="pre">input</span></code> but no component declares it as an output. The generated
 consumer header would declare a symbol nobody defines. A producer whose own declaration
 could not resolve still counts as a producer, so a consumer of the same variable is not
 told that nobody produces it.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable declared <code class="docutils literal notranslate"><span class="pre">local</span></code> by one component is also declared by another. <code class="docutils literal notranslate"><span class="pre">local</span></code> is
 a promise that the variable is nobody else’s business, and DDD keeps it out of the
@@ -594,7 +605,7 @@ curve, map or axis of another component that names it as its <code class="docuti
 <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> is the same conflict, reported at the reference, and the object
 is not dropped.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two components describe the same variable differently in a property that changes what
 the value <em>means</em>: kind, datatype, unit, declared shape, conversion, volatility,
@@ -605,12 +616,12 @@ out that way: every definition of every kind has to state it, so a difference th
 always two components saying two different things rather than one of them saying
 nothing at all.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the same enum type name is defined with different enumerators. One c enum is generated
 per name, so only one set of enumerators could survive.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a curve, a map or an axis refers by name to an object no component declares. The
 referring object is dropped as unresolvable whatever severity this check is given -
@@ -618,13 +629,13 @@ a curve without its axis has no shape, and an axis naming an absent measurement
 would leave a dangling name in the a2l - and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> reports the
 absence when the finding is silenced.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a reference points at an object of the wrong kind, for example the <code class="docutils literal notranslate"><span class="pre">axis</span></code> of a curve
 naming a measurement instead of an axis. The referring object is dropped as
 unresolvable too, exactly as <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code> drops one.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an initial value does not fit its datatype - out of range, written as a fraction for an
 integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
@@ -889,7 +900,7 @@ declaration of the variable therefore has to say the same thing, and a disagreem
 <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> error. There is no leaving it out, either: unlike <code class="docutils literal notranslate"><span class="pre">limits</span></code>, which
 DDD derives when a declaration omits them, there is nothing here to derive, so the key is
 required on every definition of every kind and a definition without it does not load at all.
-That is reported as <code class="docutils literal notranslate"><span class="pre">schema</span></code>, one of the seven checks whose severity cannot be relaxed,
+That is reported as <code class="docutils literal notranslate"><span class="pre">schema</span></code>, one of the eight checks whose severity cannot be relaxed,
 which is why a project adopting this version of DDD adds the key everywhere in one go rather
 than phasing it in.</p>
 <p><code class="docutils literal notranslate"><span class="pre">export</span></code> is not compared at all. Which signals a calibration engineer needs to see is not the
@@ -1086,8 +1097,8 @@ usage error:</p>
 ]
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the seven
-checks whose severity cannot be changed - the five of load time and the two plugin checks -
+<p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the eight
+checks whose severity cannot be changed - the six of load time and the two plugin checks -
 <code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check.</p>
 </section>
 </section>

@@ -483,7 +483,11 @@ A measurement is a value the software computes and writes, declared with
 array dimensions that is empty for a scalar - each an integer of at least 1, or the name of a
 :doc:`declared constant <constants>` of the project, mixed freely, so
 ``[4]`` and ``["PRESSURE_CELLS", 4]`` are both shapes. The ``size`` of an axis follows the
-same rule. It is also the one kind that is not generated
+same rule. An array holds at most 10 000 000 elements, the product of its dimensions, and a
+map the same over its two axes, because the dictionary, the a2l and the generated code carry
+every one of them; a larger one is ``schema`` - at ``dimensions``, at an axis's ``size``, or
+at the whole declaration for a map, which writes neither - and the declaration is dropped.
+A measurement is also the one kind that is not generated
 ``const``, so the ``volatile`` every definition states is the whole of its qualifier -
 ``ValueB`` says ``true``, which is the answer for a value written by an interrupt or by
 another task, and keeps the compiler from caching it in a register.

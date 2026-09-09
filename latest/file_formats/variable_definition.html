@@ -619,7 +619,11 @@ writes - the c ones as the example templates render them, the a2l ones as DDD wr
 array dimensions that is empty for a scalar - each an integer of at least 1, or the name of a
 <a class="reference internal" href="constants.html"><span class="doc">declared constant</span></a> of the project, mixed freely, so
 <code class="docutils literal notranslate"><span class="pre">[4]</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;,</span> <span class="pre">4]</span></code> are both shapes. The <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis follows the
-same rule. It is also the one kind that is not generated
+same rule. An array holds at most 10 000 000 elements, the product of its dimensions, and a
+map the same over its two axes, because the dictionary, the a2l and the generated code carry
+every one of them; a larger one is <code class="docutils literal notranslate"><span class="pre">schema</span></code> - at <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, at an axis’s <code class="docutils literal notranslate"><span class="pre">size</span></code>, or
+at the whole declaration for a map, which writes neither - and the declaration is dropped.
+A measurement is also the one kind that is not generated
 <code class="docutils literal notranslate"><span class="pre">const</span></code>, so the <code class="docutils literal notranslate"><span class="pre">volatile</span></code> every definition states is the whole of its qualifier -
 <code class="docutils literal notranslate"><span class="pre">ValueB</span></code> says <code class="docutils literal notranslate"><span class="pre">true</span></code>, which is the answer for a value written by an interrupt or by
 another task, and keeps the compiler from caching it in a register.</p>

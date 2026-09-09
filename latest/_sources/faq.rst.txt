@@ -163,10 +163,13 @@ being quietly ignored, because a silently misspelled override is a check nobody 
    $ ddd check examples/demo/demo.ddd.json -W no-such-check=ignore
    ddd: unknown check 'no-such-check'
 
-Seven checks cannot be relaxed - ``file-not-found``, ``json-syntax``, ``file-kind``,
-``schema``, ``include-cycle``, ``plugin-not-found`` and ``plugin-invalid`` - and
+Eight checks cannot be relaxed - ``file-not-found``, ``json-syntax``, ``file-kind``,
+``schema``, ``include-cycle``, ``include-depth``, ``plugin-not-found`` and
+``plugin-invalid`` - and
 ``ddd checks`` marks them ``(fixed)``. Most of them report that a file could not be read at
-all, and a file that could not be read has nothing further to say; the last two report that a
+all, and a file that could not be read has nothing further to say; ``include-depth`` reports
+an include tree deeper than DDD follows, which leaves that part of it unread just the same;
+the last two report that a
 project names a plugin that cannot be found or is not well formed, and a project cannot be
 interpreted without the plugins it names. Downgrading any of them would only replace one
 clear diagnostic with an unpredictable pile of consequences:

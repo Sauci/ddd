@@ -101,7 +101,14 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">get_args</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">,</span> <span class="n">model_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">BaseModel</span><span class="p">,</span>
+    <span class="n">BeforeValidator</span><span class="p">,</span>
+    <span class="n">ConfigDict</span><span class="p">,</span>
+    <span class="n">Field</span><span class="p">,</span>
+    <span class="n">StringConstraints</span><span class="p">,</span>
+    <span class="n">model_validator</span><span class="p">,</span>
+<span class="p">)</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">SECTION_NAME_PATTERN</span><span class="p">,</span>
@@ -114,22 +121,38 @@
     <span class="n">TypeName</span><span class="p">,</span>
     <span class="n">format_number</span><span class="p">,</span>
     <span class="n">hash_excluding_mappings</span><span class="p">,</span>
+    <span class="n">within_64_bits</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
 
-<span class="nb">type</span> <span class="n">InitValue</span> <span class="o">=</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Real</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
-<span class="sd">"""A scalar, or a (nested) sequence of scalars matching the shape of the object."""</span>
+<span class="nb">type</span> <span class="n">InitValue</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
+    <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Real</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitValue</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">within_64_bits</span><span class="p">),</span>
+<span class="p">]</span>
+<span class="sd">"""A scalar, or a (nested) sequence of scalars matching the shape of the object.</span>
+
+<span class="sd">The integer arm is bounded to what 64 bits can hold, the same bound every other integer a</span>
+<span class="sd">description states carries: no datatype DDD offers stores more, so a value past that is</span>
+<span class="sd">refused here rather than compared against a raw range it could never fit once the object's</span>
+<span class="sd">own datatype is known. Listed before ``bool`` so that an out of range whole number is</span>
+<span class="sd">reported against that bound rather than as "not a valid boolean": pydantic still tells a</span>
+<span class="sd">json ``true``/``false`` from a ``1``/``0`` by their own type regardless of this order, so</span>
+<span class="sd">moving the integer arm first changes only which of several failing branches a wildly wrong</span>
+<span class="sd">value is reported against.</span>
+<span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">Shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 <span class="sd">"""A fully numeric array shape, as the analysis resolves it."""</span>
 
-<span class="n">Dimension</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="n">Identifier</span>
+<span class="n">Dimension</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="n">Identifier</span>
 <span class="sd">"""One array dimension as a definition writes it: a number, or the name of a constant.</span>
 
 <span class="sd">An integer of at least 1, or the name of a constant the project declares.  Strict on the</span>
 <span class="sd">integer side so that the two spellings stay two: without it, a quoted</span>
 <span class="sd">``"8"`` - which is neither a number nor an identifier - would be quietly read as the number,</span>
-<span class="sd">and the file would say something its author did not write.</span>
+<span class="sd">and the file would say something its author did not write.  At most what 64 bits can hold,</span>
+<span class="sd">because no datatype DDD offers counts higher, and an array that size would exhaust any real</span>
+<span class="sd">target's memory long before it exhausted this bound.</span>
 <span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">WrittenShape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>

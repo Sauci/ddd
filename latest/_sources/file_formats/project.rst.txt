@@ -210,6 +210,21 @@ relaxable because a project may reasonably decide it can live with the finding; 
 way to live with a cycle, since following it is the only alternative and it does not
 terminate.
 
+A tree that is deep rather than circular runs out of stack just as surely, so it is answered
+the same way. DDD follows at most 64 levels of includes, counting the root as the first and
+a file of any kind as a level, and an entry that crosses the limit is ``include-depth``:
+
+.. code-block:: text
+
+   $ ddd check deep.ddd.json   # a chain of sixty five projects, each including the next
+   p63.ddd.json#project.includes[0]: error[include-depth]: 'p64.ddd.json' is included 65 levels deep; DDD reads at most 64, so this entry and everything under it is left out
+   1 error
+
+That file and everything under it is left out, and the rest of the project is read as usual,
+so a tree that goes too deep in one place is one finding rather than one per file below it.
+``include-depth`` cannot be relaxed either: the entry is not followed whatever the finding is
+reported as, so relaxing it would hide the absence rather than allow it.
+
 What the project is built out of
 --------------------------------
 

@@ -1002,6 +1002,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"size"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
@@ -1153,7 +1154,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -1508,7 +1510,9 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -1582,10 +1586,12 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -1605,6 +1611,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -1617,6 +1625,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -2045,6 +2055,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -2120,10 +2131,11 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -2724,6 +2736,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -3275,6 +3288,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"size"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
@@ -3327,7 +3341,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -3682,7 +3697,9 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -3756,10 +3773,12 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -3779,6 +3798,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -3791,6 +3812,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -4219,6 +4242,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -4294,10 +4318,11 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -4898,6 +4923,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -5435,6 +5461,7 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"size"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
@@ -5746,7 +5773,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -5781,10 +5810,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -5804,6 +5835,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -5816,6 +5849,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -6244,6 +6279,7 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -6643,6 +6679,7 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -6995,7 +7032,9 @@ one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -7073,6 +7112,8 @@ one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -7085,6 +7126,8 @@ one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -7180,10 +7223,11 @@ one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -7659,7 +7703,9 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -7698,6 +7744,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -7710,6 +7758,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -7805,10 +7855,11 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                     </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                     </span><span class="p">},</span>
@@ -8071,10 +8122,11 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">               </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -8292,7 +8344,9 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -8331,6 +8385,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -8343,6 +8399,8 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -8482,11 +8540,15 @@ a structure, and a scalar type would carry limits the width contradicts.</p>
 <dd><p>Array dimensions of a <code class="docutils literal notranslate"><span class="pre">value</span></code> member, in c declaration order; empty for a scalar.</p>
 <p><code class="docutils literal notranslate"><span class="pre">[4,</span> <span class="pre">2]</span></code> is declared as <code class="docutils literal notranslate"><span class="pre">[4][2]</span></code>, the last dimension running fastest in memory.
 Each dimension is an integer of at least 1, or the name of a constant the project
-declares, exactly as on a declaration.</p>
+declares, exactly as on a declaration - the spelling, that is, since the 10 000 000
+element cap is a declaration’s and a map’s alone: an array here is weighed in the leaves
+its structure may hold, and a member holding a value is one leaf however long its array.</p>
 <p>Array dimensions of a <code class="docutils literal notranslate"><span class="pre">value</span></code> member, in c declaration order; empty for a scalar.</p>
 <p><code class="docutils literal notranslate"><span class="pre">[4,</span> <span class="pre">2]</span></code> is declared as <code class="docutils literal notranslate"><span class="pre">[4][2]</span></code>, the last dimension running fastest in memory.
 Each dimension is an integer of at least 1, or the name of a constant the project
-declares, exactly as on a declaration.</p>
+declares, exactly as on a declaration - the spelling, that is, since the 10 000 000
+element cap is a declaration’s and a map’s alone: an array here is weighed in the leaves
+its structure may hold, and a member holding a value is one leaf however long its array.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -8927,7 +8989,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -8962,10 +9026,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -8985,6 +9051,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -8997,6 +9065,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -9570,6 +9640,7 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">               </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -9715,7 +9786,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -9750,10 +9823,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -9773,6 +9848,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -9785,6 +9862,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -10228,7 +10307,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -10263,10 +10344,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -10286,6 +10369,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -10298,6 +10383,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -10601,6 +10688,7 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">               </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -10747,7 +10835,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -10782,10 +10872,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -10805,6 +10897,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -10817,6 +10911,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -11138,6 +11234,7 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"size"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -11298,7 +11395,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -11333,10 +11432,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -11356,6 +11457,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -11368,6 +11471,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -11823,7 +11928,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -11858,10 +11965,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -11881,6 +11990,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -11893,6 +12004,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -12346,7 +12459,9 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -12381,10 +12496,12 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
@@ -12404,6 +12521,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -12416,6 +12535,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
@@ -12533,6 +12654,8 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <span class="w">      </span><span class="nt">"min"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
@@ -12545,6 +12668,8 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <span class="w">      </span><span class="nt">"max"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
@@ -12575,12 +12700,28 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dt class="sig sig-object py" id="ddd.models.Limits.min">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">min</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Number</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Limits.min" title="Link to this definition"></a></dt>
 <dd><p>Smallest physical value the object may take.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Constraints<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f65309ddc60&gt;</p></li>
+<li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.models.Limits.max">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Number</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Limits.max" title="Link to this definition"></a></dt>
 <dd><p>Largest physical value the object may take; at least <code class="docutils literal notranslate"><span class="pre">min</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Constraints<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x7f65309ddc60&gt;</p></li>
+<li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -12949,7 +13090,9 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">            </span><span class="p">},</span>
@@ -13040,7 +13183,9 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">      </span><span class="p">},</span>
@@ -13076,8 +13221,17 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.models.Enumerator.value">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Enumerator.value" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated[int,</span> <span class="pre">Field(strict=True,</span> <span class="pre">ge=-2</span> <span class="pre">**</span> <span class="pre">63,</span> <span class="pre">le=2</span> <span class="pre">**</span> <span class="pre">64</span> <span class="pre">-</span> <span class="pre">1)]</span></span><span class="property"> <span class="pre">[Required]</span></span><a class="headerlink" href="#ddd.models.Enumerator.value" title="Link to this definition"></a></dt>
 <dd><p>The raw value; every enumerator of one enum needs a value of its own.</p>
+<p>Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no
+storage could ever represent is refused here rather than overflowing a comparison once
+it is checked against the c <code class="docutils literal notranslate"><span class="pre">int</span></code> every enumerator has to fit, or against the
+datatype carrying it.</p>
+<p>The raw value; every enumerator of one enum needs a value of its own.</p>
+<p>Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no
+storage could ever represent is refused here rather than overflowing a comparison once
+it is checked against the c <code class="docutils literal notranslate"><span class="pre">int</span></code> every enumerator has to fit, or against the
+datatype carrying it.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

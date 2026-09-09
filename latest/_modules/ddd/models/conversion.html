@@ -139,8 +139,14 @@
     <span class="n">name</span><span class="p">:</span> <span class="n">Identifier</span>
 <span class="w">    </span><span class="sd">"""C identifier of the enumerator; enumerators of all enums share one c namespace."""</span>
 
-    <span class="n">value</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)]</span>
-<span class="w">    </span><span class="sd">"""The raw value; every enumerator of one enum needs a value of its own."""</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The raw value; every enumerator of one enum needs a value of its own.</span>
+
+<span class="sd">    Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no</span>
+<span class="sd">    storage could ever represent is refused here rather than overflowing a comparison once</span>
+<span class="sd">    it is checked against the c ``int`` every enumerator has to fit, or against the</span>
+<span class="sd">    datatype carrying it.</span>
+<span class="sd">    """</span>
 
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
 <span class="w">    </span><span class="sd">"""What the value means; documentation, not interface."""</span></div>

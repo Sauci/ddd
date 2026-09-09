@@ -299,7 +299,8 @@ interface in the project.
    * - ``local``
      - the component owns the object exclusively and no other component may use it. A second
        component declaring the same name is reported as ``local-conflict`` rather than
-       quietly becoming a consumer.
+       quietly becoming a consumer, and so is one that binds a curve, a map or an axis to
+       it.
 
 For a measurement, ``output`` has the obvious reading: the component writes the variable at
 run time and everybody else reads it. For calibration data - parameters, value blocks, curves,

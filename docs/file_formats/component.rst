@@ -166,7 +166,8 @@ the second through what it puts into which generated header.
        may read it.
    * - ``local``
      - The component owns the object exclusively. No other component may declare it at all,
-       in any scope; one that tries is ``local-conflict``.
+       in any scope, nor refer to it as an axis or an input; one that tries is
+       ``local-conflict``.
 
 For a measurement, ``output`` means what it sounds like: the software writes the variable. For
 calibration data, which the software never writes, ``output`` means that the component

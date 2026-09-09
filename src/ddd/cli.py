@@ -707,17 +707,26 @@ def _selected(args: argparse.Namespace) -> None:
             raise ValueError(msg)
 
 
-def _displayed_path(path: Path, root: Path) -> str:
-    """``path`` relative to ``root`` when it sits under it, in full otherwise.
+def _displayed_path(path: Path, output_dir: Path) -> str:
+    """``path`` the way the reader would type it, rooted at the ``-o`` they actually gave.
 
-    ``render`` hands every file back fully resolved, so that an alias or an escape cannot
-    hide behind a spelling that looks different from what it clashes with. Once that is
-    settled the reader is better served by the path the way they would type it themselves -
-    relative to where they ran the command - than by the resolved one, the same trade
-    ``Location.render`` already makes for a diagnostic.
+    ``render`` hands every file back resolved against ``output_dir`` resolved once, so that an
+    alias, an escape, or a directory junction cannot hide behind a spelling that looks
+    different from the real location it names or clashes with. Once that is settled the reader
+    is better served by the path the way they would type it themselves than by the resolved
+    one - the same trade ``Location.render`` already makes for a diagnostic - so this measures
+    ``path`` against ``output_dir`` resolved and reattaches it to ``output_dir`` exactly as
+    typed: relative to the current directory if ``-o`` was relative, following a junction as
+    typed rather than the real directory it lands on. An absolute ``-o`` is left as it always
+    was, printed resolved in full, and a spelling that ``relative_to`` cannot place under the
+    resolved directory after all - the on-disk failure path hands this the raw text of an
+    ``OSError``, not a path ``render`` has already vetted - falls back the same way.
     """
-    with contextlib.suppress(ValueError):
-        return path.relative_to(root).as_posix()
+    if not output_dir.is_absolute():
+        typed = output_dir.as_posix()
+        with contextlib.suppress(ValueError):
+            relative = path.relative_to(output_dir.resolve()).as_posix()
+            return relative if typed == "." else f"{typed}/{relative}"
     return path.as_posix()
 
 
@@ -805,16 +814,17 @@ def _command_generate(args: argparse.Namespace) -> int:
             # directory, or one nothing may be written to. Naming the file beats the bare
             # errno text, and beats naming the directory, which is usually fine.
             target = (
-                Path(error.filename).as_posix() if error.filename else args.output_dir.as_posix()
+                _displayed_path(Path(error.filename), args.output_dir)
+                if error.filename
+                else args.output_dir.as_posix()
             )
             msg = f"cannot write '{target}': {error.strerror or error}"
             raise OSError(msg) from None
 
-    root = Path.cwd().resolve()
     if args.format == "json":
         payload = _diagnostics_payload(bag)
         payload["generated"] = [
-            {"path": _displayed_path(result.path, root), "status": result.status.value}
+            {"path": _displayed_path(result.path, args.output_dir), "status": result.status.value}
             for result in results
         ]
         print(json.dumps(payload, indent=2))
@@ -822,7 +832,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         _report(bag, args.format)
         prefix = "would write" if args.dry_run else "wrote"
         for result in results:
-            shown = _displayed_path(result.path, root)
+            shown = _displayed_path(result.path, args.output_dir)
             if result.status is WriteStatus.UNCHANGED:
                 print(f"unchanged   {shown}", file=sys.stderr)
             else:

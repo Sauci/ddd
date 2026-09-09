@@ -63,25 +63,30 @@ def render(
 ) -> list[GeneratedFile]:
     """Run every backend, keep every file inside ``output_dir``, and refuse two that clash.
 
-    A backend's path is not trusted as given: resolved as it stands first - every built-in
-    backend already anchors it to ``output_dir`` itself, relative or absolute exactly as
-    ``output_dir`` was passed in, so resolving it as given is what keeps ``-o gen`` printing
-    ``gen/...`` instead of doubling it to ``gen/gen/...``. Only a path that does not resolve
-    under ``output_dir`` this way - a bare filename a plugin forgot to anchor - is retried
-    anchored to it. Either way, ``sub/../ddd_globals.h`` is the same claim as ``ddd_globals.h``
-    and not a second one, and a spelling that resolves outside ``output_dir`` even once
-    anchored - a relative climb through enough ``..``, or an ``output_dir.parent / ...`` - is
-    refused before it, or whatever it would have collided with, reaches disk.
+    ``output_dir`` is resolved once, here, before any backend runs - not resolved again later
+    against each path a backend hands back. The guarantee this function makes is only
+    checkable against a single fixed root, and a backend echoes the directory it was handed
+    straight back into the paths it builds - every built-in backend, and the worked example,
+    do exactly this - so the root a backend echoes and the root its files are measured against
+    have to be the same resolved directory. Resolved only after the backends have already run,
+    a bare relative climb a plugin computes from ``output_dir`` - ``output_dir.parent``, say -
+    would still be relative when it left the backend and could resolve to somewhere that looks
+    anchored under ``output_dir`` by the time it is checked, even though it never was. Resolved
+    first, a path a backend hands back is either already absolute - built from the resolved
+    directory, or an escape stated outright - or bare, in which case it can only mean
+    ``output_dir / name`` and never wherever the process happens to be running from. Either
+    way, ``sub/../ddd_globals.h`` is the same claim as ``ddd_globals.h`` and not a second one,
+    and a spelling that resolves outside ``output_dir`` - a climb through enough ``..``, or an
+    absolute path elsewhere entirely - is refused before it, or whatever it would have
+    collided with, reaches disk.
     """
-    resolved_output_dir = output_dir.resolve()
+    output_dir = output_dir.resolve()
     files: list[GeneratedFile] = []
     produced_by: dict[Path, str] = {}
     for backend in backends:
         for file in backend.generate(dictionary, output_dir):
-            path = file.path.resolve()
-            if not path.is_relative_to(resolved_output_dir):
-                path = (output_dir / file.path).resolve()
-            if not path.is_relative_to(resolved_output_dir):
+            path = (file.path if file.path.is_absolute() else output_dir / file.path).resolve()
+            if not path.is_relative_to(output_dir):
                 msg = (
                     f"backend '{backend.name}' writes outside the output directory: "
                     f"{path.as_posix()}"

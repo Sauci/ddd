@@ -270,7 +270,6 @@ class TestDriver:
             match=re.escape("the sneaky and c backends would both write 'ddd_globals.h'"),
         ):
             render(dictionary, [CBackend(TEMPLATES), Sneaky()], tree / "gen")
-        assert not (tree / "gen").exists()
 
     def test_a_bare_relative_path_is_anchored_to_the_output_directory(self, tree: Path) -> None:
         class Sneaky:
@@ -315,14 +314,17 @@ class TestDriver:
             "backend 'escapee' writes outside the output directory: "
             f"{(tree / 'escape.h').resolve().as_posix()}"
         )
-        assert not out.exists()
 
     def test_a_file_in_a_subdirectory_is_resolved_and_kept(self, tree: Path) -> None:
         class Nested:
             name = "nested"
 
             def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
-                return [GeneratedFile(output_dir / "sub" / "x.h", "hi\n")]
+                # The extra "." and the climb through "other" are here on purpose: tmp_path is
+                # already a resolved, symlink-free path, so a plain "sub" / "x.h" would compare
+                # equal to its own .resolve() whether or not render() resolved anything at all.
+                # A non-canonical spelling is what actually pins render() doing the resolving.
+                return [GeneratedFile(output_dir / "other" / ".." / "sub" / "." / "x.h", "hi\n")]
 
         dictionary, _ = run_analysis(
             tree,

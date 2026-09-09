@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -1455,6 +1456,9 @@ ESCAPING_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir.pare
 NESTED_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir / "sub" / "x.h"')
 """A legitimate artefact one directory below ``output_dir``."""
 
+BARE_PROBE_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'Path("probe.h")')
+"""Never anchors to ``output_dir`` at all; a bare name still means ``output_dir / name``."""
+
 
 class TestGenerate:
     def project_with_tags(self, tree: Path) -> str:
@@ -1560,6 +1564,139 @@ class TestGenerate:
         assert main(arguments) == EXIT_OK
         assert (out / "sub" / "x.h").read_text(encoding="utf-8") == "X t\n"
         assert "wrote" in capsys.readouterr().err
+
+    def test_a_backend_escaping_the_output_directory_is_refused_with_a_relative_output_directory(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The boundary has to hold for the ``-o`` spelling every documented transcript
+        actually uses - relative - not only for the absolute one ``tmp_path`` defaults tests
+        to. A relative ``-o`` used to be re-anchored back inside itself by the fallback that
+        resolved a plugin's escape only after it had already collapsed to something that
+        looked contained; resolving ``output_dir`` before the backend runs at all is what
+        makes the escape math absolute, and therefore genuinely outside, from the start.
+        """
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "tag", root, "-o", "out", "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "backend 'tag' writes outside the output directory" in capsys.readouterr().err
+        # Refused before anything reaches disk: neither where the fallback used to re-anchor
+        # it (inside the output directory) nor where the plugin actually asked for it.
+        assert not (tree / "out" / "escape.h").exists()
+        assert not (tree / "escape.h").exists()
+        assert not (tree / "out").exists()
+
+    def test_generating_into_a_relative_multi_segment_output_directory_does_not_double_it(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every built-in backend builds ``output_dir / name`` from the directory it is
+        handed. Resolving ``output_dir`` before that call, rather than resolving each backend's
+        already-relative result afterwards, is what stops a multi-segment relative ``-o`` such
+        as ``build/gen`` - the documentation's own spelling - from doubling into
+        ``build/gen/build/...``."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = [
+            "generate",
+            "c",
+            root,
+            "-o",
+            "build/gen",
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "build" / "gen" / "ddd_globals.h").is_file()
+        assert not (tree / "build" / "gen" / "build").exists()
+        captured = capsys.readouterr().err
+        assert "build/gen/ddd_globals.h (created)" in captured
+        assert "build/gen/build" not in captured
+        assert tree.resolve().as_posix() not in captured
+
+    def test_a_bare_relative_path_from_a_plugin_lands_under_a_relative_output_directory(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A name a plugin never anchors at all still means ``output_dir / name``, not
+        wherever the process happens to be running from - exercised through a relative ``-o``
+        together with a changed working directory, so a regression that resolved a bare name
+        against the cwd instead of the output directory cannot hide behind the two coinciding.
+        """
+        write_plugin(tree / "tools", source=BARE_PROBE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "tag", root, "-o", "out", "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "out" / "probe.h").read_text(encoding="utf-8") == "X t\n"
+        assert not (tree / "probe.h").exists()
+        assert "out/probe.h (created)" in capsys.readouterr().err
+
+    def test_a_junctioned_output_directory_is_reported_as_typed(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A junction inside the tree is not resolved away in the report: the reader typed
+        ``-o link``, so that is what they should see, even though every file underneath is
+        measured - and physically lands - at the junction's real target."""
+        target = tree / "real"
+        target.mkdir()
+        link = tree / "link"
+        created = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
+        if created.returncode != 0 or not link.is_dir():
+            pytest.skip("cannot create a directory junction on this machine without privilege")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = [
+            "generate",
+            "c",
+            root,
+            "-o",
+            "link",
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert (target / "ddd_globals.h").is_file()
+        captured = capsys.readouterr().err
+        assert "link/ddd_globals.h (created)" in captured
+        assert "real/ddd_globals.h" not in captured
 
     def test_dry_run_writes_nothing(self, tree: Path) -> None:
         root = self.project_with_tags(tree)

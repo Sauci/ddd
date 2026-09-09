@@ -49,7 +49,7 @@ down should be read after a DDD upgrade:
    file-extension         error    a description file is not named '*.ddd.json'
    schema                 error    a file does not match the DDD contract (fixed)
    include-cycle          error    projects include each other recursively (fixed)
-   include-depth          error    a project includes sub-projects more than 64 levels deep (fixed)
+   include-depth          error    a project's include tree goes more than 64 levels deep (fixed)
    include-empty          error    an include pattern matches no file
    plugin-not-found       error    a project names a plugin that cannot be found (fixed)
    plugin-invalid         error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
@@ -276,9 +276,9 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``schema``
      - error (fixed)
      - the document does not match the DDD contract: a missing or unknown key, a value of the
-       wrong type, a datatype that does not exist. One finding per violated constraint, each
-       pointing at the offending key. It also fires on an archived dictionary written by a
-       newer DDD than the one reading it.
+       wrong type, a datatype that does not exist, a shape or a nesting beyond what DDD
+       carries. One finding per violated constraint, each pointing at the offending key. It
+       also fires on an archived dictionary written by a newer DDD than the one reading it.
    * - ``include-cycle``
      - error (fixed)
      - a project includes a file which, directly or indirectly, includes it again. A diamond -

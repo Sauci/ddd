@@ -238,8 +238,10 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   that is the absolute path with symbolic links followed, compared as the platform compares
   paths. Include cycles are an error (`include-cycle`). Includes nest at most 64 levels; a
   deeper tree is `include-depth` at the entry that crosses the limit, and neither that file
-  nor anything it includes is read. The root of the run is the first level, and a level of
-  any kind counts, a component file as much as a sub-project.
+  nor anything it includes is read - unless some shallower route read that file, in which
+  case nothing is reported and it is used once, as any diamond is. The root of the run is
+  the first level, and a level of any kind counts, a component file as much as a
+  sub-project.
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
@@ -1503,15 +1505,15 @@ warning set containing `-Wcast-qual`. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
 every declaration; the example templates emit each constant as a `#define`. The enum
-conversions a declaration states, or a declared type carries whether or not any declaration
-names it ([section 3.4](#34-conversions)) are offered with their enumerators, and
-the example templates emit a `typedef enum` for each; a variable under an enum conversion is
-declared with its base datatype, the `typedef enum` being for the enumerators alone. The
-headers of the external types in use ([section 3.7](#37-type-description)) are offered too,
-deduplicated and in the sorted order of the spellings the types files give, so the angle
-forms come first, and the example templates emit them as `#include` lines in the types
-header, so that a structure whose member comes from a hand written header compiles without
-the template being edited.
+conversions a declaration states, or a structure member carries, or a declared type carries
+whether or not any declaration names it ([section 3.4](#34-conversions)), are offered with
+their enumerators, and the example templates emit a `typedef enum` for each; a variable
+under an enum conversion is declared with its base datatype, the `typedef enum` being for
+the enumerators alone. The headers of the external types in use
+([section 3.7](#37-type-description)) are offered too, deduplicated and in the sorted order
+of the spellings the types files give, so the angle forms come first, and the example
+templates emit them as `#include` lines in the types header, so that a structure whose
+member comes from a hand written header compiles without the template being edited.
 
 The example templates generate the definitions into one file per project and the
 declarations into one header per component, and the build integration of

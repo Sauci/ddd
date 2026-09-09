@@ -603,6 +603,12 @@ Every structure nesting that one is over the limit for the same reason, so this 
 rather than one per level, and a declaration naming any of them is dropped exactly as one
 naming a recursive structure is.
 
+A structure carries at most 100 000 leaves, and a variable that is an array of structures the
+same in total - its elements times the leaves of one - because the dictionary, the a2l and the
+generated code carry every leaf; a wider structure is ``schema`` at the innermost type already
+over the limit, a wider array is ``schema`` at the ``dimensions`` of the declaration, and both
+are dropped the way a chain too deep is.
+
 ``type-kind`` is reported against the declaration and not against the type, because the type is
 usually perfectly good and the use made of it is not; the note points at the declaration of the
 type so that both ends are on screen:

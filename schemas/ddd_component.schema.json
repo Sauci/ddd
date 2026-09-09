@@ -1377,7 +1377,7 @@
         },
         "dimensions": {
           "default": [],
-          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration.",
+          "description": "Array dimensions of a ``value`` member, in c declaration order; empty for a scalar.\n\n``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.\nEach dimension is an integer of at least 1, or the name of a constant the project\ndeclares, exactly as on a declaration - the spelling, that is, since the 10 000 000\nelement cap is a declaration's and a map's alone: an array here is weighed in the leaves\nits structure may hold, and a member holding a value is one leaf however long its array.",
           "items": {
             "anyOf": [
               {

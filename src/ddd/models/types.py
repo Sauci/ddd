@@ -141,7 +141,9 @@ class Member(BaseModel):
 
     ``[4, 2]`` is declared as ``[4][2]``, the last dimension running fastest in memory.
     Each dimension is an integer of at least 1, or the name of a constant the project
-    declares, exactly as on a declaration.
+    declares, exactly as on a declaration - the spelling, that is, since the 10 000 000
+    element cap is a declaration's and a map's alone: an array here is weighed in the leaves
+    its structure may hold, and a member holding a value is one leaf however long its array.
     """
 
     bits: PositiveInt | None = None

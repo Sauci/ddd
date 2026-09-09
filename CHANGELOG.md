@@ -10,6 +10,16 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **A reference into another component's local object is a use.**  A curve, map or axis of one
+  component that named an axis or a measurement another component declared `local` was
+  accepted: `local-conflict` compared declarations alone, so the referring object compiled,
+  linked and reached the a2l bound to that private object, which is exactly the coupling
+  `local` forbids.  Such a reference - an `axis`, an `x_axis`, a `y_axis` or the `input` of an
+  axis - is now `local-conflict` too, reported at the reference rather than at a declaration,
+  with a note at the local declaration.  The object is not dropped: the mistake is the
+  ownership violation, not a missing object, and a component that declares the object as well
+  as referring to it gets one finding for each, where it wrote each of them.
+
 * **A dangling reference drops the referring object.**  With `unknown-reference` or
   `reference-kind` relaxed, a curve whose axis nobody declares was kept anyway: the c
   backend declared it as a scalar, and the a2l backend wrote no `CHARACTERISTIC` for it

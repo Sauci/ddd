@@ -169,7 +169,7 @@ run.
 | --- | --- |
 | `input` | the component reads the object; another component has to produce it |
 | `output` | the component owns the object; a second component **must not** produce it (`multiple-producers`) |
-| `local` | the component owns the object exclusively; another component **must not** use it (`local-conflict`) |
+| `local` | the component owns the object exclusively; another component **must not** use it, by a declaration or by a reference (`local-conflict`) |
 
 For measurements, `output` means that the component writes the variable. For calibration
 objects, which the software never writes, `output` means that the component provides the
@@ -1115,7 +1115,11 @@ Errors:
 
 - `multiple-producers`: an object is produced by more than one component.
 - `missing-producer`: an input object is produced by nobody.
-- `local-conflict`: a component local object is declared by another component as well.
+- `local-conflict`: a component local object is declared by another component as well, or is
+  referred to - as an `axis`, an `x_axis`, a `y_axis` or an `input` - by a curve, map or axis
+  another component declares. A reference is a use as much as a declaration is, so the finding
+  sits at the reference, with a note at the local declaration, and nothing is dropped: the
+  mistake is the ownership violation, not a missing object.
 - `definition-mismatch`: components disagree on kind, datatype, unit, scaling, shape,
   volatility, referenced objects (axes and the `input` of an axis), or on limits where both
   of them state limits. A declaration that omits limits defers to the producer rather than

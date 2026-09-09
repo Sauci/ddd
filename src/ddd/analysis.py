@@ -178,6 +178,15 @@ class _EnumRegistry:
 
 
 @dataclass(frozen=True, slots=True)
+class _Cause:
+    """Why a type is unusable: the check that says so, whether it was reported, and where."""
+
+    check: str
+    reported: bool
+    location: Location
+
+
+@dataclass(frozen=True, slots=True)
 class DeclarationRef:
     """One declaration, together with the component it belongs to."""
 
@@ -459,12 +468,13 @@ class _Analysis:
         """Every type the project declares, by name - structures and scalars alike."""
         self._constants = {entry.name: entry for entry in workspace.constants}
         """Every constant the project declares, by name; a shape names one of them."""
-        self._poisoned_types: set[str] = set()
+        self._poisoned_types: dict[str, _Cause] = {}
         """Types no variable can resolve as: they nest each other recursively, or a member
         of theirs, however deeply nested, names a type nobody declares or carries a
         conversion that was refused. The finding sits at the member or at the type; a
         declaration naming such a type is dropped, so nothing downstream reasons about a
-        leaf it cannot have."""
+        leaf it cannot have. Each carries the cause that poisoned it, so that a variable of
+        the type can say, when the cause was silenced, what nobody reported."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -477,9 +487,9 @@ class _Analysis:
         """The declarations that were dropped as unresolvable, and whether a finding said why.
 
         ``True`` when the cause was reported at whatever severity, ``False`` when it was
-        silenced; a silenced cause is what :meth:`_refuse` turns into ``incomplete-project``,
-        because an absence nothing mentions is the one way this tool is wrong without anybody
-        being told."""
+        silenced; a silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn
+        into ``incomplete-project``, because an absence nothing mentions is the one way this
+        tool is wrong without anybody being told."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -879,7 +889,7 @@ class _Analysis:
         """Whether a variable of that type contains an external member, however deeply.
 
         A cycle is not this walk's business - it is reported as ``type-cycle`` - so a name
-        already seen is simply not followed again, exactly as in :meth:`_members_resolve`.
+        already seen is simply not followed again, exactly as in :meth:`_poison_of`.
         """
         if name in seen:
             return False
@@ -915,45 +925,80 @@ class _Analysis:
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
-                    self._bag.add(
-                        "unknown-type",
-                        f"member '{member.name}' names datatype '{nested}', which is neither a "
-                        f"base datatype nor a type any file of this project declares"
-                        f"{self._nearest_type(nested)}",
-                        entry.location(f"members[{index}]"),
+                    location = entry.location(f"members[{index}]")
+                    reported = (
+                        self._bag.add(
+                            "unknown-type",
+                            f"member '{member.name}' names datatype '{nested}', which is neither "
+                            f"a base datatype nor a type any file of this project declares"
+                            f"{self._nearest_type(nested)}",
+                            location,
+                        )
+                        is not None
+                    )
+                    self._poisoned_types.setdefault(
+                        entry.name, _Cause("unknown-type", reported, location)
                     )
 
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
-        # and keying on the start would report it once per route into it.
-        reported: set[frozenset[str]] = set()
+        # and keying on the start would report it once per route into it - so the cause is made
+        # when the cycle is first met and reused by every later type that reaches it.
+        causes: dict[frozenset[str], _Cause] = {}
         for entry in self._workspace.types:
             cycle = _nesting_cycle(entry.name, declared)
-            if cycle:
-                # Every type whose walk reaches the cycle is unusable: it has no size, so a
-                # variable of it cannot be flattened. Poisoned here, refused at resolution.
-                self._poisoned_types.add(entry.name)
-            if not cycle or frozenset(cycle) in reported:
+            if not cycle:
                 continue
-            reported.add(frozenset(cycle))
-            # At the structure the cycle closes on rather than the one the walk started from,
-            # for the same reason.
-            self._bag.add(
-                "type-cycle",
-                f"structured datatypes nest each other: {' -> '.join(cycle)}",
-                declared[cycle[0]].location(),
-            )
+            cause = causes.get(frozenset(cycle))
+            if cause is None:
+                # At the structure the cycle closes on rather than the one the walk started
+                # from, for the same reason.
+                location = declared[cycle[0]].location()
+                cause = _Cause(
+                    "type-cycle",
+                    self._bag.add(
+                        "type-cycle",
+                        f"structured datatypes nest each other: {' -> '.join(cycle)}",
+                        location,
+                    )
+                    is not None,
+                    location,
+                )
+                causes[frozenset(cycle)] = cause
+            # Every type whose walk reaches the cycle is unusable: it has no size, so a
+            # variable of it cannot be flattened. Poisoned here, refused at resolution.
+            self._poisoned_types.setdefault(entry.name, cause)
 
         for entry in self._workspace.types:
             self._refuse_infinite_type_limits(entry)
         # Propagated the way the cycles are: a sound structure nesting a broken one has the
-        # same unresolvable leaves, and a variable of either is dropped at resolution.
-        unresolvable = {
-            entry.name
-            for entry in self._workspace.types
-            if not self._members_resolve(entry.name, set())
-        }
-        self._poisoned_types |= unresolvable
+        # same unresolvable leaves, and a variable of either is dropped at resolution, saying
+        # what poisoned the inner one.
+        for entry in self._workspace.types:
+            cause = self._poison_of(entry.name, set())
+            if cause is not None:
+                self._poisoned_types.setdefault(entry.name, cause)
+
+    def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:
+        """What makes a variable of that type unresolvable, if anything does.
+
+        The type's own cause when it has one; else the first cause found walking its nested
+        structures, however deep. A cycle is not this walk's business - it is reported and
+        recorded as ``type-cycle`` before this runs - so a name already seen is not followed
+        again. A nested name nobody declares was recorded as ``unknown-type`` on the type
+        naming it, so the walk only ever gets past a name this project declares.
+        """
+        if name in seen:
+            return None
+        seen.add(name)
+        cause = self._poisoned_types.get(name)
+        if cause is not None:
+            return cause
+        for _, _, nested in _nested_types(self._types[name]):
+            found = self._poison_of(nested, seen)
+            if found is not None:
+                return found
+        return None
 
     def _refuse_infinite_type_limits(self, entry: LoadedType) -> None:
         """A type whose derived limits are not finite is refused at its ``conversion``.
@@ -968,10 +1013,10 @@ class _Analysis:
             if not _derived_range_is_finite(
                 declared.conversion, datatype.raw_min, datatype.raw_max
             ):
-                self._bag.add(
-                    "schema", _infinite_limits_message(datatype), entry.location("conversion")
-                )
-                self._poisoned_types.add(entry.name)
+                location = entry.location("conversion")
+                self._bag.add("schema", _infinite_limits_message(datatype), location)
+                # schema is the one check whose severity is fixed, so this is always reported.
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", True, location))
             return
         if not isinstance(declared, StructType):
             # An external type states no datatype and no conversion: nothing to derive.
@@ -986,28 +1031,9 @@ class _Analysis:
                 else (member.datatype.raw_min, member.datatype.raw_max)
             )
             if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
-                self._bag.add(
-                    "schema",
-                    _infinite_limits_message(member.datatype),
-                    entry.location(f"members[{index}].conversion"),
-                )
-                self._poisoned_types.add(entry.name)
-
-    def _members_resolve(self, name: str, seen: set[str]) -> bool:
-        """Whether every leaf a variable of that type would have can be resolved.
-
-        False when a member, however deeply nested, names a type nobody declares or one whose
-        conversion was refused; the finding already sits at that member or type. A cycle is
-        not this walk's business - it is reported and dropped as ``type-cycle`` - so a name
-        already seen is simply not followed again.
-        """
-        if name in seen:
-            return True
-        seen.add(name)
-        entry = self._types.get(name)
-        if entry is None or name in self._poisoned_types:
-            return False
-        return all(self._members_resolve(nested, seen) for _, _, nested in _nested_types(entry))
+                location = entry.location(f"members[{index}].conversion")
+                self._bag.add("schema", _infinite_limits_message(member.datatype), location)
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", True, location))
 
     def _check_member_dimensions(self, entry: LoadedType) -> None:
         """Every constant a member's shape names is declared, or the type is unusable.
@@ -1022,14 +1048,20 @@ class _Analysis:
         for position, member in enumerate(structure.members):
             for index, dimension in enumerate(member.dimensions):
                 if isinstance(dimension, str) and dimension not in self._constants:
-                    self._bag.add(
-                        "unknown-constant",
-                        f"member '{member.name}' of structure '{entry.name}' is dimensioned "
-                        f"by '{dimension}', which is not a constant any file of this "
-                        f"project declares{self._nearest_constant(dimension)}",
-                        entry.location(f"members[{position}].dimensions[{index}]"),
+                    location = entry.location(f"members[{position}].dimensions[{index}]")
+                    reported = (
+                        self._bag.add(
+                            "unknown-constant",
+                            f"member '{member.name}' of structure '{entry.name}' is dimensioned "
+                            f"by '{dimension}', which is not a constant any file of this "
+                            f"project declares{self._nearest_constant(dimension)}",
+                            location,
+                        )
+                        is not None
                     )
-                    self._poisoned_types.add(entry.name)
+                    self._poisoned_types.setdefault(
+                        entry.name, _Cause("unknown-constant", reported, location)
+                    )
 
     def _check_opaque_members(self, entry: LoadedType) -> None:
         """A member naming an external type is opaque storage, so its ``a2l`` block is refused.
@@ -1389,11 +1421,9 @@ class _Analysis:
             return None
         if isinstance(entry, StructType):
             if named in self._poisoned_types:
-                # The cycle, the unknown member type or the refused conversion is already
-                # reported at the type; a variable of a structure whose leaves cannot be
-                # resolved cannot be either, and a second finding here would only repeat the
-                # first with a worse location.
-                self._dropped[ref.key] = True  # Task 2 refines this
+                # A variable of a structure whose leaves cannot be resolved cannot be resolved
+                # either; what poisoned the structure decides whether anything says so.
+                self._drop_for_type(ref, named)
                 return None
             # Kept as it was written. A structured variable has no single datatype, no limits
             # and no initial value, so it takes a road of its own from here on; what it shares
@@ -1401,9 +1431,9 @@ class _Analysis:
             # settled on the way by exactly the same checks.
             return ref if self._structure_fits(ref, named, declared) else None
         if named in self._poisoned_types:
-            # The refused conversion is already reported at the scalar type; a variable of it
-            # has no limits to resolve, and a second finding here would repeat the first.
-            self._dropped[ref.key] = True  # Task 2 refines this
+            # The refused conversion sits at the scalar type; a variable of it has no limits
+            # to resolve, so it goes the same way a structured one does.
+            self._drop_for_type(ref, named)
             return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
         # four it fixes are filled in. The definition already refused to restate any of them.
@@ -1417,6 +1447,28 @@ class _Analysis:
                     "limits": entry.limits,
                 }
             ),
+        )
+
+    def _drop_for_type(self, ref: DeclarationRef, named: str) -> None:
+        """Drop a declaration of a poisoned type, and say so when nothing else did.
+
+        The cycle, the unknown member type or the refused conversion is reported at the type,
+        and a second finding here would only repeat it with a worse location. Unless the
+        first was silenced: then the variable would simply be gone, from the listing, the
+        dump and every backend, and the one place that can say so is this declaration.
+        """
+        cause = self._poisoned_types[named]
+        self._dropped[ref.key] = cause.reported
+        if cause.reported:
+            return
+        self._bag.add(
+            "incomplete-project",
+            f"the declaration of '{ref.name}' by component '{ref.component_name}' is not in "
+            f"the data dictionary: it names the type '{named}', and the {cause.check} that "
+            f"says why the type is unusable is not reported, so nothing reading the "
+            f"dictionary - the listing, the dump, every backend - carries it either",
+            ref.location("definition.typename"),
+            notes=[("the type is unusable from here", cause.location)],
         )
 
     def _structure_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:

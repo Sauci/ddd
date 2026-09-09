@@ -590,6 +590,119 @@ class TestDroppedDeclarations:
         assert [entry.name for entry in dictionary.objects] == ["x"]
         assert dictionary.objects[0].owner == "B"
 
+    @pytest.mark.parametrize(
+        ("types", "cause"),
+        [
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [{"name": "self", "member": "value", "typename": "Loop_t"}],
+                    }
+                ],
+                "type-cycle",
+            ),
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [{"name": "m", "member": "value", "typename": "Nope_t"}],
+                    }
+                ],
+                "unknown-type",
+            ),
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [
+                            {
+                                "name": "m",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                                "dimensions": ["NOPE"],
+                            }
+                        ],
+                    }
+                ],
+                "unknown-constant",
+            ),
+        ],
+    )
+    def test_silencing_what_poisoned_a_type_is_said_at_the_variable(
+        self, tree: Path, types: list, cause: str
+    ) -> None:
+        """The cause sits at the type; a variable of the type is dropped. With the cause
+        silenced nothing said the variable had gone."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {"types": types},
+                "a.ddd.json": component("A", declare("local", "V", typename="Loop_t")),
+            },
+            severities=[f"{cause}=ignore"],
+        )
+        assert dictionary is not None and dictionary.instances == ()
+        assert checks(bag) == ["incomplete-project"], messages(bag)
+        rendered = messages(bag)
+        assert "the declaration of 'V' by component 'A' is not in the data dictionary" in rendered
+        assert f"the {cause}" in rendered
+        assert "a.ddd.json#component.interface[0].definition.typename" in rendered
+
+    def test_a_reported_poisoning_needs_no_second_finding(self, tree: Path) -> None:
+        """The type-cycle already says the variable could not resolve; saying it twice is noise."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Loop_t",
+                            "members": [{"name": "self", "member": "value", "typename": "Loop_t"}],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "V", typename="Loop_t")),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+    def test_a_structure_nesting_a_poisoned_one_inherits_its_cause(self, tree: Path) -> None:
+        """The cause travels outwards: a sound structure nesting a broken one has the same
+        unresolvable leaves, so a variable of it is dropped and says what nobody reported."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Inner_t",
+                            "members": [{"name": "m", "member": "value", "typename": "Nope_t"}],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Outer_t",
+                            "members": [{"name": "i", "member": "value", "typename": "Inner_t"}],
+                        },
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "V", typename="Outer_t")),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert dictionary is not None and dictionary.instances == ()
+        assert checks(bag) == ["incomplete-project"]
+        assert "the unknown-type" in messages(bag)
+
 
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(

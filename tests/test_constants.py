@@ -335,6 +335,9 @@ class TestTheCheck:
         The dropped declaration counts for ownership too, and nobody produces 'X': saying so
         is not the noise the missing producer of a *dropped producer* would have been, it is
         the second thing this file has to fix.
+
+        The silenced ``unknown-constant`` sits on the type, so the variable itself is where
+        the run says the declaration went missing from the dictionary.
         """
         _, bag = run_analysis(
             tree,
@@ -348,7 +351,7 @@ class TestTheCheck:
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["consumer-storage", "missing-producer"]
+        assert checks(bag) == ["incomplete-project", "consumer-storage", "missing-producer"]
         assert "the initial value is decided by the component that produces" in messages(bag)
 
 

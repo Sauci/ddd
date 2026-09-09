@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from conftest import checks, component, declare, messages, project, run_analysis
 from ddd.diagnostics import CHECKS, Severity
 
@@ -565,6 +567,28 @@ class TestDroppedDeclarations:
             },
         )
         assert checks(bag) == ["unknown-type", "duplicate-declaration"]
+
+    @pytest.mark.parametrize("dropped_first", [True, False])
+    def test_a_surviving_producer_owns_the_object_whatever_the_include_order(
+        self, tree: Path, dropped_first: bool
+    ) -> None:
+        """Two producers, one of them dropped: the object is built from the one that
+        resolved, and which file the project lists first does not decide whether the
+        object exists."""
+        includes = ("a.ddd.json", "b.ddd.json") if dropped_first else ("b.ddd.json", "a.ddd.json")
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", *includes),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("output", "x", "uint16")),
+            },
+            severities=["unknown-type=warning", "multiple-producers=warning"],
+        )
+        assert dictionary is not None, messages(bag)
+        assert sorted(checks(bag)) == ["multiple-producers", "unknown-type", "unused-output"]
+        assert [entry.name for entry in dictionary.objects] == ["x"]
+        assert dictionary.objects[0].owner == "B"
 
 
 class TestConsumerOrder:

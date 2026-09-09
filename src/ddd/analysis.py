@@ -1761,7 +1761,23 @@ class _Analysis:
             )
 
     def _select_producer(self, name: str, refs: list[DeclarationRef]) -> DeclarationRef | None:
-        """Determine the owning declaration and report every ownership violation."""
+        """Determine the owning declaration and report every ownership violation.
+
+        The owner is the first producer that resolved, not simply the first producer. The
+        census carries dropped declarations, and the owner is the one the object is built
+        from: taking the first in load order would let a dropped producer stand in for one
+        beside it that resolved, :meth:`_absent` would read that owner as dropped, and the
+        object would be left out whole. Whether it reaches the dictionary at all would then
+        turn on which file the project lists first, which says nothing about either
+        declaration. Only when every producer was dropped is the owner the first of them,
+        and the name is absent - the true answer, because no declaration is left saying what
+        the object is.
+
+        The findings above are read over the whole census either way, dropped declarations
+        included, and ``multiple-producers`` and ``local-conflict`` still name the first
+        declaration in load order: they are about what the project declares, and which of
+        those declarations the tool can then build from is a separate question.
+        """
         producers = [ref for ref in refs if ref.scope.is_producer]
         locals_ = [ref for ref in refs if ref.scope is Scope.LOCAL]
         consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
@@ -1796,7 +1812,8 @@ class _Analysis:
                     consumer.location(),
                 )
 
-        return producers[0] if producers else None
+        owning = [ref for ref in producers if ref.key not in self._dropped] or producers
+        return owning[0] if owning else None
 
     def _absent(
         self,

@@ -26,7 +26,7 @@ from conftest import (
 from ddd.backends import load_address_map
 from ddd.backends.c.literals import c_literal
 from ddd.cli import EXIT_FINDINGS, main
-from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, _pointer_order
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.loading import load_dictionary, load_workspace
 from ddd.models import Datatype
@@ -615,6 +615,23 @@ class TestInputTheToolMustSurvive:
         assert "Traceback" not in captured.err
         assert "Traceback" not in captured.out
 
+    def test_a_key_that_looks_numeric_does_not_break_the_pointer_sort(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``str.isdigit`` is true of a superscript two, which ``int`` refuses; sorting the
+        findings of this file by pointer used to raise that bare ``ValueError`` - which
+        ``main`` already catches - so the file was refused as a usage error (exit 2) instead
+        of reporting the extra key it actually has."""
+        document = component("A", declare("local", "X"))
+        document["²"] = 1
+        write_tree(tree, {"a.ddd.json": document})
+        code = main(["check", str(tree / "a.ddd.json"), "--standalone"])
+        captured = capsys.readouterr()
+        assert code == EXIT_FINDINGS
+        assert "schema" in captured.err
+        assert "Traceback" not in captured.err
+        assert "Traceback" not in captured.out
+
     @pytest.mark.parametrize(
         "condition", ["defined(X)\n#include <stdio.h>", "defined(A) /* c */", "defined(A) // c"]
     )
@@ -1001,6 +1018,17 @@ class TestDiagnosticPlumbing:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.severity is Severity.ERROR
         assert diagnostic.notes == (("why", None),)
+
+    def test_a_pointer_index_sorts_as_a_number(self) -> None:
+        assert _pointer_order("a[10].b") > _pointer_order("a[2].b")
+
+    def test_a_key_that_looks_numeric_still_sorts_as_text(self) -> None:
+        """``str.isdigit`` is true of a superscript two, which ``int`` refuses; whether a
+        part is an index has to come from its position in the split, not from this check."""
+        assert "²".isdigit()
+        with pytest.raises(ValueError, match="invalid literal"):
+            int("²")
+        assert _pointer_order("²") == ((True, "²"),)
 
 
 class TestBrokenInitPointers:

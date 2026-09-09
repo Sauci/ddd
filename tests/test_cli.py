@@ -1383,7 +1383,305 @@ class TestOutputDirectory:
             str(TEMPLATES),
         ]
         assert main(arguments) == EXIT_USAGE
-        assert "cannot write into" in capsys.readouterr().err
+        captured = capsys.readouterr().err
+        # The old wording named the output directory generically ("cannot write into"); the
+        # new one names the actual path that failed - here, that is the directory itself.
+        assert "cannot write '" in captured
+        assert (tmp_path / "blocked").as_posix() in captured
+
+
+RAISING_COMPARE_PLUGIN = '''
+"""A plugin whose compare hook always raises, for testing that findings survive it."""
+
+from __future__ import annotations
+
+from ddd.plugins import CompareContext, Plugin
+
+
+def compare(context: CompareContext) -> None:
+    raise RuntimeError("boom")
+
+
+PLUGIN = Plugin(name="raiser", compare=compare)
+'''
+
+
+RAISING_CHECK_PLUGIN = '''
+"""A plugin whose check hook always raises, for testing that findings survive it."""
+
+from __future__ import annotations
+
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    raise RuntimeError("boom")
+
+
+PLUGIN = Plugin(name="raiser", check=check)
+'''
+
+
+class TestFindingsSurviveAFailedStep:
+    """A step that fails after the analysis must not take the findings down with it.
+
+    The one run that fails is the one whose findings the reader needs; and the failing step
+    - a file that cannot be written, a template that cannot render - is usually unrelated to
+    what the findings say.
+    """
+
+    def files(self) -> dict[str, Any]:
+        # An info finding (`missing-id`) on an otherwise clean project: what has to survive.
+        return {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+        }
+
+    def test_a_renames_file_that_cannot_be_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "blocked").mkdir()
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--renames",
+                str(tree / "blocked"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "cannot write the --renames file" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("--renames file")
+
+    def test_a_template_that_fails_to_render(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "ddd_globals.c.jinja2").write_text(
+            "{{ model.no_such_attribute.deeper }}", encoding="utf-8"
+        )
+        code = main(
+            [
+                "generate",
+                "c",
+                str(tree / "project.ddd.json"),
+                "-t",
+                str(templates),
+                "-o",
+                str(tree / "out"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "ddd_globals.c.jinja2" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("ddd_globals.c.jinja2")
+
+    def test_an_address_map_that_cannot_be_read(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "map.json").write_text("{ not json", encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--address-map",
+                str(tree / "map.json"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "not valid json" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("not valid json")
+
+    def test_an_output_file_that_cannot_be_written_is_named(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The directory is fine; one target inside it is a directory itself. Naming the
+        directory sent the reader to check its permissions."""
+        write_tree(tree, self.files())
+        out = tree / "out"
+        (out / "ddd_globals.h").mkdir(parents=True)
+        code = main(
+            ["generate", "c", str(tree / "project.ddd.json"), "-t", str(TEMPLATES), "-o", str(out)]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "cannot write '" in captured.err and "ddd_globals.h'" in captured.err
+
+    def test_json_output_carries_the_findings_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        (tree / "blocked").mkdir()
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--renames",
+                str(tree / "blocked"),
+                "--format",
+                "json",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        payload = json.loads(captured.out)
+        assert [entry["check"] for entry in payload["diagnostics"]] == ["missing-id"]
+        assert "cannot write the --renames file" in captured.err
+
+    def test_a_run_that_would_write_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "generate",
+                "all",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--without",
+                "c",
+                "--without",
+                "a2l",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "would write nothing" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("would write nothing")
+
+    def test_the_same_in_json(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "generate",
+                "all",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--without",
+                "c",
+                "--without",
+                "a2l",
+                "--format",
+                "json",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        payload = json.loads(captured.out)
+        assert [entry["check"] for entry in payload["diagnostics"]] == ["missing-id"]
+        assert "would write nothing" in captured.err
+
+    def test_a_plugin_option_refused_beside_a_description(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--plugin",
+                "nowhere.py",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "--plugin names the plugins" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("--plugin names the plugins")
+
+    def test_a_compare_hook_that_raises_under_check_baseline(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["raising.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+                "raising.py": RAISING_COMPARE_PLUGIN,
+            },
+        )
+        code = main(
+            [
+                "check",
+                str(tree / "project.ddd.json"),
+                "--baseline",
+                str(tree / "project.ddd.json"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "failed in its compare hook" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("failed in its compare hook")
+
+    def test_a_check_hook_that_raises_leaves_dump_json_stdout_empty(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd dump`` promises stdout to the dictionary alone, in both formats; a step
+        that fails after the analysis must keep that promise too, not just a clean run."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["raising.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+                "raising.py": RAISING_CHECK_PLUGIN,
+            },
+        )
+        code = main(["dump", str(tree / "project.ddd.json"), "--format", "json"])
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert captured.out == ""
+        boundary = captured.err.index("ddd: plugin")
+        payload = json.loads(captured.err[:boundary])
+        assert payload["summary"]["info"] == 1
+        assert "failed in its check hook" in captured.err[boundary:]
+
+    def test_an_unknown_plugin_check_reports_the_load_time_findings_first(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An override naming a plugin check is held until the project is read; what the
+        read already found - here a relaxed ``file-extension`` warning - must not be lost
+        under the usage error that follows once no loaded plugin registers it."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "plain.json"),
+                "plain.json": component("A", declare("local", "X")),
+            },
+        )
+        project_path = tree / "project.ddd.json"
+        severities = ["-W", "file-extension=warning", "-W", "tag/no-such=error"]
+        for arguments in (
+            ["check", str(project_path), *severities],
+            ["compare", str(project_path), str(project_path), *severities],
+        ):
+            code = main(arguments)
+            captured = capsys.readouterr()
+            assert code == EXIT_USAGE
+            assert "warning[file-extension]" in captured.err
+            assert "unknown check 'tag/no-such'" in captured.err
+            assert captured.err.index("warning[file-extension]") < captured.err.index(
+                "unknown check 'tag/no-such'"
+            )
 
 
 class TestVersion:

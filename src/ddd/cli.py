@@ -6,7 +6,7 @@ import argparse
 import contextlib
 import json
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -107,6 +107,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         handler: Any = args.handler
         return int(handler(args))
     except UnknownCheckError as error:
+        # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
+        # from the clause below; being one, `_reported_on_failure` already covers it too.
         print(f"ddd: {error}", file=sys.stderr)
         return EXIT_USAGE
     except (OSError, ValueError) as error:
@@ -549,17 +551,18 @@ def _command_check(args: argparse.Namespace) -> int:
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
     if resolved is not None and args.baseline is not None:
-        baseline = _read_baseline(args.baseline, bag)
-        if baseline is not None:
-            compare(baseline, resolved.dictionary, bag, location=Location(args.project))
-            run_compare_hooks(
-                resolved.plugins,
-                baseline,
-                resolved.dictionary,
-                bag,
-                resolved.locate,
-                Location(args.project),
-            )
+        with _reported_on_failure(bag, args.format):
+            baseline = _read_baseline(args.baseline, bag)
+            if baseline is not None:
+                compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+                run_compare_hooks(
+                    resolved.plugins,
+                    baseline,
+                    resolved.dictionary,
+                    bag,
+                    resolved.locate,
+                    Location(args.project),
+                )
     _report(bag, args.format)
     if args.format == "json":
         return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -580,32 +583,41 @@ def _command_compare(args: argparse.Namespace) -> int:
     # The baseline is a delivery that has already gone out; its own findings are not this
     # run's business. The candidate's are, which is why only it shares the bag - checking a
     # project description and comparing it are both reported by one `ddd compare`.
-    baseline = _read_baseline(args.baseline, bag)
-    candidate = _read_dictionary(args.candidate, bag)
-    if baseline is None or candidate is None:
-        _report(bag, args.format)
-        return EXIT_FINDINGS
+    with _reported_on_failure(bag, args.format):
+        baseline = _read_baseline(args.baseline, bag)
+        candidate = _read_dictionary(args.candidate, bag)
+        if baseline is None or candidate is None:
+            _report(bag, args.format)
+            return EXIT_FINDINGS
 
-    plugins = candidate.plugins
-    if args.plugin:
-        if candidate.from_description:
-            msg = (
-                "--plugin names the plugins of an archived dictionary; a project description "
-                "names its own"
-            )
-            raise ValueError(msg)
-        plugins = _plugins_from_arguments(args.plugin, bag)
-    bag.policy.verify(bag.registered)
+        plugins = candidate.plugins
+        if args.plugin:
+            if candidate.from_description:
+                msg = (
+                    "--plugin names the plugins of an archived dictionary; a project "
+                    "description names its own"
+                )
+                raise ValueError(msg)
+            plugins = _plugins_from_arguments(args.plugin, bag)
+        bag.policy.verify(bag.registered)
 
-    location = Location(args.candidate)
-    paired = compare(baseline, candidate.dictionary, bag, location=location)
-    run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
-    if args.renames is not None:
-        # Written whether or not the comparison found errors: a delivery that cannot be
-        # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        args.renames.write_text(
-            json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
-        )
+        location = Location(args.candidate)
+        paired = compare(baseline, candidate.dictionary, bag, location=location)
+        run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
+        if args.renames is not None:
+            # Written whether or not the comparison found errors: a delivery that cannot be
+            # accepted still needs its renames listed, so that whoever fixes it knows what
+            # moved.
+            try:
+                args.renames.write_text(
+                    json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
+                )
+            except OSError as error:
+                msg = (
+                    f"cannot write the --renames file '{args.renames.as_posix()}': "
+                    f"{error.strerror or error}"
+                )
+                raise OSError(msg) from None
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
@@ -704,79 +716,85 @@ def _command_generate(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     dictionary = resolved.dictionary
 
-    # Before the findings gate below, so that a command line which would write nothing is
-    # reported as the usage error it is, whatever state the project happens to be in. Asked
-    # after the analysis rather than at parse time, because only the resolved project knows
-    # whether a plugin provides an artefact.
-    produces_plugin_artefact = getattr(args, "render_plugins", False) and any(
-        plugin.backend is not None for plugin in resolved.plugins
-    )
-    if not (
-        args.render_c
-        or args.render_a2l
-        or produces_plugin_artefact
-        or getattr(args, "plugin_artefact", None) is not None
-    ):
-        msg = (
-            "this run would write nothing: what --without left of it is the plugins' "
-            "artefacts, and this project provides none"
+    with _reported_on_failure(bag, args.format):
+        # Before the findings gate below, so that a command line which would write nothing is
+        # reported as the usage error it is, whatever state the project happens to be in. Asked
+        # after the analysis rather than at parse time, because only the resolved project knows
+        # whether a plugin provides an artefact.
+        produces_plugin_artefact = getattr(args, "render_plugins", False) and any(
+            plugin.backend is not None for plugin in resolved.plugins
         )
-        raise ValueError(msg)
-
-    # Guarded on the artefact, not just on the option: a run that does not write the a2l has
-    # no use for the map and must not be killed by one it was never going to read.
-    wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
-    addresses = load_address_map(args.address_map) if wants_addresses else {}
-    if wants_addresses:
-        # Before the gate below, so that a --strict build stops rather than writing a file
-        # whose addresses it has just been told are incomplete.
-        _check_address_coverage(dictionary, addresses, args.address_map, bag)
-    if bag.has_errors and not args.force:
-        _report(bag, args.format)
-        return EXIT_FINDINGS
-
-    backends: list[Backend] = []
-    if args.render_c:
-        backends.append(
-            CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
-        )
-    if args.render_a2l:
-        backends.append(
-            A2lBackend(
-                A2lOptions(
-                    byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
-                    addresses=addresses,
-                ),
-                GENERATOR,
-            )
-        )
-    if getattr(args, "render_plugins", False):
-        # After the built-in backends and in the order the project names the plugins, which
-        # is the order their hooks run in; the renderer refuses a path two backends claim.
-        backends.extend(
-            backend_of(plugin, dictionary, GENERATOR)
-            for plugin in resolved.plugins
-            if plugin.backend is not None
-        )
-    name = getattr(args, "plugin_artefact", None)
-    if name is not None:
-        plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
-        if plugin is None:
-            provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
+        if not (
+            args.render_c
+            or args.render_a2l
+            or produces_plugin_artefact
+            or getattr(args, "plugin_artefact", None) is not None
+        ):
             msg = (
-                f"'{name}' is not an artefact of this project; it provides: "
-                f"{provided or 'no plugin artefact'}"
+                "this run would write nothing: what --without left of it is the plugins' "
+                "artefacts, and this project provides none"
             )
             raise ValueError(msg)
-        backends.append(backend_of(plugin, dictionary, GENERATOR))
-    files = render(dictionary, backends, args.output_dir)
-    try:
-        results = write(files, dry_run=args.dry_run)
-    except OSError as error:
-        # The output directory is the one thing a caller gets wrong regularly - a path that
-        # is a file, or one nothing may be written to. Naming it beats the bare errno text.
-        msg = f"cannot write into '{args.output_dir.as_posix()}': {error.strerror or error}"
-        raise OSError(msg) from None
+
+        # Guarded on the artefact, not just on the option: a run that does not write the a2l
+        # has no use for the map and must not be killed by one it was never going to read.
+        wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
+        addresses = load_address_map(args.address_map) if wants_addresses else {}
+        if wants_addresses:
+            # Before the gate below, so that a --strict build stops rather than writing a
+            # file whose addresses it has just been told are incomplete.
+            _check_address_coverage(dictionary, addresses, args.address_map, bag)
+        if bag.has_errors and not args.force:
+            _report(bag, args.format)
+            return EXIT_FINDINGS
+
+        backends: list[Backend] = []
+        if args.render_c:
+            backends.append(
+                CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
+            )
+        if args.render_a2l:
+            backends.append(
+                A2lBackend(
+                    A2lOptions(
+                        byte_order=ByteOrder(args.byte_order or ByteOrder.LITTLE.value),
+                        addresses=addresses,
+                    ),
+                    GENERATOR,
+                )
+            )
+        if getattr(args, "render_plugins", False):
+            # After the built-in backends and in the order the project names the plugins,
+            # which is the order their hooks run in; the renderer refuses a path two backends
+            # claim.
+            backends.extend(
+                backend_of(plugin, dictionary, GENERATOR)
+                for plugin in resolved.plugins
+                if plugin.backend is not None
+            )
+        name = getattr(args, "plugin_artefact", None)
+        if name is not None:
+            plugin = next((entry for entry in resolved.plugins if entry.name == name), None)
+            if plugin is None:
+                provided = _listed([entry.name for entry in resolved.plugins if entry.backend])
+                msg = (
+                    f"'{name}' is not an artefact of this project; it provides: "
+                    f"{provided or 'no plugin artefact'}"
+                )
+                raise ValueError(msg)
+            backends.append(backend_of(plugin, dictionary, GENERATOR))
+        files = render(dictionary, backends, args.output_dir)
+        try:
+            results = write(files, dry_run=args.dry_run)
+        except OSError as error:
+            # The target is the one thing a caller gets wrong regularly - a path that is a
+            # directory, or one nothing may be written to. Naming the file beats the bare
+            # errno text, and beats naming the directory, which is usually fine.
+            target = (
+                Path(error.filename).as_posix() if error.filename else args.output_dir.as_posix()
+            )
+            msg = f"cannot write '{target}': {error.strerror or error}"
+            raise OSError(msg) from None
 
     if args.format == "json":
         payload = _diagnostics_payload(bag)
@@ -833,7 +851,7 @@ def _command_dump(args: argparse.Namespace) -> int:
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
     stderr - where they also stay out of the way of a pipe.
     """
-    resolved, bag = _analyze(args)
+    resolved, bag = _analyze(args, stream=sys.stderr)
     if resolved is not None:
         print(resolved.dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
@@ -1156,7 +1174,7 @@ class Resolved:
     from_description: bool
 
 
-def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
+def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | None, DiagnosticBag]:
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
@@ -1165,8 +1183,15 @@ def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
         return None, bag
-    bag.policy.verify(bag.registered)
-    dictionary = analyze(workspace, bag)
+    with _reported_on_failure(bag, args.format, stream):
+        # An override naming a plugin check is verified once the project is read - only then
+        # is it known which plugins loaded - so this has to sit inside the block: the
+        # load-time findings gathered by then are reported before the usage error, as
+        # `compare` already does.
+        bag.policy.verify(bag.registered)
+        # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
+        # findings collected before the hook ran are the project's, and are printed first.
+        dictionary = analyze(workspace, bag)
     return Resolved(dictionary, workspace.plugins, workspace.locate, True), bag
 
 
@@ -1248,6 +1273,37 @@ def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
         print(diagnostic.render(root), file=sys.stderr)
     if len(bag):
         print(bag.summary(), file=sys.stderr)
+
+
+@contextlib.contextmanager
+def _reported_on_failure(
+    bag: DiagnosticBag, output_format: str, stream: Any = None
+) -> Iterator[None]:
+    """Print the findings gathered so far if what follows turns into a usage error.
+
+    Every command analyses first and produces something second - a rename list, an address
+    map read, the artefacts - and ``main`` turns a failure of the second half into one line
+    and exit 2. Without this the findings of the first half were gone with it, and the run
+    that failed is exactly the run whose findings the reader needs. ``stream`` is forwarded
+    to ``_report`` unchanged, so a caller whose successful report does not go to stdout - only
+    ``dump``, today - keeps that promise on the failing path too.
+
+    ``check``, ``compare`` and ``generate`` - the commands that produce something after the
+    analysis - each wrap the whole of it in one such block, not the particular calls someone
+    thought could fail: a usage error can come from any statement in between, including one
+    nobody expected to raise, and the one that surprises us is exactly the one this has to
+    cover. ``list``, ``dump``, ``artefacts`` and ``sources`` have nothing fallible after their
+    analysis today and so establish no block; a step added to one of them later belongs inside
+    a block of its own.
+    """
+    try:
+        yield
+    except (OSError, ValueError):
+        # A stdout that fails while the findings are printed must not turn into a second
+        # attempt; the original error is what `main` still has to report.
+        with contextlib.suppress(OSError, ValueError):
+            _report(bag, output_format, stream)
+        raise
 
 
 def _init_cell(entry: Comparable) -> str:

@@ -1747,14 +1747,23 @@ candidate file can replace the baseline file ([section 4.1](#41-comparing-two-de
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
 alone in both formats. The exit code distinguishes clean runs (0), findings (1) and usage
-errors (2). A findings exit is reserved for findings reported *as errors*: a run whose
-findings are all warnings is a clean run unless `--strict` says otherwise. `ddd sources`
-and `ddd artefacts` exit 0 whatever the findings, because what a project is built out of
-does not depend on whether it is consistent; they exit 1 only when the root cannot be read.
-`ddd generate` with error findings writes nothing, because a stale artefact is preferable
-to a wrong one written halfway into a build, unless `--force` asks for the outputs anyway;
-the exit stays a findings exit in either case. `ddd generate --dry-run` reports what it
-would write and writes nothing.
+errors (2). A usage error raised by a step that follows the analysis - a plugin hook
+that raises, an override naming a plugin check that no loaded plugin registers, which
+is held until the project is read ([section 3.11](#311-plugins)), an address map that
+cannot be read, a `--renames` file or an artefact that cannot be written, a `--plugin`
+refused beside a description, or a run that would write nothing - is printed after the
+findings gathered so far - a comparison's own findings and a baseline's carried errors
+included - are reported in the requested format first, because a failed run is exactly
+the run whose findings its reader needs; the exit code is still 2.
+`dump` reports them on stderr, as it reports everything. A findings exit is reserved for
+findings reported *as errors*: a run whose findings are all warnings is a clean run unless
+`--strict` says otherwise. `ddd sources`
+and `ddd artefacts` exit 0 whatever the findings, because what a project is built out
+of does not depend on whether it is consistent; they exit 1 only when the root cannot
+be read. `ddd generate` with error findings writes nothing, because a stale artefact is
+preferable to a wrong one written halfway into a build, unless `--force` asks for the
+outputs anyway; the exit stays a findings exit in either case. `ddd generate --dry-run`
+reports what it would write and writes nothing.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names

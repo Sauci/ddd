@@ -1086,6 +1086,15 @@ and by the CMake module's per-component target, which runs it
 ([section 7](#7-tool-interface)), and by the language server for a file belonging to no
 project ([section 7.2](#72-editor-integration)).
 
+A declaration dropped as unresolvable still counts for the ownership checks: a consumer of
+an object whose producing declaration was dropped is not `missing-producer`, an output
+whose only reader was dropped is not `unused-output`, and two dropped producers are still
+`multiple-producers`. Where one producer resolved and another was dropped, the object is
+built from the one that resolved rather than from whichever the project includes first. An
+object whose producing declaration was dropped is left out of the dictionary whole, every
+declaration of it with it, because the consumers' copies describe storage nothing defines;
+a second declaration of a dropped name is `duplicate-declaration` as it would be of any other.
+
 The `schema` check carries every violation of the published file contracts
 ([section 3](#3-file-formats)), including the rules this document states in prose, such as
 a zero `factor`, an enum conversion on a non-integer datatype, or a key restated that a
@@ -1259,7 +1268,12 @@ Information:
   and an absence nothing mentions reaches `ddd list` as a table one row short, `ddd dump`
   as an archived dictionary missing an object, and every backend as generated files that
   never declare it. This check fires only when the cause is silenced; a reported cause
-  already says the declaration could not resolve.
+  already says the declaration could not resolve. It is reported for every declaration
+  the dictionary omits on that account: the dropped declaration itself, a variable of a
+  type whose cycle, unknown member type or unknown member constant was silenced, the
+  consumers of an object whose producing declaration was dropped, and an object
+  referring to one that went - a curve over such an axis, an axis indexed by such a
+  measurement - at the reference that pulled it down.
 - `missing-id`: a producing declaration or instance states no `id`. The key is an adoption a
   project takes up one component at a time, so its absence is reported at `info` rather than
   held against a project that has not started; `-W missing-id=error` is how a project that has

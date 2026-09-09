@@ -10,6 +10,18 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **A dropped declaration is still a declaration.**  A producer naming an unknown type made
+  every consumer a `missing-producer`, and a consumer dimensioned by an unknown constant made
+  its producer an `unused-output`, each finding pointing at the file the mistake was not in.
+  Ownership is now decided over every declaration, dropped ones included; an object whose
+  producing declaration was dropped is left out of the dictionary whole, with every
+  declaration of it; a second declaration of a dropped name is a `duplicate-declaration`.
+  `incomplete-project`, which fires when the finding explaining a drop is silenced, now
+  reaches every declaration the dictionary omits on that account: a variable of a poisoned
+  type, the consumers of a dropped producer, a curve over a dropped axis - it used to name
+  only the dropped declaration itself, so most of what a silenced check removed went
+  unmentioned.  Its message names the component whose declaration is missing.
+
 * **The specification catches up with the tool.**  `SPEC.md` now states what 0.8.0 and this
   release do: `ddd check --standalone` and the per-component `<target>.ddd` target, the empty
   address map that raises no `address-missing`, the `COMPU_METHOD` sharing key and the display

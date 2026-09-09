@@ -1022,9 +1022,14 @@ class _Analysis:
                 declared.conversion, datatype.raw_min, datatype.raw_max
             ):
                 location = entry.location("conversion")
-                self._bag.add("schema", _infinite_limits_message(datatype), location)
-                # schema is the one check whose severity is fixed, so this is always reported.
-                self._poisoned_types.setdefault(entry.name, _Cause("schema", True, location))
+                # What the bag made of the finding, rather than what this check's severity is
+                # today: a variable of the type is to say what nobody said, and whether
+                # anybody did is the bag's answer to give.
+                reported = (
+                    self._bag.add("schema", _infinite_limits_message(datatype), location)
+                    is not None
+                )
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
             return
         if not isinstance(declared, StructType):
             # An external type states no datatype and no conversion: nothing to derive.
@@ -1040,8 +1045,11 @@ class _Analysis:
             )
             if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
                 location = entry.location(f"members[{index}].conversion")
-                self._bag.add("schema", _infinite_limits_message(member.datatype), location)
-                self._poisoned_types.setdefault(entry.name, _Cause("schema", True, location))
+                reported = (
+                    self._bag.add("schema", _infinite_limits_message(member.datatype), location)
+                    is not None
+                )
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
 
     def _check_member_dimensions(self, entry: LoadedType) -> None:
         """Every constant a member's shape names is declared, or the type is unusable.
@@ -1527,12 +1535,15 @@ class _Analysis:
         assert definition.conversion is not None
         if _derived_range_is_finite(definition.conversion, datatype.raw_min, datatype.raw_max):
             return True
-        self._bag.add(
-            "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
+        # Not routed through _refuse: schema cannot be overridden, so the second finding
+        # _refuse writes when a cause is silenced would describe what cannot happen here.
+        # Whether the drop is explained is still read off the call rather than assumed.
+        self._dropped[ref.key] = (
+            self._bag.add(
+                "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
+            )
+            is not None
         )
-        # Not routed through _refuse: schema is the one check whose severity is fixed, so the
-        # finding is always reported and the drop is always explained.
-        self._dropped[ref.key] = True
         return False
 
     def _collect_component(self, loaded: LoadedComponent) -> None:
@@ -1896,9 +1907,11 @@ class _Analysis:
         offer: the owner's, else the first surviving declaration's.
         """
         absent: dict[str, bool] = {}
-        for name, drops in self._dropped_by_name().items():
+        for name, refs in self._census.items():
             if name not in self._refs:
-                absent[name] = any(drops.values())
+                # Not one declaration of it survived - a surviving one is in ``_refs`` - so the
+                # drops are the whole story, and one explained drop explains the name.
+                absent[name] = any(self._dropped[ref.key] for ref in refs)
         for name, refs in ordered:
             owner = owners[name]
             if owner is not None and owner.key in self._dropped:
@@ -1911,24 +1924,25 @@ class _Analysis:
             for name, definition in self._effective.items():
                 if name in absent:
                     continue
-                for key, target in definition.references.items():
-                    if target in absent:
-                        absent[name] = absent[target]
-                        # Kept for the report: which of the names this definition refers to
-                        # took it down, so the absence can be said at the key that names it.
-                        self._via[name] = (key, target)
-                        settled = False
-                        break
+                gone = [
+                    (key, target)
+                    for key, target in definition.references.items()
+                    if target in absent
+                ]
+                if not gone:
+                    continue
+                # Kept for the report: which of the names this definition refers to took it
+                # down, so the absence can be said at the key that names it. The silenced one
+                # where there is one, because that is the absence nothing else mentions.
+                self._via[name] = next(
+                    ((key, target) for key, target in gone if not absent[target]), gone[0]
+                )
+                # Every absent target weighed, not the first one met: a map over two absent
+                # axes is explained only if both of them were, or the key order of a
+                # definition would decide whether the map's own absence is ever said.
+                absent[name] = all(absent[target] for _, target in gone)
+                settled = False
         return absent
-
-    def _dropped_by_name(self) -> dict[str, dict[tuple[str, int], bool]]:
-        """The dropped declarations grouped by the name they declare."""
-        grouped: dict[str, dict[tuple[str, int], bool]] = defaultdict(dict)
-        for name, refs in self._census.items():
-            for ref in refs:
-                if ref.key in self._dropped:
-                    grouped[name][ref.key] = self._dropped[ref.key]
-        return grouped
 
     def _report_absences(
         self, absent: dict[str, bool], owners: dict[str, DeclarationRef | None]
@@ -1939,7 +1953,9 @@ class _Analysis:
         all. What nothing said yet is the rest: a curve over an axis that went, the consumers
         of an object whose producer went. Each surviving declaration of such a name is named,
         at the reference that pulled the object down where there is one, at the declaration
-        otherwise, so that no declaration leaves the dictionary in silence.
+        otherwise, so that no declaration leaves the dictionary in silence. A name that went
+        with its producer carries a note at that producing declaration: the finding sits in a
+        file whose author wrote nothing wrong, and the file to look at is the other one.
 
         Only the declarations that survived: a dropped one is not in ``_refs``, and its own
         finding was written where it was dropped, so reading the census here would report it
@@ -1949,8 +1965,19 @@ class _Analysis:
             if absent[name]:
                 continue
             refs = self._refs.get(name, [])
-            first = owners[name] if owners[name] in refs else (refs[0] if refs else None)
+            owner = owners[name]
+            # By identity, not by equality: two declarations of one name can carry the same
+            # fields, and the reference that pulled the object down belongs to the owning
+            # declaration alone.
+            first = next((ref for ref in refs if ref is owner), refs[0] if refs else None)
             via = self._via.get(name)
+            # Where the object went, when it went with its producer: this declaration is
+            # sound, and the file to look at is the one that owns the object.
+            notes = (
+                [("the declaration that produces it did not resolve", owner.location())]
+                if owner is not None and owner.key in self._dropped
+                else []
+            )
             for ref in refs:
                 if ref is first and via is not None:
                     key, target = via
@@ -1967,6 +1994,7 @@ class _Analysis:
                         f"in the data dictionary: it did not resolve, and the finding that "
                         f"says why is not reported",
                         ref.location("definition"),
+                        notes=notes,
                     )
 
     def _resolve_shape(
@@ -2037,6 +2065,10 @@ class _Analysis:
             return None
         return found
 
+    def _consumers(self, name: str) -> list[DeclarationRef]:
+        """Who reads the object, over the census: a reader that was dropped still reads it."""
+        return [ref for ref in self._census.get(name, []) if ref.scope is Scope.INPUT]
+
     def _check_unused(
         self, name: str, producer: DeclarationRef | None, consumers: list[DeclarationRef]
     ) -> None:
@@ -2067,14 +2099,10 @@ class _Analysis:
             if ref is not reference:
                 self._compare(reference, ref)
 
+        # The surviving declarations, where the census answers the finding below: the
+        # dictionary lists the readers it carries, and a dropped one is not among them.
         consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
-        # The finding is asked of the census and the dictionary of the surviving declarations:
-        # an output whose only reader was dropped is read, and saying otherwise would point at
-        # the one file the mistake is not in - but a reader that is not in the dictionary is
-        # not one of the consumers the dictionary lists.
-        self._check_unused(
-            name, producer, [ref for ref in self._census[name] if ref.scope is Scope.INPUT]
-        )
+        self._check_unused(name, producer, self._consumers(name))
 
         named = definition.declared_type
         assert named is not None
@@ -2222,12 +2250,7 @@ class _Analysis:
             if limits_reference is not None and ref is not limits_reference:
                 self._compare_limits(limits_reference, ref)
 
-        # Asked of the census rather than of the surviving declarations: an output whose only
-        # reader was dropped is read, and telling its author nobody reads it would point at
-        # the one file the mistake is not in.
-        self._check_unused(
-            name, producer, [ref for ref in self._census[name] if ref.scope is Scope.INPUT]
-        )
+        self._check_unused(name, producer, self._consumers(name))
 
         # Asked of the a2l's own closure rather than of this object's export: an object kept
         # out of the file is still in it when an exported curve or axis refers to it, and it

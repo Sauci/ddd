@@ -756,6 +756,11 @@ class TestDroppedDeclarations:
         assert "the declaration of 'x' by component 'A' is not in the data dictionary" in rendered
         assert "'x' is declared by component 'B' but is not in the data dictionary" in rendered
         assert "b.ddd.json#component.interface[0].definition" in rendered
+        # The consumer's own declaration is sound, so the finding names the one that is not.
+        assert (
+            "a.ddd.json#component.interface[0]: the declaration that produces it did not resolve"
+            in rendered
+        )
 
     def test_an_axis_over_a_silently_dropped_input_measurement_is_said_to_be_missing(
         self, tree: Path
@@ -775,6 +780,34 @@ class TestDroppedDeclarations:
         )
         assert checks(bag) == ["incomplete-project", "incomplete-project"]
         assert "'Ax' is not in the data dictionary: its input 'M' did not resolve" in messages(bag)
+
+    @pytest.mark.parametrize("silenced_axis", ["x_axis", "y_axis"])
+    def test_a_map_over_two_absent_axes_is_reported_when_either_cause_was_silenced(
+        self, tree: Path, silenced_axis: str
+    ) -> None:
+        """Which of the two axes went for a silenced reason must not decide whether the map's
+        absence is said, and the finding points at the silenced one."""
+        axes = {
+            "x_axis": declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+            "y_axis": declare("local", "Ay", "uint16", typename="Nope_t"),
+        }
+        silenced = "unknown-constant" if silenced_axis == "x_axis" else "unknown-type"
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    axes["x_axis"],
+                    axes["y_axis"],
+                    declare("local", "M", "uint8", kind="map", x_axis="Ax", y_axis="Ay"),
+                ),
+            },
+            severities=[f"{silenced}=ignore"],
+        )
+        rendered = messages(bag)
+        assert "'M' is not in the data dictionary: its " + silenced_axis in rendered, rendered
+        assert f"definition.{silenced_axis}" in rendered
 
 
 class TestConsumerOrder:

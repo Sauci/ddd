@@ -244,6 +244,63 @@ def test_a_file_already_seen_through_a_shallow_route_is_not_reported_for_depth(
     assert [loaded.name for loaded in workspace.components] == ["Leaf"]
 
 
+def test_a_file_reached_deep_before_shallow_is_not_reported_for_depth_either(
+    tree: Path,
+) -> None:
+    """The same tree as above with the two entries of the root written the other way round.
+
+    The over-deep route is walked first now, so ``leaf.ddd.json`` is not in ``_seen_paths``
+    yet when the entry at level sixty five names it, and the diamond test cannot excuse it.
+    Held back rather than reported, that crossing is answered once the whole tree is read -
+    by which time the root's own entry has read the file - so the run is as silent as it is
+    the other way round. Which of two includes an author happened to write first is not a
+    fact about the tree, and cannot be what decides whether the tree has a finding.
+    """
+    files: dict[str, Any] = {
+        "project.ddd.json": project("P", "p1.ddd.json", "leaf.ddd.json"),
+        "leaf.ddd.json": component("Leaf", declare("local", "X")),
+    }
+    for index in range(1, 63):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p63.ddd.json"] = project("P63", "leaf.ddd.json")
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == []
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Leaf"]
+
+
+def test_two_over_deep_entries_naming_the_same_unread_file_are_two_findings(
+    tree: Path,
+) -> None:
+    """One finding per entry that crosses the cap, not one per file left out.
+
+    ``left.ddd.json`` and ``right.ddd.json`` sit at level sixty four, the deepest DDD reads,
+    and both name ``deep.ddd.json``; no shallower entry does, so the file really is left out
+    and both entries are lines someone wrote and can shorten. Reporting the file once would
+    have to pick one of the two, and the one it picks is whichever route the loader walked
+    first - which is the ordering holding the finding back is here to make invisible.
+    """
+    files: dict[str, Any] = {"project.ddd.json": project("P", "p1.ddd.json")}
+    for index in range(1, 62):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p62.ddd.json"] = project("P62", "left.ddd.json", "right.ddd.json")
+    files["left.ddd.json"] = project("Left", "deep.ddd.json")
+    files["right.ddd.json"] = project("Right", "deep.ddd.json")
+    files["deep.ddd.json"] = component("Deep", declare("local", "X"))
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == ["include-depth", "include-depth"]
+    rendered = messages(bag)
+    assert "left.ddd.json#project.includes[0]" in rendered
+    assert "right.ddd.json#project.includes[0]" in rendered
+    assert "'deep.ddd.json' is included 65 levels deep" in rendered
+    assert workspace is not None
+    assert workspace.components == ()
+
+
 def test_diamond_include_loads_the_component_once(tree: Path) -> None:
     dictionary, bag = run_analysis(
         tree,

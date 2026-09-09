@@ -1042,13 +1042,13 @@ class _Analysis:
     def _reaches_external(self, name: str, seen: set[str]) -> bool:
         """Whether a variable of that type contains an external member, however deeply.
 
-        Unguarded by :attr:`_unwalkable_types`, and safe without it: only
-        :meth:`_type_alignment` calls this, straight after that guard, so it always starts at
-        a walkable name - and a walkable name has no unwalkable name under it, because
-        :meth:`_refuse_deep_nesting` and the cyclic union it makes mark every type that nests
-        an unwalkable one as unwalkable too. A cycle is not this walk's business either way -
-        it is reported as ``type-cycle`` - so a name already seen is simply not followed
-        again, exactly as in :meth:`_poison_of`.
+        Unguarded by :attr:`_unwalkable_types`, and safe without it: the walk is entered from
+        :meth:`_type_alignment` and nowhere else, straight after that guard, so it always
+        starts at a walkable name, and the recursion below never leaves that set - a walkable
+        name has no unwalkable name under it, because :meth:`_refuse_deep_nesting` and the
+        cyclic union it makes mark every type that nests an unwalkable one as unwalkable too.
+        A cycle is not this walk's business either way - it is reported as ``type-cycle`` - so
+        a name already seen is simply not followed again, exactly as in :meth:`_poison_of`.
         """
         if name in seen:
             return False

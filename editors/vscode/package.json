@@ -34,6 +34,12 @@
     "workspaceContains:**/*.ddd.json",
     "onLanguage:json"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "A description file names the plugins the DDD language server runs, so the server only starts in a workspace you trust."
+    }
+  },
   "main": "./out/extension.js",
   "contributes": {
     "commands": [

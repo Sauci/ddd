@@ -663,6 +663,38 @@ class TestPackaging:
         }
         assert listed == {"pydantic", "jinja2"}
 
+    def test_the_extension_declines_an_untrusted_workspace_and_the_pages_say_why(self) -> None:
+        """A description file names the plugins the server runs, and the server imports the
+        plugins of every description file it reads at or above an opened file to find the
+        project that includes it. Opening a repository is therefore running its python,
+        which VS Code's workspace trust exists to gate: the manifest has to opt out of
+        restricted mode, and the reader has to be told."""
+        manifest = json.loads(
+            (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
+        )
+        assert manifest["capabilities"]["untrustedWorkspaces"]["supported"] is False
+        stated = {
+            ROOT / "docs" / "editor_integration.rst": (
+                "What the server runs",
+                "a plugin is imported when its project is read",
+            ),
+            ROOT / "editors" / "vscode" / "README.md": (
+                "## Trust",
+                "trust the workspace when you would run its build",
+            ),
+            ROOT / "docs" / "plugins.rst": ("Naming a plugin runs it",),
+            ROOT / "SPEC.md": (
+                "Naming a plugin runs its module",
+                "reader has trusted, where the editor has such a notion",
+            ),
+        }
+        for page, phrases in stated.items():
+            text = page.read_text(encoding="utf-8")
+            for phrase in phrases:
+                assert phrase in text, (
+                    f"{page.name} no longer states the trust boundary: {phrase!r}"
+                )
+
 
 class TestCommandLineHelp:
     """The help strings become markup, so they have to be safe as markup."""

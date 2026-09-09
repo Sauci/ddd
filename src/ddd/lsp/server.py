@@ -11,15 +11,19 @@ rule - so a project that cannot be read, or whose plugin raises out of a hook, p
 findings, not an exception. A server that wrapped it in a catch-all would be insuring against
 a thing the design already prevents, and would hide it if that ever stopped being true.
 
-Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the files are
-read from disk, so the editor and the server agree exactly at the moment of a save, and a
-half-typed document never produces a screenful of findings about a mistake nobody has finished
-making yet.
+Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the analysis
+reads the files from disk, so the editor and the server agree exactly at the moment of a
+save, and a half-typed document never produces a screenful of findings about a mistake
+nobody has finished making yet. The *text* of every open document is nonetheless kept, and
+kept current through ``didChange``: a position the client sends, and an edit the client
+will apply, are about what is on screen, and an edit computed from a stale file and applied
+to a buffer with one extra line rewrote an unrelated line.
 """
 
 from __future__ import annotations
 
 import contextlib
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -62,8 +66,11 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, read
 
-_REFRESHING: Final = frozenset({"textDocument/didOpen", "textDocument/didSave"})
-"""The two moments the text on disk is known to be the text on screen."""
+_DID_OPEN: Final = "textDocument/didOpen"
+_DID_CHANGE: Final = "textDocument/didChange"
+_DID_CLOSE: Final = "textDocument/didClose"
+_DID_SAVE: Final = "textDocument/didSave"
+"""A save is the moment the text on disk is known to be the text on screen."""
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
@@ -71,6 +78,15 @@ _HOVER: Final = "textDocument/hover"
 _PREPARE_RENAME: Final = "textDocument/prepareRename"
 _RENAME: Final = "textDocument/rename"
 _CODE_ACTION: Final = "textDocument/codeAction"
+
+
+_ESCAPED_DRIVE: Final = re.compile(r"^/([A-Za-z])%3[Aa](?=/)")
+"""``/c%3A/...``: a drive letter whose colon the client escaped, which VS Code always does.
+
+Only where more path follows - VS Code never sends the drive alone - and only where there is
+a drive position to escape at all: the leading slash this matches is the one ``file:///...``
+puts before a drive, which a network share's host takes the place of instead.
+"""
 
 
 def uri_to_path(uri: str) -> Path:
@@ -81,11 +97,22 @@ def uri_to_path(uri: str) -> Path:
     of ``Path.as_uri()`` for every path except the ones that actually needed escaping. A
     document called ``a%20b.ddd.json`` came back as ``a b.ddd.json``, and the diagnostics
     published for it went out under a uri the client could match to nothing on screen.
+
+    The one exception is the drive colon. ``Path.as_uri()`` writes ``file:///C:/...`` and
+    VS Code sends ``file:///c%3A/...``, and ``url2pathname`` decides whether there is a drive
+    by looking for a literal colon *before* it unquotes - so the escaped spelling was read as
+    no drive at all and came back as the relative path ``/c:/...``, which names no file and
+    cannot be turned back into a uri. The server died on the first document a Windows client
+    opened. Only that colon is restored here; everything else stays escaped for the call.
     """
     parsed = urlparse(uri)
-    path = url2pathname(parsed.path)
+    path = parsed.path
+    if not parsed.netloc or parsed.netloc == "localhost":
+        path = _ESCAPED_DRIVE.sub(r"/\1:", path)
+    path = url2pathname(path)
     if parsed.netloc and parsed.netloc != "localhost":
-        # file://server/share/...: a network share, whose host is the start of the path.
+        # file://server/share/...: a network share, whose host is the start of the path - its
+        # first segment is a share name, never a drive, however much it may look like one.
         path = f"//{parsed.netloc}{path}"
     return Path(path)
 
@@ -146,6 +173,17 @@ class Server:
         question is entitled to the first one's answer; :meth:`_forget` is where that stops.
         """
 
+        self._open: dict[Path, tuple[str, int | None]] = {}
+        """The text and version of every open document, keyed by its resolved path.
+
+        What positions and edits are computed against. The analysis still reads the disk - a
+        finding is about what is saved - but a rename box opens where the caret is, and the
+        edit that follows is applied to the buffer, so both have to be read from it.
+        """
+
+        self._versioned_edits = False
+        """Whether the client takes ``documentChanges``, which carry the version an edit is for."""
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
 
@@ -188,7 +226,14 @@ class Server:
             write_message(self.writer, response(request_id, None))
         elif method == "exit":
             return False
-        elif method in _REFRESHING:
+        elif method == _DID_OPEN:
+            self._remember(message)
+            self.refresh(self._document(message))
+        elif method == _DID_CHANGE:
+            self._remember(message)
+        elif method == _DID_CLOSE:
+            self._open.pop(self._document(message).resolve(), None)
+        elif method == _DID_SAVE:
             self.refresh(self._document(message))
         elif method in _NAVIGATING:
             write_message(self.writer, response(request_id, self._navigate(method, message)))
@@ -214,6 +259,54 @@ class Server:
         params = _field(message.get("params"), dict, "params")
         target = _field(params.get("textDocument"), dict, "params.textDocument")
         return uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri"))
+
+    def _remember(self, message: dict[str, Any]) -> None:
+        """Keep what the client says the document now contains.
+
+        ``didOpen`` carries the whole text; ``didChange`` carries it too, because the server
+        asks for full-content synchronisation (``change: 1``): a description file is small,
+        and applying incremental edits to a kept copy is a second place to get a position
+        wrong. An entry carrying a ``range`` is an incremental change sent anyway - a client
+        that did not honour ``change: 1`` - and its text is a fragment rather than the
+        document, so it is left alone rather than stored as if it were one; the last known
+        text stays in charge until a compliant change or a save corrects it. A notification
+        without text - a client that sends none - leaves the disk copy in charge too, which is
+        what the server did for everything before it kept buffers.
+        """
+        params = _field(message.get("params"), dict, "params")
+        target = _field(params.get("textDocument"), dict, "params.textDocument")
+        path = uri_to_path(_field(target.get("uri"), str, "params.textDocument.uri")).resolve()
+        version = target.get("version")
+        text = target.get("text")
+        changes = params.get("contentChanges")
+        if (
+            isinstance(changes, list)
+            and changes
+            and isinstance(changes[-1], dict)
+            and "range" not in changes[-1]
+        ):
+            text = changes[-1].get("text")
+        if isinstance(text, str):
+            self._open[path] = (text, version if isinstance(version, int) else None)
+
+    def _cache(self, path: Path | None = None) -> dict[Path, Document]:
+        """A document cache seeded with every open buffer, under both spellings of its path.
+
+        The index is built from resolved paths and a request names the path the client
+        spelled, so the buffer is filed under both; anything not open is read from disk on
+        first use, as before.
+        """
+        cache: dict[Path, Document] = {}
+        for resolved, (text, _) in self._open.items():
+            cache[resolved] = Document(text)
+        if path is not None and path.resolve() in cache:
+            cache[path] = cache[path.resolve()]
+        return cache
+
+    def _version_of(self, path: Path) -> int | None:
+        """The version the client last announced for a document, or ``None`` if it is not open."""
+        entry = self._open.get(path.resolve())
+        return entry[1] if entry is not None else None
 
     def _at(self, message: dict[str, Any], key: str = "position") -> dict[str, int]:
         """The position a request is about, which a code action sends as the start of a range."""
@@ -337,7 +430,7 @@ class Server:
         reads as "no jump from here" and shows as nothing happening.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message))
         found: list[Site] = []
@@ -356,7 +449,7 @@ class Server:
         name no component declares - which a client shows by doing nothing at all.
         """
         path = self._document(message)
-        document = read(path, {})
+        document = read(path, self._cache(path))
         pointer = document.pointer_at(self._at(message))
         # A dimension spelled as a constant name is about the constant, not about the
         # object dimensioned by it - the reference wins over the declaration holding it,
@@ -395,7 +488,7 @@ class Server:
         not is worse than no box at all.
         """
         path = self._document(message)
-        document = read(path, {})
+        document = read(path, self._cache(path))
         pointer = document.pointer_at(self._at(message))
         subject = renameable_at(document, pointer)
         if subject is None:
@@ -403,14 +496,39 @@ class Server:
         span = document.text_range_of(pointer)
         return None if span is None else {"range": span, "placeholder": subject[1]}
 
+    def _workspace_edit(self, changes: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+        """The edits in the shape the client asked for.
+
+        ``documentChanges`` names, for each file, the version of the text the edit was
+        computed against, so a client that has typed since refuses the edit instead of
+        applying it to a text it was not meant for. A document that is not open has no
+        version, which the protocol spells ``null``. The plain ``changes`` form stays for a
+        client that did not announce the other, because it is the only one it can apply.
+        """
+        if not self._versioned_edits:
+            return {"changes": changes}
+        return {
+            "documentChanges": [
+                {
+                    "textDocument": {"uri": uri, "version": self._version_of(uri_to_path(uri))},
+                    "edits": edits,
+                }
+                for uri, edits in changes.items()
+            ]
+        }
+
     def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
         """Rewrite a name everywhere the project writes it, or say why it cannot be.
 
         A refusal is an error rather than an empty edit: an editor shows the message, where an
-        empty edit looks like a rename that quietly did nothing.
+        empty edit looks like a rename that quietly did nothing. A drifted buffer is refused
+        along with the rest of the rename rather than skipped on its own: writing every other
+        file and leaving that one alone is the half-renamed project the refusal exists to
+        prevent, and it would happen silently, because the client asked for one rename, not a
+        rename of everything except what it could not reach.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message))
         params = _field(message.get("params"), dict, "params")
@@ -420,6 +538,7 @@ class Server:
         # same characters. Sending that edit twice is not a duplicate an editor tolerates: it
         # is two overlapping rewrites of one range.
         seen: set[tuple[str, int, int]] = set()
+        drifted: set[Path] = set()
         subject = renameable_at(document, pointer)
         for workspace in self._projects_of(path):
             built = index(workspace)
@@ -427,17 +546,28 @@ class Server:
             if refused is not None:
                 write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
                 return
-            for uri, edits in rename_edits(built, document, pointer, wanted, cache).items():
+            edited = rename_edits(built, document, pointer, wanted, cache)
+            drifted.update(edited.drifted)
+            for uri, edits in edited.changes.items():
                 for edit in edits:
                     start = edit["range"]["start"]
                     where = (uri, start["line"], start["character"])
                     if where not in seen:
                         seen.add(where)
                         changes.setdefault(uri, []).append(edit)
+        if drifted:
+            names = ", ".join(sorted(p.name for p in drifted))
+            verb = "has" if len(drifted) == 1 else "have"
+            msg = (
+                f"{names} {verb} unsaved changes that moved a declaration this rename would "
+                "touch; save it and rename again"
+            )
+            write_message(self.writer, error(request_id, REQUEST_FAILED, msg))
+            return
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()
-        write_message(self.writer, response(request_id, {"changes": changes}))
+        write_message(self.writer, response(request_id, self._workspace_edit(changes)))
 
     def _actions(self, message: dict[str, Any]) -> list[dict[str, Any]]:
         """What can be offered for the key under the cursor.
@@ -446,7 +576,7 @@ class Server:
         what decides: an author asking for a fix has put the caret on the thing they mean.
         """
         path = self._document(message)
-        cache: dict[Path, Document] = {}
+        cache = self._cache(path)
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message, "range"))
         params = _field(message.get("params"), dict, "params")
@@ -454,6 +584,8 @@ class Server:
         offered: list[dict[str, Any]] = []
         for workspace in self._projects_of(path):
             offered.extend(actions(index(workspace), path, document, pointer, cache, reported))
+        for action in offered:
+            action["edit"] = self._workspace_edit(action["edit"]["changes"])
         return offered
 
     def _initialise(self, params: dict[str, Any]) -> None:
@@ -463,13 +595,19 @@ class Server:
             self.roots = [uri_to_path(folder["uri"]) for folder in folders]
         elif params.get("rootUri"):
             self.roots = [uri_to_path(params["rootUri"])]
+        capabilities = params.get("capabilities")
+        workspace = capabilities.get("workspace") if isinstance(capabilities, dict) else None
+        edit = workspace.get("workspaceEdit") if isinstance(workspace, dict) else None
+        self._versioned_edits = isinstance(edit, dict) and edit.get("documentChanges") is True
 
     def _capabilities(self) -> dict[str, Any]:
         return {
-            # change 0 is TextDocumentSyncKind.None: the server reads files from disk, so
-            # sending it every keystroke would be traffic nothing looks at.
+            # change 1 is TextDocumentSyncKind.Full: the analysis reads from disk on open and
+            # save, but positions and edits are computed against the buffer, so the server
+            # has to be told what the buffer holds. Full rather than incremental because a
+            # description file is small and applying deltas is a second place to be wrong.
             "capabilities": {
-                "textDocumentSync": {"openClose": True, "change": 0, "save": True},
+                "textDocumentSync": {"openClose": True, "change": 1, "save": True},
                 "definitionProvider": True,
                 "referencesProvider": True,
                 "hoverProvider": True,

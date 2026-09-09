@@ -71,11 +71,15 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        and ``ddd id`` when one of the files it was given was not readable as json and had to
        be skipped, which it reports without a diagnostic.
    * - ``2``
-     - the invocation itself was wrong: an unknown command or option, a required option left
-       out, an unknown check identifier or severity, an attempt to relax a check that cannot
-       be relaxed, an output directory that cannot be
-       written into. The project was never examined, so the absence of findings means nothing
-       here.
+     - the invocation itself was wrong: an unknown command or option, a required option
+       left out, an unknown check identifier or severity, an attempt to relax a check that
+       cannot be relaxed, an output directory that cannot be written into. The project
+       was never examined, so the absence of findings means nothing here - except for a
+       usage error raised by a step that follows the analysis: a plugin hook that raises,
+       an address map that cannot be read, a ``--renames`` file or an artefact that cannot
+       be written, ``--plugin`` refused beside a description, or a run that would write
+       nothing. There, the findings of the analysis are reported in the requested format
+       first, and the usage error follows; the exit code is still ``2``.
 
 The commands
 ------------

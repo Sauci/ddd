@@ -10,6 +10,15 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **A failed step after the analysis no longer discards the findings.**  A plugin hook
+  that raised, an address map that could not be read, a `--renames` file or an artefact
+  that could not be written, a `--plugin` refused beside a description, or a run that
+  would write nothing turned the whole run into one usage error line, and the findings
+  of the analysis - the ones the reader of a failed run needs - were gone with it.
+  They are now printed first, in the requested format, and the usage error follows;
+  the exit code is still 2.  The `--renames` failure names the option, and a write
+  failure names the file rather than its directory.
+
 * **A dropped declaration is still a declaration.**  A producer naming an unknown type made
   every consumer a `missing-producer`, and a consumer dimensioned by an unknown constant made
   its producer an `unused-output`, each finding pointing at the file the mistake was not in.

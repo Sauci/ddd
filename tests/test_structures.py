@@ -293,6 +293,109 @@ class TestTypeGraph:
         assert [entry.name for entry in dictionary.objects] == ["Fine"]
 
 
+class TestNestingTooDeep:
+    """A structure nesting deeper than DDD reads is refused at the type that crosses the limit.
+
+    Everything that walks a structure used to follow it as deep as it was written, so a chain
+    a few hundred long ended ``ddd check`` in a ``RecursionError`` traceback - at whatever
+    walk ran out of stack first - instead of in a finding anybody could act on. The cap turns
+    that into one finding, at the innermost type that is already too deep to read; every type
+    nesting it is unusable for the same reason and is dropped without a second finding.
+    """
+
+    @staticmethod
+    def chain(depth: int) -> list[dict[str, Any]]:
+        """``T1_t`` holds a value and ``Tn_t`` nests ``T(n-1)_t``, so ``Tn_t`` is ``n`` deep."""
+        return [
+            struct("T1_t", val("value")),
+            *(
+                struct(f"T{index}_t", nest("down", f"T{index - 1}_t"))
+                for index in range(2, depth + 1)
+            ),
+        ]
+
+    def files(self, depth: int, *includes: str, **extra: Any) -> dict[str, Any]:
+        """The chain, and one variable of the type at the top of it."""
+        return {
+            "project.ddd.json": project("P", "types.ddd.json", *includes, "a.ddd.json"),
+            "types.ddd.json": types(*self.chain(depth)),
+            "a.ddd.json": component("A", declare("local", "X", typename=f"T{depth}_t", **extra)),
+        }
+
+    def test_a_structure_at_the_limit_still_resolves(self, tree: Path) -> None:
+        """Sixty four levels is the deepest structure there is, and it flattens as any does."""
+        dictionary, bag = run_analysis(tree, self.files(64))
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert [leaf.path for leaf in dictionary.leaves] == ["X" + ".down" * 63 + ".value"]
+
+    def test_one_level_deeper_is_refused_at_the_type_that_crosses_the_limit(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(tree, self.files(65))
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types.ddd.json#types[64]" in rendered
+        assert "structure 'T65_t' nests 65 levels deep; DDD reads at most 64" in rendered
+        # The variable of it is dropped, the way one of any other unusable type is; `schema`
+        # cannot be silenced, so there is no `incomplete-project` to report its absence.
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
+
+    def test_the_types_nesting_the_offender_are_dropped_without_a_second_finding(
+        self, tree: Path
+    ) -> None:
+        """Reported once, where the nesting first goes over; ``T70_t`` inherits the cause."""
+        dictionary, bag = run_analysis(tree, self.files(70))
+        assert checks(bag) == ["schema"]
+        assert "'T65_t' nests 65 levels deep" in messages(bag)
+        assert dictionary is not None
+        assert not dictionary.instances
+
+    def test_a_variable_of_an_over_deep_type_is_placed_without_walking_it(self, tree: Path) -> None:
+        """The alignment a section guarantees is compared against a walk of the structure.
+
+        It is asked of every declaration that states a section, dropped ones included, which
+        is the one walk that still starts at a type the cap refused.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                **self.files(500, "sections.ddd.json", section=".data"),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+            },
+        )
+        assert checks(bag) == ["schema"]
+
+    def test_five_hundred_levels_are_a_finding_rather_than_a_traceback(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.files(500))
+        assert checks(bag) == ["schema"]
+        assert "'T65_t' nests 65 levels deep" in messages(bag)
+        assert dictionary is not None
+        assert not dictionary.instances
+
+    def test_a_deep_chain_that_closes_into_a_cycle_is_left_to_type_cycle(self, tree: Path) -> None:
+        """No depth is reported on a cycle: a structure that contains itself has no depth.
+
+        The cycle walk meets the whole chain before it closes, so this is what says that walk
+        no longer descends by recursion either.
+        """
+        entries = self.chain(500)
+        entries[0] = struct("T1_t", nest("up", "T500_t"))
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*entries),
+                "a.ddd.json": component("A", declare("local", "X", typename="T500_t")),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+
 class TestInfiniteDerivedLimits:
     """A datatype and conversion pair whose derived limits are not finite is refused.
 

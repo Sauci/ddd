@@ -475,10 +475,10 @@ is a worked example and [examples/layout](examples/layout) a project that names 
 
 `ddd checks` lists all of them.  Every check has an identifier and a default severity that
 can be changed with `-W check=error|warning|info|ignore`; `--strict` turns all warnings into
-errors.  Seven of them cannot be relaxed, because a file that cannot be read has nothing
+errors.  Eight of them cannot be relaxed, because a file that cannot be read has nothing
 further to say, or because a project cannot be interpreted without the plugins it names:
-`file-not-found`, `json-syntax`, `file-kind`, `schema`, `include-cycle`, `plugin-not-found`
-and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
+`file-not-found`, `json-syntax`, `file-kind`, `schema`, `include-cycle`, `include-depth`,
+`plugin-not-found` and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
 
 | severity | check | reported when |
 | --- | --- | --- |
@@ -515,8 +515,8 @@ and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
 | error | `consumer-extension` | an `input` declaration states a plugin's `extensions` block, which only the producer decides |
 | error | `raster-kind` | a raster is stated on a calibration object, which no daq list carries |
 | error | `file-extension` | a description file is not named `*.ddd.json` |
-| error | `include-cycle`, `file-not-found`, `file-kind`, `json-syntax`, `schema`, `plugin-not-found`, `plugin-invalid` | the file tree cannot be read; these seven cannot be relaxed |
-| error | `include-empty` | an include pattern matches no file; relaxable, unlike the seven above |
+| error | `include-cycle`, `include-depth`, `file-not-found`, `file-kind`, `json-syntax`, `schema`, `plugin-not-found`, `plugin-invalid` | the file tree cannot be read, or nests deeper than the 64 levels of includes DDD follows; these eight cannot be relaxed |
+| error | `include-empty` | an include pattern matches no file; relaxable, unlike the eight above |
 | error | `unknown-extension` | an `extensions` block names a plugin the project does not load |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `section-alignment` | an object needs stricter alignment than its section guarantees |

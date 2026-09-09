@@ -51,6 +51,17 @@ scripts and editors match them with a single pattern.
 
 _GLOB_CHARACTERS = frozenset("*?[")
 
+_MAX_INCLUDE_DEPTH = 64
+"""How many projects deep a run follows the ``includes`` of a project.
+
+The loader walks the tree by recursion, one pair of frames per level, so a chain a few
+hundred long ends the run in python's ``RecursionError`` - a traceback, at whatever file the
+stack happened to run out on, rather than a finding at the entry that went too far. The limit
+is written into the specification instead of being left to the interpreter: a tree this deep
+is a mistake, most often a project that includes a sibling which includes it back under a
+second spelling of one path, and a mistake deserves an answer that names it.
+"""
+
 FILE_KINDS = ("project", "component", "types", "units", "sections", "constants", "rasters")
 """Top level keys that identify a description file, in the order they are offered."""
 
@@ -1007,6 +1018,17 @@ class _Loader:
         if path in stack:
             chain = " -> ".join(item.name for item in (*stack, path))
             self._bag.add("include-cycle", f"include cycle: {chain}", origin)
+            return
+        if len(stack) >= _MAX_INCLUDE_DEPTH:
+            # Asked of the tree the author wrote rather than of what happens to be loaded
+            # already, which is why this comes before the diamond below: an entry crossing
+            # the limit is refused whether or not another path reached the same file first.
+            self._bag.add(
+                "include-depth",
+                f"'{path.name}' is included {len(stack) + 1} levels deep; DDD reads at most "
+                f"{_MAX_INCLUDE_DEPTH}, so this entry and everything under it is left out",
+                origin,
+            )
             return
         if path in self._seen_paths:
             # Diamond shaped include graphs are fine, the file is simply used once.

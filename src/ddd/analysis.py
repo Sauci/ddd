@@ -11,7 +11,7 @@ import dataclasses
 import difflib
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
@@ -63,6 +63,17 @@ from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
+
+_MAX_TYPE_NESTING = 64
+"""How many levels of structure DDD reads.
+
+A level is one structure: a structure whose members all hold values is one level deep, and
+one nesting an *n* level structure is *n* + 1 - a scalar, an external type and a name nobody
+declares are not structures and add no level. The limit exists because the walks over a
+structure descend one call per level, so a chain a few hundred deep ends the run in python's
+``RecursionError`` - a traceback rather than a finding - and no c compiler would accept the
+generated header anyway.
+"""
 
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
@@ -368,25 +379,35 @@ def _ordered_structures(declared: dict[str, LoadedType]) -> list[LoadedType]:
     A depth first walk in name order, so the result is stable whichever way the includes
     happened to expand. The graph is known to be acyclic by the time this runs; a cycle is
     reported by :meth:`_Analysis._check_types` and the structures in it are left out.
+
+    Walked with an explicit stack rather than by recursion, because this one runs over every
+    declared type - the ones :data:`_MAX_TYPE_NESTING` refused included, since they still
+    reach the dictionary as declarations - and so cannot lean on that cap the way the walks
+    inside the analysis do.
     """
     ordered: list[LoadedType] = []
     placed: set[str] = set()
     walking: set[str] = set()
+    stack: list[tuple[str, Iterator[str]]] = []
 
-    def visit(name: str) -> None:
-        entry = declared.get(name)
-        if entry is None or name in placed or name in walking:
-            return
-        walking.add(name)
-        for _, _, nested in _nested_types(entry):
-            visit(nested)
-        walking.discard(name)
-        if entry.structure is not None:
-            ordered.append(entry)
-        placed.add(name)
-
-    for name in sorted(declared):
-        visit(name)
+    for start in sorted(declared):
+        if start in placed:
+            continue
+        walking.add(start)
+        stack.append((start, iter(_nested_names(declared[start]))))
+        while stack:
+            name, pending = stack[-1]
+            nested = next(pending, None)
+            if nested is None:
+                stack.pop()
+                walking.discard(name)
+                entry = declared[name]
+                if entry.structure is not None:
+                    ordered.append(entry)
+                placed.add(name)
+            elif nested in declared and nested not in placed and nested not in walking:
+                walking.add(nested)
+                stack.append((nested, iter(_nested_names(declared[nested]))))
     return ordered
 
 
@@ -407,31 +428,82 @@ def _nested_types(entry: LoadedType) -> list[tuple[int, Member, str]]:
     ]
 
 
+def _nested_names(entry: LoadedType) -> list[str]:
+    """The names the members of a structure nest, in the order the members are written."""
+    return [nested for _, _, nested in _nested_types(entry)]
+
+
 def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ...]:
     """The chain of nested structures leading from ``start`` back to a name already on it.
 
     Returns the cycle itself rather than a bare yes, because the chain is the only useful part
     of the finding: ``A -> B -> C -> A`` says which member to remove, where "A is recursive"
-    leaves the reader to work out how.
+    leaves the reader to work out how. An undeclared name met on the way has no members to
+    follow and is not one; it is reported as ``unknown-type``.
+
+    ``start`` is a declared name - the walk is run once per declared type. Walked with an
+    explicit stack, because the chain leading *into* a cycle is as long as somebody wrote it:
+    a type that nests itself has no depth at all, so :data:`_MAX_TYPE_NESTING` refuses nothing
+    here and a recursive walk would run out of stack before it found the cycle to report.
     """
-    chain: list[str] = []
+    chain: list[str] = [start]
+    stack: list[Iterator[str]] = [iter(_nested_names(declared[start]))]
+    while stack:
+        nested = next(stack[-1], None)
+        if nested is None:
+            stack.pop()
+            chain.pop()
+        elif nested in chain:
+            return (*chain[chain.index(nested) :], nested)
+        elif nested in declared:
+            chain.append(nested)
+            stack.append(iter(_nested_names(declared[nested])))
+    return ()
 
-    def walk(name: str) -> tuple[str, ...]:
-        if name in chain:
-            return (*chain[chain.index(name) :], name)
-        entry = declared.get(name)
-        if entry is None:
-            # An undeclared type has no members to follow; it is reported as unknown-type.
-            return ()
-        chain.append(name)
-        for _, _, nested in _nested_types(entry):
-            found = walk(nested)
-            if found:
-                return found
-        chain.pop()
-        return ()
 
-    return walk(start)
+def _nesting_depths(declared: dict[str, LoadedType]) -> dict[str, int]:
+    """How many levels deep each declared type nests, for the ones that reach a bottom.
+
+    Levels as :data:`_MAX_TYPE_NESTING` counts them: a structure whose members all hold values
+    is one level, a structure nesting an *n* level structure is *n* + 1, and anything that is
+    not a structure - a scalar, an external type, a name no file declares - is no level at
+    all. A type that nests itself, however far down, is left out rather than given a number:
+    it has no bottom, it is reported as ``type-cycle``, and a second finding about it would
+    say the same mistake twice under another identifier.
+
+    Walked with an explicit stack, for the very reason the answer is wanted: a recursive walk
+    over a chain deep enough to be worth reporting is the traceback this exists to prevent.
+    """
+    depths: dict[str, int] = {}
+    cyclic: set[str] = set()
+    stack: list[tuple[str, Iterator[str]]] = []
+
+    for start in sorted(declared):
+        if start in depths or start in cyclic:
+            continue
+        chain: set[str] = {start}
+        stack.append((start, iter(_nested_names(declared[start]))))
+        while stack:
+            name, pending = stack[-1]
+            nested = next(pending, None)
+            if nested is None:
+                stack.pop()
+                chain.discard(name)
+                names = _nested_names(declared[name])
+                if any(found in cyclic for found in names):
+                    # Whatever reaches a cycle has no bottom either, so the mark travels up
+                    # the chain as each name on it is popped.
+                    cyclic.add(name)
+                elif declared[name].structure is None:
+                    depths[name] = 0
+                else:
+                    depths[name] = 1 + max((depths.get(n, 0) for n in names), default=0)
+            elif nested in chain:
+                cyclic.add(nested)
+            elif nested in declared and nested not in depths and nested not in cyclic:
+                chain.add(nested)
+                stack.append((nested, iter(_nested_names(declared[nested]))))
+    return depths
 
 
 def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
@@ -487,6 +559,14 @@ class _Analysis:
         declaration naming such a type is dropped, so nothing downstream reasons about a
         leaf it cannot have. Each carries the cause that poisoned it, so that a variable of
         the type can say, when the cause was silenced, what nobody reported."""
+        self._over_deep_types: set[str] = set()
+        """The types nesting deeper than :data:`_MAX_TYPE_NESTING`, which are poisoned too.
+
+        Kept apart from the poison because it says a second thing about them that poison does
+        not: no walk may descend into one. Everything else that is unusable is unusable about
+        its leaves - a walk over it terminates, and the alignment estimate for one still
+        answers from the members it does understand - while these are the ones a walk cannot
+        reach the bottom of at all."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -887,6 +967,13 @@ class _Analysis:
     def _type_alignment(self, name: str, seen: set[str]) -> int | None:
         if name in seen:  # a cycle is reported as type-cycle; no alignment to give
             return None
+        if name in self._over_deep_types:
+            # The placement checks ask this of every declaration that states a section,
+            # dropped ones included, which is the one walk that still starts at a type the
+            # nesting cap refused - and the chain under it is what the cap will not follow.
+            # Met at the start of a walk and never below it: a type nesting a refused one is
+            # refused as well, so nothing that gets past this line meets one further down.
+            return None
         seen.add(name)
         loaded = self._types.get(name)
         if loaded is None:
@@ -931,12 +1018,13 @@ class _Analysis:
         return any(self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry))
 
     def _check_types(self) -> None:
-        """Every nested structure is declared, and no structure contains itself.
+        """Every nested structure is declared, nests no more than DDD reads, and not itself.
 
-        Both are refused rather than resolved as far as possible. A member whose structure is
-        unknown has no size, so every offset after it in the enclosing structure would be wrong
-        and the generated addresses would silently point at the wrong bytes; a structure that
-        contains itself has no size at all.
+        All three are refused rather than resolved as far as possible. A member whose structure
+        is unknown has no size, so every offset after it in the enclosing structure would be
+        wrong and the generated addresses would silently point at the wrong bytes; a structure
+        that contains itself has no size at all; and one nesting deeper than
+        :data:`_MAX_TYPE_NESTING` is more than the walks below can follow.
         """
         declared = self._types
         for entry in self._workspace.types:
@@ -968,6 +1056,10 @@ class _Analysis:
                     self._poisoned_types.setdefault(
                         entry.name, _Cause("unknown-type", reported, location)
                     )
+
+        # Before the cycle walk and everything after it: what those walk into is what the cap
+        # bounds, so a type too deep to follow has to be poisoned before anybody follows it.
+        self._refuse_deep_nesting(_nesting_depths(declared))
 
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
@@ -1008,14 +1100,58 @@ class _Analysis:
             if cause is not None:
                 self._poisoned_types.setdefault(entry.name, cause)
 
+    def _refuse_deep_nesting(self, depths: dict[str, int]) -> None:
+        """A structure nesting deeper than DDD reads is refused, and so is every one over it.
+
+        Reported once, at the innermost type that is already too deep - the one whose own
+        nesting crosses the limit - because every type nesting that one is too deep for
+        exactly the same reason, and a finding per level would answer one mistake with
+        hundreds. All of them are poisoned with that one cause, so a variable of any of them
+        is dropped the way a variable of a recursive structure is, and so that no walk after
+        this one descends a chain the stack cannot take: a type this leaves alone nests at
+        most :data:`_MAX_TYPE_NESTING` levels, and following it to the bottom is safe.
+        """
+        deep: dict[str, _Cause] = {}
+        # In depth order, so that a type over the limit meets the cause of the nested type
+        # that is over it as well before it would make one of its own.
+        for entry in sorted(self._workspace.types, key=lambda item: depths.get(item.name, 0)):
+            depth = depths.get(entry.name, 0)
+            if depth <= _MAX_TYPE_NESTING:
+                # A type with no depth at all is one that nests itself, which the cycle walk
+                # below reports; it is not this one's to answer.
+                continue
+            cause = next((deep[name] for name in _nested_names(entry) if name in deep), None)
+            if cause is None:
+                location = entry.location()
+                # What the bag made of the finding rather than what this check's severity is
+                # today, exactly as :meth:`_refuse_infinite_type_limits` asks it.
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"structure '{entry.name}' nests {depth} levels deep; DDD reads at "
+                        f"most {_MAX_TYPE_NESTING}",
+                        location,
+                    )
+                    is not None
+                )
+                cause = _Cause("schema", reported, location)
+            deep[entry.name] = cause
+            self._over_deep_types.add(entry.name)
+            self._poisoned_types.setdefault(entry.name, cause)
+
     def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:
         """What makes a variable of that type unresolvable, if anything does.
 
         The type's own cause when it has one; else the first cause found walking its nested
-        structures, however deep. A cycle is not this walk's business - it is reported and
-        recorded as ``type-cycle`` before this runs - so a name already seen is not followed
-        again. A nested name nobody declares was recorded as ``unknown-type`` on the type
-        naming it, so the walk only ever gets past a name this project declares.
+        structures. A cycle is not this walk's business - it is reported and recorded as
+        ``type-cycle`` before this runs - so a name already seen is not followed again. A
+        nested name nobody declares was recorded as ``unknown-type`` on the type naming it, so
+        the walk only ever gets past a name this project declares.
+
+        Still recursive, and bounded by the cap rather than by an explicit stack: it stops at
+        the first poisoned name, and by the time it runs a name that is not poisoned nests at
+        most :data:`_MAX_TYPE_NESTING` levels - one deeper, or one on a cycle, was poisoned by
+        the two walks above.
         """
         if name in seen:
             return None

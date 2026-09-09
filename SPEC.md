@@ -236,7 +236,10 @@ rasters files and/or other (sub-)projects, and names the plugins the project run
   file is detected from its content. A
   file reached through several paths is loaded once; file identity is the resolved path,
   that is the absolute path with symbolic links followed, compared as the platform compares
-  paths. Include cycles are an error (`include-cycle`).
+  paths. Include cycles are an error (`include-cycle`). Includes nest at most 64 levels; a
+  deeper tree is `include-depth` at the entry that crosses the limit, and neither that file
+  nor anything it includes is read. The root of the run is the first level, and a level of
+  any kind counts, a component file as much as a sub-project.
 - `"plugins"` (optional): python modules that extend DDD for this project
   ([section 3.11](#311-plugins)).
 - `"extensions"` (optional): the settings of those plugins, keyed by plugin name
@@ -798,6 +801,13 @@ each stating its `type`: `scalar`, `struct` or `external`.
 Two entries of one file **must not** share a name (`schema`); the same name declared by
 two files is `duplicate-type` ([section 4](#4-consistency-checks)).
 
+A structure nests at most 64 levels; a deeper one is `schema` at the type that crosses the
+limit. One level is one structure: a structure whose members all hold values is one level
+deep, and one nesting an *n* level structure is *n* + 1, a member naming a scalar or an
+external type adding none. The type the finding sits at is the innermost one that is
+already over the limit, and every type nesting it is unusable for the same reason, so a
+declaration naming any of them is dropped.
+
 A member naming an external type is opaque bytes: it **must not** state `unit`,
 `conversion`, `limits` or an `a2l` block (`schema`), because DDD does not check meaning it
 cannot see, and no A2L record exists for the block to shape. It **may** carry
@@ -1231,9 +1241,14 @@ Errors:
   the same C namespace in the types header are not compared yet: an enum and a declared
   type of one name, and an enumerator and a declared type of one name *(planned)*.
 - `file-extension`: a description file is not named `*.ddd.json`.
-- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`: the file tree
-  cannot be read. These five, with `plugin-not-found` and `plugin-invalid` above, are the
-  seven checks whose severity cannot be changed.
+- `json-syntax`, `schema`, `file-kind`, `file-not-found`, `include-cycle`, `include-depth`:
+  the file tree cannot be read. These six, with `plugin-not-found` and `plugin-invalid`
+  above, are the eight checks whose severity cannot be changed.
+- `include-depth`: the include tree of a project goes deeper than DDD reads
+  ([section 3.1](#31-project-description)). The entry that crosses the limit is not
+  followed, and the rest of the project is read as usual, so the finding is one rather than
+  one per file below it. Fixed severity, because the entry is not followed whatever the
+  finding is reported as: relaxing it would hide an absence instead of allowing it.
 - `include-empty`: a wildcard include matches no file. It is relaxable, because a pattern
   that is empty in one variant of a project is legitimate. A
   literal include naming a missing file is `file-not-found` instead

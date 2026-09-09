@@ -101,6 +101,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                overridable=False),
         _check("include-cycle", Severity.ERROR, "projects include each other recursively",
                overridable=False),
+        _check("include-depth", Severity.ERROR,
+               "a project includes sub-projects more than 64 levels deep", overridable=False),
         _check("include-empty", Severity.ERROR, "an include pattern matches no file"),
         _check("plugin-not-found", Severity.ERROR,
                "a project names a plugin that cannot be found", overridable=False),

@@ -1903,6 +1903,16 @@ class _Analysis:
         whether that root finding was reported: an absence whose cause was silenced is the
         one this tool has to say out loud.
 
+        Two phases, because a flag is only sound over the finished set. The set grows pass by
+        pass, and a name met in an early pass can refer to one that goes only in a later one:
+        a map over an axis dropped for a reported reason and an axis that goes because its
+        ``input`` went silently reads as explained if it is judged while that second axis
+        still looks present, and it is never judged again. So the first phase settles which
+        names are absent and decides nothing else, and the second weighs every reference of
+        each name once the set is whole. That second phase iterates as well, because the
+        flags follow the references too - the map's answer needs the axis's, which needs the
+        measurement's - and no order over the names walks every chain forwards.
+
         Fills ``_effective`` on the way, for exactly the names that have a definition to
         offer: the owner's, else the first surviving declaration's.
         """
@@ -1918,19 +1928,33 @@ class _Analysis:
                 absent[name] = self._dropped[owner.key]
                 continue
             self._effective[name] = (owner or refs[0]).definition
+        # The seeds above carry their own flag, decided by what was dropped. What follows
+        # settles the names that go transitively: one reference to an absent name is enough,
+        # and the flag each is entered with - explained, until the second phase says
+        # otherwise - is never read here, only the membership is.
+        transitive: list[str] = []
         settled = False
         while not settled:
             settled = True
             for name, definition in self._effective.items():
                 if name in absent:
                     continue
+                if any(target in absent for target in definition.references.values()):
+                    absent[name] = True
+                    transitive.append(name)
+                    settled = False
+        transitive.sort()
+        settled = False
+        while not settled:
+            settled = True
+            for name in transitive:
+                # Non-empty: the name is here because a reference of it was absent, and the
+                # set only ever grew afterwards.
                 gone = [
                     (key, target)
-                    for key, target in definition.references.items()
+                    for key, target in self._effective[name].references.items()
                     if target in absent
                 ]
-                if not gone:
-                    continue
                 # Kept for the report: which of the names this definition refers to took it
                 # down, so the absence can be said at the key that names it. The silenced one
                 # where there is one, because that is the absence nothing else mentions.
@@ -1940,8 +1964,10 @@ class _Analysis:
                 # Every absent target weighed, not the first one met: a map over two absent
                 # axes is explained only if both of them were, or the key order of a
                 # definition would decide whether the map's own absence is ever said.
-                absent[name] = all(absent[target] for _, target in gone)
-                settled = False
+                explained = all(absent[target] for _, target in gone)
+                if explained != absent[name]:
+                    absent[name] = explained
+                    settled = False
         return absent
 
     def _report_absences(

@@ -809,6 +809,31 @@ class TestDroppedDeclarations:
         assert "'M' is not in the data dictionary: its " + silenced_axis in rendered, rendered
         assert f"definition.{silenced_axis}" in rendered
 
+    def test_an_axis_that_goes_in_a_later_pass_still_counts_against_the_map(
+        self, tree: Path
+    ) -> None:
+        """A map over one axis dropped for a reported reason and one that goes only because
+        its input measurement was dropped for a silenced reason: the map's absence is half
+        silenced, whichever order the names are visited in, so it is reported at the axis
+        that went silently."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax1", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "M", "uint16", typename="Nope_t"),
+                    declare("local", "Zx", "uint16", kind="axis", size=4, input="M"),
+                    declare("local", "Amap", "uint8", kind="map", x_axis="Ax1", y_axis="Zx"),
+                ),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        rendered = messages(bag)
+        assert "'Amap' is not in the data dictionary: its y_axis 'Zx'" in rendered, rendered
+        assert "'Zx' is not in the data dictionary: its input 'M'" in rendered
+
 
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(

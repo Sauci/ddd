@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import WriteStatus, write
+from ddd.backends import GeneratedFile, WriteStatus, write
 
 
 def generate(tree: Path, files: dict[str, Any], **options: Any) -> dict[str, str]:
@@ -230,8 +230,13 @@ class TestWriting:
         assert {result.status for result in first} == {WriteStatus.CREATED}
         assert (tree / "gen" / "ddd_globals.c").is_file()
 
+        # An unchanged file is not rewritten, so its mtime survives a rerun untouched - what
+        # lets a build system that watches mtimes tell the ninja module depends on skip work a
+        # rerun did not actually change; see test_cmake.py.
+        before = (tree / "gen" / "ddd_globals.c").stat().st_mtime_ns
         second = write(render_files(dictionary, tree / "gen"))
         assert {result.status for result in second} == {WriteStatus.UNCHANGED}
+        assert (tree / "gen" / "ddd_globals.c").stat().st_mtime_ns == before
 
         (tree / "gen" / "ddd_globals.c").write_text("stale", encoding="utf-8")
         third = write(render_files(dictionary, tree / "gen"))
@@ -246,6 +251,44 @@ class TestWriting:
         results = write(render_files(dictionary, tree / "gen"), dry_run=True)
         assert {result.status for result in results} == {WriteStatus.CREATED}
         assert not (tree / "gen").exists()
+
+    def test_a_failed_replace_undoes_an_earlier_creation_in_the_same_call(self, tree: Path) -> None:
+        """Two files; the second's target is a directory, so its replace raises. The first
+        one's replace had already gone through by then - undoing it too is what makes the
+        failure all-or-nothing, rather than leaving the caller with one of the two files it
+        asked for and no sign that the run, as a whole, did not succeed."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        blocked = out / "second.h"
+        blocked.mkdir()
+        second = GeneratedFile(blocked, "second\n")
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        # The path a reader recognises is the target they asked for, not the sibling
+        # temporary file the failure actually happened on.
+        assert excinfo.value.filename == str(blocked)
+        assert not first.path.exists()
+        assert not any(out.glob("*.tmp"))
+
+    def test_a_failed_replace_leaves_an_earlier_update_in_its_new_state(self, tree: Path) -> None:
+        """Unlike a fresh file, an updated one cannot be undone: its old bytes are already
+        gone once its own replace has gone through, so the new content is what a later
+        failure leaves behind - the one window write() documents as accepted rather than
+        solved."""
+        out = tree / "gen"
+        out.mkdir()
+        (out / "first.h").write_text("old\n", encoding="utf-8")
+        first = GeneratedFile(out / "first.h", "new\n")
+        blocked = out / "second.h"
+        blocked.mkdir()
+        second = GeneratedFile(blocked, "second\n")
+
+        with pytest.raises(OSError):
+            write([first, second])
+        assert (out / "first.h").read_text(encoding="utf-8") == "new\n"
+        assert not any(out.glob("*.tmp"))
 
     def test_files_use_unix_line_endings(self, tree: Path) -> None:
         dictionary, _ = run_analysis(tree, simple(declare("local", "A")))

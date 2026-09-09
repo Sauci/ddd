@@ -10,6 +10,7 @@ assembles in :mod:`ddd.cli`. Nothing else has to change.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -108,8 +109,37 @@ def render(
 
 
 def write(files: Iterable[GeneratedFile], *, dry_run: bool = False) -> list[WriteResult]:
-    """Write the rendered files, skipping those that are already up to date."""
+    """Write every file that needs it, all of them or none, skipping those already current.
+
+    Every file's status - unchanged, created or updated - is decided first, against the bytes
+    already on disk, before anything is written: an unchanged file is left alone and keeps its
+    mtime, which is what lets a build system that watches mtimes skip work a rerun did not
+    actually change.
+
+    What needs writing is then written twice over. First every one of them is rendered to a
+    sibling ``<name>.tmp``, so that a mistake in the render itself, or a parent directory that
+    cannot be created, is found while every real target is still exactly as it was. Only once
+    every temporary file exists is each renamed onto its real target in turn, with
+    :meth:`~pathlib.Path.replace`, which succeeds over an existing file on every platform this
+    runs on. A target that is a directory - or any other permission problem, on either half -
+    raises from wherever it happens, and the error that escapes always carries the real
+    target's path in ``filename``, never the temporary's, because that is the path the caller
+    typed and recognises.
+
+    On that failure, every temporary file this call made is removed, and so is every target
+    this call had already renamed into place if nothing existed there before it ran: undoing a
+    fresh creation costs nothing, so a caller never sees only part of what a run would have
+    produced. A target this call *updated*, though, is left with the new content once its
+    rename has gone through - the bytes it held before are already gone, overwritten by that
+    rename, and there is nothing left to put back. That window holds only renames, which is
+    why it is small, and is accepted rather than solved by first moving every existing target
+    aside on the chance that a later file fails.
+
+    ``dry_run`` returns the decided statuses without writing anything, not even a temporary
+    file - checked before any of them is created.
+    """
     results: list[WriteResult] = []
+    pending: list[tuple[GeneratedFile, bytes, WriteStatus]] = []
     for file in files:
         payload = file.content.encode("utf-8")
         existing = file.path.read_bytes() if file.path.is_file() else None
@@ -117,10 +147,32 @@ def write(files: Iterable[GeneratedFile], *, dry_run: bool = False) -> list[Writ
             results.append(WriteResult(file.path, WriteStatus.UNCHANGED))
             continue
         status = WriteStatus.UPDATED if existing is not None else WriteStatus.CREATED
-        if not dry_run:
-            file.path.parent.mkdir(parents=True, exist_ok=True)
-            file.path.write_bytes(payload)
         results.append(WriteResult(file.path, status))
+        pending.append((file, payload, status))
+    if dry_run or not pending:
+        return results
+
+    temporaries: list[Path] = []
+    renamed: list[tuple[Path, WriteStatus]] = []
+    try:
+        for file, payload, _ in pending:
+            file.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = file.path.with_name(file.path.name + ".tmp")
+            temporary.write_bytes(payload)
+            temporaries.append(temporary)
+        for (file, _, status), temporary in zip(pending, temporaries, strict=True):
+            temporary.replace(file.path)
+            renamed.append((file.path, status))
+    except OSError as error:
+        for temporary in temporaries:
+            with contextlib.suppress(OSError):
+                temporary.unlink()
+        for target, status in renamed:
+            if status is WriteStatus.CREATED:
+                with contextlib.suppress(OSError):
+                    target.unlink()
+        error.filename = str(file.path)
+        raise
     return results
 
 

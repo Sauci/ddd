@@ -1475,6 +1475,16 @@ WRONG_TYPE_BACKEND_PLUGIN = TAG_PLUGIN.replace(
 )
 """The factory hook returns something with neither a ``name`` nor a ``generate``."""
 
+WRONG_GENERATE_BACKEND_PLUGIN = TAG_PLUGIN.replace(
+    "return TagBackend(context.settings)",
+    'return type("Wrong", (), {"name": "tag", "generate": None})()',
+)
+"""A valid ``str`` ``name`` but a ``generate`` that is not callable.
+
+The other half of the same check: ``WRONG_TYPE_BACKEND_PLUGIN`` is a bare string, which fails
+on ``name`` alone and never reaches the ``callable`` half.
+"""
+
 STRING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
     _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        return "not a list"\n'
 )
@@ -1484,6 +1494,16 @@ WRONG_ITEM_GENERATE_PLUGIN = TAG_PLUGIN.replace(
     _GENERATE_SIGNATURE, f"{_GENERATE_SIGNATURE}        return [1]\n"
 )
 """``generate`` returns a list, but not one of ``GeneratedFile``."""
+
+WRONG_CONTENT_TYPE_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE,
+    f'{_GENERATE_SIGNATURE}        return [GeneratedFile(output_dir / "x.h", b"bytes")]\n',
+)
+"""A real ``Path`` for ``path``, but a ``content`` that is not a ``str``.
+
+The other half of the same check: ``WRONG_ITEM_GENERATE_PLUGIN`` is a bare ``int``, which
+fails on ``path`` alone and never reaches the ``content`` half.
+"""
 
 ESCAPING_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir.parent / "escape.h"')
 """Writes beside ``output_dir`` rather than under it."""
@@ -1577,6 +1597,32 @@ class TestGenerate:
         )
         assert "Traceback" not in err
 
+    def test_a_backend_hook_returning_a_valid_name_but_no_generate_names_its_type(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The ``name`` half of the check can pass on its own; a plain string, the only other
+        malformed fixture, fails there and never reaches the ``callable`` half this covers."""
+        write_plugin(tree / "tools", source=WRONG_GENERATE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a backend from its backend "
+            "hook: Wrong" in err
+        )
+        assert "Traceback" not in err
+
     def test_a_generate_hook_returning_a_string_is_a_usage_error_naming_the_plugin(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1607,6 +1653,33 @@ class TestGenerate:
         """The list itself is the right shape; what it holds is not - checked item by item
         rather than trusted once the outer type is right."""
         write_plugin(tree / "tools", source=WRONG_ITEM_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_an_item_with_non_str_content_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A real ``Path`` for ``path`` is not enough on its own; ``content`` must be a
+        ``str`` too - the bare ``int`` of ``WRONG_ITEM_GENERATE_PLUGIN`` fails on ``path``
+        alone and never reaches the ``content`` half this covers."""
+        write_plugin(tree / "tools", source=WRONG_CONTENT_TYPE_GENERATE_PLUGIN)
         write_tree(
             tree,
             {

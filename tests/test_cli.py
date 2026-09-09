@@ -298,8 +298,12 @@ class TestGenerate:
         output = tmp_path / "gen"
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         capsys.readouterr()
+        # An unchanged file is left alone, not rewritten in place, so a rerun that changes
+        # nothing leaves its mtime exactly as the first run left it.
+        before = (output / "ddd_globals.c").stat().st_mtime_ns
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         assert "unchanged" in capsys.readouterr().err
+        assert (output / "ddd_globals.c").stat().st_mtime_ns == before
 
     def test_the_a2l_artefact_writes_the_a2l_and_nothing_else(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1586,7 +1590,13 @@ class TestFindingsSurviveAFailedStep:
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The directory is fine; one target inside it is a directory itself. Naming the
-        directory sent the reader to check its permissions."""
+        directory sent the reader to check its permissions.
+
+        ``ddd_globals.c`` sorts before ``ddd_globals.h`` and so renders and renames first;
+        that it never appears is what shows the failure on the second file takes the first
+        one back out rather than leaving the run half done. No temporary file survives
+        either, wherever in the two files it was writing that the failure actually happened.
+        """
         write_tree(tree, self.files())
         out = tree / "out"
         (out / "ddd_globals.h").mkdir(parents=True)
@@ -1597,6 +1607,8 @@ class TestFindingsSurviveAFailedStep:
         assert code == EXIT_USAGE
         assert "info[missing-id]" in captured.err
         assert "cannot write '" in captured.err and "ddd_globals.h'" in captured.err
+        assert not (out / "ddd_globals.c").exists()
+        assert not any(out.rglob("*.tmp"))
 
     def test_json_output_carries_the_findings_too(
         self, tree: Path, capsys: pytest.CaptureFixture[str]

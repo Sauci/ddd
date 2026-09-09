@@ -24,15 +24,15 @@ from ddd.models.common import (
     ObjectId,
     Real,
     TypeName,
-    _within_64_bits,
     format_number,
     hash_excluding_mappings,
+    within_64_bits,
 )
 from ddd.models.conversion import Conversion, EnumConversion, conversion_range
 
 type InitValue = Annotated[
     Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
-    BeforeValidator(_within_64_bits),
+    BeforeValidator(within_64_bits),
 ]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object.
 

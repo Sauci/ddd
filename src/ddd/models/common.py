@@ -119,7 +119,7 @@ range check in silence instead of failing one.
 """
 
 
-def _within_64_bits(value: Any) -> Any:
+def within_64_bits(value: Any) -> Any:
     """Refuse a whole number outside 64 bits before the union it guards can try its float arm.
 
     Sitting ahead of the union rather than left as a bound on the int arm alone: an integer
@@ -142,7 +142,7 @@ def _within_64_bits(value: Any) -> Any:
 
 
 Number = Annotated[
-    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | Real, BeforeValidator(_within_64_bits)
+    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | Real, BeforeValidator(within_64_bits)
 ]
 """A finite number that keeps whole values exact, bounded to what 64 bits can hold.
 

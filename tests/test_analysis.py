@@ -703,6 +703,79 @@ class TestDroppedDeclarations:
         assert checks(bag) == ["incomplete-project"]
         assert "the unknown-type" in messages(bag)
 
+    def test_a_curve_over_a_silently_dropped_axis_is_said_to_be_missing(self, tree: Path) -> None:
+        """The axis got its own incomplete-project; the curve over it vanished without one."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        assert dictionary is not None and dictionary.objects == ()
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        rendered = messages(bag)
+        assert "'Gain' is not in the data dictionary: its axis 'Ax' did not resolve" in rendered
+        assert "a.ddd.json#component.interface[1].definition.axis" in rendered
+
+    def test_a_reported_cause_drops_the_referring_object_silently(self, tree: Path) -> None:
+        """The unknown-constant already says the axis went; the curve needs no second finding."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        assert checks(bag) == ["unknown-constant"]
+
+    def test_a_consumer_of_a_silently_dropped_producer_is_said_to_be_missing(
+        self, tree: Path
+    ) -> None:
+        """The producer says it went; the consumer is a second declaration leaving in silence."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        rendered = messages(bag)
+        assert "the declaration of 'x' by component 'A' is not in the data dictionary" in rendered
+        assert "'x' is declared by component 'B' but is not in the data dictionary" in rendered
+        assert "b.ddd.json#component.interface[0].definition" in rendered
+
+    def test_an_axis_over_a_silently_dropped_input_measurement_is_said_to_be_missing(
+        self, tree: Path
+    ) -> None:
+        """An axis indexed by a measurement that went would leave a dangling name in the a2l."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "M", "uint16", typename="Nope_t"),
+                    declare("local", "Ax", "uint16", kind="axis", size=4, input="M"),
+                ),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        assert "'Ax' is not in the data dictionary: its input 'M' did not resolve" in messages(bag)
+
 
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(

@@ -493,6 +493,13 @@ class _Analysis:
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
+        self._via: dict[str, tuple[str, str]] = {}
+        """For a name absent because of what it refers to, the reference key and its target.
+
+        The absence is discovered in a fixpoint over references and reported after it, so
+        which reference took the name down has to be carried between the two: it is what
+        lets the finding sit at the ``axis`` or the ``input`` key rather than at the whole
+        declaration, which by itself says nothing about why the object went."""
 
     def run(self) -> DataDictionary:
         workspace = self._workspace
@@ -520,6 +527,7 @@ class _Analysis:
             name: self._select_producer(name, refs) for name, refs in sorted(self._census.items())
         }
         absent = self._absent(ordered, owners)
+        self._report_absences(absent, owners)
         resolved = [(name, refs) for name, refs in ordered if name not in absent]
         shapes = {
             name: self._resolve_shape(self._effective[name], owners[name] or refs[0])
@@ -1903,9 +1911,12 @@ class _Analysis:
             for name, definition in self._effective.items():
                 if name in absent:
                     continue
-                for target in definition.references.values():
+                for key, target in definition.references.items():
                     if target in absent:
                         absent[name] = absent[target]
+                        # Kept for the report: which of the names this definition refers to
+                        # took it down, so the absence can be said at the key that names it.
+                        self._via[name] = (key, target)
                         settled = False
                         break
         return absent
@@ -1918,6 +1929,45 @@ class _Analysis:
                 if ref.key in self._dropped:
                     grouped[name][ref.key] = self._dropped[ref.key]
         return grouped
+
+    def _report_absences(
+        self, absent: dict[str, bool], owners: dict[str, DeclarationRef | None]
+    ) -> None:
+        """One ``incomplete-project`` per declaration the dictionary omits for a silenced cause.
+
+        The root of each absence already said so where it was dropped, if anything said so at
+        all. What nothing said yet is the rest: a curve over an axis that went, the consumers
+        of an object whose producer went. Each surviving declaration of such a name is named,
+        at the reference that pulled the object down where there is one, at the declaration
+        otherwise, so that no declaration leaves the dictionary in silence.
+
+        Only the declarations that survived: a dropped one is not in ``_refs``, and its own
+        finding was written where it was dropped, so reading the census here would report it
+        a second time.
+        """
+        for name in sorted(absent):
+            if absent[name]:
+                continue
+            refs = self._refs.get(name, [])
+            first = owners[name] if owners[name] in refs else (refs[0] if refs else None)
+            via = self._via.get(name)
+            for ref in refs:
+                if ref is first and via is not None:
+                    key, target = via
+                    self._bag.add(
+                        "incomplete-project",
+                        f"'{name}' is not in the data dictionary: its {key} '{target}' did "
+                        f"not resolve, and the finding that says why is not reported",
+                        ref.location(f"definition.{key}"),
+                    )
+                else:
+                    self._bag.add(
+                        "incomplete-project",
+                        f"'{name}' is declared by component '{ref.component_name}' but is not "
+                        f"in the data dictionary: it did not resolve, and the finding that "
+                        f"says why is not reported",
+                        ref.location("definition"),
+                    )
 
     def _resolve_shape(
         self, definition: DataObject, reference: DeclarationRef

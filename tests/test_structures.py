@@ -346,12 +346,32 @@ class TestNestingTooDeep:
     def test_the_types_nesting_the_offender_are_dropped_without_a_second_finding(
         self, tree: Path
     ) -> None:
-        """Reported once, where the nesting first goes over; ``T70_t`` inherits the cause."""
-        dictionary, bag = run_analysis(tree, self.files(70))
+        """Reported once, where the nesting first goes over; ``T70_t`` inherits the cause.
+
+        Variables pinned either side of the limit, not only at the outermost type: ``T63_t``
+        and ``T64_t`` are still within it and keep their instances, while ``T65_t`` - the one
+        the finding names - and everything nesting it, ``T66_t`` and ``T70_t`` among them,
+        are dropped without a finding of their own.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*self.chain(70)),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X63", typename="T63_t"),
+                    declare("local", "X64", typename="T64_t"),
+                    declare("local", "X65", typename="T65_t"),
+                    declare("local", "X66", typename="T66_t"),
+                    declare("local", "X70", typename="T70_t"),
+                ),
+            },
+        )
         assert checks(bag) == ["schema"]
         assert "'T65_t' nests 65 levels deep" in messages(bag)
         assert dictionary is not None
-        assert not dictionary.instances
+        assert [instance.name for instance in dictionary.instances] == ["X63", "X64"]
 
     def test_a_variable_of_an_over_deep_type_is_placed_without_walking_it(self, tree: Path) -> None:
         """The alignment a section guarantees is compared against a walk of the structure.
@@ -380,8 +400,13 @@ class TestNestingTooDeep:
     def test_a_deep_chain_that_closes_into_a_cycle_is_left_to_type_cycle(self, tree: Path) -> None:
         """No depth is reported on a cycle: a structure that contains itself has no depth.
 
-        The cycle walk meets the whole chain before it closes, so this is what says that walk
-        no longer descends by recursion either.
+        This characterises the walk rather than proving it survives where a recursive one
+        would not: a recursive ``_nesting_cycle`` survived to somewhere around a thousand
+        levels on the machine the cap was measured on (see the task 3 report), so five
+        hundred passes whether or not that walk still recursed. Going deep enough to prove
+        it - the walk over one big cycle costs a check per type already met, against a chain
+        that only grows, so the whole thing is cubic in the depth - turns a sub-second test
+        into one lasting tens of seconds; measured at fifteen hundred levels, over twenty.
         """
         entries = self.chain(500)
         entries[0] = struct("T1_t", nest("up", "T500_t"))
@@ -394,6 +419,68 @@ class TestNestingTooDeep:
             },
         )
         assert checks(bag) == ["type-cycle"]
+
+    def test_a_cyclic_chain_with_a_variable_in_a_section_does_not_recurse_without_bound(
+        self, tree: Path
+    ) -> None:
+        """A cycle has no depth, so the old guard - keyed on depth alone - let it through.
+
+        ``_reaches_external`` had no guard of its own, and ``_check_sections`` asks the
+        alignment of every declaration naming a declared section, dropped ones included: a
+        variable of a type that closes a long chain into a cycle used to walk the whole
+        chain, unguarded, looking for an external member, and ran out of stack before
+        ``_check_types`` ever reported the cycle. The type is left to ``type-cycle``, and
+        there is no alignment estimate to give.
+        """
+        entries = self.chain(400)
+        entries[0] = struct("T1_t", nest("up", "T400_t"))
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "types.ddd.json", "sections.ddd.json", "a.ddd.json"
+                ),
+                "types.ddd.json": types(*entries),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="T400_t", section=".data")
+                ),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+    def test_a_self_nesting_type_over_a_deep_chain_does_not_recurse_without_bound(
+        self, tree: Path
+    ) -> None:
+        """Two defects, not one: the self-nest is ``type-cycle``, the chain is ``schema``.
+
+        ``Self_t`` is unusable for its own reason and never reaches the cap-based guard at
+        all - it has no depth, being cyclic - so before the fix, asking its alignment still
+        walked ``_reaches_external`` down its *other* member into a five hundred level chain
+        with nothing to stop it. The chain crosses the limit on its own and is reported
+        exactly as it would be without ``Self_t`` nesting it.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "types.ddd.json", "sections.ddd.json", "a.ddd.json"
+                ),
+                "types.ddd.json": types(
+                    struct("Self_t", nest("self", "Self_t"), nest("chain", "T500_t")),
+                    *self.chain(500),
+                ),
+                "sections.ddd.json": {
+                    "sections": [{"section": ".data", "access": "read-write", "alignment": 1}]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Self_t", section=".data")
+                ),
+            },
+        )
+        assert checks(bag) == ["schema", "type-cycle"]
 
 
 class TestInfiniteDerivedLimits:

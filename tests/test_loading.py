@@ -215,6 +215,35 @@ def test_the_deepest_tree_there_is_gets_read_whole(tree: Path) -> None:
     assert [loaded.name for loaded in workspace.components] == ["Deep", "Top"]
 
 
+def test_a_file_already_seen_through_a_shallow_route_is_not_reported_for_depth(
+    tree: Path,
+) -> None:
+    """A diamond that closes on an over-deep route is still a diamond, not a depth refusal.
+
+    ``leaf.ddd.json`` is read once, directly, at level two. A second, sixty three project
+    chain reaches for the same file again from a project at level sixty four - the deepest a
+    project loads - so naming ``leaf.ddd.json`` there sits at level sixty five, one past the
+    cap; no other file on that chain is over the limit, so the leaf is the only over-deep
+    entry. Testing ``_seen_paths`` before the depth cap means that second attempt finds the
+    file already in the workspace and reuses it in silence, rather than reporting
+    ``include-depth`` and saying everything under it was left out - false, since it was
+    already read whole through the shallow route.
+    """
+    files: dict[str, Any] = {
+        "project.ddd.json": project("P", "leaf.ddd.json", "p1.ddd.json"),
+        "leaf.ddd.json": component("Leaf", declare("local", "X")),
+    }
+    for index in range(1, 63):
+        files[f"p{index}.ddd.json"] = project(f"P{index}", f"p{index + 1}.ddd.json")
+    files["p63.ddd.json"] = project("P63", "leaf.ddd.json")
+    write_tree(tree, files)
+    bag = DiagnosticBag()
+    workspace = load_workspace(tree / "project.ddd.json", bag)
+    assert checks(bag) == []
+    assert workspace is not None
+    assert [loaded.name for loaded in workspace.components] == ["Leaf"]
+
+
 def test_diamond_include_loads_the_component_once(tree: Path) -> None:
     dictionary, bag = run_analysis(
         tree,

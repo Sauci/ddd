@@ -1019,19 +1019,23 @@ class _Loader:
             chain = " -> ".join(item.name for item in (*stack, path))
             self._bag.add("include-cycle", f"include cycle: {chain}", origin)
             return
+        if path in self._seen_paths:
+            # Diamond shaped include graphs are fine, the file is simply used once - tested
+            # before the depth cap below, so a file already read through a shallower path is
+            # reused in silence rather than refused as too deep: it is not left out, and
+            # nothing under it is either, so ``include-depth`` would say something false.
+            return
         if len(stack) >= _MAX_INCLUDE_DEPTH:
-            # Asked of the tree the author wrote rather than of what happens to be loaded
-            # already, which is why this comes before the diamond below: an entry crossing
-            # the limit is refused whether or not another path reached the same file first.
+            # Asked of the tree the author wrote: a file that reaches here is one the diamond
+            # test above has already excused, so what crosses the limit is genuinely a new
+            # file, refused whether or not some other, shallower path would have reached it
+            # within the cap.
             self._bag.add(
                 "include-depth",
                 f"'{path.name}' is included {len(stack) + 1} levels deep; DDD reads at most "
                 f"{_MAX_INCLUDE_DEPTH}, so this entry and everything under it is left out",
                 origin,
             )
-            return
-        if path in self._seen_paths:
-            # Diamond shaped include graphs are fine, the file is simply used once.
             return
         self._seen_paths.add(path)
 

@@ -252,6 +252,51 @@ class TestTheChecks:
         )
         assert checks(bag) == ["type-cycle"]
 
+    def test_a_diamond_shaped_structure_still_gets_an_alignment_estimate(self, tree: Path) -> None:
+        """Two members naming the same type are not the type nesting itself.
+
+        The walk meets ``Inner_t`` a second time already seen on this path and simply does
+        not follow it again - the way the type graph walks treat a diamond everywhere else -
+        so the estimate still comes through, from the member DDD did look at.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "sections.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "sections.ddd.json": sections(section(".small", "read-write", 8)),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Inner_t",
+                            "members": [
+                                {
+                                    "name": "wide",
+                                    "member": "value",
+                                    "datatype": "uint64",
+                                    "conversion": {},
+                                }
+                            ],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Outer_t",
+                            "members": [
+                                {"name": "first", "member": "value", "typename": "Inner_t"},
+                                {"name": "second", "member": "value", "typename": "Inner_t"},
+                            ],
+                        },
+                    ]
+                },
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Outer_t", section=".small")
+                ),
+            },
+        )
+        assert checks(bag) == []
+
     def test_a_consumer_stating_a_section_claims_storage_it_does_not_own(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

@@ -461,15 +461,21 @@ def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ..
     return ()
 
 
-def _nesting_depths(declared: dict[str, LoadedType]) -> dict[str, int]:
-    """How many levels deep each declared type nests, for the ones that reach a bottom.
+def _nesting_depths(declared: dict[str, LoadedType]) -> tuple[dict[str, int], set[str]]:
+    """How many levels deep each declared type nests, and separately, which never bottom out.
 
     Levels as :data:`_MAX_TYPE_NESTING` counts them: a structure whose members all hold values
     is one level, a structure nesting an *n* level structure is *n* + 1, and anything that is
     not a structure - a scalar, an external type, a name no file declares - is no level at
-    all. A type that nests itself, however far down, is left out rather than given a number:
-    it has no bottom, it is reported as ``type-cycle``, and a second finding about it would
-    say the same mistake twice under another identifier.
+    all. A type that nests itself, however far down, is left out of the depths rather than
+    given a number: it has no bottom, it is reported as ``type-cycle``, and a second finding
+    about it would say the same mistake twice under another identifier. It is put in the
+    second set instead, together with every type that nests it - the mark travels outwards as
+    each name on the path is popped - because that fact matters beyond the finding: a walk
+    that does not know to stop at a cyclic type has as little a bottom to reach as the type
+    does. Returned rather than resolved into a finding here, because that is
+    :meth:`_Analysis._refuse_deep_nesting`'s to make - this function only answers the question
+    its name asks.
 
     Walked with an explicit stack, for the very reason the answer is wanted: a recursive walk
     over a chain deep enough to be worth reporting is the traceback this exists to prevent.
@@ -503,7 +509,7 @@ def _nesting_depths(declared: dict[str, LoadedType]) -> dict[str, int]:
             elif nested in declared and nested not in depths and nested not in cyclic:
                 chain.add(nested)
                 stack.append((nested, iter(_nested_names(declared[nested]))))
-    return depths
+    return depths, cyclic
 
 
 def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
@@ -559,14 +565,19 @@ class _Analysis:
         declaration naming such a type is dropped, so nothing downstream reasons about a
         leaf it cannot have. Each carries the cause that poisoned it, so that a variable of
         the type can say, when the cause was silenced, what nobody reported."""
-        self._over_deep_types: set[str] = set()
-        """The types nesting deeper than :data:`_MAX_TYPE_NESTING`, which are poisoned too.
+        self._unwalkable_types: set[str] = set()
+        """A type no walk may descend into: it nests deeper than :data:`_MAX_TYPE_NESTING`,
+        or it never bottoms out at all, which is what nesting a cycle means.
 
         Kept apart from the poison because it says a second thing about them that poison does
-        not: no walk may descend into one. Everything else that is unusable is unusable about
-        its leaves - a walk over it terminates, and the alignment estimate for one still
-        answers from the members it does understand - while these are the ones a walk cannot
-        reach the bottom of at all."""
+        not. Everything else that is unusable is unusable about its leaves - a walk over it
+        terminates, and the alignment estimate for one still answers from the members it does
+        understand - while these are the ones a walk cannot reach the bottom of at all: the
+        over-deep ones because :data:`_MAX_TYPE_NESTING` is where DDD stops reading, the
+        cyclic ones because there is no bottom to reach. Both are computed once, by
+        :func:`_nesting_depths`, and every type nesting one of them is added here too, in
+        :meth:`_refuse_deep_nesting` - the same walk-safety invariant a poisoned type gives
+        the rest of the analysis, stated over "unwalkable" instead of "unusable"."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -967,12 +978,13 @@ class _Analysis:
     def _type_alignment(self, name: str, seen: set[str]) -> int | None:
         if name in seen:  # a cycle is reported as type-cycle; no alignment to give
             return None
-        if name in self._over_deep_types:
+        if name in self._unwalkable_types:
             # The placement checks ask this of every declaration that states a section,
             # dropped ones included, which is the one walk that still starts at a type the
-            # nesting cap refused - and the chain under it is what the cap will not follow.
-            # Met at the start of a walk and never below it: a type nesting a refused one is
-            # refused as well, so nothing that gets past this line meets one further down.
+            # nesting cap refused, or one that nests a cycle without crossing the cap itself
+            # - and the chain under either is what no walk here may follow. Met at the start
+            # of a walk and never below it: a type nesting an unwalkable one is unwalkable as
+            # well, so nothing that gets past this line meets one further down.
             return None
         seen.add(name)
         loaded = self._types.get(name)
@@ -1004,8 +1016,13 @@ class _Analysis:
     def _reaches_external(self, name: str, seen: set[str]) -> bool:
         """Whether a variable of that type contains an external member, however deeply.
 
-        A cycle is not this walk's business - it is reported as ``type-cycle`` - so a name
-        already seen is simply not followed again, exactly as in :meth:`_poison_of`.
+        Unguarded by :attr:`_unwalkable_types`, and safe without it: only
+        :meth:`_type_alignment` calls this, straight after that guard, so it always starts at
+        a walkable name - and a walkable name has no unwalkable name under it, because
+        :meth:`_refuse_deep_nesting` and the cyclic union it makes mark every type that nests
+        an unwalkable one as unwalkable too. A cycle is not this walk's business either way -
+        it is reported as ``type-cycle`` - so a name already seen is simply not followed
+        again, exactly as in :meth:`_poison_of`.
         """
         if name in seen:
             return False
@@ -1059,7 +1076,8 @@ class _Analysis:
 
         # Before the cycle walk and everything after it: what those walk into is what the cap
         # bounds, so a type too deep to follow has to be poisoned before anybody follows it.
-        self._refuse_deep_nesting(_nesting_depths(declared))
+        depths, cyclic = _nesting_depths(declared)
+        self._refuse_deep_nesting(depths, cyclic)
 
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
@@ -1100,7 +1118,7 @@ class _Analysis:
             if cause is not None:
                 self._poisoned_types.setdefault(entry.name, cause)
 
-    def _refuse_deep_nesting(self, depths: dict[str, int]) -> None:
+    def _refuse_deep_nesting(self, depths: dict[str, int], cyclic: set[str]) -> None:
         """A structure nesting deeper than DDD reads is refused, and so is every one over it.
 
         Reported once, at the innermost type that is already too deep - the one whose own
@@ -1110,15 +1128,24 @@ class _Analysis:
         is dropped the way a variable of a recursive structure is, and so that no walk after
         this one descends a chain the stack cannot take: a type this leaves alone nests at
         most :data:`_MAX_TYPE_NESTING` levels, and following it to the bottom is safe.
+
+        ``cyclic`` is folded into :attr:`_unwalkable_types` here too, without a cause of its
+        own: a type that nests a cycle has no depth, so the loop below never meets it, and it
+        is reported as ``type-cycle`` a few lines below this method's caller rather than as
+        ``schema`` here. What it needs from this method is only the same walk-safety mark the
+        over-deep types get, not a second finding - the invariant a later walk relies on is
+        "unwalkable", not "why".
         """
+        self._unwalkable_types.update(cyclic)
         deep: dict[str, _Cause] = {}
         # In depth order, so that a type over the limit meets the cause of the nested type
         # that is over it as well before it would make one of its own.
         for entry in sorted(self._workspace.types, key=lambda item: depths.get(item.name, 0)):
             depth = depths.get(entry.name, 0)
             if depth <= _MAX_TYPE_NESTING:
-                # A type with no depth at all is one that nests itself, which the cycle walk
-                # below reports; it is not this one's to answer.
+                # A type with no depth at all is one that nests itself, or nests a cycle -
+                # folded into the guard set above already, and left to the cycle walk below
+                # for its finding; it is not this one's to answer.
                 continue
             cause = next((deep[name] for name in _nested_names(entry) if name in deep), None)
             if cause is None:
@@ -1136,7 +1163,7 @@ class _Analysis:
                 )
                 cause = _Cause("schema", reported, location)
             deep[entry.name] = cause
-            self._over_deep_types.add(entry.name)
+            self._unwalkable_types.add(entry.name)
             self._poisoned_types.setdefault(entry.name, cause)
 
     def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:

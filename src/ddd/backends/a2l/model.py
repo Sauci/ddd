@@ -241,8 +241,8 @@ class _A2lModelBuilder:
                 measurements.append(self._measurement(entry))
             elif entry.kind is ObjectKind.AXIS:
                 axis_pts.append(self._axis_pts(entry))
-            elif (characteristic := self._characteristic(entry)) is not None:
-                characteristics.append(characteristic)
+            else:
+                characteristics.append(self._characteristic(entry))
 
         for leaf in dictionary.leaves:
             if not self._carries(leaf):
@@ -356,14 +356,9 @@ class _A2lModelBuilder:
             condition=entry.condition,
         )
 
-    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView | None:
+    def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
         references = entry.references
         axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
-        if any(name not in self._by_name for name in axes):
-            # An axis the analysis could not resolve, reached under --force: a CURVE without
-            # its AXIS_DESCR is not a smaller record but an invalid file, so the record is
-            # left out, the way an object nothing exports is.
-            return None
         return CharacteristicView(
             name=entry.name,
             description=entry.description or entry.name,

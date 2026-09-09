@@ -835,6 +835,231 @@ class TestDroppedDeclarations:
         assert "'Zx' is not in the data dictionary: its input 'M'" in rendered
 
 
+class TestDanglingReferences:
+    """A reference nobody resolves takes the referring object down with it.
+
+    A curve without its axis has no shape - it was generated as a scalar - and an axis
+    naming an absent measurement would leave a dangling name in the a2l, which a calibration
+    tool refuses whole. Both were kept, with an empty shape, whenever the finding was relaxed.
+    """
+
+    def test_a_curve_over_an_unknown_axis_is_dropped(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Gain", "uint16", kind="curve", axis="NoAxis")
+                ),
+            },
+            severities=["unknown-reference=warning"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == ["unknown-reference"]
+        assert dictionary.objects == ()
+        assert [d.name for c in dictionary.components for d in c.declarations] == []
+
+    def test_an_axis_over_an_unknown_input_is_dropped(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Ax", "uint16", kind="axis", size=4, input="NoInput")
+                ),
+            },
+            severities=["unknown-reference=warning"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == ["unknown-reference"]
+        assert dictionary.objects == ()
+
+    def test_a_reference_of_the_wrong_kind_is_dropped(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "NotAnAxis", "uint16"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="NotAnAxis"),
+                ),
+            },
+            severities=["reference-kind=warning"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == ["reference-kind"]
+        assert [entry.name for entry in dictionary.objects] == ["NotAnAxis"]
+
+    def test_silencing_the_finding_says_what_went(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Gain", "uint16", kind="curve", axis="NoAxis")
+                ),
+            },
+            severities=["unknown-reference=ignore"],
+        )
+        assert dictionary is not None and dictionary.objects == ()
+        assert checks(bag) == ["incomplete-project"]
+        rendered = messages(bag)
+        assert "'Gain' is not in the data dictionary" in rendered
+        assert "unknown-reference" in rendered
+        assert "a.ddd.json#component.interface[0].definition.axis" in rendered
+
+    def test_a_map_over_one_known_and_one_unknown_axis_is_dropped(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Nx", "uint16", kind="axis", size=4),
+                    declare("local", "M", "uint8", kind="map", x_axis="Nx", y_axis="Ny"),
+                ),
+            },
+            severities=["unknown-reference=warning"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == ["unknown-reference"]
+        assert [entry.name for entry in dictionary.objects] == ["Nx"]
+
+    def test_a_curve_over_a_dropped_referrer_goes_with_it(self, tree: Path) -> None:
+        """Transitive, like a dropped declaration: an axis whose input is unknown goes, and
+        the curve over that axis goes with it, silently while the root is reported."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=4, input="NoInput"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+            severities=["unknown-reference=warning"],
+        )
+        assert dictionary is not None and dictionary.objects == ()
+        assert checks(bag) == ["unknown-reference"]
+
+    def test_a_map_over_a_dangling_and_an_absent_axis_says_the_silenced_one(
+        self, tree: Path
+    ) -> None:
+        """Absent twice over: its x_axis names nothing, which is reported, and its y_axis
+        went silently. Half explained is not explained, and the finding sits at the axis
+        nothing else mentions."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ay", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "M", "uint8", kind="map", x_axis="NoAxis", y_axis="Ay"),
+                ),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        rendered = messages(bag)
+        assert "unknown-reference" in rendered
+        assert "'M' is not in the data dictionary: its y_axis 'Ay' did not resolve" in rendered
+        assert "a.ddd.json#component.interface[1].definition.y_axis" in rendered
+
+    def test_a_silenced_dangling_reference_outweighs_a_reported_absence(self, tree: Path) -> None:
+        """The same map the other way round: what nobody reported is the reference that names
+        nothing, so the finding sits there and says which check was silenced."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ay", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "M", "uint8", kind="map", x_axis="NoAxis", y_axis="Ay"),
+                ),
+            },
+            severities=["unknown-reference=ignore"],
+        )
+        rendered = messages(bag)
+        assert "unknown-constant" in rendered
+        assert (
+            "'M' is not in the data dictionary: its x_axis 'NoAxis' does not resolve, and the "
+            "unknown-reference that says why is not reported" in rendered
+        )
+        assert "a.ddd.json#component.interface[1].definition.x_axis" in rendered
+
+    def test_silencing_reference_kind_names_that_check(self, tree: Path) -> None:
+        """The same silencing as above, but the silenced check is ``reference-kind`` rather
+        than ``unknown-reference``: the axis names something, just not an axis."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Blk", "uint16", kind="value_block", dimensions=[4]),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Blk"),
+                ),
+            },
+            severities=["reference-kind=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        rendered = messages(bag)
+        assert "does not resolve, and the reference-kind that says why is not reported" in rendered
+        assert "a.ddd.json#component.interface[1].definition.axis" in rendered
+
+
+class TestReferenceKeyRegistry:
+    """``_refuse_reference`` trusts every reference key it meets to be in ``_EXPECTED_KIND``,
+    resolved or not - see the ``elif`` that indexes it unconditionally. A model with a
+    reference key that map does not carry would raise ``KeyError`` there the first time a
+    project actually used it, rather than in a test.
+    """
+
+    def test_every_reference_key_a_model_can_carry_is_known_to_the_analysis(self) -> None:
+        from typing import get_args
+
+        # Private: nothing public names the kinds a reference has to resolve to, and this
+        # is the one place that has to stay in step with every model's own reference keys.
+        from ddd.analysis import _EXPECTED_KIND
+        from ddd.models import AnyDataObject
+
+        base = {
+            "name": "Target",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+            "volatile": False,
+        }
+        # Every field named by some variant's ``references``, plus ``dimensions`` so a
+        # measurement or a value block - neither of which refers to anything - still
+        # validates. Filled in for whichever variant declares it, required or not: an
+        # axis's ``input`` is optional, and only a non-empty one is a reference at all.
+        placeholder = {
+            "dimensions": [1],
+            "size": 4,
+            "input": "Target",
+            "axis": "Target",
+            "x_axis": "Target",
+            "y_axis": "Target",
+        }
+        keys: set[str] = set()
+        for variant in get_args(get_args(AnyDataObject)[0]):
+            values = {
+                **base,
+                **{
+                    field: value
+                    for field, value in placeholder.items()
+                    if field in variant.model_fields
+                },
+            }
+            values["kind"] = get_args(variant.model_fields["kind"].annotation)[0]
+            keys.update(variant.model_validate(values).references)
+        assert keys == {"axis", "x_axis", "y_axis", "input"}
+        assert keys <= _EXPECTED_KIND.keys()
+
+
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(
         self, tree: Path

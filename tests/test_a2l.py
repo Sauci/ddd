@@ -304,9 +304,20 @@ class TestSharedCompuMethods:
 
 
 class TestForcedOutput:
-    def test_a_curve_whose_axis_is_unknown_is_left_out_rather_than_written_incomplete(
-        self, tree: Path
-    ) -> None:
-        """A CURVE without its AXIS_DESCR is not a smaller record but an invalid file."""
-        content = a2l(tree, declare("local", "Cv", "uint16", kind="curve", axis="NoSuchAxis"))
+    def test_a_curve_whose_axis_is_unknown_is_dropped_before_the_backend(self, tree: Path) -> None:
+        """Dropped at analysis: a CURVE without its AXIS_DESCR would be an invalid file
+        rather than a smaller one, so the object never reaches the backend."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Cv", "uint16", kind="curve", axis="NoSuchAxis"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        assert "Cv" not in [entry.name for entry in dictionary.objects]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "CHARACTERISTIC Cv" not in content

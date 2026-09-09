@@ -806,6 +806,11 @@ be declared by **any** component of the project - which is what makes a shared a
 in the first place. Both halves of such a reference are checked: that the name exists at all,
 and that it points at the right kind of thing.
 
+An object whose reference names nothing, or one of the wrong kind, is left out of the
+dictionary along with what refers to it, whatever severity the finding is given, and
+``incomplete-project`` says so when the finding is silenced - see
+:doc:`consistency checks </consistency_checks>`.
+
 .. code-block:: text
 
    $ ddd check refs.ddd.json

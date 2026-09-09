@@ -1198,9 +1198,12 @@ Errors:
   mapping form alike, so a reordering conflicts and the free text descriptions do not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
-  not exist or has the wrong kind. A reference to an object that was declared but dropped
-  as unresolvable is not reported a second time: the finding at the declaration is the one
-  to act on, and the referring object is dropped with it.
+  not exist or has the wrong kind. The referring object is dropped as unresolvable whatever
+  severity the finding is given, because a curve without its axis has no shape and an axis
+  naming an absent measurement would leave a dangling name in the A2L; `incomplete-project`
+  says so when the finding is silenced. A reference to an object that was declared but
+  dropped as unresolvable is not reported a second time: the finding at the declaration is
+  the one to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
   `<stdbool.h>` declares, or with one of two families the C standard reserves for the
   implementation everywhere: a double underscore anywhere, or a leading underscore followed
@@ -1271,9 +1274,10 @@ Information:
   already says the declaration could not resolve. It is reported for every declaration
   the dictionary omits on that account: the dropped declaration itself, a variable of a
   type whose cycle, unknown member type or unknown member constant was silenced, the
-  consumers of an object whose producing declaration was dropped, and an object
-  referring to one that went - a curve over such an axis, an axis indexed by such a
-  measurement - at the reference that pulled it down on its producing declaration, and
+  consumers of an object whose producing declaration was dropped, an object whose own
+  reference names nothing or names the wrong kind, and an object referring to one that
+  went - a curve over such an axis, an axis indexed by such a measurement - at the
+  reference that pulled it down on its producing declaration, and
   at the declaration on every other declaration of it.
 - `missing-id`: a producing declaration or instance states no `id`. The key is an adoption a
   project takes up one component at a time, so its absence is reported at `info` rather than

@@ -67,6 +67,18 @@ _A2L_MAX_DIMENSIONS = 3
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
 
+_EXPECTED_KIND: Final = {
+    "axis": ObjectKind.AXIS,
+    "x_axis": ObjectKind.AXIS,
+    "y_axis": ObjectKind.AXIS,
+    "input": ObjectKind.MEASUREMENT,
+}
+"""What each reference key of :attr:`~ddd.models.objects.DataObject.references` must name.
+
+Every key a definition can carry is in here, because a reference whose kind nothing checks
+would reach the a2l as an ``AXIS_PTS_REF`` pointing at a table, which a calibration tool
+accepts and then misreads."""
+
 
 def _describe_shape(definition: DataObject) -> str:
     shape = definition.declared_shape
@@ -500,6 +512,15 @@ class _Analysis:
         which reference took the name down has to be carried between the two: it is what
         lets the finding sit at the ``axis`` or the ``input`` key rather than at the whole
         declaration, which by itself says nothing about why the object went."""
+        self._dangling: dict[str, str] = {}
+        """For a name absent because its own reference was refused and the refusal silenced,
+        the check that was silenced.
+
+        What tells the two absences apart in the report: a target that *did not* resolve was
+        declared and dropped, and its own declaration is where to look, while one that *does
+        not* resolve names nothing at all, and the check nobody reported is the whole story.
+        Set only for a silenced refusal, and always beside the :attr:`_via` entry that names
+        it, so it is also what says that entry is the one the report wants."""
 
     def run(self) -> DataDictionary:
         workspace = self._workspace
@@ -529,10 +550,7 @@ class _Analysis:
         absent = self._absent(ordered, owners)
         self._report_absences(absent, owners)
         resolved = [(name, refs) for name, refs in ordered if name not in absent]
-        shapes = {
-            name: self._resolve_shape(self._effective[name], owners[name] or refs[0])
-            for name, refs in resolved
-        }
+        shapes = {name: self._resolve_shape(self._effective[name]) for name, _ in resolved}
 
         structured = [(name, refs) for name, refs in resolved if self._is_structured(name)]
         plain = [(name, refs) for name, refs in resolved if not self._is_structured(name)]
@@ -600,6 +618,9 @@ class _Analysis:
         says, because a reference to an absent object would be an invalid file rather than a
         smaller one - computed here so that a finding about reaching the file asks the question
         the backend answers.
+
+        Every reference met here resolves: a name whose target is absent, or names nothing at
+        all, is itself absent and is not among the resolved names this walks.
         """
         reached = {
             name
@@ -609,7 +630,7 @@ class _Analysis:
         pending = list(reached)
         while pending:
             for referenced in self._effective[pending.pop()].references.values():
-                if referenced not in reached and referenced in self._effective:
+                if referenced not in reached:
                     reached.add(referenced)
                     pending.append(referenced)
         return reached
@@ -1893,14 +1914,15 @@ class _Analysis:
     ) -> dict[str, bool]:
         """The names that resolve to no object, each with whether a finding says why.
 
-        Three ways in: every declaration of the name was dropped; the declaration that owns
-        it was, in which case the consumers' copies describe storage nothing defines; or,
+        Four ways in: every declaration of the name was dropped; the declaration that owns
+        it was, in which case the consumers' copies describe storage nothing defines; a
+        reference of its own names nothing, or names an object of the wrong kind; or,
         transitively, it refers to an absent name - a curve over a dropped axis cannot
         resolve its shape, and an axis whose ``input`` is a dropped measurement would leave a
-        dangling name in the a2l. The finding for the root sits at the root cause, and a
-        referring object is dropped without one of its own - ``unknown-reference`` would
-        claim that nobody declares the target, which is false. What every entry carries is
-        whether that root finding was reported: an absence whose cause was silenced is the
+        dangling name in the a2l. The finding for the root sits at the root cause, and a name
+        that goes transitively is dropped without one of its own - ``unknown-reference``
+        would claim that nobody declares the target, which is false. What every entry carries
+        is whether that root finding was reported: an absence whose cause was silenced is the
         one this tool has to say out loud.
 
         Two phases, because a flag is only sound over the finished set. The set grows pass by
@@ -1928,9 +1950,29 @@ class _Analysis:
                 absent[name] = self._dropped[owner.key]
                 continue
             self._effective[name] = (owner or refs[0]).definition
-        # The seeds above carry their own flag, decided by what was dropped. What follows
-        # settles the names that go transitively: one reference to an absent name is enough,
-        # and the flag each is entered with - explained, until the second phase says
+
+        # A reference nobody resolves drops the referrer, for the reason a dropped referent
+        # does: a curve without its axis has no shape, and an axis naming an absent
+        # measurement would leave a dangling name in the a2l. Decided here, over every name
+        # with an effective definition - a name without one was already dropped, and
+        # declared but dropped gets no second finding here - so that the drop propagates
+        # like any other, and every reference of a name is weighed rather than only the
+        # first bad one, because two unknown axes are two mistakes to fix. What the name
+        # keeps is whether any of its refusals was reported.
+        own: dict[str, bool] = {}
+        for name, refs in ordered:
+            definition = self._effective.get(name)
+            if definition is None:
+                continue  # dropped: it is a seed above, with the flag its drop gave it
+            reference = owners[name] or refs[0]
+            for key, target in definition.references.items():
+                refused = self._refuse_reference(definition, key, target, reference)
+                if refused is not None:
+                    absent[name] = own[name] = own.get(name, False) or refused
+
+        # The seeds above carry their own flag, decided by what was dropped or refused. What
+        # follows settles the names that go transitively: one reference to an absent name is
+        # enough, and the flag each is entered with - explained, until the second phase says
         # otherwise - is never read here, only the membership is.
         transitive: list[str] = []
         settled = False
@@ -1943,32 +1985,78 @@ class _Analysis:
                     absent[name] = True
                     transitive.append(name)
                     settled = False
-        transitive.sort()
+        # Both absences the references decide are weighed here: a name that went with a target
+        # of its own, and one whose own reference was refused. A map with a reported x_axis
+        # and a y_axis that went silently is absent twice over, and half explained is not
+        # explained, so the two answers have to meet.
+        weighed = sorted({*transitive, *own})
         settled = False
         while not settled:
             settled = True
-            for name in transitive:
-                # Non-empty: the name is here because a reference of it was absent, and the
-                # set only ever grew afterwards.
+            for name in weighed:
                 gone = [
                     (key, target)
                     for key, target in self._effective[name].references.items()
                     if target in absent
                 ]
                 # Kept for the report: which of the names this definition refers to took it
-                # down, so the absence can be said at the key that names it. The silenced one
-                # where there is one, because that is the absence nothing else mentions.
-                self._via[name] = next(
-                    ((key, target) for key, target in gone if not absent[target]), gone[0]
-                )
+                # down, so the absence can be said at the key that names it. The silenced one,
+                # because that is the absence nothing else mentions - unless a refusal of its
+                # own was silenced, which is already in ``_via`` and outranks these: an absent
+                # target at least leaves a declaration to look at, where a refused reference
+                # leaves nothing but the check nobody reported.
+                silenced = next(((key, target) for key, target in gone if not absent[target]), None)
+                if silenced is not None and name not in self._dangling:
+                    self._via[name] = silenced
                 # Every absent target weighed, not the first one met: a map over two absent
                 # axes is explained only if both of them were, or the key order of a
-                # definition would decide whether the map's own absence is ever said.
-                explained = all(absent[target] for _, target in gone)
+                # definition would decide whether the map's own absence is ever said. A
+                # name's own refusals fold with any, because a reported refusal names the
+                # object itself, so it is never silently absent, while a half-explained
+                # absence through other objects is not explained.
+                explained = own.get(name, True) and all(absent[target] for _, target in gone)
                 if explained != absent[name]:
                     absent[name] = explained
                     settled = False
         return absent
+
+    def _refuse_reference(
+        self, definition: DataObject, key: str, target: str, reference: DeclarationRef
+    ) -> bool | None:
+        """Refuse a reference that names no object, or one of the wrong kind.
+
+        ``None`` when there is nothing to say: the target is there and is what the key
+        requires, or some component does declare it and it was dropped - the fixpoint takes
+        the referrer with it, and ``unknown-reference`` would claim that nobody declares the
+        target, which is false. Otherwise the finding is written where the name is, and what
+        comes back is whether the bag reported it. A silenced refusal is the one the absence
+        report has to say out loud, so the reference and the check are kept for it - the
+        first silenced one, because a name is absent once however many of its references are
+        wrong, while each of those references is a mistake of its own and is reported.
+        """
+        found = self._effective.get(target)
+        if found is None:
+            if target in self._census:
+                return None
+            check = "unknown-reference"
+            message = (
+                f"{definition.kind.value} '{definition.name}' refers to '{target}' as its "
+                f"{key}, but no component declares '{target}'"
+            )
+        elif found.kind is not _EXPECTED_KIND[key]:
+            check = "reference-kind"
+            message = (
+                f"the {key} of {definition.kind.value} '{definition.name}' must be of kind "
+                f"'{_EXPECTED_KIND[key].value}', but '{target}' is of kind '{found.kind.value}'"
+            )
+        else:
+            return None
+        location = reference.location(f"definition.{key}")
+        reported = self._bag.add(check, message, location) is not None
+        if not reported:
+            self._via.setdefault(definition.name, (key, target))
+            self._dangling.setdefault(definition.name, check)
+        return reported
 
     def _report_absences(
         self, absent: dict[str, bool], owners: dict[str, DeclarationRef | None]
@@ -1997,6 +2085,7 @@ class _Analysis:
             # declaration alone.
             first = next((ref for ref in refs if ref is owner), refs[0] if refs else None)
             via = self._via.get(name)
+            dangling = self._dangling.get(name)
             # Where the object went, when it went with its producer: this declaration is
             # sound, and the file to look at is the one that owns the object.
             notes = (
@@ -2007,10 +2096,17 @@ class _Analysis:
             for ref in refs:
                 if ref is first and via is not None:
                     key, target = via
+                    # Two absences with two different things to do about them: a target that
+                    # was declared and dropped leaves a declaration to look at, while one
+                    # this reference cannot resolve at all leaves only the silenced check.
+                    cause = (
+                        f"does not resolve, and the {dangling} that says why is not reported"
+                        if dangling is not None
+                        else "did not resolve, and the finding that says why is not reported"
+                    )
                     self._bag.add(
                         "incomplete-project",
-                        f"'{name}' is not in the data dictionary: its {key} '{target}' did "
-                        f"not resolve, and the finding that says why is not reported",
+                        f"'{name}' is not in the data dictionary: its {key} '{target}' {cause}",
                         ref.location(f"definition.{key}"),
                     )
                 else:
@@ -2023,73 +2119,37 @@ class _Analysis:
                         notes=notes,
                     )
 
-    def _resolve_shape(
-        self, definition: DataObject, reference: DeclarationRef
-    ) -> tuple[Shape, WrittenShape]:
+    def _resolve_shape(self, definition: DataObject) -> tuple[Shape, WrittenShape]:
         """The storage shape of an object, as numbers and as the project spells it.
 
         For a curve or map both follow from its axes, the spelling included: the axis is
         where that dimension is written down, so an axis sized by a constant carries the
         constant's name into every curve and map interpolated over it. Every named
         dimension resolves here, because a declaration or type whose shape does not was
-        dropped before ownership was settled.
+        dropped before ownership was settled, and so is every axis: one that nobody
+        declares, or that is not an axis, was refused in :meth:`_absent` and took the object
+        being shaped here with it.
         """
-        if isinstance(definition, Axis) and definition.input is not None:
-            self._lookup(definition.input, ObjectKind.MEASUREMENT, "input", definition, reference)
-
         if isinstance(definition, Curve):
-            axis = self._lookup(definition.axis, ObjectKind.AXIS, "axis", definition, reference)
-            if isinstance(axis, Axis):
-                return ((self._dimension_value(axis.size),), (axis.size,))
-            return ((), ())
+            axis = self._effective[definition.axis]
+            assert isinstance(axis, Axis)
+            return ((self._dimension_value(axis.size),), (axis.size,))
 
         if isinstance(definition, Map):
-            x_axis = self._lookup(
-                definition.x_axis, ObjectKind.AXIS, "x_axis", definition, reference
+            x_axis = self._effective[definition.x_axis]
+            y_axis = self._effective[definition.y_axis]
+            assert isinstance(x_axis, Axis)
+            assert isinstance(y_axis, Axis)
+            # A map is stored row wise: the x index runs fastest, so it is the last one.
+            return (
+                (self._dimension_value(y_axis.size), self._dimension_value(x_axis.size)),
+                (y_axis.size, x_axis.size),
             )
-            y_axis = self._lookup(
-                definition.y_axis, ObjectKind.AXIS, "y_axis", definition, reference
-            )
-            if isinstance(x_axis, Axis) and isinstance(y_axis, Axis):
-                # A map is stored row wise: the x index runs fastest, so it is the last one.
-                return (
-                    (self._dimension_value(y_axis.size), self._dimension_value(x_axis.size)),
-                    (y_axis.size, x_axis.size),
-                )
-            return ((), ())
 
         shape = definition.declared_shape
         # Only a curve or a map defers to its axes, and both returned above.
         assert shape is not None
         return (self._numeric_shape(shape), shape)
-
-    def _lookup(
-        self,
-        target: str,
-        expected: ObjectKind,
-        field: str,
-        definition: DataObject,
-        reference: DeclarationRef,
-    ) -> DataObject | None:
-        """Resolve a reference to another data object and report what is wrong with it."""
-        found = self._effective.get(target)
-        if found is None:
-            self._bag.add(
-                "unknown-reference",
-                f"{definition.kind.value} '{definition.name}' refers to '{target}' as its "
-                f"{field}, but no component declares '{target}'",
-                reference.location(f"definition.{field}"),
-            )
-            return None
-        if found.kind is not expected:
-            self._bag.add(
-                "reference-kind",
-                f"the {field} of {definition.kind.value} '{definition.name}' must be of kind "
-                f"'{expected.value}', but '{target}' is of kind '{found.kind.value}'",
-                reference.location(f"definition.{field}"),
-            )
-            return None
-        return found
 
     def _consumers(self, name: str) -> list[DeclarationRef]:
         """Who reads the object, over the census: a reader that was dropped still reads it."""
@@ -2345,15 +2405,15 @@ class _Analysis:
         written in the file: a measurement or a value block declares its dimensions, while a
         curve or a map takes its shape from axes that are only known once the whole project
         is resolved. One check for both keeps the finding one identifier, ``init-invalid``.
+
+        Only ever asked of an object that resolved, so the shape from the axes is a real
+        shape: a curve whose axis nobody declares is not here to be asked.
         """
         init = ref.definition.init
         if not isinstance(init, tuple):
             # A scalar init fills every element of whatever the shape is; nothing to check.
             return
         declared = ref.definition.declared_shape
-        if declared is None and not resolved:
-            # A curve or map whose axes did not resolve; that is already reported.
-            return
         # The declaration's own shape, resolved to numbers: an init is counted against the
         # value of a dimension, however that dimension happens to be spelled.
         shape = self._numeric_shape(declared) if declared is not None else resolved

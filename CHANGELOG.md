@@ -14,10 +14,11 @@ not, and the templates a project provides are its own.
   release do: `ddd check --standalone` and the per-component `<target>.ddd` target, the empty
   address map that raises no `address-missing`, the `COMPU_METHOD` sharing key and the display
   format rule, the closure over an exported axis's input, the A2L file name and record order,
-  the `<image>_ddd_headers` and `<image>_ddd_globals` targets and `DDD_A2L`, the plugin name
+  the `<stem>_ddd_headers` and `<stem>_ddd_globals` targets and `DDD_A2L`, the plugin name
   grammar and its reserved names, the shape of the `--renames` file, the verdict of a
   comparison, the orders of the listings, and a section describing the data dictionary.  It
-  defines "instance" and "leaf" and uses "storage" for one thing.  No behaviour changed.
+  defines "instance" and "leaf" and uses "storage" for the key group alone.  No behaviour
+  changed.
 
 * **The language server decodes the uri VS Code sends on Windows.**  A client spells a
   Windows file as `file:///c%3A/...`, drive lower-cased and colon escaped, and the server read

@@ -148,7 +148,7 @@ run.
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
 | **data object** | the subject of a declaration: a measurement, parameter, value block, curve, map or axis |
 | **instance** | a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path |
-| **leaf** | one value-holding member of an instance, as the dictionary and the A2L see it; a member naming an external type is opaque and is no leaf |
+| **leaf** | one value-holding member of an instance, as the dictionary sees it; a member naming an external type is opaque and is no leaf |
 | **measurement** | a data object the software writes and reads, the producer writing and the consumers reading; a calibration tool can both read and write it as well |
 | **calibration object** | a data object the software never writes: a parameter, value block, curve, map or axis, generated `const` and changed, if at all, by a calibration tool |
 | **scope** | ownership and visibility of a data object with respect to the declaring component |
@@ -190,7 +190,7 @@ decides what the file is: `project` ([section 3.1](#31-project-description)),
 `constants` ([section 3.9](#39-constant-vocabulary)) or
 `rasters` ([section 3.10](#310-measurement-rasters)); only the first two can be the root of
 a run. Handed any other kind as the root, the tool reports `file-kind` with a hint that the
-file belongs in the `includes` of a project, and exits 1 ([section 7](#7-tool-interface)).
+file belongs in a project's `includes`, and exits 1 ([section 7](#7-tool-interface)).
 A file stating none of these keys, or several at once, is refused (`file-kind`).
 JSON allows one object to spell the same key twice, as in `"init": 0, "init": 255`,
 and parsers generally resolve the duplication silently in favour of the last spelling, so
@@ -483,14 +483,16 @@ reference. An omitted `unit` is the empty unit and compares as such: a consumer 
 against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
 it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
 declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and
-limits agree; a structured object compares by its type name.
+limits agree, because a scalar type reaches no generated header: the datatype it fixes
+does; a structured object compares by its type name.
 
 ##### 3.3.1.2 Storage
 
 The storage keys are `init` and `section` ([section 3.5](#35-memory-placement)); the group
-also holds `id`, `raster` and `extensions`, the keys a consumer **must not** state. What an
-object starts out as, and where it lives, is decided by the component that produces it, so
-a declaration whose scope is `input` **must not** state either key (`consumer-storage`).
+also holds `id`, `raster` and `extensions`, and holds exactly the keys a consumer
+**must not** state. What an object starts out as, and where it lives, is decided by the
+component that produces it, so a declaration whose scope is `input` **must not** state
+either key (`consumer-storage`).
 This is not an opinion to be outvoted: it is a claim over storage the component does not
 own, and it is reported where it is written rather than where it is overruled. `id` is
 decided by the same component for the same reason, so a declaration whose scope is `input`
@@ -518,7 +520,8 @@ component reading a value out of a library it does not own has an equal claim to
 it. The stated answers are combined rather than ranked: the object is exported if any
 declaration states `true`, and it is left out only when every stated answer is `false`, with
 one exception the A2L needs: an axis an exported curve or map refers to, and the measurement
-an exported axis is indexed by, are carried whatever they state ([section 5.2](#52-a2l)).
+an axis in the file - exported in its own right or pulled in - is indexed by, are carried
+whatever they state ([section 5.2](#52-a2l)).
 When no declaration states it, the object is exported. `export` **may** also be stated as
 `null`, which counts as unstated. Two consumers can therefore never conflict over it, there
 is no finding to invent for a disagreement between them, and the verdict does not depend on
@@ -843,7 +846,7 @@ invisible: each object agrees with itself, the A2L grows one `COMPU_METHOD` per 
 
 The file is listed in the `includes` of a project ([section 3.1](#31-project-description))
 like a types file, and only there: handed to the tool as the root of a run, it is refused,
-with a hint at the include that carries it. The file declares at least one unit
+with a hint that it belongs in a project's `includes`. The file declares at least one unit
 (`schema`). An entry is a bare spelling, or an object
 adding a `description`, which is where the meaning of a unit is written down once, instead
 of being implied by every object that happens to use it. An empty spelling is `schema`.
@@ -868,8 +871,8 @@ stated once and used by every loop that walks the array; a bare number in a desc
 restates that constant and drifts from it silently. The file is an includable vocabulary
 like the units file ([section 3.8](#38-unit-vocabulary)): it is listed in the `includes`
 of a project ([section 3.1](#31-project-description)) and only there, and handed to the
-tool as the root of a run it is refused, with a hint at the include that carries it. The
-file declares at least one constant (`schema`).
+tool as the root of a run it is refused, with a hint that it belongs in a project's
+`includes`. The file declares at least one constant (`schema`).
 
 ```json
 {
@@ -999,8 +1002,9 @@ one on the project, and contributing checks, comparison rules and an artefact of
   that cannot be found is `plugin-not-found`; one that raises on import, exposes no
   `PLUGIN`, exposes a malformed one, or claims a name another plugin already has is
   `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and is none of `c`, `a2l`
-  and `all`, which name the built-in artefacts of `ddd generate`; each check identifier it
-  registers is `<name>/<check>` with `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
+  and `all`, which `ddd generate` already takes: the two built-in artefacts and `all`; each
+  check identifier it registers is `<name>/<check>` with `<check>` matching
+  `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
   Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
   Both checks have a fixed severity, because a project cannot be interpreted without the
@@ -1077,8 +1081,10 @@ error rather than a finding, as is naming an unknown check or severity.
 Ten checks need every component of a project to mean anything: `unknown-type`,
 `unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `unknown-extension`,
 `missing-producer`, `unknown-reference`, `unused-output` and
-`incomplete-project`. Exactly these are the checks the language server holds back when it
-checks a file belonging to no project ([section 7.2](#72-editor-integration)).
+`incomplete-project`. Exactly these are the checks held back by `ddd check --standalone`
+and by the CMake module's per-component target, which runs it
+([section 7](#7-tool-interface)), and by the language server for a file belonging to no
+project ([section 7.2](#72-editor-integration)).
 
 The `schema` check carries every violation of the published file contracts
 ([section 3](#3-file-formats)), including the rules this document states in prose, such as
@@ -1089,8 +1095,9 @@ written, and need no identifier of their own.
 A finding about several declarations of one object is reported once per declaration that
 deviates, anchored where the deviation is written, with a note pointing at the reference,
 which is the producer's declaration or the first loaded one
-([section 3.3.1](#331-one-object-several-declarations)); for `limits`, at the first
-declaration that states them ([section 3.3.1.1](#3311-interface)). `multiple-producers` is
+([section 3.3.1](#331-one-object-several-declarations)); for `limits`, at the producer's
+declaration when it states them and otherwise at the first declaration that does
+([section 3.3.1.1](#3311-interface)). `multiple-producers` is
 therefore reported on every producer after the first, `missing-producer` once per consumer,
 and `unused-output` once, on the producer. A scope clash involving a `local` declaration is
 `local-conflict` alone, never `multiple-producers` as well.
@@ -1153,7 +1160,7 @@ Errors:
   includes are read in; the first object is named in the message.
 - `unknown-type`, `type-kind`, `type-cycle`: a `typename` names no type any file of the
   project declares, a declared type is used where its shape does not fit or a structured
-  declaration carries a key a structure cannot take, such as `init`
+  declaration carries the one key a structure cannot take, `init`
   ([section 3.7](#37-type-description)), or structures nest each other so that neither has
   a size.
 - `unknown-unit`: a unit is not in the vocabulary the project declares
@@ -1237,9 +1244,9 @@ Warnings:
   before it has linked anything ([section 7.1](#71-build-system-integration)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
   there as readily as anywhere else. It is one finding per run, naming up to five of the
-  uncovered objects and counting the rest, with a note listing the entries of the map that
-  name nothing the A2L carries, because those are usually the old spellings of the same
-  objects.
+  uncovered objects and counting the rest, with a note naming, the same way, the entries of
+  the map that name nothing the A2L carries, because those are usually the old spellings of
+  the same objects.
 
 Information:
 
@@ -1382,7 +1389,7 @@ A dictionary of an older format is read with the defaults of that format: a base
 format 3 or older states no `dimensions`, so shapes compare by value alone; one at format 6
 or older records no `plugins`, so `missing-plugin` cannot fire for it. Adopting a scalar
 type is not a change of interface, because the dictionary records the datatype a type
-resolves to ([section 3.3.1.1](#3311-interface)).
+resolves to ([section 5.3](#53-data-dictionary)).
 
 ## 5 Generated artefacts
 
@@ -1502,9 +1509,9 @@ ASAM MCD-2 MC output containing:
 - `AXIS_DESCR` with `COM_AXIS` and `AXIS_PTS_REF` for the axis of a curve or map.
 - `COMPU_METHOD` shared between objects with the same conversion, unit and default display
   format - an integer and a float object under one conversion therefore share a method
-  unless that conversion is an identity or a linear one whose `factor` and `offset` are
-  whole numbers, where the integer defaults to `%8.0` and the float to `%8.3` and each
-  gets its own method - and `COMPU_VTAB` per enum.
+  unless that conversion is an identity with a unit or a linear one whose `factor` and
+  `offset` are whole numbers, where the integer defaults to `%8.0` and the float to `%8.3`
+  and each gets its own method - and `COMPU_VTAB` per enum.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
@@ -1512,7 +1519,8 @@ ASAM MCD-2 MC output containing:
   `IF_DATA`.
 - one `GROUP` per component that contributes at least one exported object, referencing
   every declaration of the component that reaches the file, in any scope, in declaration
-  order, then the leaves of the structured objects it declares; a component contributing
+  order within its `REF_MEASUREMENT` and `REF_CHARACTERISTIC` blocks, the leaves of the
+  structured objects it declares after the plain ones in each; a component contributing
   none gets no empty `GROUP`.
 - the address field of every object taken from the address information (`ECU_ADDRESS` is
   the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
@@ -1522,8 +1530,9 @@ ASAM MCD-2 MC output containing:
   component order of the project. Inside the `MODULE` the record kinds come in a fixed
   order: `MOD_COMMON`, `MOD_PAR`, the `RECORD_LAYOUT`s, the `COMPU_VTAB`s, the
   `COMPU_METHOD`s, the `MEASUREMENT`s, the `AXIS_PTS`s, the `CHARACTERISTIC`s and the
-  `GROUP`s; within a kind other than `GROUP`, the plain objects by name, then the leaves of
-  structured objects by access path.
+  `GROUP`s; within `MEASUREMENT`, `AXIS_PTS` and `CHARACTERISTIC` the plain objects by
+  name, then the leaves of structured objects by access path; the `RECORD_LAYOUT`s,
+  `COMPU_VTAB`s and `COMPU_METHOD`s by their generated names; the `GROUP`s as said.
 
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
 sources; a component generated on its own names the file after the component. The file
@@ -1545,9 +1554,10 @@ Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `CM_LIN_<unit>` and `CM_IDENT_<unit>`, the unit slugged into identifier characters with
 `_2`, `_3` appended on a collision, and one `COMPU_VTAB` named `VTAB_<enum>` per enum. The
 suffix is added when the generated name collides - two linear conversions in one unit, or
-one whole-number conversion used by an integer and by a float object - and the unsuffixed
-name goes to the method of the object that reaches the file first, the plain objects in
-name order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+one identity with a unit, or one linear conversion with whole `factor` and `offset`, used
+by an integer and by a float object - and the unsuffixed name goes to the method of the
+object that reaches the file first, the plain objects in name order before the member
+paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
 A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
 the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
 one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
@@ -1627,15 +1637,17 @@ each symbol to its address. The key is the C identifier of an object or, for the
 a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
 as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON integer, or a string
 read as hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an
-unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON object of integers, or an address
-outside `0 .. 0xFFFFFFFF`, is a usage error and nothing is written. A key the project does
-not know is ignored, and an object the map does not cover keeps address `0x00000000` rather
-than failing the run: a map extracted from a linker output legitimately omits the objects a
-condition compiled away, and `SYMBOL_LINK` lets a downstream tool resolve those it cares
-about. A map with entries that leaves an object of the A2L uncovered is `address-missing`
+unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON object, a value that is neither of
+those two spellings, or an address outside `0 .. 0xFFFFFFFF`, is a usage error and nothing
+is written. A key the project does not know is ignored, and an object the map does not
+cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
+output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
+downstream tool resolve those it cares about. A map with entries that leaves an object of
+the A2L uncovered is `address-missing`
 ([section 4](#4-consistency-checks)): a warning by default, an error under `--strict`, and
 a run that reports it as an error writes nothing rather than a file whose addresses it has
-just been told are incomplete. `ddd generate a2l` writes the A2L
+just been told are incomplete, unless `--force` asks for the file anyway
+([section 7](#7-tool-interface)). `ddd generate a2l` writes the A2L
 alone - no C is rendered and no template directory is accepted - so the post-link run
 regenerates the A2L without touching the sources the image was built from. Reading the
 linker output directly (ELF/DWARF, IEEE-695) and cross-checking the linked symbols against
@@ -1663,13 +1675,13 @@ refused rather than reporting success;
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
 `components` and `variables` beside the findings);
-reporting the artefacts a project can be asked to generate (`ddd artefacts`: the built-in
-`c` and `a2l`, then the plugins that provide one in the order the project names them, or
-the plugins named with `--plugin` when there is no project description to read yet, and the
-two built-in artefacts alone when neither is given; a plugin that provides none is named in
-a note rather than passed over, its block being part of what the `c` templates render; what
-each artefact writes is not among them, since a plugin's file names follow from the
-resolved dictionary and a dry run of `ddd generate all` reports them);
+reporting what a project can be asked to generate (`ddd artefacts`: `c`, `a2l`, then the
+plugins with a backend in the order the project names them, a plugin without a backend
+being named in a note instead, its block being part of what the `c` templates render;
+given `--plugin` instead of a project it answers for those plugins beside the two built-in
+artefacts, and given neither it lists the built-in artefacts alone; what each artefact
+writes is not among them, since a plugin's file names follow from the resolved dictionary
+and a dry run of `ddd generate all` reports them);
 writing out the data dictionary itself (`ddd dump`); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`
@@ -1711,7 +1723,8 @@ Every command that reports findings can produce machine readable JSON (`--format
 counting by severity. In plain text, a finding is written
 `path:line:column#pointer: severity[check]: message`, the pieces of the location present
 as far as they are known and its notes indented beneath it; findings are ordered by
-severity, then path, then location, numeric parts of a pointer compared as numbers; and a
+severity, then path, then location, numeric parts of a pointer compared as numbers;
+findings at one location keep the order they were reported in; and a
 `ddd check` with no finding at all closes with an `ok:` line counting the objects and
 components it found consistent, and `compare` with a verdict line saying whether the
 candidate file can replace the baseline file ([section 4.1](#41-comparing-two-deliveries)).
@@ -1750,10 +1763,10 @@ component file under the default severity policy, a vocabulary file getting none
 declares no interface of its own. `ddd_generate` generates into the build tree and defines
 two libraries, named after the image without its extension: an interface library
 `<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
-collected mode, the interface include directories, compile definitions and compile options
-of every registered component; and an object library `<stem>_ddd_globals` compiling the
-definition files, which links the first and is linked into the image, so that an object no
-compiled code references is not dropped ([section 5.1](#51-c-code)).
+collected mode, the compile usage described at the end of this section; and an object
+library `<stem>_ddd_globals` compiling the definition files, which links the first and is
+linked into the image, so that an object no compiled code references is not dropped
+([section 5.1](#51-c-code)).
 
 `ddd_generate` knows two modes. In the collected mode, which is the default, the registered
 descriptions travel the link graph as a transitive target property, and the project
@@ -1798,7 +1811,9 @@ component. `SCHEMA_DIRECTORY <dir>` writes the JSON schemas of
 the installed DDD rather than a version that is no longer there, closed over the project's
 plugins - from `PLUGINS`, or, beside `PROJECT`, from the plugins that one file names and
 not a sub-project's - so that an editor validates a plugin's block as it is typed
-([section 3.11](#311-plugins)). Beside the generation step, the call defines a
+([section 3.11](#311-plugins)). A plugin only a sub-project names is therefore not closed
+over; a project that wants it in the editor's schema names it in the root file as well.
+Beside the generation step, the call defines a
 `<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
 CI job can check without generating. The path of the A2L, where the run writes one, is
 published as the image's `DDD_A2L` property. The tool itself is found by `find_program`
@@ -1876,9 +1891,9 @@ at the project file rather than ending the session ([section 3.11](#311-plugins)
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server; a frame header whose `Content-Length`
-is not a number, after which no message boundary can be trusted, ends the session with a
-message rather than a failure trace, and a header block without a length is read as the end
-of the conversation.
+is not a number, or is negative, after which no message boundary can be trusted, ends the
+session with a message rather than a failure trace, and a header block without a length is
+read as the end of the conversation.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
 repeatable `-b` arguments, a relative one read against the server's working directory; the

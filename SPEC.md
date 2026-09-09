@@ -1198,9 +1198,12 @@ Errors:
   mapping form alike, so a reordering conflicts and the free text descriptions do not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
-  not exist or has the wrong kind. A reference to an object that was declared but dropped
-  as unresolvable is not reported a second time: the finding at the declaration is the one
-  to act on, and the referring object is dropped with it.
+  not exist or has the wrong kind. The referring object is dropped as unresolvable whatever
+  severity the finding is given, because a curve without its axis has no shape and an axis
+  naming an absent measurement would leave a dangling name in the A2L; `incomplete-project`
+  says so when the finding is silenced. A reference to an object that was declared but
+  dropped as unresolvable is not reported a second time: the finding at the declaration is
+  the one to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
   `<stdbool.h>` declares, or with one of two families the C standard reserves for the
   implementation everywhere: a double underscore anywhere, or a leading underscore followed

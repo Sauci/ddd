@@ -479,11 +479,16 @@ or an a2l file that does not do what the description says - or that does not com
        per name, so only one set of enumerators could survive.
    * - ``unknown-reference``
      - error
-     - a curve, a map or an axis refers by name to an object no component declares.
+     - a curve, a map or an axis refers by name to an object no component declares. The
+       referring object is dropped as unresolvable whatever severity this check is given -
+       a curve without its axis has no shape, and an axis naming an absent measurement
+       would leave a dangling name in the a2l - and ``incomplete-project`` reports the
+       absence when the finding is silenced.
    * - ``reference-kind``
      - error
      - a reference points at an object of the wrong kind, for example the ``axis`` of a curve
-       naming a measurement instead of an axis.
+       naming a measurement instead of an axis. The referring object is dropped as
+       unresolvable too, exactly as ``unknown-reference`` drops one.
    * - ``init-invalid``
      - error
      - an initial value does not fit its datatype - out of range, written as a fraction for an

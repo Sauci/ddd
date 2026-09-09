@@ -10,6 +10,18 @@ not, and the templates a project provides are its own.
 
 ## Unreleased
 
+* **A dangling reference drops the referring object.**  With `unknown-reference` or
+  `reference-kind` relaxed, a curve whose axis nobody declares was kept anyway: the c
+  backend declared it as a scalar, and the a2l backend left it out entirely.  An axis
+  whose `input` nobody declares was kept whole instead: the a2l backend wrote its
+  `AXIS_PTS` with an input quantity naming a measurement that does not exist, a file a
+  calibration tool refuses whole.  The referring object is now dropped the way an object
+  referring to a dropped declaration already was, transitively, and `incomplete-project`
+  reports the absence when the finding is silenced.  **Migration:** a project relaxing
+  either check, or simply reading the dictionary with `ddd list` or `ddd dump`, now gets
+  a smaller, consistent result instead; an unforced `ddd generate` left at error severity
+  already wrote nothing and still does.
+
 * **A failed step after the analysis no longer discards the findings.**  A plugin hook
   that raised, an address map that could not be read, a `--renames` file or an artefact
   that could not be written, a `--plugin` refused beside a description, or a run that

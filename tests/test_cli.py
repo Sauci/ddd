@@ -509,6 +509,32 @@ class TestGenerate:
         assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2" in err
         assert "Traceback" not in err
 
+    def test_a_template_raising_a_bare_exception_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Not every mistake a template's own body makes is one jinja wraps as a
+        ``TemplateError`` - dividing by zero raises a bare ``ZeroDivisionError`` - and it is no
+        less the template author's mistake for that: reported the same one line, not as a
+        python traceback through jinja, a library the author never imported."""
+        arguments = self.broken_template(tmp_path, "/* fine */\n/* {{ 1 / 0 }} */\n")
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        expected = "ddd: cannot render template 'ddd_globals.c.jinja2', line 2: division by zero"
+        assert expected in err
+        assert "Traceback" not in err
+
+    def test_a_template_raising_a_bare_exception_from_a_filter_names_the_template_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = self.broken_template(
+            tmp_path, "/* fine */\n/* {{ model.groups | length + 'x' }} */\n"
+        )
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2:" in err
+        assert "unsupported operand type(s) for +: 'int' and 'str'" in err
+        assert "Traceback" not in err
+
     def test_a_component_template_error_names_the_component(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

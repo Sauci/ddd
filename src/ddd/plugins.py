@@ -10,7 +10,12 @@ comparison rules and an artefact of its own.
 
 This module imports the dictionary and the diagnostics and nothing else at runtime - not the
 loader, not the analysis, not a backend - so a plugin sees exactly what a backend sees. The
-``Backend`` protocol is structural and is only named here under ``TYPE_CHECKING``.
+``Backend`` protocol is structural and is only named here under ``TYPE_CHECKING``: where
+``backend_of`` and ``_GuardedBackend.generate`` need to check that a hook kept the promise its
+own return type made, they check the same shape by hand instead - a ``name`` and a callable
+``generate``, a ``path`` and a ``content`` - rather than importing ``Backend`` or
+``GeneratedFile`` just to ask, which would be exactly the runtime coupling this paragraph
+says the module has none of.
 """
 
 from __future__ import annotations
@@ -242,8 +247,18 @@ def _import(spelling: str) -> Any:
             raise PluginNotFoundError(msg) from error
         msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
-    except Exception as error:
-        msg = f"plugin '{spelling}' failed to import: {error}"
+    except (Exception, SystemExit) as error:
+        # SystemExit is not an Exception: a plugin package whose __init__ calls sys.exit(...)
+        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
+        # this than one that raises, and is reported the same way, naming the code it exited
+        # with rather than the empty or misleading text str(SystemExit(...)) would give. Unlike
+        # _load_from_path, nothing here has registered the module into sys.modules by hand, so
+        # there is no cache to unwind on the way out - import_module leaves none behind itself,
+        # on a failure of either kind.
+        if isinstance(error, SystemExit):
+            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
+        else:
+            msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
 
 
@@ -356,13 +371,45 @@ def run_compare_hooks(
 
 
 def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Backend:
-    """The backend a plugin provides, or a usage error saying it provides none."""
+    """The backend a plugin provides, or a usage error saying it provides none or provides one
+    only in name.
+
+    A hook's own signature says it returns a ``Backend``, but nothing stops it returning
+    ``None`` - the shape a hook that only checks its settings and forgets to build one tends
+    to take - or returning something else entirely; python does not enforce a return type at
+    runtime. Both are the plugin's own mistake rather than ddd's, so both are reported the way
+    a hook that raised already is, rather than surfacing later as an ``AttributeError`` out of
+    :class:`_GuardedBackend` or :func:`~ddd.backends.base.render`. The check below is the
+    ``Backend`` protocol's own check, written out by hand rather than as
+    ``isinstance(backend, Backend)`` - see the module docstring for why.
+    """
     if plugin.backend is None:
         msg = f"plugin '{plugin.name}' provides no artefact"
         raise ValueError(msg)
     context = GenerateContext(settings_of(plugin, dictionary.extensions), generator)
     backend = _call(plugin, "backend", plugin.backend, context)
+    if backend is None:
+        msg = f"plugin '{plugin.name}' returned no backend from its backend hook"
+        raise PluginError(msg)
+    if not isinstance(getattr(backend, "name", None), str) or not callable(
+        getattr(backend, "generate", None)
+    ):
+        msg = (
+            f"plugin '{plugin.name}' returned something other than a backend from its "
+            f"backend hook: {type(backend).__name__}"
+        )
+        raise PluginError(msg)
     return _GuardedBackend(plugin, backend)
+
+
+def _has_the_shape_of_a_generated_file(item: object) -> bool:
+    """The ``GeneratedFile`` protocol check, written out by hand for the same reason
+    ``backend_of`` writes the ``Backend`` one out by hand: a ``path`` that is a real ``Path``
+    and a ``content`` that is a real ``str`` is everything the dataclass is, and everything
+    :func:`~ddd.backends.base.render` and :func:`~ddd.backends.base.write` go on to use."""
+    return isinstance(getattr(item, "path", None), Path) and isinstance(
+        getattr(item, "content", None), str
+    )
 
 
 class _GuardedBackend:
@@ -382,12 +429,24 @@ class _GuardedBackend:
         self.name = backend.name
 
     def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
-        return _call(
+        result = _call(
             self._plugin,
             "generate",
             lambda _: self._backend.generate(dictionary, output_dir),
             None,
         )
+        # Checked here, outside _call, rather than inside the lambda: raised from there, a
+        # PluginError would be caught by _call's own except clause and rewrapped as "failed in
+        # its generate hook", burying this message inside that one instead of standing alone.
+        if not isinstance(result, list) or not all(
+            _has_the_shape_of_a_generated_file(item) for item in result
+        ):
+            msg = (
+                f"plugin '{self._plugin.name}' returned something other than a list of "
+                "generated files from its generate hook"
+            )
+            raise PluginError(msg)
+        return result
 
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:

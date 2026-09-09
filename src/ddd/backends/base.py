@@ -144,18 +144,31 @@ def render_template(
     component: str | None = None,
     **context: object,
 ) -> GeneratedFile:
-    """Render one template, turning what jinja says into something an author can act on.
+    """Render one template, turning what it raises into something an author can act on.
 
-    The templates are the project's own files, so a typo in one is a usage mistake and not a
-    defect of the tool: it is reported as one line naming the template rather than escaping
-    as a python traceback through a library the author never imported. ``component`` names
-    the component a per-component template is being rendered for, so a failure that only
-    one component's data provokes says which one.
+    The templates are the project's own files, so a mistake in one is a usage mistake and not
+    a defect of the tool: it is reported as one line naming the template rather than escaping
+    as a python traceback through a library the author never imported. Jinja does not wrap
+    every such mistake as a ``TemplateError`` - ``{{ 1 / 0 }}`` raises a bare
+    ``ZeroDivisionError``, a filter handed the wrong type a bare ``TypeError`` - so both kinds
+    are caught here and described alike: jinja rewrites the traceback of either the same way,
+    so :func:`describe_template_error` finds the failing line regardless of which it is.
+    ``component`` names the component a per-component template is being rendered for, so a
+    failure that only one component's data provokes says which one.
     """
     try:
         template = environment.get_template(template_name)
         content = template.render(**context)
     except TemplateError as error:
+        raise ValueError(
+            describe_template_error(template_name, error, component=component)
+        ) from None
+    except Exception as error:
+        # Not a TemplateError, but no less the template author's mistake than one is: raised
+        # from inside the template's own body, over data this run supplied, not from ddd's own
+        # code. Left uncaught here it would print as a python traceback through jinja - a
+        # library the author never imported - rather than the one line every other template
+        # mistake is reported as.
         raise ValueError(
             describe_template_error(template_name, error, component=component)
         ) from None
@@ -165,15 +178,16 @@ def render_template(
 
 
 def describe_template_error(
-    template_name: str, error: TemplateError, *, component: str | None = None
+    template_name: str, error: Exception, *, component: str | None = None
 ) -> str:
-    """One line: the template, the line in it, and what jinja had to say.
+    """One line: the template, the line in it, and what went wrong.
 
     A syntax error knows its own line. A runtime error - an undefined name under
-    ``StrictUndefined``, most of the time - does not, but jinja rewrites its traceback with a
-    frame per template line it passed through, and the deepest of those is where it happened.
-    A ``{component}`` template is rendered once per component, with data that differs per
-    run, so the message carries the component the failing render was for.
+    ``StrictUndefined``, or a bare python exception a template's own body raised - does not,
+    but jinja rewrites its traceback with a frame per template line it passed through, and the
+    deepest of those is where it happened. A ``{component}`` template is rendered once per
+    component, with data that differs per run, so the message carries the component the
+    failing render was for.
     """
     if isinstance(error, TemplateSyntaxError):
         line: int | None = error.lineno
@@ -189,13 +203,14 @@ def describe_template_error(
     return f"cannot render {where}: {reason}"
 
 
-def _template_line(error: TemplateError) -> int | None:
+def _template_line(error: Exception) -> int | None:
     """The template line a runtime error was raised from, read off the traceback.
 
-    jinja marks the frames it fabricates with ``__jinja_exception__`` in their globals; the
-    last one on the stack is the line of the template that actually failed. ``None`` when
-    there is no such frame to read, in which case the message goes out without a line rather
-    than not at all.
+    jinja marks the frames it fabricates with ``__jinja_exception__`` in their globals,
+    whether it is fabricating them for one of its own exceptions or for a bare python one a
+    template's body raised; the last one on the stack is the line of the template that
+    actually failed. ``None`` when there is no such frame to read, in which case the message
+    goes out without a line rather than not at all.
     """
     line: int | None = None
     trace = error.__traceback__

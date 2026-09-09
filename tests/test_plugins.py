@@ -310,6 +310,23 @@ class TestLoading:
         finally:
             sys.modules.pop("raises_on_import", None)
 
+    def test_a_module_package_that_exits_during_import_is_invalid_not_a_process_exit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same gap ``_load_from_path`` was fixed against, for the dotted-name path:
+        ``SystemExit`` is not an ``Exception``, so it used to escape ``_import`` uncaught,
+        taking ``ddd``'s own exit code and process down with it instead of being reported as
+        the plugin's own failure."""
+        package = tmp_path / "exits_pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("import sys\n\nsys.exit(2)\n", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(2\)"):
+                load_plugin("exits_pkg", tmp_path)
+        finally:
+            sys.modules.pop("exits_pkg", None)
+
     def test_a_module_without_a_plugin_object_is_invalid(self, tmp_path: Path) -> None:
         write_plugin(tmp_path, "empty.py", "X = 1\n")
         with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
@@ -1450,6 +1467,24 @@ RAISING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
     _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        raise KeyError("nope")\n'
 )
 
+NONE_BACKEND_PLUGIN = TAG_PLUGIN.replace("return TagBackend(context.settings)", "return None")
+"""The factory hook builds nothing; a defect of the plugin like any other."""
+
+WRONG_TYPE_BACKEND_PLUGIN = TAG_PLUGIN.replace(
+    "return TagBackend(context.settings)", 'return "not a backend"'
+)
+"""The factory hook returns something with neither a ``name`` nor a ``generate``."""
+
+STRING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        return "not a list"\n'
+)
+"""``generate`` returns a single string rather than a list of generated files."""
+
+WRONG_ITEM_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE, f"{_GENERATE_SIGNATURE}        return [1]\n"
+)
+"""``generate`` returns a list, but not one of ``GeneratedFile``."""
+
 ESCAPING_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir.parent / "escape.h"')
 """Writes beside ``output_dir`` rather than under it."""
 
@@ -1492,6 +1527,105 @@ class TestGenerate:
         arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
         assert main(arguments) == EXIT_USAGE
         assert "plugin 'tag' failed in its generate hook" in capsys.readouterr().err
+
+    def test_a_backend_hook_returning_none_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``None`` is what a hook that only checks its settings and forgets to build a
+        backend tends to return; a defect of the plugin, not an ``AttributeError`` later."""
+        write_plugin(tree / "tools", source=NONE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: plugin 'tag' returned no backend from its backend hook" in err
+        assert "Traceback" not in err
+
+    def test_a_backend_hook_returning_something_else_names_its_type(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A backend needs a ``name`` and a callable ``generate``; a plain string has neither,
+        so it is refused rather than accepted as one because nothing crashed yet."""
+        write_plugin(tree / "tools", source=WRONG_TYPE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a backend from its backend "
+            "hook: str" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_a_string_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=STRING_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_a_list_of_the_wrong_items_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The list itself is the right shape; what it holds is not - checked item by item
+        rather than trusted once the outer type is right."""
+        write_plugin(tree / "tools", source=WRONG_ITEM_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
 
     def test_a_backend_escaping_the_output_directory_is_a_usage_error_naming_the_path(
         self, tree: Path, capsys: pytest.CaptureFixture[str]

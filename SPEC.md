@@ -169,7 +169,7 @@ run.
 | --- | --- |
 | `input` | the component reads the object; another component has to produce it |
 | `output` | the component owns the object; a second component **must not** produce it (`multiple-producers`) |
-| `local` | the component owns the object exclusively; another component **must not** use it (`local-conflict`) |
+| `local` | the component owns the object exclusively; another component **must not** use it, by a declaration or by a reference (`local-conflict`) |
 
 For measurements, `output` means that the component writes the variable. For calibration
 objects, which the software never writes, `output` means that the component provides the
@@ -419,10 +419,12 @@ Kind specific attributes:
   the physical reading beside the raw value.
 - `axis`, `x_axis` and `y_axis` name an object of kind `axis` declared anywhere in the
   project; the axis is shared between all curves and maps referring to it (A2L `COM_AXIS`).
-  Referring is not using: the reference resolves against every declaration of the project
-  and obliges the referring component to nothing, so an axis that no `input` declaration
+  Referring is not reading: the reference resolves against every declaration of the project
+  and makes the referring component no consumer, so an axis that no `input` declaration
   reads is still `unused-output`, and a component that wants the axis in its own header
-  declares it as its `input`.
+  declares it as its `input`. It is a use of the object all the same, so a reference into
+  another component's `local` object is `local-conflict`
+  ([section 4](#4-consistency-checks)).
 - `input` names the measurement that indexes an axis (A2L input quantity); when omitted,
   the A2L uses `NO_INPUT_QUANTITY`.
 - Calibration objects (every kind except `measurement`) are always generated `const`,
@@ -1115,7 +1117,11 @@ Errors:
 
 - `multiple-producers`: an object is produced by more than one component.
 - `missing-producer`: an input object is produced by nobody.
-- `local-conflict`: a component local object is declared by another component as well.
+- `local-conflict`: a component local object is declared by another component as well, or is
+  referred to - as an `axis`, an `x_axis`, a `y_axis` or an `input` - by a curve, map or axis
+  another component declares. A reference is a use as much as a declaration is, so the finding
+  sits at the reference, with a note at the local declaration, and nothing is dropped: the
+  mistake is the ownership violation, not a missing object.
 - `definition-mismatch`: components disagree on kind, datatype, unit, scaling, shape,
   volatility, referenced objects (axes and the `input` of an axis), or on limits where both
   of them state limits. A declaration that omits limits defers to the producer rather than

@@ -1075,3 +1075,160 @@ class TestConsumerOrder:
         )
         assert dictionary is not None, messages(bag)
         assert dictionary.by_name["S"].consumers == ("Alpha", "Zeta")
+
+
+class TestLocalReferences:
+    """A local object may not be used by another component, and a reference is a use.
+
+    A curve of B bound to an axis A declared local compiles, links and reaches the a2l bound
+    to A's private axis; nothing said so, because only declarations were compared.
+    """
+
+    def test_a_curve_over_another_components_local_axis_is_a_conflict(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Ax", "uint16", kind="axis", size=4)),
+                "b.ddd.json": component(
+                    "B", declare("output", "Gain", "uint16", kind="curve", axis="Ax")
+                ),
+            },
+            severities=["local-conflict=warning"],
+        )
+        assert dictionary is not None
+        assert checks(bag) == ["local-conflict", "unused-output"]
+        rendered = messages(bag)
+        assert (
+            "'Ax' is local to component 'A' but is also used as the axis of 'Gain' by component 'B'"
+            in rendered
+        )
+        assert "b.ddd.json#component.interface[0].definition.axis" in rendered
+        assert "declared local here" in rendered
+        assert [entry.name for entry in dictionary.objects] == ["Ax", "Gain"]
+
+    def test_a_curve_over_its_own_components_local_axis_is_fine(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=4),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        assert checks(bag) == []
+
+    def test_an_axis_over_another_components_local_measurement_is_a_conflict(
+        self, tree: Path
+    ) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "M", "uint16")),
+                "b.ddd.json": component(
+                    "B", declare("local", "Ax", "uint16", kind="axis", size=4, input="M")
+                ),
+            },
+        )
+        assert checks(bag) == ["local-conflict"]
+        assert (
+            "'M' is local to component 'A' but is also used as the input of 'Ax' by component 'B'"
+            in messages(bag)
+        )
+
+    def test_a_reference_to_another_components_output_is_still_fine(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Ax", "uint16", kind="axis", size=4)
+                ),
+                "b.ddd.json": component(
+                    "B", declare("local", "Gain", "uint16", kind="curve", axis="Ax")
+                ),
+            },
+        )
+        assert checks(bag) == ["unused-output"]
+
+    def test_declaring_and_referring_are_two_uses(self, tree: Path) -> None:
+        # B declares A's local object as its input and binds a curve to it: the declaration
+        # is one use and the reference another, each reported where it is written, as
+        # unknown-reference reports every reference rather than the first.
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "Ax", "uint16", kind="axis", size=4)),
+                "b.ddd.json": component(
+                    "B",
+                    declare("input", "Ax", "uint16", kind="axis", size=4),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        assert checks(bag) == ["local-conflict", "local-conflict"]
+        rendered = messages(bag)
+        assert "b.ddd.json#component.interface[0]" in rendered
+        assert "b.ddd.json#component.interface[1].definition.axis" in rendered
+
+    def test_which_declaration_is_selected_as_producer_does_not_decide_the_finding(
+        self, tree: Path
+    ) -> None:
+        """A's local declaration of 'Ax' and B's conflicting output declaration are themselves
+        a declaration-form local-conflict, and _select_producer picks whichever of the two the
+        project lists first as 'Ax's owner. C's reference has to be caught either way: the
+        local declaration it is checked against comes from the census, not from that choice,
+        so which file the project lists first must not decide whether the reference is
+        reported.
+        """
+        files = {
+            "a.ddd.json": component("A", declare("local", "Ax", "uint16", kind="axis", size=4)),
+            "b.ddd.json": component("B", declare("output", "Ax", "uint16", kind="axis", size=4)),
+            "c.ddd.json": component(
+                "C", declare("local", "Gain", "uint16", kind="curve", axis="Ax")
+            ),
+        }
+        for suffix, includes in (
+            ("a_first", ("a.ddd.json", "b.ddd.json", "c.ddd.json")),
+            ("b_first", ("b.ddd.json", "a.ddd.json", "c.ddd.json")),
+        ):
+            _, bag = run_analysis(
+                tree / suffix, {"project.ddd.json": project("P", *includes), **files}
+            )
+            rendered = messages(bag)
+            assert "c.ddd.json#component.interface[0].definition.axis" in rendered, rendered
+            assert checks(bag).count("local-conflict") == 2
+
+    def test_a_map_key_naming_a_local_axis_conflicts_the_other_key_may_not(
+        self, tree: Path
+    ) -> None:
+        """Each reference key of a map is judged on its own: 'Ax' is local to A and 'Ay' is
+        A's output, so B's map binds one key legitimately and the other into a private object.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=4),
+                    declare("output", "Ay", "uint16", kind="axis", size=4),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare("local", "M", kind="map", x_axis="Ax", y_axis="Ay", datatype="uint16"),
+                ),
+            },
+        )
+        # 'unused-output' is the honest second finding: 'Ay' is read only through the map's
+        # y_axis key, and that is not a consumer declaration - the check nobody reads the
+        # object itself, only refers to it.
+        assert checks(bag) == ["local-conflict", "unused-output"]
+        rendered = messages(bag)
+        assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
+        assert "definition.y_axis" not in rendered

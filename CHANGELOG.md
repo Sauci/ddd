@@ -20,7 +20,8 @@ not, and the templates a project provides are its own.
   reaches every declaration the dictionary omits on that account: a variable of a poisoned
   type, the consumers of a dropped producer, a curve over a dropped axis - it used to name
   only the dropped declaration itself, so most of what a silenced check removed went
-  unmentioned.  Its message names the component whose declaration is missing.
+  unmentioned.  Its message says what is missing: the component whose declaration went, or,
+  for an object that went with what it refers to, the reference that pulled it down.
 
 * **The specification catches up with the tool.**  `SPEC.md` now states what 0.8.0 and this
   release do: `ddd check --standalone` and the per-component `<target>.ddd` target, the empty

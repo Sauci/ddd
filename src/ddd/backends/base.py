@@ -61,23 +61,44 @@ class WriteResult:
 def render(
     dictionary: DataDictionary, backends: Iterable[Backend], output_dir: Path
 ) -> list[GeneratedFile]:
-    """Run every backend and refuse two artefacts claiming the same path."""
+    """Run every backend, keep every file inside ``output_dir``, and refuse two that clash.
+
+    A backend's path is not trusted as given: resolved as it stands first - every built-in
+    backend already anchors it to ``output_dir`` itself, relative or absolute exactly as
+    ``output_dir`` was passed in, so resolving it as given is what keeps ``-o gen`` printing
+    ``gen/...`` instead of doubling it to ``gen/gen/...``. Only a path that does not resolve
+    under ``output_dir`` this way - a bare filename a plugin forgot to anchor - is retried
+    anchored to it. Either way, ``sub/../ddd_globals.h`` is the same claim as ``ddd_globals.h``
+    and not a second one, and a spelling that resolves outside ``output_dir`` even once
+    anchored - a relative climb through enough ``..``, or an ``output_dir.parent / ...`` - is
+    refused before it, or whatever it would have collided with, reaches disk.
+    """
+    resolved_output_dir = output_dir.resolve()
     files: list[GeneratedFile] = []
     produced_by: dict[Path, str] = {}
     for backend in backends:
         for file in backend.generate(dictionary, output_dir):
-            previous = produced_by.get(file.path)
+            path = file.path.resolve()
+            if not path.is_relative_to(resolved_output_dir):
+                path = (output_dir / file.path).resolve()
+            if not path.is_relative_to(resolved_output_dir):
+                msg = (
+                    f"backend '{backend.name}' writes outside the output directory: "
+                    f"{path.as_posix()}"
+                )
+                raise ValueError(msg)
+            previous = produced_by.get(path)
             if previous is not None:
                 who = (
-                    f"the {backend.name} backend would write '{file.path.name}' twice"
+                    f"the {backend.name} backend would write '{path.name}' twice"
                     if previous == backend.name
                     else f"the {backend.name} and {previous} backends would both write "
-                    f"'{file.path.name}'"
+                    f"'{path.name}'"
                 )
                 msg = f"{who}; rename the component or choose a different prefix"
                 raise ValueError(msg)
-            produced_by[file.path] = backend.name
-            files.append(file)
+            produced_by[path] = backend.name
+            files.append(GeneratedFile(path, file.content))
     return files
 
 

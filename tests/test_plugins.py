@@ -363,6 +363,16 @@ class Backend:
 PLUGIN = Plugin(name="clash", backend=lambda context: Backend())
 """
 
+DOTDOT_ALIAS_PLUGIN = COLLIDING_PLUGIN.replace(
+    'output_dir / "ddd_globals.c"', 'output_dir / "sub" / ".." / "ddd_globals.h"'
+)
+"""Claims the c backend's own header through a path that resolves to the same file."""
+
+BARE_RELATIVE_PLUGIN = COLLIDING_PLUGIN.replace(
+    'output_dir / "ddd_globals.c"', 'Path("ddd_globals.c")'
+)
+"""Never anchors to ``output_dir`` at all; it is resolved against it all the same."""
+
 
 class TestGenerateAllWithPlugins:
     """``all`` runs the plugins' backends after the built-in ones, in the project's order."""
@@ -415,6 +425,32 @@ class TestGenerateAllWithPlugins:
     ) -> None:
         """The renderer refuses two backends claiming one path before anything is written."""
         write_plugin(tmp_path, "clash_plugin.py", COLLIDING_PLUGIN)
+        assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert (
+            "clash" in captured.err
+            and "c backends would both write 'ddd_globals.c'" in captured.err
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_dotdot_alias_of_a_built_in_path_is_the_same_clash(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sub/../ddd_globals.h`` is refused exactly like ``ddd_globals.h`` would be."""
+        write_plugin(tmp_path, "clash_plugin.py", DOTDOT_ALIAS_PLUGIN)
+        assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert (
+            "clash" in captured.err
+            and "c backends would both write 'ddd_globals.h'" in captured.err
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_bare_relative_path_is_anchored_to_the_output_directory_and_still_clashes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A path with no ``output_dir`` of its own is resolved against it before comparison."""
+        write_plugin(tmp_path, "clash_plugin.py", BARE_RELATIVE_PLUGIN)
         assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
         captured = capsys.readouterr()
         assert (
@@ -1413,6 +1449,12 @@ RAISING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
     _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        raise KeyError("nope")\n'
 )
 
+ESCAPING_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir.parent / "escape.h"')
+"""Writes beside ``output_dir`` rather than under it."""
+
+NESTED_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir / "sub" / "x.h"')
+"""A legitimate artefact one directory below ``output_dir``."""
+
 
 class TestGenerate:
     def project_with_tags(self, tree: Path) -> str:
@@ -1446,6 +1488,78 @@ class TestGenerate:
         arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
         assert main(arguments) == EXIT_USAGE
         assert "plugin 'tag' failed in its generate hook" in capsys.readouterr().err
+
+    def test_a_backend_escaping_the_output_directory_is_a_usage_error_naming_the_path(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "backend 'tag' writes outside the output directory" in captured
+        assert (tree / "escape.h").resolve().as_posix() in captured
+        assert not out.exists()
+
+    def test_a_backend_escaping_the_output_directory_is_refused_on_a_dry_run_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The paths are checked whether or not anything is about to be written."""
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = [
+            "generate",
+            "tag",
+            root,
+            "-o",
+            str(out),
+            "--dry-run",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_USAGE
+        assert "writes outside the output directory" in capsys.readouterr().err
+        assert not (tree / "escape.h").exists()
+
+    def test_a_backend_writing_into_a_subdirectory_of_the_output_directory_still_works(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=NESTED_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        assert (out / "sub" / "x.h").read_text(encoding="utf-8") == "X t\n"
+        assert "wrote" in capsys.readouterr().err
 
     def test_dry_run_writes_nothing(self, tree: Path) -> None:
         root = self.project_with_tags(tree)

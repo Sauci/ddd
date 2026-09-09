@@ -707,6 +707,20 @@ def _selected(args: argparse.Namespace) -> None:
             raise ValueError(msg)
 
 
+def _displayed_path(path: Path, root: Path) -> str:
+    """``path`` relative to ``root`` when it sits under it, in full otherwise.
+
+    ``render`` hands every file back fully resolved, so that an alias or an escape cannot
+    hide behind a spelling that looks different from what it clashes with. Once that is
+    settled the reader is better served by the path the way they would type it themselves -
+    relative to where they ran the command - than by the resolved one, the same trade
+    ``Location.render`` already makes for a diagnostic.
+    """
+    with contextlib.suppress(ValueError):
+        return path.relative_to(root).as_posix()
+    return path.as_posix()
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     _selected(args)
 
@@ -796,23 +810,23 @@ def _command_generate(args: argparse.Namespace) -> int:
             msg = f"cannot write '{target}': {error.strerror or error}"
             raise OSError(msg) from None
 
+    root = Path.cwd().resolve()
     if args.format == "json":
         payload = _diagnostics_payload(bag)
         payload["generated"] = [
-            {"path": result.path.as_posix(), "status": result.status.value} for result in results
+            {"path": _displayed_path(result.path, root), "status": result.status.value}
+            for result in results
         ]
         print(json.dumps(payload, indent=2))
     else:
         _report(bag, args.format)
         prefix = "would write" if args.dry_run else "wrote"
         for result in results:
+            shown = _displayed_path(result.path, root)
             if result.status is WriteStatus.UNCHANGED:
-                print(f"unchanged   {result.path.as_posix()}", file=sys.stderr)
+                print(f"unchanged   {shown}", file=sys.stderr)
             else:
-                print(
-                    f"{prefix:<11} {result.path.as_posix()} ({result.status.value})",
-                    file=sys.stderr,
-                )
+                print(f"{prefix:<11} {shown} ({result.status.value})", file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 

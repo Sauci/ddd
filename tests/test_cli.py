@@ -1406,6 +1406,22 @@ PLUGIN = Plugin(name="raiser", compare=compare)
 '''
 
 
+RAISING_CHECK_PLUGIN = '''
+"""A plugin whose check hook always raises, for testing that findings survive it."""
+
+from __future__ import annotations
+
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    raise RuntimeError("boom")
+
+
+PLUGIN = Plugin(name="raiser", check=check)
+'''
+
+
 class TestFindingsSurviveAFailedStep:
     """A step that fails after the analysis must not take the findings down with it.
 
@@ -1465,6 +1481,7 @@ class TestFindingsSurviveAFailedStep:
         assert code == EXIT_USAGE
         assert "info[missing-id]" in captured.err
         assert "ddd_globals.c.jinja2" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("ddd_globals.c.jinja2")
 
     def test_an_address_map_that_cannot_be_read(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -1486,6 +1503,7 @@ class TestFindingsSurviveAFailedStep:
         assert code == EXIT_USAGE
         assert "info[missing-id]" in captured.err
         assert "not valid json" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("not valid json")
 
     def test_an_output_file_that_cannot_be_written_is_named(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -1614,6 +1632,56 @@ class TestFindingsSurviveAFailedStep:
         assert "info[missing-id]" in captured.err
         assert "failed in its compare hook" in captured.err
         assert captured.err.index("missing-id") < captured.err.index("failed in its compare hook")
+
+    def test_a_check_hook_that_raises_leaves_dump_json_stdout_empty(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd dump`` promises stdout to the dictionary alone, in both formats; a step
+        that fails after the analysis must keep that promise too, not just a clean run."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["raising.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+                "raising.py": RAISING_CHECK_PLUGIN,
+            },
+        )
+        code = main(["dump", str(tree / "project.ddd.json"), "--format", "json"])
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert captured.out == ""
+        boundary = captured.err.index("ddd: plugin")
+        payload = json.loads(captured.err[:boundary])
+        assert payload["summary"]["info"] == 1
+        assert "failed in its check hook" in captured.err[boundary:]
+
+    def test_an_unknown_plugin_check_reports_the_load_time_findings_first(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An override naming a plugin check is held until the project is read; what the
+        read already found - here a relaxed ``file-extension`` warning - must not be lost
+        under the usage error that follows once no loaded plugin registers it."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "plain.json"),
+                "plain.json": component("A", declare("local", "X")),
+            },
+        )
+        project_path = tree / "project.ddd.json"
+        severities = ["-W", "file-extension=warning", "-W", "tag/no-such=error"]
+        for arguments in (
+            ["check", str(project_path), *severities],
+            ["compare", str(project_path), str(project_path), *severities],
+        ):
+            code = main(arguments)
+            captured = capsys.readouterr()
+            assert code == EXIT_USAGE
+            assert "warning[file-extension]" in captured.err
+            assert "unknown check 'tag/no-such'" in captured.err
+            assert captured.err.index("warning[file-extension]") < captured.err.index(
+                "unknown check 'tag/no-such'"
+            )
 
 
 class TestVersion:

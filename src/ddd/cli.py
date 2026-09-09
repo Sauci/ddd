@@ -107,6 +107,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         handler: Any = args.handler
         return int(handler(args))
     except UnknownCheckError as error:
+        # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
+        # from the clause below; being one, `_reported_on_failure` already covers it too.
         print(f"ddd: {error}", file=sys.stderr)
         return EXIT_USAGE
     except (OSError, ValueError) as error:
@@ -849,7 +851,7 @@ def _command_dump(args: argparse.Namespace) -> int:
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
     stderr - where they also stay out of the way of a pipe.
     """
-    resolved, bag = _analyze(args)
+    resolved, bag = _analyze(args, stream=sys.stderr)
     if resolved is not None:
         print(resolved.dictionary.model_dump_json(indent=2))
     _report(bag, args.format, stream=sys.stderr)
@@ -1172,7 +1174,7 @@ class Resolved:
     from_description: bool
 
 
-def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
+def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | None, DiagnosticBag]:
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
@@ -1181,8 +1183,12 @@ def _analyze(args: argparse.Namespace) -> tuple[Resolved | None, DiagnosticBag]:
     workspace = load_workspace(args.project, bag)
     if workspace is None or bag.has_errors:
         return None, bag
-    bag.policy.verify(bag.registered)
-    with _reported_on_failure(bag, args.format):
+    with _reported_on_failure(bag, args.format, stream):
+        # An override naming a plugin check is verified once the project is read - only then
+        # is it known which plugins loaded - so this has to sit inside the block: the
+        # load-time findings gathered by then are reported before the usage error, as
+        # `compare` already does.
+        bag.policy.verify(bag.registered)
         # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
         # findings collected before the hook ran are the project's, and are printed first.
         dictionary = analyze(workspace, bag)
@@ -1270,23 +1276,33 @@ def _report(bag: DiagnosticBag, output_format: str, stream: Any = None) -> None:
 
 
 @contextlib.contextmanager
-def _reported_on_failure(bag: DiagnosticBag, output_format: str) -> Iterator[None]:
+def _reported_on_failure(
+    bag: DiagnosticBag, output_format: str, stream: Any = None
+) -> Iterator[None]:
     """Print the findings gathered so far if what follows turns into a usage error.
 
     Every command analyses first and produces something second - a rename list, an address
     map read, the artefacts - and ``main`` turns a failure of the second half into one line
     and exit 2. Without this the findings of the first half were gone with it, and the run
-    that failed is exactly the run whose findings the reader needs.
+    that failed is exactly the run whose findings the reader needs. ``stream`` is forwarded
+    to ``_report`` unchanged, so a caller whose successful report does not go to stdout - only
+    ``dump``, today - keeps that promise on the failing path too.
 
-    Each caller wraps the whole of what follows the analysis in one such block - not the
-    particular calls someone thought could fail. A usage error can come from any statement in
-    between, including one nobody expected to raise, and the one that surprises us is exactly
-    the one this has to cover.
+    ``check``, ``compare`` and ``generate`` - the commands that produce something after the
+    analysis - each wrap the whole of it in one such block, not the particular calls someone
+    thought could fail: a usage error can come from any statement in between, including one
+    nobody expected to raise, and the one that surprises us is exactly the one this has to
+    cover. ``list``, ``dump``, ``artefacts`` and ``sources`` have nothing fallible after their
+    analysis today and so establish no block; a step added to one of them later belongs inside
+    a block of its own.
     """
     try:
         yield
     except (OSError, ValueError):
-        _report(bag, output_format)
+        # A stdout that fails while the findings are printed must not turn into a second
+        # attempt; the original error is what `main` still has to report.
+        with contextlib.suppress(OSError, ValueError):
+            _report(bag, output_format, stream)
         raise
 
 

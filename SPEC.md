@@ -411,8 +411,8 @@ Kind specific attributes:
   rule, and a value block, which is an array, states at least one size (`schema`). An array,
   or a map over its two axes, holds at most 10 000 000 elements, the product of its
   dimensions, because the dictionary, the A2L and the generated code carry every element; a
-  larger one is `schema` where the shape is written, at `dimensions` or at the `size` of an
-  axis, and the declaration is dropped. In the A2L the same object is described by a
+  larger one is `schema` where the shape is written, at `dimensions`, at the `size` of an axis
+  or, for a map, at the whole declaration, and the declaration is dropped. In the A2L the same object is described by a
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
   ones to the three entries version 1.6.1 expects.

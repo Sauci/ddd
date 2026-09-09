@@ -23,7 +23,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import load_workspace
+from ddd.loading import LoadedType, load_workspace
 
 
 def val(name: str, datatype: str = "uint16", **extra: Any) -> dict[str, Any]:
@@ -400,28 +400,63 @@ class TestNestingTooDeep:
     def test_a_deep_chain_that_closes_into_a_cycle_is_left_to_type_cycle(self, tree: Path) -> None:
         """No depth is reported on a cycle: a structure that contains itself has no depth.
 
-        Proves that now rather than merely characterising it: a recursive ``_nesting_cycle``
-        survived to somewhere around a thousand levels on the machine the cap was measured on
-        (see the task 3 report), so five hundred did not tell a walk that still recursed from
-        one that did not - fifteen hundred does, comfortably past where the old one gave out.
-        Membership is tested against a set rather than searched for in the growing chain now,
-        so the walk itself is linear in the depth rather than cubic; what is still quadratic
-        is ``_check_types`` calling it once per declared type over a chain where every type
-        sits on the same one cycle, so none of them ever settles the way a shared diamond
-        does. Tens of seconds before this change, at fifteen hundred levels; report what it
-        is now with ``--durations=5`` rather than asserting a time here.
+        Characterises the finding alone - ``type-cycle`` and nothing else - at a depth
+        chosen to be cheap rather than to prove anything about the walk: three hundred is
+        comfortably past :data:`_MAX_TYPE_NESTING`, so the cycle is the only thing left to
+        report. That the walk behind this finding is iterative, and copes with a chain far
+        longer than any real project would write, is proved directly and far more cheaply
+        by ``test_nesting_cycle_walks_a_three_thousand_deep_ring_in_one_call`` below, which
+        calls ``_nesting_cycle`` once instead of running a whole analysis over the ring.
         """
-        entries = self.chain(1500)
-        entries[0] = struct("T1_t", nest("up", "T1500_t"))
+        entries = self.chain(300)
+        entries[0] = struct("T1_t", nest("up", "T300_t"))
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(*entries),
-                "a.ddd.json": component("A", declare("local", "X", typename="T1500_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="T300_t")),
             },
         )
         assert checks(bag) == ["type-cycle"]
+
+    def test_nesting_cycle_walks_a_three_thousand_deep_ring_in_one_call(self, tree: Path) -> None:
+        """A direct call, once, proves the walk itself is iterative - the pass over it does not.
+
+        A recursive ``_nesting_cycle`` survived to somewhere around a thousand levels on the
+        machine the cap was measured on (see the task 3 report); three thousand is
+        comfortably past that, so surviving it here is evidence the walk no longer recurses.
+        Called once, directly, rather than through :func:`run_analysis`: ``_check_types``
+        calls it once per declared type, which is quadratic over a ring where nothing ever
+        settles, and that pass is already characterised - cheaply, at a depth of three
+        hundred - by the test above. One call is linear in the ring's length, so proving the
+        walk itself needs no more than that.
+        """
+        # Private: the walk this proves iterative is `_check_types`'s alone to call; nothing
+        # public exposes it.
+        from ddd.analysis import _nesting_cycle
+
+        entries = self.chain(3000)
+        entries[0] = struct("T1_t", nest("up", "T3000_t"))
+        workspace, bag = load(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*entries),
+            },
+        )
+        assert not checks(bag)
+        assert workspace is not None
+        # Built the way `_Analysis.__init__` builds `self._types`, which is what
+        # `_check_types` passes as `declared`.
+        declared: dict[str, LoadedType] = {entry.name: entry for entry in workspace.types}
+        cycle = _nesting_cycle("T1_t", declared, set())
+        # The cycle is the chain from the first repeated name back to it (see the
+        # docstring), so a ring of 3000 distinct types comes back as all 3000 names plus
+        # `T1_t` once more, closing the loop it started.
+        assert len(cycle) == 3001
+        assert cycle[0] == cycle[-1] == "T1_t"
+        assert len(set(cycle)) == 3000
 
     def test_a_cyclic_chain_with_a_variable_in_a_section_does_not_recurse_without_bound(
         self, tree: Path

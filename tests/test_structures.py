@@ -1929,7 +1929,9 @@ class TestScalarTypeChecks:
         assert lone is not None, messages(bag)
         header = {f.path.name: f.content for f in render_files(lone, tree / "lone" / "gen")}
         assert "typedef enum" in header["ddd_types.h"]
-        assert "Mode_e" in header["ddd_types.h"]
+        assert "} Mode_e;" in header["ddd_types.h"]
+        assert "MODE_IDLE = 0" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
 
         # (b) a structure member naming the type, with an instance of the structure.
         instantiated, bag = run_analysis(
@@ -1945,7 +1947,9 @@ class TestScalarTypeChecks:
             f.path.name: f.content for f in render_files(instantiated, tree / "member" / "gen")
         }
         assert "typedef enum" in header["ddd_types.h"]
-        assert "Mode_e" in header["ddd_types.h"]
+        assert "} Mode_e;" in header["ddd_types.h"]
+        assert "MODE_IDLE = 0" in header["ddd_types.h"]
+        assert "MODE_RUNNING = 1" in header["ddd_types.h"]
 
     def test_an_inline_enum_disagreeing_with_a_types_enum_is_a_conflict(self, tree: Path) -> None:
         """Silent before 7415032: a type's enum reached no registry for an inline one to

@@ -400,22 +400,25 @@ class TestNestingTooDeep:
     def test_a_deep_chain_that_closes_into_a_cycle_is_left_to_type_cycle(self, tree: Path) -> None:
         """No depth is reported on a cycle: a structure that contains itself has no depth.
 
-        This characterises the walk rather than proving it survives where a recursive one
-        would not: a recursive ``_nesting_cycle`` survived to somewhere around a thousand
-        levels on the machine the cap was measured on (see the task 3 report), so five
-        hundred passes whether or not that walk still recursed. Going deep enough to prove
-        it - the walk over one big cycle costs a check per type already met, against a chain
-        that only grows, so the whole thing is cubic in the depth - turns a sub-second test
-        into one lasting tens of seconds; measured at fifteen hundred levels, over twenty.
+        Proves that now rather than merely characterising it: a recursive ``_nesting_cycle``
+        survived to somewhere around a thousand levels on the machine the cap was measured on
+        (see the task 3 report), so five hundred did not tell a walk that still recursed from
+        one that did not - fifteen hundred does, comfortably past where the old one gave out.
+        Membership is tested against a set rather than searched for in the growing chain now,
+        so the walk itself is linear in the depth rather than cubic; what is still quadratic
+        is ``_check_types`` calling it once per declared type over a chain where every type
+        sits on the same one cycle, so none of them ever settles the way a shared diamond
+        does. Tens of seconds before this change, at fifteen hundred levels; report what it
+        is now with ``--durations=5`` rather than asserting a time here.
         """
-        entries = self.chain(500)
-        entries[0] = struct("T1_t", nest("up", "T500_t"))
+        entries = self.chain(1500)
+        entries[0] = struct("T1_t", nest("up", "T1500_t"))
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
                 "types.ddd.json": types(*entries),
-                "a.ddd.json": component("A", declare("local", "X", typename="T500_t")),
+                "a.ddd.json": component("A", declare("local", "X", typename="T1500_t")),
             },
         )
         assert checks(bag) == ["type-cycle"]
@@ -481,6 +484,80 @@ class TestNestingTooDeep:
             },
         )
         assert checks(bag) == ["schema", "type-cycle"]
+
+
+class TestDiamondShapedNesting:
+    """A name two members of one structure nest is walked once, not once per member.
+
+    Nesting is not a tree: ``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``, and both nest
+    ``L{i+1}_t`` in turn, so a ladder of these diamonds shares one name between two routes
+    at every rung. A walk with no memory of where it has already been re-explores a shared
+    name from the second route exactly as it did from the first, and everything shared
+    beneath *that* besides - doubling the work at every rung of diamond stacked on the last,
+    so a ladder of them only a couple of dozen rungs deep used to take minutes rather than
+    the fraction of a second it costs once a name already cleared is remembered instead of
+    walked again.
+    """
+
+    @staticmethod
+    def ladder(depth: int) -> list[dict[str, Any]]:
+        """``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``; both nest ``L{i+1}_t`` in turn.
+
+        The last rung's ``A`` and ``B`` hold a value instead of nesting a further ``L``, so
+        the ladder bottoms out on its own. Three types a rung, so depth 24 is the
+        seventy-two types the performance report measures.
+        """
+        entries: list[dict[str, Any]] = []
+        for index in range(depth):
+            entries.append(
+                struct(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t"))
+            )
+            tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else val("value")
+            entries.append(struct(f"A{index}_t", tail))
+            entries.append(struct(f"B{index}_t", tail))
+        return entries
+
+    def test_a_deep_ladder_of_diamonds_resolves_in_a_fraction_of_a_second(self, tree: Path) -> None:
+        """No instance of any of it - ``_check_types`` walks every declared type regardless.
+
+        Depth 24 is the seventy-two types the performance report measures; before a walk
+        remembered a name it had already cleared, this did not return inside two minutes.
+        Nothing about the time is asserted here - a timing assertion is a flaky test waiting
+        to happen - report the duration with ``--durations=5`` instead.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*self.ladder(24)),
+            },
+        )
+        assert checks(bag) == []
+
+    def test_a_cycle_behind_the_diamond_is_still_reported_once(self, tree: Path) -> None:
+        """The last rung also nests ``L0_t``, closing every route down the ladder into a cycle.
+
+        Settling a name a walk has cleared must never stop a *later* start from finding a
+        cycle a route through that name reaches - and none of these seventy-two types is
+        ever settled, since every one of them sits on the single cycle the extra member
+        closes: reaching a name at all means walking it, and a name is only settled once its
+        own walk found no cycle. What keeps this to one finding rather than one per starting
+        type is not new here either: ``_check_types`` keys the finding on the cycle's
+        participants, not on the type whose walk found it, exactly as it did before this
+        change for a cycle two starts both happened to reach.
+        """
+        entries = self.ladder(24)
+        entries[-3] = struct(
+            "L23_t", nest("a", "A23_t"), nest("b", "B23_t"), nest("closes", "L0_t")
+        )
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(*entries),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
 
 
 class TestInfiniteDerivedLimits:

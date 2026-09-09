@@ -433,7 +433,9 @@ def _nested_names(entry: LoadedType) -> list[str]:
     return [nested for _, _, nested in _nested_types(entry)]
 
 
-def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ...]:
+def _nesting_cycle(
+    start: str, declared: dict[str, LoadedType], settled: set[str]
+) -> tuple[str, ...]:
     """The chain of nested structures leading from ``start`` back to a name already on it.
 
     Returns the cycle itself rather than a bare yes, because the chain is the only useful part
@@ -445,18 +447,42 @@ def _nesting_cycle(start: str, declared: dict[str, LoadedType]) -> tuple[str, ..
     explicit stack, because the chain leading *into* a cycle is as long as somebody wrote it:
     a type that nests itself has no depth at all, so :data:`_MAX_TYPE_NESTING` refuses nothing
     here and a recursive walk would run out of stack before it found the cycle to report.
+
+    Nesting is not a tree, though: two members of one structure can nest the same name, which
+    doubles as a route to whatever *it* nests, and so on - so sharing a few levels deep costs
+    as much again as walking it out in full would for each route, and enough levels of it is
+    exponential. ``settled`` is what stops that: the classic three-colour walk's black, a name
+    added to it only once every name it nests, however deep, has been walked without meeting
+    the chain that was open at the time. A settled name can never be *on* a cycle - reaching
+    one from it would mean that walk had met the chain first, rather than running out of names
+    to try - so it is skipped wherever it is met rather than walked again. It is the caller's
+    to keep, and shared rather than made fresh here, because the sharing this guards against is
+    not only within one ``start``'s own walk: :meth:`_Analysis._check_types` keeps one
+    ``settled`` across every ``start`` in its pass, so a name one type's search has already
+    cleared is not walked again from the next. A cycle only reachable from that next type is
+    still found regardless - reaching it at all means walking its members, and a name only
+    joins ``settled`` once its own walk found none, so nothing on an unreported cycle ever is.
+    ``on_chain`` mirrors ``chain`` for the plainer reason that a long chain with nothing shared
+    to remember still walks every name on it once: searching the list for each of those cost
+    the square of the chain's length, where a set costs one.
     """
     chain: list[str] = [start]
+    on_chain: set[str] = {start}
     stack: list[Iterator[str]] = [iter(_nested_names(declared[start]))]
     while stack:
         nested = next(stack[-1], None)
         if nested is None:
             stack.pop()
-            chain.pop()
-        elif nested in chain:
+            name = chain.pop()
+            on_chain.discard(name)
+            settled.add(name)
+        elif nested in on_chain:
             return (*chain[chain.index(nested) :], nested)
+        elif nested in settled:
+            continue
         elif nested in declared:
             chain.append(nested)
+            on_chain.add(nested)
             stack.append(iter(_nested_names(declared[nested])))
     return ()
 
@@ -1084,8 +1110,12 @@ class _Analysis:
         # and keying on the start would report it once per route into it - so the cause is made
         # when the cycle is first met and reused by every later type that reaches it.
         causes: dict[frozenset[str], _Cause] = {}
+        # One `settled` for the whole pass, not one per start: it is what keeps a name shared
+        # between types from being walked again for every type that shares it - see
+        # `_nesting_cycle`.
+        settled: set[str] = set()
         for entry in self._workspace.types:
-            cycle = _nesting_cycle(entry.name, declared)
+            cycle = _nesting_cycle(entry.name, declared, settled)
             if not cycle:
                 continue
             cause = causes.get(frozenset(cycle))

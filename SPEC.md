@@ -408,14 +408,14 @@ Kind specific attributes:
 - `dimensions` is a list of sizes, `[]` or absent for a scalar, each an integer of at least
   1 (`schema`) or the name of a declared constant ([section 3.9](#39-constant-vocabulary)),
   for example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
-  rule, and a value block, which is an array, states at least one size (`schema`). An array
-  holds at most 10 000 000 elements, the product of its dimensions, because the dictionary,
-  the A2L and the generated code carry every element; a larger one is `schema` where the
-  shape is written, at `dimensions` or at the `size` of an axis, and the declaration is
-  dropped. In the A2L the same object is described by a `MATRIX_DIM` listing the fastest
-  running index first, that is in the reverse order, because describing it in C order would
-  state a transposed object; the list is padded with ones to the three entries version 1.6.1
-  expects.
+  rule, and a value block, which is an array, states at least one size (`schema`). An array,
+  or a map over its two axes, holds at most 10 000 000 elements, the product of its
+  dimensions, because the dictionary, the A2L and the generated code carry every element; a
+  larger one is `schema` where the shape is written, at `dimensions` or at the `size` of an
+  axis, and the declaration is dropped. In the A2L the same object is described by a
+  `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
+  because describing it in C order would state a transposed object; the list is padded with
+  ones to the three entries version 1.6.1 expects.
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
   whole object only, not to a nested position. An initial value **must** fit the raw

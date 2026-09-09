@@ -505,7 +505,9 @@ class TestArraysTooLarge:
     a billion element array is a billion initialisers to render, which is what ``ddd generate
     c`` used to sit down and try to do - no output, no finding, no end. The array is refused
     at its dimensions instead, and the declaration is dropped like any other that cannot
-    resolve, so nothing downstream ever sees the shape.
+    resolve, so nothing downstream ever sees the shape. A map states no ``dimensions`` of its
+    own - its shape is the product of the two axes it is interpolated over, only known once
+    both have resolved - so it is weighed then, and refused at its whole declaration instead.
     """
 
     def declaring(self, **definition: object) -> dict[str, object]:
@@ -554,6 +556,71 @@ class TestArraysTooLarge:
         assert checks(bag) == ["schema"]
         assert dictionary is not None
         assert dictionary.objects == ()
+
+    def test_a_map_over_two_axes_whose_product_is_too_large_is_refused(self, tree: Path) -> None:
+        """Neither axis alone is over the cap; a map states no `dimensions` of its own for
+        their product to be refused at, so the whole declaration is the finding's location."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=5000),
+                    declare("local", "Ay", "uint16", kind="axis", size=5000),
+                    declare("local", "M", "uint16", kind="map", x_axis="Ax", y_axis="Ay"),
+                ),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        rendered = messages(bag)
+        assert "a.ddd.json#component.interface[2].definition" in rendered
+        assert (
+            "map 'M' would hold 25000000 elements over its axes; DDD carries at most 10000000"
+            in rendered
+        )
+        # Only the map is dropped: each axis is within the cap on its own, and neither is a
+        # referrer of the map - a map is never a reference target - so both are kept.
+        assert dictionary is not None
+        assert "M" not in dictionary.by_name
+        assert set(dictionary.by_name) == {"Ax", "Ay"}
+
+    def test_a_map_under_the_product_cap_is_kept(self, tree: Path) -> None:
+        """Three thousand by three thousand is nine million elements: under the cap, kept whole."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=3000),
+                    declare("local", "Ay", "uint16", kind="axis", size=3000),
+                    declare("local", "M", "uint16", kind="map", x_axis="Ax", y_axis="Ay"),
+                ),
+            },
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["M"].shape == (3000, 3000)
+
+    def test_a_curve_over_an_axis_at_the_element_cap_is_kept(self, tree: Path) -> None:
+        """A curve's shape is its one axis, already weighed by `_shape_fits` on its own
+        account; the map check has nothing further to say, even at the exact boundary the
+        two share."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=10000000),
+                    declare("local", "C", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["C"].shape == (10000000,)
 
 
 class TestDroppedDeclarations:

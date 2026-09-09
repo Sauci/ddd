@@ -700,6 +700,7 @@ class _Analysis:
         self._report_absences(absent, owners)
         resolved = [(name, refs) for name, refs in ordered if name not in absent]
         shapes = {name: self._resolve_shape(self._effective[name]) for name, _ in resolved}
+        resolved = self._refuse_wide_maps(resolved, shapes, owners)
 
         structured = [(name, refs) for name, refs in resolved if self._is_structured(name)]
         plain = [(name, refs) for name, refs in resolved if not self._is_structured(name)]
@@ -1773,8 +1774,11 @@ class _Analysis:
         definition = ref.definition
         spelled = definition.declared_shape
         if spelled is None:
-            # A curve or a map is shaped by its axes, and each of those is an array of its
-            # own, weighed here when its own declaration is collected.
+            # A curve or a map is shaped by its axes, and each axis is an array of its own,
+            # weighed here when its own declaration is collected. That bounds a curve, whose
+            # shape is one axis, but not a map, whose shape is the product of two - only
+            # known once every axis has resolved, which `_refuse_wide_maps` weighs once `run`
+            # has turned axes into numbers.
             return True
         elements = math.prod(self._numeric_shape(spelled))
         location = ref.location(
@@ -1803,6 +1807,51 @@ class _Analysis:
             )
             return False
         return True
+
+    def _refuse_wide_maps(
+        self,
+        resolved: list[tuple[str, list[DeclarationRef]]],
+        shapes: dict[str, tuple[Shape, WrittenShape]],
+        owners: dict[str, DeclarationRef | None],
+    ) -> list[tuple[str, list[DeclarationRef]]]:
+        """Drop a map whose two axes multiply past `_MAX_ELEMENTS`, keeping everything else.
+
+        `_shape_fits` weighs every other shape while a declaration is still being collected,
+        but a curve and a map write no `declared_shape` of their own and pass through it
+        unweighed. A curve is safe left that way: its one axis already passed `_shape_fits`
+        at the cap on its own account, so the curve's shape can never exceed it either. A map
+        is not - each axis is bounded, but their product is not, and the product is only a
+        number once `_resolve_shape` has turned both axes into one, which `run` does after
+        ownership and `_effective` are settled. So this runs as a second pass over
+        `resolved`, the earliest point a map's shape is known, rather than moving
+        `_shape_fits` itself to after axis resolution and reworking how a drop there reaches
+        referrers.
+
+        Refused at the owning declaration's whole `definition`: a map states no field a
+        finding could sit at the way `dimensions` or an axis's `size` can. The name is
+        dropped from what is returned exactly as one absent for any other reason is, so
+        nothing after this builds a variable, an a2l record or a generated literal for it -
+        and nothing needs re-running, because a map is never a reference target and `schema`
+        is a fixed error, always reported.
+        """
+        oversized: set[str] = set()
+        for name, refs in resolved:
+            definition = self._effective[name]
+            if definition.declared_shape is not None:
+                continue
+            elements = math.prod(shapes[name][0])
+            if elements <= _MAX_ELEMENTS:
+                continue
+            oversized.add(name)
+            owner = owners[name] or refs[0]
+            self._refuse(
+                "schema",
+                f"{definition.kind.value} '{name}' would hold {elements} elements over its "
+                f"axes; DDD carries at most {_MAX_ELEMENTS}",
+                owner.location("definition"),
+                owner,
+            )
+        return [(name, refs) for name, refs in resolved if name not in oversized]
 
     def _dimension_value(self, dimension: int | str) -> int:
         """The number a dimension resolves to; a name looks its constant up.

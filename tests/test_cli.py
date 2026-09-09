@@ -371,6 +371,33 @@ class TestGenerate:
         )
         assert not output.exists()
 
+    def test_refuses_an_array_too_large_to_carry(self, tmp_path: Path) -> None:
+        """A billion elements with a scalar ``init`` used to be a run that never came back.
+
+        ``initializer_of`` broadcasts the scalar over the shape and renders one literal per
+        element, so this project produced no file and no message for as long as anybody
+        cared to wait. The analysis refuses the array now, and `schema` is an error, so the
+        run stops before any backend is asked for anything - and ``--force``, which
+        generates over findings, writes the header without the declaration, because a
+        refused declaration is not in the dictionary at all.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "HugeArray", dimensions=[1000000000], init=0)
+                ),
+            },
+        )
+        root = str(tmp_path / "project.ddd.json")
+        output = tmp_path / "gen"
+        arguments = ["generate", "c", root, "-o", str(output), "-t", str(TEMPLATES)]
+        assert main(arguments) == EXIT_FINDINGS
+        assert not output.exists()
+        assert main([*arguments, "--force"]) == EXIT_FINDINGS
+        assert "HugeArray" not in (output / "ddd_globals.c").read_text(encoding="utf-8")
+
     def test_force_generates_anyway(self, tmp_path: Path) -> None:
         output = tmp_path / "gen"
         assert (

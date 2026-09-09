@@ -408,10 +408,13 @@ Kind specific attributes:
 - `dimensions` is a list of sizes, `[]` or absent for a scalar, each an integer of at least
   1 (`schema`) or the name of a declared constant ([section 3.9](#39-constant-vocabulary)),
   for example `[3, 4]` or `["PRESSURE_CELLS", 4]`; the `size` of an axis follows the same
-  rule, and a value block, which is an array, states at least one size (`schema`). In the
-  A2L the same object is described by a `MATRIX_DIM` listing the fastest running index
-  first, that is in the reverse order, because describing it in C order would state a
-  transposed object; the list is padded with ones to the three entries version 1.6.1
+  rule, and a value block, which is an array, states at least one size (`schema`). An array
+  holds at most 10 000 000 elements, the product of its dimensions, because the dictionary,
+  the A2L and the generated code carry every element; a larger one is `schema` where the
+  shape is written, at `dimensions` or at the `size` of an axis, and the declaration is
+  dropped. In the A2L the same object is described by a `MATRIX_DIM` listing the fastest
+  running index first, that is in the reverse order, because describing it in C order would
+  state a transposed object; the list is padded with ones to the three entries version 1.6.1
   expects.
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
@@ -807,6 +810,16 @@ deep, and one nesting an *n* level structure is *n* + 1, a member naming a scala
 external type adding none. The type the finding sits at is the innermost one that is
 already over the limit, and every type nesting it is unusable for the same reason, so a
 declaration naming any of them is dropped.
+
+An array of structures contributes at most 100 000 leaves, because the dictionary, the A2L
+and the generated code carry every element. A leaf is one value member of one element: a
+member holding a value is one leaf however many dimensions it has, since an array of values
+is described by a single `MATRIX_DIM`, a member naming an external type is none, and a
+member nesting a structure contributes that structure's leaves once per element of the
+member. A structure of more leaves than the limit is `schema` where it is declared, at the
+innermost type that is already over it and with every type nesting it unusable for the same
+reason, exactly as a structure nesting too deep is; a declaration whose elements times the
+leaves of its structure are more is `schema` at its `dimensions`, and is dropped.
 
 A member naming an external type is opaque bytes: it **must not** state `unit`,
 `conversion`, `limits` or an `a2l` block (`schema`), because DDD does not check meaning it

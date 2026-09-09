@@ -51,6 +51,23 @@ def types(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"types": list(entries)}
 
 
+def ladder(depth: int) -> list[dict[str, Any]]:
+    """``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``; both nest ``L{i+1}_t`` in turn.
+
+    The last rung's ``A`` and ``B`` hold a value instead of nesting a further ``L``, so the
+    ladder bottoms out on its own. Three types a rung, and two routes down every rung: the
+    walks over it are what :class:`TestDiamondShapedNesting` is about, and the ``2 ** depth``
+    leaves an instance of ``L0_t`` would contribute are what :class:`TestTooManyLeaves` is.
+    """
+    entries: list[dict[str, Any]] = []
+    for index in range(depth):
+        entries.append(struct(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t")))
+        tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else val("value")
+        entries.append(struct(f"A{index}_t", tail))
+        entries.append(struct(f"B{index}_t", tail))
+    return entries
+
+
 def load(tree: Path, files: dict[str, Any], root: str = "project.ddd.json") -> Any:
     bag = DiagnosticBag()
     write_tree(tree, files)
@@ -534,40 +551,32 @@ class TestDiamondShapedNesting:
     walked again.
     """
 
-    @staticmethod
-    def ladder(depth: int) -> list[dict[str, Any]]:
-        """``L{i}_t`` nests ``A{i}_t`` and ``B{i}_t``; both nest ``L{i+1}_t`` in turn.
-
-        The last rung's ``A`` and ``B`` hold a value instead of nesting a further ``L``, so
-        the ladder bottoms out on its own. Three types a rung, so depth 24 is the
-        seventy-two types the performance report measures.
-        """
-        entries: list[dict[str, Any]] = []
-        for index in range(depth):
-            entries.append(
-                struct(f"L{index}_t", nest("a", f"A{index}_t"), nest("b", f"B{index}_t"))
-            )
-            tail = nest("down", f"L{index + 1}_t") if index + 1 < depth else val("value")
-            entries.append(struct(f"A{index}_t", tail))
-            entries.append(struct(f"B{index}_t", tail))
-        return entries
-
-    def test_a_deep_ladder_of_diamonds_resolves_in_a_fraction_of_a_second(self, tree: Path) -> None:
+    def test_a_deep_ladder_of_diamonds_is_answered_in_a_fraction_of_a_second(
+        self, tree: Path
+    ) -> None:
         """No instance of any of it - ``_check_types`` walks every declared type regardless.
 
         Depth 24 is the seventy-two types the performance report measures; before a walk
         remembered a name it had already cleared, this did not return inside two minutes.
         Nothing about the time is asserted here - a timing assertion is a flaky test waiting
         to happen - report the duration with ``--durations=5`` instead.
+
+        The one finding is the leaf count of :class:`TestTooManyLeaves`: a rung doubles the
+        leaves of the rung below it, so twenty-four of them are 16 777 216 leaves and the
+        ladder is refused whether or not anything declares a variable of it - at ``L7_t``,
+        the innermost rung that is already over the limit. It says nothing about what this
+        test is about: every one of the seventy-two types is still walked, by the depth walk
+        and the cycle walk before the count and by the count itself.
         """
         _, bag = run_analysis(
             tree,
             {
                 "project.ddd.json": project("P", "types.ddd.json"),
-                "types.ddd.json": types(*self.ladder(24)),
+                "types.ddd.json": types(*ladder(24)),
             },
         )
-        assert checks(bag) == []
+        assert checks(bag) == ["schema"]
+        assert "structure 'L7_t' has 131072 leaves" in messages(bag)
 
     def test_a_cycle_behind_the_diamond_is_still_reported_once(self, tree: Path) -> None:
         """The last rung also nests ``L0_t``, closing every route down the ladder into a cycle.
@@ -581,7 +590,7 @@ class TestDiamondShapedNesting:
         participants, not on the type whose walk found it, exactly as it did before this
         change for a cycle two starts both happened to reach.
         """
-        entries = self.ladder(24)
+        entries = ladder(24)
         entries[-3] = struct(
             "L23_t", nest("a", "A23_t"), nest("b", "B23_t"), nest("closes", "L0_t")
         )
@@ -593,6 +602,127 @@ class TestDiamondShapedNesting:
             },
         )
         assert checks(bag) == ["type-cycle"]
+
+
+class TestTooManyLeaves:
+    """An array of structures larger than the outputs could carry is refused before it is spread.
+
+    A structure reaches the dictionary and the a2l one leaf per member per element - there is
+    no single address describing ``cell[0].raw`` and ``cell[1].raw`` - so a hundred thousand
+    by a thousand array of a two member structure is two hundred million leaves to build,
+    sort and write. It used to be built: ``ddd check`` on that project returned no answer at
+    all, and the diamond ladder above reached a million leaves through a types file of sixty
+    lines. Both are now refused, the array where its dimensions are written and the type
+    where it is declared.
+    """
+
+    CELL = struct("Cell_t", val("a"), val("b"))
+
+    def files(self, *entries: dict[str, Any], **definition: Any) -> dict[str, Any]:
+        """The types, and one variable declared over them."""
+        return {
+            "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+            "types.ddd.json": types(*entries),
+            "a.ddd.json": component("A", declare("local", "V", **definition)),
+        }
+
+    def test_an_array_of_structures_larger_than_the_outputs_carry_is_refused(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree, self.files(self.CELL, typename="Cell_t", dimensions=[100000, 1000])
+        )
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "a.ddd.json#component.interface[0].definition.dimensions" in rendered
+        assert "'V' would contribute 200000000 leaves; DDD carries at most 100000" in rendered
+        # Dropped like any other declaration that cannot resolve: `schema` cannot be
+        # silenced, so nothing has to report the absence a second time.
+        assert dictionary is not None
+        assert not dictionary.instances
+        assert not dictionary.leaves
+
+    def test_an_array_of_structures_at_the_limit_is_flattened_whole(self, tree: Path) -> None:
+        """Sixty four by sixty four of a twenty member structure: 81 920 leaves, all kept."""
+        wide = struct("Wide_t", *(val(f"m{index}") for index in range(20)))
+        dictionary, bag = run_analysis(
+            tree, self.files(wide, typename="Wide_t", dimensions=[64, 64])
+        )
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert len(dictionary.leaves) == 81920
+
+    def test_a_structure_with_no_leaves_of_its_own_is_still_capped_by_its_elements(
+        self, tree: Path
+    ) -> None:
+        """Every member opaque: no leaf to count, and one element path each all the same.
+
+        The leaf cap says nothing about an array of these - it contributes none - so the cap
+        that answers is the one every array has.
+        """
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                {"type": "external", "name": "Opaque_t", "header": "opaque.h"},
+                struct("Box_t", nest("held", "Opaque_t")),
+                typename="Box_t",
+                dimensions=[20000000],
+            ),
+        )
+        assert checks(bag) == ["schema"]
+        assert "'V' has 20000000 elements; DDD carries at most 10000000" in messages(bag)
+
+    def test_a_type_of_more_leaves_than_the_outputs_carry_is_refused_where_it_is_declared(
+        self, tree: Path
+    ) -> None:
+        """Twenty rungs of diamond: 1 048 576 leaves out of a types file of sixty lines.
+
+        Counted over the nesting graph rather than by spreading an instance out, which is
+        what makes the answer immediate: every rung is counted once, where walking the
+        routes an instance takes would be the two-to-the-depth the ladder is built to be.
+        Before the count, ``ddd check`` on this project took the best part of a minute and
+        then reported a million perfectly consistent leaves.
+
+        At ``L3_t`` rather than at the ``L0_t`` the variable names, for the reason the
+        nesting cap reports at the type that crosses it: a rung doubles the rung below it,
+        so ``L4_t`` is 65 536 leaves and still within the limit while ``L3_t`` is 131 072 and
+        is the innermost type that is already over it. Every rung above it is over it for
+        that same reason and is dropped without a finding of its own.
+        """
+        dictionary, bag = run_analysis(tree, self.files(*ladder(20), typename="L0_t"))
+        assert checks(bag) == ["schema"]
+        rendered = first(bag).render()
+        assert "types.ddd.json#types[9]" in rendered
+        assert "structure 'L3_t' has 131072 leaves; DDD carries at most 100000" in rendered
+        assert dictionary is not None
+        assert not dictionary.instances
+
+    def test_a_type_nesting_the_offender_is_dropped_without_a_second_finding(
+        self, tree: Path
+    ) -> None:
+        """One mistake, one finding, at the innermost type that is already over the limit.
+
+        A type nesting it has at least as many leaves for exactly the same reason, so it
+        takes the cause of the type it nests rather than making one of its own - which holds
+        for the rungs of the ladder above ``L3_t`` and for the ``Wrap_t`` declared over the
+        whole of it alike. A variable of any of them is dropped.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(*ladder(20), struct("Wrap_t", nest("held", "L0_t"))),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "V", typename="L0_t"),
+                    declare("local", "W", typename="Wrap_t"),
+                ),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert "structure 'L3_t' has 131072 leaves" in messages(bag)
+        assert dictionary is not None
+        assert not dictionary.instances
 
 
 class TestInfiniteDerivedLimits:

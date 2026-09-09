@@ -498,6 +498,64 @@ class TestSeverityPolicy:
         }
 
 
+class TestArraysTooLarge:
+    """An array of more elements than the outputs could carry is refused where it is written.
+
+    The dictionary, the a2l and the generated code carry every element: a scalar ``init`` on
+    a billion element array is a billion initialisers to render, which is what ``ddd generate
+    c`` used to sit down and try to do - no output, no finding, no end. The array is refused
+    at its dimensions instead, and the declaration is dropped like any other that cannot
+    resolve, so nothing downstream ever sees the shape.
+    """
+
+    def declaring(self, **definition: object) -> dict[str, object]:
+        return {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "V", **definition)),
+        }
+
+    def test_an_array_of_a_billion_elements_is_refused_at_its_dimensions(self, tree: Path) -> None:
+        """The ``init`` is the danger and is never broadcast: the refusal comes first."""
+        dictionary, bag = run_analysis(tree, self.declaring(dimensions=[1000000000], init=0))
+        assert checks(bag) == ["schema"]
+        rendered = messages(bag)
+        assert "a.ddd.json#component.interface[0].definition.dimensions" in rendered
+        assert "'V' has 1000000000 elements; DDD carries at most 10000000" in rendered
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_an_array_at_the_limit_is_kept(self, tree: Path) -> None:
+        dictionary, bag = run_analysis(tree, self.declaring(dimensions=[10000000]))
+        assert checks(bag) == []
+        assert dictionary is not None
+        assert dictionary.by_name["V"].shape == (10000000,)
+
+    def test_an_axis_is_refused_where_its_size_is_written(self, tree: Path) -> None:
+        """An axis spells its one dimension as ``size``, so that is where the finding goes."""
+        _, bag = run_analysis(tree, self.declaring(kind="axis", size=20000000, init=1))
+        assert checks(bag) == ["schema"]
+        rendered = messages(bag)
+        assert "a.ddd.json#component.interface[0].definition.size" in rendered
+        assert "'V' has 20000000 elements; DDD carries at most 10000000" in rendered
+
+    def test_a_curve_over_a_refused_axis_goes_with_it(self, tree: Path) -> None:
+        """The drop is recorded like any other, so what refers to the object follows it out."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "V", kind="axis", size=20000000),
+                    declare("local", "C", kind="curve", axis="V"),
+                ),
+            },
+        )
+        assert checks(bag) == ["schema"]
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+
 class TestDroppedDeclarations:
     """A declaration that cannot resolve is still a declaration.
 

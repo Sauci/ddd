@@ -75,6 +75,31 @@ structure descend one call per level, so a chain a few hundred deep ends the run
 generated header anyway.
 """
 
+_MAX_ELEMENTS = 10_000_000
+"""How many elements one array holds.
+
+The dictionary, the a2l and the generated code carry every element, so a shape is not a
+number DDD can hold at arm's length: the c backend broadcasts a scalar ``init`` into one
+literal per element, and every element of an array of structures is spread out into leaves of
+its own. An array of a billion is a run that writes no file and reports no finding for as
+long as anybody cares to wait, so the shape is refused where it is written instead. The limit
+sits well past any array a description means to state, and already past what a build would
+enjoy - ten million literals is a generated file no compiler is happy with - because a shape
+larger than this is a constant that resolved to the wrong number rather than storage anybody
+planned.
+"""
+
+_MAX_LEAVES = 100_000
+"""How many leaves an array of structures contributes.
+
+A leaf is one value member of one element, and it reaches the dictionary as an object of its
+own, the a2l as a record of its own and ``ddd list`` as a row of its own, because no single
+address describes ``cell[0].raw`` and ``cell[1].raw`` at once. Far below
+:data:`_MAX_ELEMENTS`, and for the reason the two differ in the outputs: an array of values
+is one declaration and one ``MATRIX_DIM`` however long it is, where an array of structures
+costs the outputs one entry per member per element.
+"""
+
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
 """Range of a c ``int`` on the 32 bit targets DDD generates for; bounds every enumerator."""
 
@@ -604,6 +629,13 @@ class _Analysis:
         :func:`_nesting_depths`, and every type nesting one of them is added here too, in
         :meth:`_refuse_deep_nesting` - the same walk-safety invariant a poisoned type gives
         the rest of the analysis, stated over "unwalkable" instead of "unusable"."""
+        self._type_leaves: dict[str, int] = {}
+        """How many leaves one variable of each declared type contributes, by name.
+
+        Filled by :meth:`_check_types`, and holding an entry for every type a variable can
+        still be declared as: a type left out of it - one poisoned before the count, or one
+        nesting such a type - is one no declaration resolves as, so :meth:`_shape_fits` never
+        asks about a name that is missing here."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -1105,6 +1137,12 @@ class _Analysis:
         depths, cyclic = _nesting_depths(declared)
         self._refuse_deep_nesting(depths, cyclic)
 
+        # After the depth refusal, because the count walks the nesting graph and so may only
+        # start at a type a walk can reach the bottom of; the depths it reports in are that
+        # walk's answer as well.
+        self._type_leaves = self._leaves_of_types()
+        self._refuse_wide_types(depths)
+
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
         # and keying on the start would report it once per route into it - so the cause is made
@@ -1194,6 +1232,119 @@ class _Analysis:
                 cause = _Cause("schema", reported, location)
             deep[entry.name] = cause
             self._unwalkable_types.add(entry.name)
+            self._poisoned_types.setdefault(entry.name, cause)
+
+    def _leaves_of_types(self) -> dict[str, int]:
+        """How many leaves one variable of each declared type would contribute, by name.
+
+        Counted over the nesting graph and never by spreading an instance out, which is the
+        whole point of counting at all: two members of one structure may nest the same type,
+        so the routes an instance takes double at every level that shares a name, and a
+        ladder of twenty such levels is a million leaves that a walk over the *instance*
+        would visit one at a time. Here every type is counted once, from the bottom up, and
+        the answer for a member is multiplied by the elements of that member rather than
+        walked once per element.
+
+        A type already refused when this runs - poisoned, or one of the ones no walk may
+        descend into - is skipped rather than counted: no variable resolves as it, so it has
+        no leaves to contribute, and the two sets are also where the cyclic types are, which
+        have no bottom to count from. A type nesting one of those has no count either, and
+        that answer is recorded like any other so a shared name is not re-walked for every
+        route into it; it is left out of the result, which is sound because every such type
+        is poisoned by the end of :meth:`_check_types` - by :meth:`_poison_of`, which walks
+        the same graph - so nothing declares a variable of one.
+
+        Walked with an explicit stack, like the depths and for the same reason: the graph is
+        as deep as :data:`_MAX_TYPE_NESTING` allows, and this walk is what a run has instead
+        of the traceback.
+        """
+        # A snapshot, and nothing below poisons anything, so it stays the answer throughout.
+        refused = self._poisoned_types.keys() | self._unwalkable_types
+        walked: dict[str, int | None] = {}
+        stack: list[tuple[str, Iterator[str]]] = []
+        for start in sorted(self._types):
+            if start in walked or start in refused:
+                continue
+            stack.append((start, iter(_nested_names(self._types[start]))))
+            while stack:
+                name, pending = stack[-1]
+                nested = next(pending, None)
+                if nested is None:
+                    stack.pop()
+                    walked[name] = self._leaves_of(self._types[name], walked)
+                elif nested not in walked and nested not in refused:
+                    stack.append((nested, iter(_nested_names(self._types[nested]))))
+        return {name: count for name, count in walked.items() if count is not None}
+
+    def _leaves_of(self, entry: LoadedType, walked: dict[str, int | None]) -> int | None:
+        """The leaves one variable of this type contributes, from the answers for what it nests.
+
+        Counted the way :meth:`_flatten` spreads a variable out, which is what the number has
+        to describe: a member naming an external type is opaque storage and contributes no
+        leaf at all, a member holding a value contributes exactly one however many dimensions
+        it has - an array of values is one record with a ``MATRIX_DIM`` - and only a member
+        nesting a structure multiplies, contributing that structure's leaves once per element.
+        A scalar type is one leaf and an external type is none, which is what a member naming
+        either is worth to the structure above it.
+
+        ``None`` when a name it nests has no answer, which is what a name refused before the
+        count leaves behind; the caller records that as the answer for this type too. Every
+        dimension resolves here, because a member dimensioned by a constant nobody declares
+        poisons its structure before this runs, and a poisoned type is not counted.
+        """
+        structure = entry.structure
+        if structure is None:
+            return 0 if entry.external is not None else 1
+        total = 0
+        for member in structure.members:
+            if self._member_external(member) is not None:
+                continue
+            nested = self._member_structure(member)
+            if nested is None:
+                total += 1
+                continue
+            count = walked.get(nested)
+            if count is None:
+                return None
+            total += count * math.prod(self._numeric_shape(member.dimensions))
+        return total
+
+    def _refuse_wide_types(self, depths: dict[str, int]) -> None:
+        """A structure of more leaves than the outputs carry, and every one over it, is refused.
+
+        Refused at the type rather than at each variable of it, for the reason the nesting cap
+        is: the type is unusable, and saying so once where it is declared beats saying it at
+        every declaration that names it. Reported at the innermost type that is already too
+        wide - a type nesting it has at least as many leaves for exactly the same reason -
+        and all of them are poisoned with that one cause, so a variable of any of them is
+        dropped the way a variable of a recursive structure is.
+
+        A type with no count is one that was refused before the count and is poisoned
+        already; the limit has nothing to add about it.
+        """
+        wide: dict[str, _Cause] = {}
+        # In depth order, so that a type over the limit meets the cause of the nested type
+        # that is over it as well before it would make one of its own.
+        for entry in sorted(self._workspace.types, key=lambda item: depths.get(item.name, 0)):
+            leaves = self._type_leaves.get(entry.name, 0)
+            if leaves <= _MAX_LEAVES:
+                continue
+            cause = next((wide[name] for name in _nested_names(entry) if name in wide), None)
+            if cause is None:
+                location = entry.location()
+                # What the bag made of the finding rather than what this check's severity is
+                # today, exactly as :meth:`_refuse_infinite_type_limits` asks it.
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"structure '{entry.name}' has {leaves} leaves; DDD carries at most "
+                        f"{_MAX_LEAVES}",
+                        location,
+                    )
+                    is not None
+                )
+                cause = _Cause("schema", reported, location)
+            wide[entry.name] = cause
             self._poisoned_types.setdefault(entry.name, cause)
 
     def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:
@@ -1598,6 +1749,61 @@ class _Analysis:
                 resolves = False
         return resolves
 
+    def _shape_fits(self, ref: DeclarationRef) -> bool:
+        """Whether the array this declaration describes is one the outputs could carry.
+
+        Asked once the shape has resolved to numbers and the type it names is known, which is
+        the earliest either limit can be applied, and before anything expands the shape: the
+        c backend broadcasts a scalar ``init`` into one literal per element, and a structured
+        variable is flattened into one leaf per member per element. Both used to be reached
+        with whatever the file said, so an array of a billion was a run with no output and no
+        end rather than a finding.
+
+        Two limits, because the two arrays cost the outputs differently. An array of values
+        is one declaration and one ``MATRIX_DIM`` however long it is, so only
+        :data:`_MAX_ELEMENTS` speaks about it; an array of structures is spread out, so it is
+        weighed in leaves first - the tighter and the more telling of the two answers - and
+        by its elements after, which is what still bounds the element paths of a structure
+        whose members are every one of them opaque and so contributes no leaf at all.
+
+        Reported where the shape is written, which is ``size`` on an axis and ``dimensions``
+        everywhere else, and routed through :meth:`_refuse` so that the declaration is
+        dropped and the objects referring to it follow it out.
+        """
+        definition = ref.definition
+        spelled = definition.declared_shape
+        if spelled is None:
+            # A curve or a map is shaped by its axes, and each of those is an array of its
+            # own, weighed here when its own declaration is collected.
+            return True
+        elements = math.prod(self._numeric_shape(spelled))
+        location = ref.location(
+            "definition.size" if isinstance(definition, Axis) else "definition.dimensions"
+        )
+        named = definition.declared_type
+        if named is not None and self._is_structure(named):
+            # Present for every structure a declaration can still resolve as: one refused
+            # before the count was poisoned, and this declaration was dropped at its type.
+            leaves = elements * self._type_leaves[named]
+            if leaves > _MAX_LEAVES:
+                self._refuse(
+                    "schema",
+                    f"'{ref.name}' would contribute {leaves} leaves; DDD carries at most "
+                    f"{_MAX_LEAVES}",
+                    location,
+                    ref,
+                )
+                return False
+        if elements > _MAX_ELEMENTS:
+            self._refuse(
+                "schema",
+                f"'{ref.name}' has {elements} elements; DDD carries at most {_MAX_ELEMENTS}",
+                location,
+                ref,
+            )
+            return False
+        return True
+
     def _dimension_value(self, dimension: int | str) -> int:
         """The number a dimension resolves to; a name looks its constant up.
 
@@ -1812,6 +2018,13 @@ class _Analysis:
                 # every check that does not need the resolved shape still runs: an init
                 # outside the datatype is wrong whatever the shape turns out to be, and
                 # silencing unknown-constant must not silence that.
+                self._check_declaration(ref)
+                continue
+            if not self._shape_fits(ref):
+                # More elements, or more leaves, than anything downstream could carry. The
+                # declaration is dropped for the same reason as above and the checks that do
+                # not need the shape still run, which is also what keeps the refusal ahead of
+                # every expansion: what an init says is read here, and never broadcast.
                 self._check_declaration(ref)
                 continue
             self._refs[ref.name].append(ref)

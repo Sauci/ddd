@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from conftest import checks, component, declare, messages, project, run_analysis
 from ddd.diagnostics import CHECKS, Severity
 
@@ -494,6 +496,343 @@ class TestSeverityPolicy:
             "missing-producer",
             "local-conflict",
         }
+
+
+class TestDroppedDeclarations:
+    """A declaration that cannot resolve is still a declaration.
+
+    Dropping one used to erase it from every census, so the ownership checks reasoned about
+    a project in which it had never been written: a producer of an unknown type made every
+    consumer a `missing-producer`, pointing at a file another team owns and telling them to
+    add a producer that exists.
+    """
+
+    def test_a_dropped_producer_is_not_a_missing_producer(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+        )
+        assert checks(bag) == ["unknown-type"], messages(bag)
+
+    def test_a_dropped_consumer_is_not_an_unused_output(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", dimensions=[2])),
+                "b.ddd.json": component("B", declare("input", "x", dimensions=["NOPE"])),
+            },
+        )
+        assert checks(bag) == ["unknown-constant"], messages(bag)
+
+    def test_an_object_whose_producer_was_dropped_is_left_out_whole(self, tree: Path) -> None:
+        """The producer's declaration is the one that says what the object is; without it
+        the consumers' copies describe nothing that has storage."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+            severities=["unknown-type=warning"],
+        )
+        assert dictionary is not None, messages(bag)
+        assert dictionary.objects == ()
+        assert [d.name for c in dictionary.components for d in c.declarations] == []
+
+    def test_two_dropped_producers_are_still_two_producers(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("output", "x", typename="Nope_t")),
+            },
+        )
+        assert sorted(checks(bag)) == ["multiple-producers", "unknown-type", "unknown-type"]
+
+    def test_a_second_declaration_of_a_dropped_name_is_a_duplicate(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="Nope_t"), declare("local", "X", "uint16")
+                ),
+            },
+        )
+        assert checks(bag) == ["unknown-type", "duplicate-declaration"]
+
+    @pytest.mark.parametrize("dropped_first", [True, False])
+    def test_a_surviving_producer_owns_the_object_whatever_the_include_order(
+        self, tree: Path, dropped_first: bool
+    ) -> None:
+        """Two producers, one of them dropped: the object is built from the one that
+        resolved, and which file the project lists first does not decide whether the
+        object exists."""
+        includes = ("a.ddd.json", "b.ddd.json") if dropped_first else ("b.ddd.json", "a.ddd.json")
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", *includes),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("output", "x", "uint16")),
+            },
+            severities=["unknown-type=warning", "multiple-producers=warning"],
+        )
+        assert dictionary is not None, messages(bag)
+        assert sorted(checks(bag)) == ["multiple-producers", "unknown-type", "unused-output"]
+        assert [entry.name for entry in dictionary.objects] == ["x"]
+        assert dictionary.objects[0].owner == "B"
+
+    @pytest.mark.parametrize(
+        ("types", "cause"),
+        [
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [{"name": "self", "member": "value", "typename": "Loop_t"}],
+                    }
+                ],
+                "type-cycle",
+            ),
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [{"name": "m", "member": "value", "typename": "Nope_t"}],
+                    }
+                ],
+                "unknown-type",
+            ),
+            (
+                [
+                    {
+                        "type": "struct",
+                        "name": "Loop_t",
+                        "members": [
+                            {
+                                "name": "m",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "identity"},
+                                "dimensions": ["NOPE"],
+                            }
+                        ],
+                    }
+                ],
+                "unknown-constant",
+            ),
+        ],
+    )
+    def test_silencing_what_poisoned_a_type_is_said_at_the_variable(
+        self, tree: Path, types: list, cause: str
+    ) -> None:
+        """The cause sits at the type; a variable of the type is dropped. With the cause
+        silenced nothing said the variable had gone."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {"types": types},
+                "a.ddd.json": component("A", declare("local", "V", typename="Loop_t")),
+            },
+            severities=[f"{cause}=ignore"],
+        )
+        assert dictionary is not None and dictionary.instances == ()
+        assert checks(bag) == ["incomplete-project"], messages(bag)
+        rendered = messages(bag)
+        assert "the declaration of 'V' by component 'A' is not in the data dictionary" in rendered
+        assert f"the {cause}" in rendered
+        assert "a.ddd.json#component.interface[0].definition.typename" in rendered
+
+    def test_a_reported_poisoning_needs_no_second_finding(self, tree: Path) -> None:
+        """The type-cycle already says the variable could not resolve; saying it twice is noise."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Loop_t",
+                            "members": [{"name": "self", "member": "value", "typename": "Loop_t"}],
+                        }
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "V", typename="Loop_t")),
+            },
+        )
+        assert checks(bag) == ["type-cycle"]
+
+    def test_a_structure_nesting_a_poisoned_one_inherits_its_cause(self, tree: Path) -> None:
+        """The cause travels outwards: a sound structure nesting a broken one has the same
+        unresolvable leaves, so a variable of it is dropped and says what nobody reported."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": {
+                    "types": [
+                        {
+                            "type": "struct",
+                            "name": "Inner_t",
+                            "members": [{"name": "m", "member": "value", "typename": "Nope_t"}],
+                        },
+                        {
+                            "type": "struct",
+                            "name": "Outer_t",
+                            "members": [{"name": "i", "member": "value", "typename": "Inner_t"}],
+                        },
+                    ]
+                },
+                "a.ddd.json": component("A", declare("local", "V", typename="Outer_t")),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert dictionary is not None and dictionary.instances == ()
+        assert checks(bag) == ["incomplete-project"]
+        assert "the unknown-type" in messages(bag)
+
+    def test_a_curve_over_a_silently_dropped_axis_is_said_to_be_missing(self, tree: Path) -> None:
+        """The axis got its own incomplete-project; the curve over it vanished without one."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        assert dictionary is not None and dictionary.objects == ()
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        rendered = messages(bag)
+        assert "'Gain' is not in the data dictionary: its axis 'Ax' did not resolve" in rendered
+        assert "a.ddd.json#component.interface[1].definition.axis" in rendered
+
+    def test_a_reported_cause_drops_the_referring_object_silently(self, tree: Path) -> None:
+        """The unknown-constant already says the axis went; the curve needs no second finding."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        assert checks(bag) == ["unknown-constant"]
+
+    def test_a_consumer_of_a_silently_dropped_producer_is_said_to_be_missing(
+        self, tree: Path
+    ) -> None:
+        """The producer says it went; the consumer is a second declaration leaving in silence."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "x", typename="Nope_t")),
+                "b.ddd.json": component("B", declare("input", "x")),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        rendered = messages(bag)
+        assert "the declaration of 'x' by component 'A' is not in the data dictionary" in rendered
+        assert "'x' is declared by component 'B' but is not in the data dictionary" in rendered
+        assert "b.ddd.json#component.interface[0].definition" in rendered
+        # The consumer's own declaration is sound, so the finding names the one that is not.
+        assert (
+            "a.ddd.json#component.interface[0]: the declaration that produces it did not resolve"
+            in rendered
+        )
+
+    def test_an_axis_over_a_silently_dropped_input_measurement_is_said_to_be_missing(
+        self, tree: Path
+    ) -> None:
+        """An axis indexed by a measurement that went would leave a dangling name in the a2l."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "M", "uint16", typename="Nope_t"),
+                    declare("local", "Ax", "uint16", kind="axis", size=4, input="M"),
+                ),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project", "incomplete-project"]
+        assert "'Ax' is not in the data dictionary: its input 'M' did not resolve" in messages(bag)
+
+    @pytest.mark.parametrize("silenced_axis", ["x_axis", "y_axis"])
+    def test_a_map_over_two_absent_axes_is_reported_when_either_cause_was_silenced(
+        self, tree: Path, silenced_axis: str
+    ) -> None:
+        """Which of the two axes went for a silenced reason must not decide whether the map's
+        absence is said, and the finding points at the silenced one."""
+        axes = {
+            "x_axis": declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+            "y_axis": declare("local", "Ay", "uint16", typename="Nope_t"),
+        }
+        silenced = "unknown-constant" if silenced_axis == "x_axis" else "unknown-type"
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    axes["x_axis"],
+                    axes["y_axis"],
+                    declare("local", "M", "uint8", kind="map", x_axis="Ax", y_axis="Ay"),
+                ),
+            },
+            severities=[f"{silenced}=ignore"],
+        )
+        rendered = messages(bag)
+        assert "'M' is not in the data dictionary: its " + silenced_axis in rendered, rendered
+        assert f"definition.{silenced_axis}" in rendered
+
+    def test_an_axis_that_goes_in_a_later_pass_still_counts_against_the_map(
+        self, tree: Path
+    ) -> None:
+        """A map over one axis dropped for a reported reason and one that goes only because
+        its input measurement was dropped for a silenced reason: the map's absence is half
+        silenced, whichever order the names are visited in, so it is reported at the axis
+        that went silently."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax1", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "M", "uint16", typename="Nope_t"),
+                    declare("local", "Zx", "uint16", kind="axis", size=4, input="M"),
+                    declare("local", "Amap", "uint8", kind="map", x_axis="Ax1", y_axis="Zx"),
+                ),
+            },
+            severities=["unknown-type=ignore"],
+        )
+        rendered = messages(bag)
+        assert "'Amap' is not in the data dictionary: its y_axis 'Zx'" in rendered, rendered
+        assert "'Zx' is not in the data dictionary: its input 'M'" in rendered
 
 
 class TestConsumerOrder:

@@ -455,7 +455,9 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``missing-producer``
      - error
      - a variable is read as ``input`` but no component declares it as an output. The generated
-       consumer header would declare a symbol nobody defines.
+       consumer header would declare a symbol nobody defines. A producer whose own declaration
+       could not resolve still counts as a producer, so a consumer of the same variable is not
+       told that nobody produces it.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is
@@ -518,7 +520,8 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - a variable is declared ``output`` by its producer and read by no component. Either a
        consumer forgot to declare it, or the variable exists for measurement only, in which
-       case ``local`` says so more honestly.
+       case ``local`` says so more honestly. A consumer whose own declaration could not resolve
+       still counts as a reader, so the producer is not told that nobody reads it.
    * - ``enum-duplicate-value``
      - warning
      - two enumerators of one enum share the same numeric value. Legal c, and occasionally
@@ -570,7 +573,10 @@ Information
      - a declaration is missing from the dictionary and the finding that says why has been
        silenced - a ``type-kind`` relaxed to ``ignore``, for instance. The declaration is left
        out rather than generated wrong, and this is the trace that leaves, so that a dictionary
-       short of a variable is never a surprise.
+       short of a variable is never a surprise. It fires once for every declaration the
+       dictionary omits this way, not only the one that was dropped: a variable of a poisoned
+       type, the consumers of a dropped producer, and a curve or an axis referring to one that
+       went are each reported in turn.
    * - ``missing-id``
      - info
      - a declaration that produces a variable states no ``id``, so a delivery that renames the

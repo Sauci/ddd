@@ -303,7 +303,9 @@ class TestTheCheck:
             severities=["unknown-constant=ignore"],
         )
         assert checks(bag) == ["incomplete-project"]
-        assert "'X' is not in the data dictionary" in messages(bag)
+        assert "the declaration of 'X' by component 'A' is not in the data dictionary" in messages(
+            bag
+        )
         assert dictionary is not None and dictionary.objects == ()
 
     def test_a_reported_finding_needs_no_second_one(self, tree: Path) -> None:
@@ -328,7 +330,15 @@ class TestTheCheck:
     def test_a_declaration_of_a_poisoned_type_keeps_its_name_checks(self, tree: Path) -> None:
         """The poisoned type makes the declaration unresolvable, but the checks that need
         neither its storage nor its shape still run - here, a consumer claiming the initial
-        value of a variable it only reads."""
+        value of a variable it only reads.
+
+        The dropped declaration counts for ownership too, and nobody produces 'X': saying so
+        is not the noise the missing producer of a *dropped producer* would have been, it is
+        the second thing this file has to fix.
+
+        The silenced ``unknown-constant`` sits on the type, so the variable itself is where
+        the run says the declaration went missing from the dictionary.
+        """
         _, bag = run_analysis(
             tree,
             {
@@ -341,7 +351,7 @@ class TestTheCheck:
             },
             severities=["unknown-constant=ignore"],
         )
-        assert checks(bag) == ["consumer-storage"]
+        assert checks(bag) == ["incomplete-project", "consumer-storage", "missing-producer"]
         assert "the initial value is decided by the component that produces" in messages(bag)
 
 

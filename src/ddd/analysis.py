@@ -178,6 +178,15 @@ class _EnumRegistry:
 
 
 @dataclass(frozen=True, slots=True)
+class _Cause:
+    """Why a type is unusable: the check that says so, whether it was reported, and where."""
+
+    check: str
+    reported: bool
+    location: Location
+
+
+@dataclass(frozen=True, slots=True)
 class DeclarationRef:
     """One declaration, together with the component it belongs to."""
 
@@ -211,6 +220,11 @@ class DeclarationRef:
     @property
     def condition(self) -> str | None:
         return self.declaration.condition
+
+    @property
+    def key(self) -> tuple[str, int]:
+        """What identifies the declaration across the run: its component and its index."""
+        return (self.component_name, self.index)
 
     def location(self, suffix: str = "") -> Location:
         return self.owner.declaration_location(self.index, suffix)
@@ -454,21 +468,38 @@ class _Analysis:
         """Every type the project declares, by name - structures and scalars alike."""
         self._constants = {entry.name: entry for entry in workspace.constants}
         """Every constant the project declares, by name; a shape names one of them."""
-        self._poisoned_types: set[str] = set()
+        self._poisoned_types: dict[str, _Cause] = {}
         """Types no variable can resolve as: they nest each other recursively, or a member
         of theirs, however deeply nested, names a type nobody declares or carries a
         conversion that was refused. The finding sits at the member or at the type; a
         declaration naming such a type is dropped, so nothing downstream reasons about a
-        leaf it cannot have."""
-        self._dropped: set[str] = set()
-        """Names of the declarations that were dropped as unresolvable, whatever the reason.
+        leaf it cannot have. Each carries the cause that poisoned it, so that a variable of
+        the type can say, when the cause was silenced, what nobody reported."""
+        self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
+        """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
-        What :meth:`_unresolved` starts from: a name in here with no surviving declaration
-        resolves to no object at all, and whatever refers to it is dropped along with it
-        rather than reported a second time."""
+        What ownership is decided over. A declaration the analysis could not resolve is still
+        a declaration: a consumer of an object whose producer names an unknown type is not
+        reading something nobody produces, and an output whose only reader was dropped is
+        not unread. Erasing dropped declarations from the census made both findings fire,
+        each pointing at the file the mistake was not in."""
+        self._dropped: dict[tuple[str, int], bool] = {}
+        """The declarations that were dropped as unresolvable, and whether a finding said why.
+
+        ``True`` when the cause was reported at whatever severity, ``False`` when it was
+        silenced; a silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn
+        into ``incomplete-project``, because an absence nothing mentions is the one way this
+        tool is wrong without anybody being told."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
+        self._via: dict[str, tuple[str, str]] = {}
+        """For a name absent because of what it refers to, the reference key and its target.
+
+        The absence is discovered in a fixpoint over references and reported after it, so
+        which reference took the name down has to be carried between the two: it is what
+        lets the finding sit at the ``axis`` or the ``input`` key rather than at the whole
+        declaration, which by itself says nothing about why the object went."""
 
     def run(self) -> DataDictionary:
         workspace = self._workspace
@@ -488,12 +519,16 @@ class _Analysis:
         self._check_constant_collisions(ordered)
         self._check_identity_collisions(ordered)
 
-        # The producer owns the definition, so ownership has to be settled before anything
-        # that reads a definition - in particular before curves and maps look up their axes.
-        owners = {name: self._select_producer(name, refs) for name, refs in ordered}
-        self._effective = {name: (owners[name] or refs[0]).definition for name, refs in ordered}
-        unresolved = self._unresolved()
-        resolved = [(name, refs) for name, refs in ordered if name not in unresolved]
+        # Ownership is decided over every declaration, dropped ones included, because the
+        # producer owns the definition and a dropped producer is still the one that claimed
+        # it. It has to be settled before anything that reads a definition - in particular
+        # before curves and maps look up their axes.
+        owners = {
+            name: self._select_producer(name, refs) for name, refs in sorted(self._census.items())
+        }
+        absent = self._absent(ordered, owners)
+        self._report_absences(absent, owners)
+        resolved = [(name, refs) for name, refs in ordered if name not in absent]
         shapes = {
             name: self._resolve_shape(self._effective[name], owners[name] or refs[0])
             for name, refs in resolved
@@ -862,7 +897,7 @@ class _Analysis:
         """Whether a variable of that type contains an external member, however deeply.
 
         A cycle is not this walk's business - it is reported as ``type-cycle`` - so a name
-        already seen is simply not followed again, exactly as in :meth:`_members_resolve`.
+        already seen is simply not followed again, exactly as in :meth:`_poison_of`.
         """
         if name in seen:
             return False
@@ -898,45 +933,80 @@ class _Analysis:
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
-                    self._bag.add(
-                        "unknown-type",
-                        f"member '{member.name}' names datatype '{nested}', which is neither a "
-                        f"base datatype nor a type any file of this project declares"
-                        f"{self._nearest_type(nested)}",
-                        entry.location(f"members[{index}]"),
+                    location = entry.location(f"members[{index}]")
+                    reported = (
+                        self._bag.add(
+                            "unknown-type",
+                            f"member '{member.name}' names datatype '{nested}', which is neither "
+                            f"a base datatype nor a type any file of this project declares"
+                            f"{self._nearest_type(nested)}",
+                            location,
+                        )
+                        is not None
+                    )
+                    self._poisoned_types.setdefault(
+                        entry.name, _Cause("unknown-type", reported, location)
                     )
 
         # Keyed on the participants of the cycle rather than on the structure the walk started
         # from. Those differ: a sound structure nesting a recursive one reaches the same cycle,
-        # and keying on the start would report it once per route into it.
-        reported: set[frozenset[str]] = set()
+        # and keying on the start would report it once per route into it - so the cause is made
+        # when the cycle is first met and reused by every later type that reaches it.
+        causes: dict[frozenset[str], _Cause] = {}
         for entry in self._workspace.types:
             cycle = _nesting_cycle(entry.name, declared)
-            if cycle:
-                # Every type whose walk reaches the cycle is unusable: it has no size, so a
-                # variable of it cannot be flattened. Poisoned here, refused at resolution.
-                self._poisoned_types.add(entry.name)
-            if not cycle or frozenset(cycle) in reported:
+            if not cycle:
                 continue
-            reported.add(frozenset(cycle))
-            # At the structure the cycle closes on rather than the one the walk started from,
-            # for the same reason.
-            self._bag.add(
-                "type-cycle",
-                f"structured datatypes nest each other: {' -> '.join(cycle)}",
-                declared[cycle[0]].location(),
-            )
+            cause = causes.get(frozenset(cycle))
+            if cause is None:
+                # At the structure the cycle closes on rather than the one the walk started
+                # from, for the same reason.
+                location = declared[cycle[0]].location()
+                cause = _Cause(
+                    "type-cycle",
+                    self._bag.add(
+                        "type-cycle",
+                        f"structured datatypes nest each other: {' -> '.join(cycle)}",
+                        location,
+                    )
+                    is not None,
+                    location,
+                )
+                causes[frozenset(cycle)] = cause
+            # Every type whose walk reaches the cycle is unusable: it has no size, so a
+            # variable of it cannot be flattened. Poisoned here, refused at resolution.
+            self._poisoned_types.setdefault(entry.name, cause)
 
         for entry in self._workspace.types:
             self._refuse_infinite_type_limits(entry)
         # Propagated the way the cycles are: a sound structure nesting a broken one has the
-        # same unresolvable leaves, and a variable of either is dropped at resolution.
-        unresolvable = {
-            entry.name
-            for entry in self._workspace.types
-            if not self._members_resolve(entry.name, set())
-        }
-        self._poisoned_types |= unresolvable
+        # same unresolvable leaves, and a variable of either is dropped at resolution, saying
+        # what poisoned the inner one.
+        for entry in self._workspace.types:
+            cause = self._poison_of(entry.name, set())
+            if cause is not None:
+                self._poisoned_types.setdefault(entry.name, cause)
+
+    def _poison_of(self, name: str, seen: set[str]) -> _Cause | None:
+        """What makes a variable of that type unresolvable, if anything does.
+
+        The type's own cause when it has one; else the first cause found walking its nested
+        structures, however deep. A cycle is not this walk's business - it is reported and
+        recorded as ``type-cycle`` before this runs - so a name already seen is not followed
+        again. A nested name nobody declares was recorded as ``unknown-type`` on the type
+        naming it, so the walk only ever gets past a name this project declares.
+        """
+        if name in seen:
+            return None
+        seen.add(name)
+        cause = self._poisoned_types.get(name)
+        if cause is not None:
+            return cause
+        for _, _, nested in _nested_types(self._types[name]):
+            found = self._poison_of(nested, seen)
+            if found is not None:
+                return found
+        return None
 
     def _refuse_infinite_type_limits(self, entry: LoadedType) -> None:
         """A type whose derived limits are not finite is refused at its ``conversion``.
@@ -951,10 +1021,15 @@ class _Analysis:
             if not _derived_range_is_finite(
                 declared.conversion, datatype.raw_min, datatype.raw_max
             ):
-                self._bag.add(
-                    "schema", _infinite_limits_message(datatype), entry.location("conversion")
+                location = entry.location("conversion")
+                # What the bag made of the finding, rather than what this check's severity is
+                # today: a variable of the type is to say what nobody said, and whether
+                # anybody did is the bag's answer to give.
+                reported = (
+                    self._bag.add("schema", _infinite_limits_message(datatype), location)
+                    is not None
                 )
-                self._poisoned_types.add(entry.name)
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
             return
         if not isinstance(declared, StructType):
             # An external type states no datatype and no conversion: nothing to derive.
@@ -969,28 +1044,12 @@ class _Analysis:
                 else (member.datatype.raw_min, member.datatype.raw_max)
             )
             if not _derived_range_is_finite(member.conversion, raw_min, raw_max):
-                self._bag.add(
-                    "schema",
-                    _infinite_limits_message(member.datatype),
-                    entry.location(f"members[{index}].conversion"),
+                location = entry.location(f"members[{index}].conversion")
+                reported = (
+                    self._bag.add("schema", _infinite_limits_message(member.datatype), location)
+                    is not None
                 )
-                self._poisoned_types.add(entry.name)
-
-    def _members_resolve(self, name: str, seen: set[str]) -> bool:
-        """Whether every leaf a variable of that type would have can be resolved.
-
-        False when a member, however deeply nested, names a type nobody declares or one whose
-        conversion was refused; the finding already sits at that member or type. A cycle is
-        not this walk's business - it is reported and dropped as ``type-cycle`` - so a name
-        already seen is simply not followed again.
-        """
-        if name in seen:
-            return True
-        seen.add(name)
-        entry = self._types.get(name)
-        if entry is None or name in self._poisoned_types:
-            return False
-        return all(self._members_resolve(nested, seen) for _, _, nested in _nested_types(entry))
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
 
     def _check_member_dimensions(self, entry: LoadedType) -> None:
         """Every constant a member's shape names is declared, or the type is unusable.
@@ -1005,14 +1064,20 @@ class _Analysis:
         for position, member in enumerate(structure.members):
             for index, dimension in enumerate(member.dimensions):
                 if isinstance(dimension, str) and dimension not in self._constants:
-                    self._bag.add(
-                        "unknown-constant",
-                        f"member '{member.name}' of structure '{entry.name}' is dimensioned "
-                        f"by '{dimension}', which is not a constant any file of this "
-                        f"project declares{self._nearest_constant(dimension)}",
-                        entry.location(f"members[{position}].dimensions[{index}]"),
+                    location = entry.location(f"members[{position}].dimensions[{index}]")
+                    reported = (
+                        self._bag.add(
+                            "unknown-constant",
+                            f"member '{member.name}' of structure '{entry.name}' is dimensioned "
+                            f"by '{dimension}', which is not a constant any file of this "
+                            f"project declares{self._nearest_constant(dimension)}",
+                            location,
+                        )
+                        is not None
                     )
-                    self._poisoned_types.add(entry.name)
+                    self._poisoned_types.setdefault(
+                        entry.name, _Cause("unknown-constant", reported, location)
+                    )
 
     def _check_opaque_members(self, entry: LoadedType) -> None:
         """A member naming an external type is opaque storage, so its ``a2l`` block is refused.
@@ -1268,7 +1333,7 @@ class _Analysis:
         check: str,
         message: str,
         location: Location,
-        name: str,
+        ref: DeclarationRef,
         notes: Sequence[tuple[str, Location | None]] = (),
     ) -> None:
         """Report why a declaration cannot resolve, and what the silence costs when it is not.
@@ -1282,14 +1347,19 @@ class _Analysis:
 
         So the consequence is reported even when the cause is not - and only then, because a
         finding that already says the declaration could not resolve does not want it twice.
+
+        The drop is recorded against the declaration rather than the name, because a name may
+        be declared by several components and only some of those declarations dropped.
         """
-        if self._bag.add(check, message, location, notes) is not None:
+        reported = self._bag.add(check, message, location, notes) is not None
+        self._dropped[ref.key] = self._dropped.get(ref.key, False) or reported
+        if reported:
             return
         self._bag.add(
             "incomplete-project",
-            f"'{name}' is not in the data dictionary: the {check} that says why is not "
-            f"reported, so nothing reading the dictionary - the listing, the dump, every "
-            f"backend - carries it either",
+            f"the declaration of '{ref.name}' by component '{ref.component_name}' is not in "
+            f"the data dictionary: the {check} that says why is not reported, so nothing "
+            f"reading the dictionary - the listing, the dump, every backend - carries it either",
             location,
         )
 
@@ -1309,7 +1379,7 @@ class _Analysis:
                     f"'{ref.name}' is dimensioned by '{named}', which is not a constant any "
                     f"file of this project declares{self._nearest_constant(named)}",
                     ref.location(f"definition.{key}"),
-                    ref.name,
+                    ref,
                 )
                 resolves = False
         return resolves
@@ -1347,7 +1417,7 @@ class _Analysis:
                 f"'{ref.name}' is declared as '{named}', which is neither a base datatype nor a "
                 f"type any file of this project declares{self._nearest_type(named)}",
                 ref.location("definition.typename"),
-                ref.name,
+                ref,
             )
             return None
         entry = declared.declared
@@ -1361,16 +1431,15 @@ class _Analysis:
                 f"'{ref.name}' is declared as '{named}', but that is an external type, whose "
                 f"layout and meaning DDD does not know; only a structure member may name one",
                 ref.location("definition"),
-                ref.name,
+                ref,
                 notes=[("declared here", declared.location())],
             )
             return None
         if isinstance(entry, StructType):
             if named in self._poisoned_types:
-                # The cycle, the unknown member type or the refused conversion is already
-                # reported at the type; a variable of a structure whose leaves cannot be
-                # resolved cannot be either, and a second finding here would only repeat the
-                # first with a worse location.
+                # A variable of a structure whose leaves cannot be resolved cannot be resolved
+                # either; what poisoned the structure decides whether anything says so.
+                self._drop_for_type(ref, named)
                 return None
             # Kept as it was written. A structured variable has no single datatype, no limits
             # and no initial value, so it takes a road of its own from here on; what it shares
@@ -1378,8 +1447,9 @@ class _Analysis:
             # settled on the way by exactly the same checks.
             return ref if self._structure_fits(ref, named, declared) else None
         if named in self._poisoned_types:
-            # The refused conversion is already reported at the scalar type; a variable of it
-            # has no limits to resolve, and a second finding here would repeat the first.
+            # The refused conversion sits at the scalar type; a variable of it has no limits
+            # to resolve, so it goes the same way a structured one does.
+            self._drop_for_type(ref, named)
             return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
         # four it fixes are filled in. The definition already refused to restate any of them.
@@ -1393,6 +1463,28 @@ class _Analysis:
                     "limits": entry.limits,
                 }
             ),
+        )
+
+    def _drop_for_type(self, ref: DeclarationRef, named: str) -> None:
+        """Drop a declaration of a poisoned type, and say so when nothing else did.
+
+        The cycle, the unknown member type or the refused conversion is reported at the type,
+        and a second finding here would only repeat it with a worse location. Unless the
+        first was silenced: then the variable would simply be gone, from the listing, the
+        dump and every backend, and the one place that can say so is this declaration.
+        """
+        cause = self._poisoned_types[named]
+        self._dropped[ref.key] = cause.reported
+        if cause.reported:
+            return
+        self._bag.add(
+            "incomplete-project",
+            f"the declaration of '{ref.name}' by component '{ref.component_name}' is not in "
+            f"the data dictionary: it names the type '{named}', and the {cause.check} that "
+            f"says why the type is unusable is not reported, so nothing reading the "
+            f"dictionary - the listing, the dump, every backend - carries it either",
+            ref.location("definition.typename"),
+            notes=[("the type is unusable from here", cause.location)],
         )
 
     def _structure_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:
@@ -1424,7 +1516,7 @@ class _Analysis:
             "type-kind",
             f"'{ref.name}' is declared as the structure '{named}', but {problem}",
             ref.location("definition"),
-            ref.name,
+            ref,
             notes=[("declared here", declared.location())],
         )
         return False
@@ -1443,8 +1535,14 @@ class _Analysis:
         assert definition.conversion is not None
         if _derived_range_is_finite(definition.conversion, datatype.raw_min, datatype.raw_max):
             return True
-        self._bag.add(
-            "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
+        # Not routed through _refuse: schema cannot be overridden, so the second finding
+        # _refuse writes when a cause is silenced would describe what cannot happen here.
+        # Whether the drop is explained is still read off the call rather than assumed.
+        self._dropped[ref.key] = (
+            self._bag.add(
+                "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
+            )
+            is not None
         )
         return False
 
@@ -1466,14 +1564,31 @@ class _Analysis:
         seen: dict[str, DeclarationRef] = {}
         for index, declaration in enumerate(component.interface):
             original = DeclarationRef(loaded, index, declaration)
+            previous = seen.get(original.name)
+            if previous is not None:
+                # Decided on the name alone, before resolution: a second copy of a name whose
+                # first copy could not resolve is still a second copy.
+                self._bag.add(
+                    "duplicate-declaration",
+                    f"component '{component.name}' declares '{original.name}' twice "
+                    f"(as {previous.scope.value} and as {original.scope.value})",
+                    original.location(),
+                    notes=[("first declared here", previous.location())],
+                )
+                continue
+            seen[original.name] = original
             ref = self._resolve_type(original)
+            # The resolved form goes into the census when there is one: ownership is decided
+            # over the census, and what the owning declaration says the object is has to be
+            # the definition with the type it names filled in.
+            self._census[original.name].append(original if ref is None else ref)
             if ref is None:
                 # Its datatype names nothing this project declares, or a type that was
                 # refused, and the finding sits there. The declaration is dropped - every
                 # later check would be reasoning about a value with no storage - but what
                 # needs neither storage nor shape still runs: the name it takes, and the
                 # claims a consumer may not make.
-                self._dropped.add(original.name)
+                assert original.key in self._dropped
                 self._check_declared_name(original)
                 continue
             if not self._shape_resolves(ref):
@@ -1483,20 +1598,8 @@ class _Analysis:
                 # every check that does not need the resolved shape still runs: an init
                 # outside the datatype is wrong whatever the shape turns out to be, and
                 # silencing unknown-constant must not silence that.
-                self._dropped.add(ref.name)
                 self._check_declaration(ref)
                 continue
-            previous = seen.get(ref.name)
-            if previous is not None:
-                self._bag.add(
-                    "duplicate-declaration",
-                    f"component '{component.name}' declares '{ref.name}' twice "
-                    f"(as {previous.scope.value} and as {ref.scope.value})",
-                    ref.location(),
-                    notes=[("first declared here", previous.location())],
-                )
-                continue
-            seen[ref.name] = ref
             self._refs[ref.name].append(ref)
             self._check_declaration(ref)
 
@@ -1729,7 +1832,23 @@ class _Analysis:
             )
 
     def _select_producer(self, name: str, refs: list[DeclarationRef]) -> DeclarationRef | None:
-        """Determine the owning declaration and report every ownership violation."""
+        """Determine the owning declaration and report every ownership violation.
+
+        The owner is the first producer that resolved, not simply the first producer. The
+        census carries dropped declarations, and the owner is the one the object is built
+        from: taking the first in load order would let a dropped producer stand in for one
+        beside it that resolved, :meth:`_absent` would read that owner as dropped, and the
+        object would be left out whole. Whether it reaches the dictionary at all would then
+        turn on which file the project lists first, which says nothing about either
+        declaration. Only when every producer was dropped is the owner the first of them,
+        and the name is absent - the true answer, because no declaration is left saying what
+        the object is.
+
+        The findings above are read over the whole census either way, dropped declarations
+        included, and ``multiple-producers`` and ``local-conflict`` still name the first
+        declaration in load order: they are about what the project declares, and which of
+        those declarations the tool can then build from is a separate question.
+        """
         producers = [ref for ref in refs if ref.scope.is_producer]
         locals_ = [ref for ref in refs if ref.scope is Scope.LOCAL]
         consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
@@ -1764,30 +1883,145 @@ class _Analysis:
                     consumer.location(),
                 )
 
-        return producers[0] if producers else None
+        owning = [ref for ref in producers if ref.key not in self._dropped] or producers
+        return owning[0] if owning else None
 
-    def _unresolved(self) -> set[str]:
-        """The names that resolve to no object, dropped declarations and their dependents.
+    def _absent(
+        self,
+        ordered: list[tuple[str, list[DeclarationRef]]],
+        owners: dict[str, DeclarationRef | None],
+    ) -> dict[str, bool]:
+        """The names that resolve to no object, each with whether a finding says why.
 
-        The seed is every name whose declarations were all dropped - unknown type or
-        constant, poisoned structure - and the finding for each of those already sits at the
-        root cause. An object *referring* to such a name joins the set, transitively: a
-        curve over a dropped axis cannot resolve its shape, and an axis whose ``input`` is a
-        dropped measurement would leave a dangling name in the a2l. Both are dropped without
-        a finding of their own - ``unknown-reference`` would claim that nobody declares the
-        target, which is false, and the one finding at the root already covers the chain.
+        Three ways in: every declaration of the name was dropped; the declaration that owns
+        it was, in which case the consumers' copies describe storage nothing defines; or,
+        transitively, it refers to an absent name - a curve over a dropped axis cannot
+        resolve its shape, and an axis whose ``input`` is a dropped measurement would leave a
+        dangling name in the a2l. The finding for the root sits at the root cause, and a
+        referring object is dropped without one of its own - ``unknown-reference`` would
+        claim that nobody declares the target, which is false. What every entry carries is
+        whether that root finding was reported: an absence whose cause was silenced is the
+        one this tool has to say out loud.
+
+        Two phases, because a flag is only sound over the finished set. The set grows pass by
+        pass, and a name met in an early pass can refer to one that goes only in a later one:
+        a map over an axis dropped for a reported reason and an axis that goes because its
+        ``input`` went silently reads as explained if it is judged while that second axis
+        still looks present, and it is never judged again. So the first phase settles which
+        names are absent and decides nothing else, and the second weighs every reference of
+        each name once the set is whole. That second phase iterates as well, because the
+        flags follow the references too - the map's answer needs the axis's, which needs the
+        measurement's - and no order over the names walks every chain forwards.
+
+        Fills ``_effective`` on the way, for exactly the names that have a definition to
+        offer: the owner's, else the first surviving declaration's.
         """
-        dropped = {name for name in self._dropped if name not in self._effective}
+        absent: dict[str, bool] = {}
+        for name, refs in self._census.items():
+            if name not in self._refs:
+                # Not one declaration of it survived - a surviving one is in ``_refs`` - so the
+                # drops are the whole story, and one explained drop explains the name.
+                absent[name] = any(self._dropped[ref.key] for ref in refs)
+        for name, refs in ordered:
+            owner = owners[name]
+            if owner is not None and owner.key in self._dropped:
+                absent[name] = self._dropped[owner.key]
+                continue
+            self._effective[name] = (owner or refs[0]).definition
+        # The seeds above carry their own flag, decided by what was dropped. What follows
+        # settles the names that go transitively: one reference to an absent name is enough,
+        # and the flag each is entered with - explained, until the second phase says
+        # otherwise - is never read here, only the membership is.
+        transitive: list[str] = []
         settled = False
         while not settled:
             settled = True
             for name, definition in self._effective.items():
-                if name in dropped:
+                if name in absent:
                     continue
-                if any(target in dropped for target in definition.references.values()):
-                    dropped.add(name)
+                if any(target in absent for target in definition.references.values()):
+                    absent[name] = True
+                    transitive.append(name)
                     settled = False
-        return dropped
+        transitive.sort()
+        settled = False
+        while not settled:
+            settled = True
+            for name in transitive:
+                # Non-empty: the name is here because a reference of it was absent, and the
+                # set only ever grew afterwards.
+                gone = [
+                    (key, target)
+                    for key, target in self._effective[name].references.items()
+                    if target in absent
+                ]
+                # Kept for the report: which of the names this definition refers to took it
+                # down, so the absence can be said at the key that names it. The silenced one
+                # where there is one, because that is the absence nothing else mentions.
+                self._via[name] = next(
+                    ((key, target) for key, target in gone if not absent[target]), gone[0]
+                )
+                # Every absent target weighed, not the first one met: a map over two absent
+                # axes is explained only if both of them were, or the key order of a
+                # definition would decide whether the map's own absence is ever said.
+                explained = all(absent[target] for _, target in gone)
+                if explained != absent[name]:
+                    absent[name] = explained
+                    settled = False
+        return absent
+
+    def _report_absences(
+        self, absent: dict[str, bool], owners: dict[str, DeclarationRef | None]
+    ) -> None:
+        """One ``incomplete-project`` per declaration the dictionary omits for a silenced cause.
+
+        The root of each absence already said so where it was dropped, if anything said so at
+        all. What nothing said yet is the rest: a curve over an axis that went, the consumers
+        of an object whose producer went. Each surviving declaration of such a name is named,
+        at the reference that pulled the object down where there is one, at the declaration
+        otherwise, so that no declaration leaves the dictionary in silence. A name that went
+        with its producer carries a note at that producing declaration: the finding sits in a
+        file whose author wrote nothing wrong, and the file to look at is the other one.
+
+        Only the declarations that survived: a dropped one is not in ``_refs``, and its own
+        finding was written where it was dropped, so reading the census here would report it
+        a second time.
+        """
+        for name in sorted(absent):
+            if absent[name]:
+                continue
+            refs = self._refs.get(name, [])
+            owner = owners[name]
+            # By identity, not by equality: two declarations of one name can carry the same
+            # fields, and the reference that pulled the object down belongs to the owning
+            # declaration alone.
+            first = next((ref for ref in refs if ref is owner), refs[0] if refs else None)
+            via = self._via.get(name)
+            # Where the object went, when it went with its producer: this declaration is
+            # sound, and the file to look at is the one that owns the object.
+            notes = (
+                [("the declaration that produces it did not resolve", owner.location())]
+                if owner is not None and owner.key in self._dropped
+                else []
+            )
+            for ref in refs:
+                if ref is first and via is not None:
+                    key, target = via
+                    self._bag.add(
+                        "incomplete-project",
+                        f"'{name}' is not in the data dictionary: its {key} '{target}' did "
+                        f"not resolve, and the finding that says why is not reported",
+                        ref.location(f"definition.{key}"),
+                    )
+                else:
+                    self._bag.add(
+                        "incomplete-project",
+                        f"'{name}' is declared by component '{ref.component_name}' but is not "
+                        f"in the data dictionary: it did not resolve, and the finding that "
+                        f"says why is not reported",
+                        ref.location("definition"),
+                        notes=notes,
+                    )
 
     def _resolve_shape(
         self, definition: DataObject, reference: DeclarationRef
@@ -1857,6 +2091,10 @@ class _Analysis:
             return None
         return found
 
+    def _consumers(self, name: str) -> list[DeclarationRef]:
+        """Who reads the object, over the census: a reader that was dropped still reads it."""
+        return [ref for ref in self._census.get(name, []) if ref.scope is Scope.INPUT]
+
     def _check_unused(
         self, name: str, producer: DeclarationRef | None, consumers: list[DeclarationRef]
     ) -> None:
@@ -1887,8 +2125,10 @@ class _Analysis:
             if ref is not reference:
                 self._compare(reference, ref)
 
+        # The surviving declarations, where the census answers the finding below: the
+        # dictionary lists the readers it carries, and a dropped one is not among them.
         consumers = [ref for ref in refs if ref.scope is Scope.INPUT]
-        self._check_unused(name, producer, consumers)
+        self._check_unused(name, producer, self._consumers(name))
 
         named = definition.declared_type
         assert named is not None
@@ -2036,7 +2276,7 @@ class _Analysis:
             if limits_reference is not None and ref is not limits_reference:
                 self._compare_limits(limits_reference, ref)
 
-        self._check_unused(name, producer, [ref for ref in refs if ref.scope is Scope.INPUT])
+        self._check_unused(name, producer, self._consumers(name))
 
         # Asked of the a2l's own closure rather than of this object's export: an object kept
         # out of the file is still in it when an exported curve or axis refers to it, and it

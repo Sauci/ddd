@@ -194,11 +194,19 @@ class TestBreakingChanges:
         assert "references: axis=Ay != axis=Ax" in messages(bag)
 
     def test_gaining_a_reference_is_reported_against_none(self, tree: Path) -> None:
-        old = one_component(tree, "old", declare("local", "Ax", "uint16", kind="axis", size=3))
-        new = one_component(
-            tree, "new", declare("local", "Ax", "uint16", kind="axis", size=3, input="Ax")
+        old = one_component(
+            tree,
+            "old",
+            declare("local", "In", "uint16"),
+            declare("local", "Ax", "uint16", kind="axis", size=3),
         )
-        assert "references: input=Ax != none" in messages(verdict(old, new))
+        new = one_component(
+            tree,
+            "new",
+            declare("local", "In", "uint16"),
+            declare("local", "Ax", "uint16", kind="axis", size=3, input="In"),
+        )
+        assert "references: input=In != none" in messages(verdict(old, new))
 
     def test_a_kind_change_is_breaking(self, tree: Path) -> None:
         old = one_component(tree, "old", declare("local", "X", "uint16"))

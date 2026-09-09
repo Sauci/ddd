@@ -268,7 +268,8 @@ class TestResolution:
         assert "has the shape [3] given by its axes: init has 2 elements" in messages(bag)
 
     def test_a_curve_without_its_axis_skips_the_init_shape(self, tree: Path) -> None:
-        """No shape to check against; the unresolved axis is the finding."""
+        """The curve is dropped over the unresolved axis, so there is nothing left to hold
+        the init against; that one finding is the whole answer."""
         _, bag = run_analysis(
             tree,
             {

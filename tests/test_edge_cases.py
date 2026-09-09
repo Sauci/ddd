@@ -303,7 +303,7 @@ class TestMismatchMessages:
         assert checks(bag) == ["init-invalid"]
         assert "is not a valid bool" in messages(bag)
 
-    def test_a_map_whose_axes_are_unknown_has_no_shape(self, tree: Path) -> None:
+    def test_a_map_whose_axes_are_unknown_is_dropped(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,
             {
@@ -316,13 +316,13 @@ class TestMismatchMessages:
         )
         assert dictionary is not None
         assert checks(bag) == ["unknown-reference", "unknown-reference"]
-        assert dictionary.by_name["M"].shape == ()
+        assert "M" not in dictionary.by_name
 
 
 class TestBackendEdges:
     def test_a_curve_whose_axis_is_missing_is_left_out(self, tree: Path) -> None:
-        """Only reachable with a relaxed severity: a CURVE without its AXIS_DESCR would be an
-        invalid file rather than a smaller one, so the record is not written at all."""
+        """Dropped at analysis: a CURVE without its AXIS_DESCR would be an invalid file
+        rather than a smaller one, so the object never reaches the backend."""
         dictionary, _ = run_analysis(
             tree,
             {

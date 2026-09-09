@@ -1969,6 +1969,11 @@ class _Analysis:
                 refused = self._refuse_reference(definition, key, target, reference)
                 if refused is not None:
                     absent[name] = own[name] = own.get(name, False) or refused
+                else:
+                    # ``reference`` is the owner when there is one, else the first surviving
+                    # declaration - a referrer with no producer of its own is judged by
+                    # whichever component declared it first.
+                    self._check_local_reference(definition, key, target, reference, owners)
 
         # The seeds above carry their own flag, decided by what was dropped or refused. What
         # follows settles the names that go transitively: one reference to an absent name is
@@ -2057,6 +2062,37 @@ class _Analysis:
             self._via.setdefault(definition.name, (key, target))
             self._dangling.setdefault(definition.name, check)
         return reported
+
+    def _check_local_reference(
+        self,
+        definition: DataObject,
+        key: str,
+        target: str,
+        reference: DeclarationRef,
+        owners: dict[str, DeclarationRef | None],
+    ) -> None:
+        """A reference into another component's local object is a use, and is refused as one.
+
+        Section 2.1 promises that a local object is used by nobody else; comparing
+        declarations alone kept that promise only for declarations. A curve of one component
+        bound to an axis another declared local compiles, links and reaches the a2l bound to
+        that private axis, which is exactly the coupling the scope forbids. Reported where the
+        reference is written, with a note at the local declaration, and nothing is dropped:
+        as between two declarations, the finding is the ownership violation, not a missing
+        object.
+        """
+        owner = owners.get(target)
+        if owner is None or owner.scope is not Scope.LOCAL:
+            return
+        if owner.component_name == reference.component_name:
+            return
+        self._bag.add(
+            "local-conflict",
+            f"'{target}' is local to component '{owner.component_name}' but is also used as "
+            f"the {key} of '{definition.name}' by component '{reference.component_name}'",
+            reference.location(f"definition.{key}"),
+            notes=[("declared local here", owner.location())],
+        )
 
     def _report_absences(
         self, absent: dict[str, bool], owners: dict[str, DeclarationRef | None]

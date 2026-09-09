@@ -462,7 +462,10 @@ or an a2l file that does not do what the description says - or that does not com
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is
        a promise that the variable is nobody else's business, and DDD keeps it out of the
-       shared headers accordingly.
+       shared headers accordingly. A reference is a use of it as much as a declaration is, so a
+       curve, map or axis of another component that names it as its ``axis``, ``x_axis``,
+       ``y_axis`` or ``input`` is the same conflict, reported at the reference, and the object
+       is not dropped.
    * - ``definition-mismatch``
      - error
      - two components describe the same variable differently in a property that changes what
@@ -801,8 +804,13 @@ declaration goes.
 **local-conflict.** ``Scratch`` is ``local`` to ``ComponentA``, which is a promise that no
 other component depends on it: DDD keeps it out of the shared headers and out of the interface
 of the project, so ``ComponentA`` may rename or delete it freely. ``ComponentC`` reading it
-breaks that promise. Either the variable is genuinely shared, in which case ``ComponentA``
-declares it as ``output``, or it is not, in which case ``ComponentC`` has to do without.
+breaks that promise. Referring to it breaks the promise just as surely: a curve of
+``ComponentC`` interpolated over an axis ``ComponentA`` declared ``local`` would reach the a2l
+bound to that private axis, so a reference to another component's ``local`` variable - as an
+``axis``, an ``x_axis``, a ``y_axis`` or the ``input`` of an axis - is the same finding,
+reported where the reference is written rather than at a declaration. Either the variable is
+genuinely shared, in which case ``ComponentA`` declares it as ``output``, or it is not, in which
+case ``ComponentC`` has to do without.
 
 **unused-output.** ``UnusedSignal`` is written and read by nobody. Only a warning, because a
 value may legitimately exist for measurement alone, and because the consumer may be a component

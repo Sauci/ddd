@@ -903,8 +903,10 @@ limits <code class="docutils literal notranslate"><span class="pre">-64</span> <
 <h3>References between objects<a class="headerlink" href="#references-between-objects" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> and <code class="docutils literal notranslate"><span class="pre">input</span></code> name other objects, and the object they name may
 be declared by <strong>any</strong> component of the project - which is what makes a shared axis possible
-in the first place. Both halves of such a reference are checked: that the name exists at all,
-and that it points at the right kind of thing.</p>
+in the first place - unless that component declared it <code class="docutils literal notranslate"><span class="pre">local</span></code>, which keeps it to itself.
+Three things are checked about such a reference: that the name exists at all, that it points
+at the right kind of thing, and that it does not reach into another component’s <code class="docutils literal notranslate"><span class="pre">local</span></code>
+object, which is <code class="docutils literal notranslate"><span class="pre">local-conflict</span></code>.</p>
 <p>An object whose reference names nothing, or one of the wrong kind, is left out of the
 dictionary along with what refers to it, whatever severity the finding is given, and
 <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> says so when the finding is silenced - see

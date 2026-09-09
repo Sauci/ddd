@@ -589,7 +589,10 @@ told that nobody produces it.</p></td>
 <td><p>error</p></td>
 <td><p>a variable declared <code class="docutils literal notranslate"><span class="pre">local</span></code> by one component is also declared by another. <code class="docutils literal notranslate"><span class="pre">local</span></code> is
 a promise that the variable is nobody else’s business, and DDD keeps it out of the
-shared headers accordingly.</p></td>
+shared headers accordingly. A reference is a use of it as much as a declaration is, so a
+curve, map or axis of another component that names it as its <code class="docutils literal notranslate"><span class="pre">axis</span></code>, <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>,
+<code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> is the same conflict, reported at the reference, and the object
+is not dropped.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
 <td><p>error</p></td>
@@ -960,8 +963,13 @@ declaration goes.</p>
 <p><strong>local-conflict.</strong> <code class="docutils literal notranslate"><span class="pre">Scratch</span></code> is <code class="docutils literal notranslate"><span class="pre">local</span></code> to <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>, which is a promise that no
 other component depends on it: DDD keeps it out of the shared headers and out of the interface
 of the project, so <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> may rename or delete it freely. <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> reading it
-breaks that promise. Either the variable is genuinely shared, in which case <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code>
-declares it as <code class="docutils literal notranslate"><span class="pre">output</span></code>, or it is not, in which case <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> has to do without.</p>
+breaks that promise. Referring to it breaks the promise just as surely: a curve of
+<code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> interpolated over an axis <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> declared <code class="docutils literal notranslate"><span class="pre">local</span></code> would reach the a2l
+bound to that private axis, so a reference to another component’s <code class="docutils literal notranslate"><span class="pre">local</span></code> variable - as an
+<code class="docutils literal notranslate"><span class="pre">axis</span></code>, an <code class="docutils literal notranslate"><span class="pre">x_axis</span></code>, a <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or the <code class="docutils literal notranslate"><span class="pre">input</span></code> of an axis - is the same finding,
+reported where the reference is written rather than at a declaration. Either the variable is
+genuinely shared, in which case <code class="docutils literal notranslate"><span class="pre">ComponentA</span></code> declares it as <code class="docutils literal notranslate"><span class="pre">output</span></code>, or it is not, in which
+case <code class="docutils literal notranslate"><span class="pre">ComponentC</span></code> has to do without.</p>
 <p><strong>unused-output.</strong> <code class="docutils literal notranslate"><span class="pre">UnusedSignal</span></code> is written and read by nobody. Only a warning, because a
 value may legitimately exist for measurement alone, and because the consumer may be a component
 that is not integrated yet. If it is measurement only, declaring it <code class="docutils literal notranslate"><span class="pre">local</span></code> says so and

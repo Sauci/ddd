@@ -803,8 +803,10 @@ References between objects
 
 ``axis``, ``x_axis``, ``y_axis`` and ``input`` name other objects, and the object they name may
 be declared by **any** component of the project - which is what makes a shared axis possible
-in the first place. Both halves of such a reference are checked: that the name exists at all,
-and that it points at the right kind of thing.
+in the first place - unless that component declared it ``local``, which keeps it to itself.
+Three things are checked about such a reference: that the name exists at all, that it points
+at the right kind of thing, and that it does not reach into another component's ``local``
+object, which is ``local-conflict``.
 
 An object whose reference names nothing, or one of the wrong kind, is left out of the
 dictionary along with what refers to it, whatever severity the finding is given, and

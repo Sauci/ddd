@@ -166,7 +166,8 @@ the second through what it puts into which generated header.
        may read it.
    * - ``local``
      - The component owns the object exclusively. No other component may declare it at all,
-       in any scope; one that tries is ``local-conflict``.
+       in any scope, nor refer to it as an axis or an input; one that tries is
+       ``local-conflict``.
 
 For a measurement, ``output`` means what it sounds like: the software writes the variable. For
 calibration data, which the software never writes, ``output`` means that the component
@@ -175,8 +176,8 @@ in the demo where ``Controller`` owns ``AxisA`` and ``UserInterface`` reads it i
 a second curve over the same break points. For data that only parametrises the component that
 owns it, ``local`` is the normal choice, and it is the one that keeps the interface small.
 
-The three scopes are what ``examples/inconsistent/`` exists to demonstrate; every rule above
-appears in one run:
+The three scopes are what ``examples/inconsistent/`` exists to demonstrate; every declaration
+rule above appears in one run:
 
 .. code-block:: text
 

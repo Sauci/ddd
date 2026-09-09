@@ -287,7 +287,8 @@ may read it.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local</span></code></p></td>
 <td><p>The component owns the object exclusively. No other component may declare it at all,
-in any scope; one that tries is <code class="docutils literal notranslate"><span class="pre">local-conflict</span></code>.</p></td>
+in any scope, nor refer to it as an axis or an input; one that tries is
+<code class="docutils literal notranslate"><span class="pre">local-conflict</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -297,8 +298,8 @@ calibration data, which the software never writes, <code class="docutils literal
 in the demo where <code class="docutils literal notranslate"><span class="pre">Controller</span></code> owns <code class="docutils literal notranslate"><span class="pre">AxisA</span></code> and <code class="docutils literal notranslate"><span class="pre">UserInterface</span></code> reads it in order to put
 a second curve over the same break points. For data that only parametrises the component that
 owns it, <code class="docutils literal notranslate"><span class="pre">local</span></code> is the normal choice, and it is the one that keeps the interface small.</p>
-<p>The three scopes are what <code class="docutils literal notranslate"><span class="pre">examples/inconsistent/</span></code> exists to demonstrate; every rule above
-appears in one run:</p>
+<p>The three scopes are what <code class="docutils literal notranslate"><span class="pre">examples/inconsistent/</span></code> exists to demonstrate; every declaration
+rule above appears in one run:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
 component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
     note: component_a.ddd.json#component.interface[0]: also written here

@@ -398,7 +398,8 @@ with the name of its producer.</p></td>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local</span></code></p></td>
 <td><p>the component owns the object exclusively and no other component may use it. A second
 component declaring the same name is reported as <code class="docutils literal notranslate"><span class="pre">local-conflict</span></code> rather than
-quietly becoming a consumer.</p></td>
+quietly becoming a consumer, and a curve, a map or an axis of another component that
+names it is the same conflict.</p></td>
 </tr>
 </tbody>
 </table>

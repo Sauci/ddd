@@ -22,7 +22,9 @@ not, and the templates a project provides are its own.
   `ddd list` or `ddd dump`, now gets a smaller, consistent result instead; an unforced
   `ddd generate` left at error severity already wrote nothing and still does.  A baseline
   dumped by an older DDD that still carries such an object compares against the same
-  project as a `removed-object`, which is the honest verdict, since the object is gone.
+  project as a removal - `removed-object` where another component read the object,
+  `removed-unused-object` where none did - which is the honest verdict, since the object
+  is gone.
 
 * **A failed step after the analysis no longer discards the findings.**  A plugin hook
   that raised, an address map that could not be read, a `--renames` file or an artefact

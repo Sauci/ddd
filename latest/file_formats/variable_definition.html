@@ -905,6 +905,10 @@ limits <code class="docutils literal notranslate"><span class="pre">-64</span> <
 be declared by <strong>any</strong> component of the project - which is what makes a shared axis possible
 in the first place. Both halves of such a reference are checked: that the name exists at all,
 and that it points at the right kind of thing.</p>
+<p>An object whose reference names nothing, or one of the wrong kind, is left out of the
+dictionary along with what refers to it, whatever severity the finding is given, and
+<code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> says so when the finding is silenced - see
+<a class="reference internal" href="../consistency_checks.html"><span class="doc">consistency checks</span></a>.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check refs.ddd.json
 refs.ddd.json#component.interface[1].definition.axis: error[unknown-reference]: curve 'CurveMissing' refers to 'NoSuchAxis' as its axis, but no component declares 'NoSuchAxis'
 refs.ddd.json#component.interface[2].definition.axis: error[reference-kind]: the axis of curve 'CurveWrong' must be of kind 'axis', but 'NotAnAxis' is of kind 'parameter'

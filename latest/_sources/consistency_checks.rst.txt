@@ -455,7 +455,9 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``missing-producer``
      - error
      - a variable is read as ``input`` but no component declares it as an output. The generated
-       consumer header would declare a symbol nobody defines.
+       consumer header would declare a symbol nobody defines. A producer whose own declaration
+       could not resolve still counts as a producer, so a consumer of the same variable is not
+       told that nobody produces it.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is
@@ -477,11 +479,16 @@ or an a2l file that does not do what the description says - or that does not com
        per name, so only one set of enumerators could survive.
    * - ``unknown-reference``
      - error
-     - a curve, a map or an axis refers by name to an object no component declares.
+     - a curve, a map or an axis refers by name to an object no component declares. The
+       referring object is dropped as unresolvable whatever severity this check is given -
+       a curve without its axis has no shape, and an axis naming an absent measurement
+       would leave a dangling name in the a2l - and ``incomplete-project`` reports the
+       absence when the finding is silenced.
    * - ``reference-kind``
      - error
      - a reference points at an object of the wrong kind, for example the ``axis`` of a curve
-       naming a measurement instead of an axis.
+       naming a measurement instead of an axis. The referring object is dropped as
+       unresolvable too, exactly as ``unknown-reference`` drops one.
    * - ``init-invalid``
      - error
      - an initial value does not fit its datatype - out of range, written as a fraction for an
@@ -518,7 +525,8 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - a variable is declared ``output`` by its producer and read by no component. Either a
        consumer forgot to declare it, or the variable exists for measurement only, in which
-       case ``local`` says so more honestly.
+       case ``local`` says so more honestly. A consumer whose own declaration could not resolve
+       still counts as a reader, so the producer is not told that nobody reads it.
    * - ``enum-duplicate-value``
      - warning
      - two enumerators of one enum share the same numeric value. Legal c, and occasionally
@@ -570,7 +578,11 @@ Information
      - a declaration is missing from the dictionary and the finding that says why has been
        silenced - a ``type-kind`` relaxed to ``ignore``, for instance. The declaration is left
        out rather than generated wrong, and this is the trace that leaves, so that a dictionary
-       short of a variable is never a surprise.
+       short of a variable is never a surprise. It fires once for every declaration the
+       dictionary omits this way, not only the one that was dropped: a variable of a poisoned
+       type, the consumers of a dropped producer, a curve or an axis whose own reference names
+       nothing or names the wrong kind, and a curve or an axis referring to one that went are
+       each reported in turn.
    * - ``missing-id``
      - info
      - a declaration that produces a variable states no ``id``, so a delivery that renames the
@@ -826,10 +838,15 @@ DDD is meant to be a build step, so the verdict is in the exit code and not only
      - At least one finding was reported with the severity ``error``, whatever its default
        severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given.
    * - ``2``
-     - The command was used wrongly: an unknown check identifier or severity in ``-W``, an
-       attempt to change one of the fixed checks, a missing or unrecognized argument, an output
-       directory that cannot be written to. Nothing was checked, which is why this case is
-       deliberately distinguishable from "checked, and found wanting".
+     - The command was used wrongly: an unknown severity, or an unknown check that names
+       no plugin, in ``-W``, an attempt to change one of the fixed checks, a missing or
+       unrecognized argument, an output directory that cannot be written to. The command
+       line itself could not be used - nothing was checked, and nothing but the error is
+       printed; or a plugin, a file or an output could not be used after the analysis
+       ran, or an override naming a plugin check no loaded plugin registers, in which
+       case the findings gathered before the failure are still printed. This case stays
+       distinguishable from "checked, and found wanting" by its exit code alone, not by
+       what it printed.
 
 A ci job therefore needs no output parsing at all to decide whether it passes:
 

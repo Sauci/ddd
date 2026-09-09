@@ -177,11 +177,16 @@ and <code class="docutils literal notranslate"><span class="pre">ddd</span> <spa
 be skipped, which it reports without a diagnostic.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
-<td><p>the invocation itself was wrong: an unknown command or option, a required option left
-out, an unknown check identifier or severity, an attempt to relax a check that cannot
-be relaxed, an output directory that cannot be
-written into. The project was never examined, so the absence of findings means nothing
-here.</p></td>
+<td><p>the command line itself was wrong: a missing or malformed argument, an unknown
+severity, or an unknown check that names no plugin, in <code class="docutils literal notranslate"><span class="pre">-W</span></code>, a fixed check
+overridden, or a missing <code class="docutils literal notranslate"><span class="pre">-t</span></code> where the c sources are part of the run - raised
+before any analysis, so the project was never examined and nothing but the error
+is printed. A usage error raised by a step that follows the analysis instead - a
+plugin hook that raises, an override naming a plugin check no loaded plugin
+registers, a <code class="docutils literal notranslate"><span class="pre">--renames</span></code> file or an artefact that cannot be written, an address
+map that cannot be read, <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> refused beside a description, or a run that
+would write nothing - reports the findings of the run first, in the requested
+format, before the error follows; the exit code is still <code class="docutils literal notranslate"><span class="pre">2</span></code>.</p></td>
 </tr>
 </tbody>
 </table>

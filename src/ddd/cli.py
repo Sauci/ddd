@@ -551,16 +551,16 @@ def _command_check(args: argparse.Namespace) -> int:
     if resolved is not None and args.baseline is not None:
         with _reported_on_failure(bag, args.format):
             baseline = _read_baseline(args.baseline, bag)
-        if baseline is not None:
-            compare(baseline, resolved.dictionary, bag, location=Location(args.project))
-            run_compare_hooks(
-                resolved.plugins,
-                baseline,
-                resolved.dictionary,
-                bag,
-                resolved.locate,
-                Location(args.project),
-            )
+            if baseline is not None:
+                compare(baseline, resolved.dictionary, bag, location=Location(args.project))
+                run_compare_hooks(
+                    resolved.plugins,
+                    baseline,
+                    resolved.dictionary,
+                    bag,
+                    resolved.locate,
+                    Location(args.project),
+                )
     _report(bag, args.format)
     if args.format == "json":
         return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -584,28 +584,28 @@ def _command_compare(args: argparse.Namespace) -> int:
     with _reported_on_failure(bag, args.format):
         baseline = _read_baseline(args.baseline, bag)
         candidate = _read_dictionary(args.candidate, bag)
-    if baseline is None or candidate is None:
-        _report(bag, args.format)
-        return EXIT_FINDINGS
+        if baseline is None or candidate is None:
+            _report(bag, args.format)
+            return EXIT_FINDINGS
 
-    plugins = candidate.plugins
-    if args.plugin:
-        if candidate.from_description:
-            msg = (
-                "--plugin names the plugins of an archived dictionary; a project description "
-                "names its own"
-            )
-            raise ValueError(msg)
-        plugins = _plugins_from_arguments(args.plugin, bag)
-    bag.policy.verify(bag.registered)
+        plugins = candidate.plugins
+        if args.plugin:
+            if candidate.from_description:
+                msg = (
+                    "--plugin names the plugins of an archived dictionary; a project "
+                    "description names its own"
+                )
+                raise ValueError(msg)
+            plugins = _plugins_from_arguments(args.plugin, bag)
+        bag.policy.verify(bag.registered)
 
-    location = Location(args.candidate)
-    paired = compare(baseline, candidate.dictionary, bag, location=location)
-    run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
-    if args.renames is not None:
-        # Written whether or not the comparison found errors: a delivery that cannot be
-        # accepted still needs its renames listed, so that whoever fixes it knows what moved.
-        with _reported_on_failure(bag, args.format):
+        location = Location(args.candidate)
+        paired = compare(baseline, candidate.dictionary, bag, location=location)
+        run_compare_hooks(plugins, baseline, candidate.dictionary, bag, candidate.locate, location)
+        if args.renames is not None:
+            # Written whether or not the comparison found errors: a delivery that cannot be
+            # accepted still needs its renames listed, so that whoever fixes it knows what
+            # moved.
             try:
                 args.renames.write_text(
                     json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
@@ -714,26 +714,26 @@ def _command_generate(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     dictionary = resolved.dictionary
 
-    # Before the findings gate below, so that a command line which would write nothing is
-    # reported as the usage error it is, whatever state the project happens to be in. Asked
-    # after the analysis rather than at parse time, because only the resolved project knows
-    # whether a plugin provides an artefact.
-    produces_plugin_artefact = getattr(args, "render_plugins", False) and any(
-        plugin.backend is not None for plugin in resolved.plugins
-    )
-    if not (
-        args.render_c
-        or args.render_a2l
-        or produces_plugin_artefact
-        or getattr(args, "plugin_artefact", None) is not None
-    ):
-        msg = (
-            "this run would write nothing: what --without left of it is the plugins' "
-            "artefacts, and this project provides none"
-        )
-        raise ValueError(msg)
-
     with _reported_on_failure(bag, args.format):
+        # Before the findings gate below, so that a command line which would write nothing is
+        # reported as the usage error it is, whatever state the project happens to be in. Asked
+        # after the analysis rather than at parse time, because only the resolved project knows
+        # whether a plugin provides an artefact.
+        produces_plugin_artefact = getattr(args, "render_plugins", False) and any(
+            plugin.backend is not None for plugin in resolved.plugins
+        )
+        if not (
+            args.render_c
+            or args.render_a2l
+            or produces_plugin_artefact
+            or getattr(args, "plugin_artefact", None) is not None
+        ):
+            msg = (
+                "this run would write nothing: what --without left of it is the plugins' "
+                "artefacts, and this project provides none"
+            )
+            raise ValueError(msg)
+
         # Guarded on the artefact, not just on the option: a run that does not write the a2l
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
@@ -1277,6 +1277,11 @@ def _reported_on_failure(bag: DiagnosticBag, output_format: str) -> Iterator[Non
     map read, the artefacts - and ``main`` turns a failure of the second half into one line
     and exit 2. Without this the findings of the first half were gone with it, and the run
     that failed is exactly the run whose findings the reader needs.
+
+    Each caller wraps the whole of what follows the analysis in one such block - not the
+    particular calls someone thought could fail. A usage error can come from any statement in
+    between, including one nobody expected to raise, and the one that surprises us is exactly
+    the one this has to cover.
     """
     try:
         yield

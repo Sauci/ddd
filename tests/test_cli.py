@@ -1390,6 +1390,22 @@ class TestOutputDirectory:
         assert (tmp_path / "blocked").as_posix() in captured
 
 
+RAISING_COMPARE_PLUGIN = '''
+"""A plugin whose compare hook always raises, for testing that findings survive it."""
+
+from __future__ import annotations
+
+from ddd.plugins import CompareContext, Plugin
+
+
+def compare(context: CompareContext) -> None:
+    raise RuntimeError("boom")
+
+
+PLUGIN = Plugin(name="raiser", compare=compare)
+'''
+
+
 class TestFindingsSurviveAFailedStep:
     """A step that fails after the analysis must not take the findings down with it.
 
@@ -1508,6 +1524,96 @@ class TestFindingsSurviveAFailedStep:
         payload = json.loads(captured.out)
         assert [entry["check"] for entry in payload["diagnostics"]] == ["missing-id"]
         assert "cannot write the --renames file" in captured.err
+
+    def test_a_run_that_would_write_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "generate",
+                "all",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--without",
+                "c",
+                "--without",
+                "a2l",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "would write nothing" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("would write nothing")
+
+    def test_the_same_in_json(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "generate",
+                "all",
+                str(tree / "project.ddd.json"),
+                "-o",
+                str(tree / "out"),
+                "--without",
+                "c",
+                "--without",
+                "a2l",
+                "--format",
+                "json",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        payload = json.loads(captured.out)
+        assert [entry["check"] for entry in payload["diagnostics"]] == ["missing-id"]
+        assert "would write nothing" in captured.err
+
+    def test_a_plugin_option_refused_beside_a_description(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.files())
+        code = main(
+            [
+                "compare",
+                str(tree / "project.ddd.json"),
+                str(tree / "project.ddd.json"),
+                "--plugin",
+                "nowhere.py",
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "--plugin names the plugins" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("--plugin names the plugins")
+
+    def test_a_compare_hook_that_raises_under_check_baseline(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["raising.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+                "raising.py": RAISING_COMPARE_PLUGIN,
+            },
+        )
+        code = main(
+            [
+                "check",
+                str(tree / "project.ddd.json"),
+                "--baseline",
+                str(tree / "project.ddd.json"),
+            ]
+        )
+        captured = capsys.readouterr()
+        assert code == EXIT_USAGE
+        assert "info[missing-id]" in captured.err
+        assert "failed in its compare hook" in captured.err
+        assert captured.err.index("missing-id") < captured.err.index("failed in its compare hook")
 
 
 class TestVersion:

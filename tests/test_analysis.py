@@ -990,6 +990,75 @@ class TestDanglingReferences:
         )
         assert "a.ddd.json#component.interface[1].definition.x_axis" in rendered
 
+    def test_silencing_reference_kind_names_that_check(self, tree: Path) -> None:
+        """The same silencing as above, but the silenced check is ``reference-kind`` rather
+        than ``unknown-reference``: the axis names something, just not an axis."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Blk", "uint16", kind="value_block", dimensions=[4]),
+                    declare("local", "Gain", "uint16", kind="curve", axis="Blk"),
+                ),
+            },
+            severities=["reference-kind=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        rendered = messages(bag)
+        assert "does not resolve, and the reference-kind that says why is not reported" in rendered
+        assert "a.ddd.json#component.interface[1].definition.axis" in rendered
+
+
+class TestReferenceKeyRegistry:
+    """``_refuse_reference`` trusts every reference key it meets to be in ``_EXPECTED_KIND``,
+    resolved or not - see the ``elif`` that indexes it unconditionally. A model with a
+    reference key that map does not carry would raise ``KeyError`` there the first time a
+    project actually used it, rather than in a test.
+    """
+
+    def test_every_reference_key_a_model_can_carry_is_known_to_the_analysis(self) -> None:
+        from typing import get_args
+
+        # Private: nothing public names the kinds a reference has to resolve to, and this
+        # is the one place that has to stay in step with every model's own reference keys.
+        from ddd.analysis import _EXPECTED_KIND
+        from ddd.models import AnyDataObject
+
+        base = {
+            "name": "Target",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+            "volatile": False,
+        }
+        # Every field named by some variant's ``references``, plus ``dimensions`` so a
+        # measurement or a value block - neither of which refers to anything - still
+        # validates. Filled in for whichever variant declares it, required or not: an
+        # axis's ``input`` is optional, and only a non-empty one is a reference at all.
+        placeholder = {
+            "dimensions": [1],
+            "size": 4,
+            "input": "Target",
+            "axis": "Target",
+            "x_axis": "Target",
+            "y_axis": "Target",
+        }
+        keys: set[str] = set()
+        for variant in get_args(get_args(AnyDataObject)[0]):
+            values = {
+                **base,
+                **{
+                    field: value
+                    for field, value in placeholder.items()
+                    if field in variant.model_fields
+                },
+            }
+            values["kind"] = get_args(variant.model_fields["kind"].annotation)[0]
+            keys.update(variant.model_validate(values).references)
+        assert keys == {"axis", "x_axis", "y_axis", "input"}
+        assert keys <= _EXPECTED_KIND.keys()
+
 
 class TestConsumerOrder:
     def test_the_consumers_of_a_plain_object_are_sorted_whatever_the_include_order(

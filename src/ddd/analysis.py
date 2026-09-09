@@ -1953,10 +1953,12 @@ class _Analysis:
 
         # A reference nobody resolves drops the referrer, for the reason a dropped referent
         # does: a curve without its axis has no shape, and an axis naming an absent
-        # measurement would leave a dangling name in the a2l. Decided here, over the whole
-        # census, so that the drop propagates like any other - and every reference of a name
-        # is weighed rather than only the first bad one, because two unknown axes are two
-        # mistakes to fix. What the name keeps is whether any of its refusals was reported.
+        # measurement would leave a dangling name in the a2l. Decided here, over every name
+        # with an effective definition - a name without one was already dropped, and
+        # declared but dropped gets no second finding here - so that the drop propagates
+        # like any other, and every reference of a name is weighed rather than only the
+        # first bad one, because two unknown axes are two mistakes to fix. What the name
+        # keeps is whether any of its refusals was reported.
         own: dict[str, bool] = {}
         for name, refs in ordered:
             definition = self._effective.get(name)
@@ -2008,7 +2010,10 @@ class _Analysis:
                     self._via[name] = silenced
                 # Every absent target weighed, not the first one met: a map over two absent
                 # axes is explained only if both of them were, or the key order of a
-                # definition would decide whether the map's own absence is ever said.
+                # definition would decide whether the map's own absence is ever said. A
+                # name's own refusals fold with any, because a reported refusal names the
+                # object itself, so it is never silently absent, while a half-explained
+                # absence through other objects is not explained.
                 explained = own.get(name, True) and all(absent[target] for _, target in gone)
                 if explained != absent[name]:
                     absent[name] = explained

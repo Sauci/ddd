@@ -1175,3 +1175,60 @@ class TestLocalReferences:
         rendered = messages(bag)
         assert "b.ddd.json#component.interface[0]" in rendered
         assert "b.ddd.json#component.interface[1].definition.axis" in rendered
+
+    def test_which_declaration_is_selected_as_producer_does_not_decide_the_finding(
+        self, tree: Path
+    ) -> None:
+        """A's local declaration of 'Ax' and B's conflicting output declaration are themselves
+        a declaration-form local-conflict, and _select_producer picks whichever of the two the
+        project lists first as 'Ax's owner. C's reference has to be caught either way: the
+        local declaration it is checked against comes from the census, not from that choice,
+        so which file the project lists first must not decide whether the reference is
+        reported.
+        """
+        files = {
+            "a.ddd.json": component("A", declare("local", "Ax", "uint16", kind="axis", size=4)),
+            "b.ddd.json": component("B", declare("output", "Ax", "uint16", kind="axis", size=4)),
+            "c.ddd.json": component(
+                "C", declare("local", "Gain", "uint16", kind="curve", axis="Ax")
+            ),
+        }
+        for suffix, includes in (
+            ("a_first", ("a.ddd.json", "b.ddd.json", "c.ddd.json")),
+            ("b_first", ("b.ddd.json", "a.ddd.json", "c.ddd.json")),
+        ):
+            _, bag = run_analysis(
+                tree / suffix, {"project.ddd.json": project("P", *includes), **files}
+            )
+            rendered = messages(bag)
+            assert "c.ddd.json#component.interface[0].definition.axis" in rendered, rendered
+            assert checks(bag).count("local-conflict") == 2
+
+    def test_a_map_key_naming_a_local_axis_conflicts_the_other_key_may_not(
+        self, tree: Path
+    ) -> None:
+        """Each reference key of a map is judged on its own: 'Ax' is local to A and 'Ay' is
+        A's output, so B's map binds one key legitimately and the other into a private object.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size=4),
+                    declare("output", "Ay", "uint16", kind="axis", size=4),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare("local", "M", kind="map", x_axis="Ax", y_axis="Ay", datatype="uint16"),
+                ),
+            },
+        )
+        # 'unused-output' is the honest second finding: 'Ay' is read only through the map's
+        # y_axis key, and that is not a consumer declaration - the check nobody reads the
+        # object itself, only refers to it.
+        assert checks(bag) == ["local-conflict", "unused-output"]
+        rendered = messages(bag)
+        assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
+        assert "definition.y_axis" not in rendered

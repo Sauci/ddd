@@ -1973,7 +1973,7 @@ class _Analysis:
                     # ``reference`` is the owner when there is one, else the first surviving
                     # declaration - a referrer with no producer of its own is judged by
                     # whichever component declared it first.
-                    self._check_local_reference(definition, key, target, reference, owners)
+                    self._check_local_reference(definition, key, target, reference)
 
         # The seeds above carry their own flag, decided by what was dropped or refused. What
         # follows settles the names that go transitively: one reference to an absent name is
@@ -2069,7 +2069,6 @@ class _Analysis:
         key: str,
         target: str,
         reference: DeclarationRef,
-        owners: dict[str, DeclarationRef | None],
     ) -> None:
         """A reference into another component's local object is a use, and is refused as one.
 
@@ -2079,19 +2078,21 @@ class _Analysis:
         that private axis, which is exactly the coupling the scope forbids. Reported where the
         reference is written, with a note at the local declaration, and nothing is dropped:
         as between two declarations, the finding is the ownership violation, not a missing
-        object.
+        object. The local declaration is read from the census, in load order, the way the
+        declaration-form finding reads it, so that which file the project lists first cannot
+        decide whether the reference is reported.
         """
-        owner = owners.get(target)
-        if owner is None or owner.scope is not Scope.LOCAL:
+        locals_ = [ref for ref in self._census.get(target, []) if ref.scope is Scope.LOCAL]
+        if not locals_:
             return
-        if owner.component_name == reference.component_name:
+        if locals_[0].component_name == reference.component_name:
             return
         self._bag.add(
             "local-conflict",
-            f"'{target}' is local to component '{owner.component_name}' but is also used as "
-            f"the {key} of '{definition.name}' by component '{reference.component_name}'",
+            f"'{target}' is local to component '{locals_[0].component_name}' but is also used "
+            f"as the {key} of '{definition.name}' by component '{reference.component_name}'",
             reference.location(f"definition.{key}"),
-            notes=[("declared local here", owner.location())],
+            notes=[("declared local here", locals_[0].location())],
         )
 
     def _report_absences(

@@ -176,8 +176,8 @@ in the demo where ``Controller`` owns ``AxisA`` and ``UserInterface`` reads it i
 a second curve over the same break points. For data that only parametrises the component that
 owns it, ``local`` is the normal choice, and it is the one that keeps the interface small.
 
-The three scopes are what ``examples/inconsistent/`` exists to demonstrate; every rule above
-appears in one run:
+The three scopes are what ``examples/inconsistent/`` exists to demonstrate; every declaration
+rule above appears in one run:
 
 .. code-block:: text
 

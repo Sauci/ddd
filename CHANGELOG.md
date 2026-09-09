@@ -19,6 +19,9 @@ not, and the templates a project provides are its own.
   with a note at the local declaration.  The object is not dropped: the mistake is the
   ownership violation, not a missing object, and a component that declares the object as well
   as referring to it gets one finding for each, where it wrote each of them.
+  **Migration:** a project whose build turns red on the new finding either declares the object
+  `output` in its owning component, so that the reference is a legitimate shared use, or moves
+  the referring object into that component.
 
 * **A dangling reference drops the referring object.**  With `unknown-reference` or
   `reference-kind` relaxed, a curve whose axis nobody declares was kept anyway: the c

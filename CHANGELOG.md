@@ -15,7 +15,9 @@ not, and the templates a project provides are its own.
   its producer an `unused-output`, each finding pointing at the file the mistake was not in.
   Ownership is now decided over every declaration, dropped ones included; an object whose
   producing declaration was dropped is left out of the dictionary whole, with every
-  declaration of it; a second declaration of a dropped name is a `duplicate-declaration`.
+  declaration of it; where one producer resolved and another was dropped, the object is
+  built from the one that resolved, whichever file the project lists first; a second
+  declaration of a dropped name is a `duplicate-declaration`.
   `incomplete-project`, which fires when the finding explaining a drop is silenced, now
   reaches every declaration the dictionary omits on that account: a variable of a poisoned
   type, the consumers of a dropped producer, a curve over a dropped axis - it used to name

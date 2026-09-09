@@ -471,5 +471,5 @@ leans on the project only for its sections, its rasters and one shared size:
    6 errors
 
    $ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
-   pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: 'PressureTrend' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
+   pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: the declaration of 'PressureTrend' by component 'Pump' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
    1 info

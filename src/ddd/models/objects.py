@@ -6,7 +6,14 @@ from collections.abc import Container, Iterable
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from ddd.models.common import (
     SECTION_NAME_PATTERN,
@@ -17,14 +24,16 @@ from ddd.models.common import (
     ObjectId,
     Real,
     TypeName,
+    _within_64_bits,
     format_number,
     hash_excluding_mappings,
 )
 from ddd.models.conversion import Conversion, EnumConversion, conversion_range
 
-type InitValue = (
-    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...]
-)
+type InitValue = Annotated[
+    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
+    BeforeValidator(_within_64_bits),
+]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object.
 
 The integer arm is bounded to what 64 bits can hold, the same bound every other integer a

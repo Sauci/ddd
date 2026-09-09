@@ -403,6 +403,44 @@ class TestSixtyFourBitBound:
         assert checks(bag) == ["schema"]
         assert "definition.limits.max" in messages(bag), messages(bag)
 
+    def test_a_limit_one_past_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """``2**64``, not ``HUGE``: the narrowest value the silent-widening band starts at.
+
+        Between ``2**64 - 1`` (the bound) and roughly ``1.8e308`` (the largest a float64 can
+        hold), a value failed only the int arm's own ``le`` and was still small enough to
+        survive the union's ``Real`` arm - so it was quietly accepted as a ``float`` instead
+        of refused. ``HUGE`` is far past that band and does not exercise it.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", limits={"min": 0, "max": 2**64})
+                ),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.limits.max" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_a_limit_one_below_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """The bottom edge, mirrored: one less than ``-(2**63)`` is refused the same way."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", limits={"min": -(2**63) - 1, "max": 0})
+                ),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.limits.min" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
     def test_a_huge_limit_on_a_structure_member_is_a_schema_finding(self, tree: Path) -> None:
         dictionary, bag = run_analysis(
             tree,
@@ -548,7 +586,28 @@ class TestSixtyFourBitBound:
         assert checks(bag) == ["schema"]
         assert "definition.init" in messages(bag), messages(bag)
         assert "valid boolean" not in messages(bag), messages(bag)
-        assert "less than or equal" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
+
+    def test_an_init_one_past_64_bits_is_a_schema_finding(self, tree: Path) -> None:
+        """The same silent-widening band as the limit above, for ``init``.
+
+        ``init`` is a raw value, not a physical one, so the consequence of missing this band
+        is worse than for ``limits``: before this check ran ahead of the union, ``2**64``
+        here would have been quietly reinterpreted as a ``float`` and reached
+        ``_check_init``'s "is written as a fractional number" branch - misleading, since the
+        author wrote a plain integer.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", init=2**64)),
+            },
+        )
+        assert dictionary is None
+        assert checks(bag) == ["schema"]
+        assert "definition.init" in messages(bag), messages(bag)
+        assert "does not fit 64 bits" in messages(bag), messages(bag)
 
     def test_a_huge_section_alignment_is_a_schema_finding(self, tree: Path) -> None:
         """A power of two, so the pre-existing "not a power of two" check cannot catch it.
@@ -627,6 +686,39 @@ class TestSixtyFourBitBound:
                     "A",
                     declare("local", "X", "sint64", limits={"min": -(2**63), "max": 2**63 - 1}),
                 ),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_a_float_init_written_with_an_exponent_is_still_accepted(self, tree: Path) -> None:
+        """Not every large ``init`` is a whole number in disguise.
+
+        ``1.8e19`` is a ``float`` from the moment the json parser reads it - it has no
+        integer form to begin with - so the new check, which only ever looks at Python
+        ``int``, has nothing to say about it: it is a ``Real`` on its own terms.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "float64", init=1.8e19)),
+            },
+        )
+        assert dictionary is not None
+        assert checks(bag) == []
+
+    def test_a_bool_init_on_a_boolean_definition_is_still_accepted(self, tree: Path) -> None:
+        """``bool`` is a python subclass of ``int``, so the new check has to exclude it by hand.
+
+        Without that exclusion, ``isinstance(value, int)`` alone would be true for ``True``
+        and ``False`` too, and every boolean ``init`` would be refused as out of range.
+        """
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", "boolean", init=True)),
             },
         )
         assert dictionary is not None

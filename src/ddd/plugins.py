@@ -192,12 +192,18 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered before it runs, as importlib's own recipe does: a module body that needs
+    # itself in sys.modules already - a dataclass under `from __future__ import annotations`
+    # resolving its own forward references, for one - would otherwise find nothing there.
+    sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
     except Exception as error:
+        # Not left cached half-run: a second load must retry it and report again, rather than
+        # hand out a module whose body never finished.
+        sys.modules.pop(name, None)
         msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
-    sys.modules[name] = module
     return module
 
 

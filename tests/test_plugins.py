@@ -170,6 +170,17 @@ class TestThePluginObject:
             Plugin(name="tag", checks=(info, info))
 
 
+SELF_AWARE_PLUGIN = """
+import sys
+
+from ddd.plugins import Plugin
+
+assert sys.modules[__name__] is not None
+
+PLUGIN = Plugin(name="selfaware")
+"""
+
+
 class TestLoading:
     def test_a_path_is_relative_to_the_base(self, tmp_path: Path) -> None:
         write_plugin(tmp_path / "tools")
@@ -207,6 +218,25 @@ class TestLoading:
         write_plugin(tmp_path, "broken.py", "raise RuntimeError('boom')\n")
         with pytest.raises(PluginInvalidError, match="failed to import: boom"):
             load_plugin("broken.py", tmp_path)
+
+    def test_a_broken_plugin_is_not_cached_so_a_second_load_reports_again(
+        self, tmp_path: Path
+    ) -> None:
+        """Registering the module before running it must not leave a half-run module cached
+        on failure: it is popped in the ``except``, or a second load would find it sitting in
+        ``sys.modules`` and skip re-reporting the very failure that never got fixed."""
+        write_plugin(tmp_path, "broken.py", "raise RuntimeError('boom')\n")
+        with pytest.raises(PluginInvalidError, match="failed to import: boom"):
+            load_plugin("broken.py", tmp_path)
+        with pytest.raises(PluginInvalidError, match="failed to import: boom"):
+            load_plugin("broken.py", tmp_path)
+
+    def test_a_plugin_body_sees_its_own_module_already_registered(self, tmp_path: Path) -> None:
+        """The importlib recipe registers a module before running it, precisely so its own
+        body can find itself in ``sys.modules`` - which is what a dataclass under ``from
+        __future__ import annotations`` needs, to resolve its own forward references."""
+        write_plugin(tmp_path, "selfaware.py", SELF_AWARE_PLUGIN)
+        assert load_plugin("selfaware.py", tmp_path).name == "selfaware"
 
     def test_a_module_whose_own_import_is_missing_is_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -445,6 +475,22 @@ class TestThePolicy:
 
 BARE_PLUGIN = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="bare")\n'
 
+DATACLASS_PLUGIN = """
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ddd.plugins import Plugin
+
+
+@dataclass
+class Cfg:
+    n: int = 1
+
+
+PLUGIN = Plugin(name="dc")
+"""
+
 
 def tagged(base: Path, *declarations: dict, settings: dict | None = None, **project_keys):
     """A project naming the tag plugin, with one component; returns the loaded workspace."""
@@ -497,6 +543,23 @@ class TestLoadingAProject:
         assert checks(bag) == ["plugin-invalid"]
         assert "boom" in messages(bag)
         assert not CHECKS["plugin-invalid"].overridable
+
+    def test_a_plugin_needing_its_own_module_registered_loads(self, tree: Path) -> None:
+        """A dataclass under ``from __future__ import annotations`` resolves ``Cfg``'s forward
+        references through ``sys.modules[Cfg.__module__]`` while its class body still runs, so
+        the plugin's own module has to be registered there before ``exec_module``, not after."""
+        write_plugin(tree, "dc.py", DATACLASS_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["dc.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        assert checks(bag) == []
 
     def test_two_plugins_claiming_one_name_is_refused_on_the_second(self, tree: Path) -> None:
         write_plugin(tree, "one.py")

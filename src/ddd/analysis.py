@@ -636,6 +636,13 @@ class _Analysis:
         still be declared as: a type left out of it - one poisoned before the count, or one
         nesting such a type - is one no declaration resolves as, so :meth:`_shape_fits` never
         asks about a name that is missing here."""
+        self._external_reach: dict[str, bool] = {}
+        """Whether a variable of a type contains an external member, for each name walked so far.
+
+        Filled by :meth:`_reaches_external` as the placement checks ask it, and never
+        invalidated: the answer is a property of the declared nesting, which nothing changes
+        after the types are read. What keeps the alignment estimate linear - see that method
+        for why one walk answers for every type under the one it starts at."""
         self._census: dict[str, list[DeclarationRef]] = defaultdict(list)
         """Every declaration that is not a duplicate, in load order, whether or not it resolved.
 
@@ -1098,23 +1105,42 @@ class _Analysis:
     def _reaches_external(self, name: str, seen: set[str]) -> bool:
         """Whether a variable of that type contains an external member, however deeply.
 
+        Memoised in :attr:`_external_reach`, because the answer closes upwards: a type reaches
+        an external member exactly when one of the types its members name does, so the one
+        walk that answers for a type has answered for every type under it as well. That is
+        what makes the estimate linear. :meth:`_type_alignment` asks this at every type it
+        visits and the placement checks start it again for every declaration that states a
+        section, so answered afresh each time it was a walk of the whole graph per type per
+        declaration - seconds of it on a project of a few hundred deeply nested structures.
+
+        A name already on ``seen`` is one this walk reached by a second route: a diamond,
+        which the ``any`` below has already got past, so the answer for it was no. It is not
+        followed again, exactly as in :meth:`_poison_of`, and a cycle is not this walk's
+        business either way - it is reported as ``type-cycle``.
+
         Unguarded by :attr:`_unwalkable_types`, and safe without it: the walk is entered from
         :meth:`_type_alignment` and nowhere else, straight after that guard, so it always
         starts at a walkable name, and the recursion below never leaves that set - a walkable
         name has no unwalkable name under it, because :meth:`_refuse_deep_nesting` and the
         cyclic union it makes mark every type that nests an unwalkable one as unwalkable too.
-        A cycle is not this walk's business either way - it is reported as ``type-cycle`` - so
-        a name already seen is simply not followed again, exactly as in :meth:`_poison_of`.
         """
         if name in seen:
             return False
+        cached = self._external_reach.get(name)
+        if cached is not None:
+            return cached
         seen.add(name)
         entry = self._types.get(name)
         if entry is None:
             return False
         if entry.external is not None:
-            return True
-        return any(self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry))
+            answer = True
+        else:
+            answer = any(
+                self._reaches_external(nested, seen) for _, _, nested in _nested_types(entry)
+            )
+        self._external_reach[name] = answer
+        return answer
 
     def _check_types(self) -> None:
         """Every nested structure is declared, nests no more than DDD reads, and not itself.

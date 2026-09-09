@@ -723,10 +723,11 @@ def _displayed_path(path: Path, output_dir: Path) -> str:
     ``OSError``, not a path ``render`` has already vetted - falls back the same way.
     """
     if not output_dir.is_absolute():
-        typed = output_dir.as_posix()
         with contextlib.suppress(ValueError):
-            relative = path.relative_to(output_dir.resolve()).as_posix()
-            return relative if typed == "." else f"{typed}/{relative}"
+            # Joined as paths rather than as text: a join collapses the "." that a bare
+            # ``-o .``, or a failure reported on the output directory itself, would
+            # otherwise leave in the spelling.
+            return (output_dir / path.relative_to(output_dir.resolve())).as_posix()
     return path.as_posix()
 
 

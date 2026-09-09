@@ -21,7 +21,7 @@ from conftest import (
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FORMAT
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _displayed_path, main
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
@@ -2138,3 +2138,21 @@ def test_assigning_ids_skips_a_definition_without_a_name(tree, capsys):
     assert main(["id", "--assign", str(path)]) == EXIT_OK
     assert "wrote 0 ids" in capsys.readouterr().err
     assert path.read_bytes() == before
+
+
+class TestDisplayedPath:
+    """A written path is reported the way the reader typed its output directory.
+
+    A failure on the output directory itself hands the reporter that directory, not a file
+    under it, and a text join would print ``out/.``; a path join collapses the dot, for
+    ``-o .`` as much as for a directory reported on its own.
+    """
+
+    def test_the_output_directory_itself_is_spelled_as_typed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert _displayed_path((tmp_path / "out").resolve(), Path("out")) == "out"
+        assert _displayed_path((tmp_path / "out" / "x.h").resolve(), Path("./out")) == "out/x.h"
+        assert _displayed_path(tmp_path.resolve(), Path()) == "."
+        assert _displayed_path((tmp_path / "x.h").resolve(), Path()) == "x.h"

@@ -232,6 +232,7 @@
         "size": {
           "anyOf": [
             {
+              "maximum": 18446744073709551615,
               "minimum": 1,
               "type": "integer"
             },
@@ -383,7 +384,8 @@
           "type": "string"
         },
         "value": {
-          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.",
+          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher.",
+          "maximum": 18446744073709551615,
           "minimum": 1,
           "title": "Value",
           "type": "integer"
@@ -752,7 +754,9 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; every enumerator of one enum needs a value of its own.",
+          "description": "The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "maximum": 18446744073709551615,
+          "minimum": -9223372036854775808,
           "title": "Value",
           "type": "integer"
         },
@@ -826,10 +830,12 @@
     "InitValue": {
       "anyOf": [
         {
-          "type": "boolean"
+          "maximum": 18446744073709551615,
+          "minimum": -9223372036854775808,
+          "type": "integer"
         },
         {
-          "type": "integer"
+          "type": "boolean"
         },
         {
           "type": "number"
@@ -849,6 +855,8 @@
         "min": {
           "anyOf": [
             {
+              "maximum": 18446744073709551615,
+              "minimum": -9223372036854775808,
               "type": "integer"
             },
             {
@@ -861,6 +869,8 @@
         "max": {
           "anyOf": [
             {
+              "maximum": 18446744073709551615,
+              "minimum": -9223372036854775808,
               "type": "integer"
             },
             {
@@ -1291,6 +1301,7 @@
           "items": {
             "anyOf": [
               {
+                "maximum": 18446744073709551615,
                 "minimum": 1,
                 "type": "integer"
               },
@@ -1370,6 +1381,7 @@
           "items": {
             "anyOf": [
               {
+                "maximum": 18446744073709551615,
                 "minimum": 1,
                 "type": "integer"
               },
@@ -1981,6 +1993,7 @@
           "items": {
             "anyOf": [
               {
+                "maximum": 18446744073709551615,
                 "minimum": 1,
                 "type": "integer"
               },

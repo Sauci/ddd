@@ -111,12 +111,17 @@ on the way there, because every comparison against it is false: a NaN limit pass
 range check in silence instead of failing one.
 """
 
-Number = int | Real
-"""A finite number that keeps whole values exact.
+Number = Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | Real
+"""A finite number that keeps whole values exact, bounded to what 64 bits can hold.
 
 ``int`` first on purpose: the range of a 64 bit datatype does not survive a float, and a
 limit rendered as 18446744073709551616 - one more than uint64 can hold - is a value the
-calibration tool would refuse.
+calibration tool would refuse. Bounded for the same reason every other integer a
+description states is bounded: no datatype DDD offers holds more than 64 bits, so a whole
+number past that is refused here, at the key that states it, rather than overflowing an
+arithmetic comparison several passes downstream. Not ``strict``: whether a quoted or
+fractional spelling should also be refused here is a separate question, left for its own
+change.
 """
 
 

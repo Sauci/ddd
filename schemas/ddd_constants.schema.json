@@ -14,7 +14,8 @@
           "type": "string"
         },
         "value": {
-          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.",
+          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher.",
+          "maximum": 18446744073709551615,
           "minimum": 1,
           "title": "Value",
           "type": "integer"

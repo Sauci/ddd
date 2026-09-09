@@ -143,7 +143,9 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; every enumerator of one enum needs a value of its own.",
+          "description": "The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "maximum": 18446744073709551615,
+          "minimum": -9223372036854775808,
           "title": "Value",
           "type": "integer"
         },
@@ -221,6 +223,8 @@
         "min": {
           "anyOf": [
             {
+              "maximum": 18446744073709551615,
+              "minimum": -9223372036854775808,
               "type": "integer"
             },
             {
@@ -233,6 +237,8 @@
         "max": {
           "anyOf": [
             {
+              "maximum": 18446744073709551615,
+              "minimum": -9223372036854775808,
               "type": "integer"
             },
             {
@@ -332,6 +338,7 @@
           "items": {
             "anyOf": [
               {
+                "maximum": 18446744073709551615,
                 "minimum": 1,
                 "type": "integer"
               },

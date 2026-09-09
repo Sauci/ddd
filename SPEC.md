@@ -382,6 +382,10 @@ stated limits could repair a conversion that overflows by itself. `boolean` does
 datatype: an enum conversion refuses it, and so does a `bits` member
 ([section 3.7](#37-type-description)).
 
+Every integer a description states - an initial value, a limit, an enumerator's value, a
+constant, a dimension - fits 64 bits; a larger one is `schema` where it is written, because
+no datatype could hold it.
+
 Every name is a C identifier of at most 128 characters, the bound the A2L format places on
 an identifier, which is tighter than the bound of C. The cap holds wherever a name is
 written: objects, components, projects, enums, enumerators, types, members and

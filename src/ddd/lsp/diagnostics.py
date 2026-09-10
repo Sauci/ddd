@@ -122,9 +122,11 @@ def collect(
         # A candidate that could not be read is named at its own file. Without this the reader
         # gets the thin standalone analysis below and nothing at all saying why: the project
         # that would have given the full answer is broken, and only the plugin can fix it.
+        # Once per file: a candidate an earlier document of this call already named, or
+        # that was itself a document, is not named again by a later search that meets it.
         unreadable = DiagnosticBag()
-        for path, message in containing.failed.items():
-            unreadable.add("plugin-invalid", message, Location(path))
+        for path in sorted(set(containing.failed) - covered):
+            unreadable.add("plugin-invalid", containing.failed[path], Location(path))
         covered |= _group(unreadable, document, grouped)
         if containing.projects:
             for project in containing.projects:

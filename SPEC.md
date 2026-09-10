@@ -322,13 +322,13 @@ Attributes common to every kind:
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`; exactly one of `datatype` and `typename` is stated ([section 3.3.2](#332-naming-a-declared-type)) |
 | `typename` | one of the two | the name of a declared type ([section 3.7](#37-type-description)), stated instead of `datatype` |
 | `description` | `""` | offered to the C templates as the text of a comment, long identifier in the A2L |
-| `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)) |
+| `unit` | `""` | physical unit; checked against the vocabulary where the project declares one ([section 3.8](#38-unit-vocabulary)); a `string` has none (`schema`) |
 | `conversion` | required beside `datatype` | raw to physical conversion ([section 3.4](#34-conversions)); a `typename` fixes it instead |
-| `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator |
-| `init` | `null` | raw initial value; `null` means implicit zero initialisation |
+| `limits` | derived | physical `min`/`max` with `min` not above `max`, stated together or not at all; when omitted they follow from the datatype and the conversion, and for an `enum` from the smallest and largest enumerator; a `string` states none, its range being the byte range of its datatype (`schema`) |
+| `init` | `null` | raw initial value, or the text of a `string` ([section 3.4](#34-conversions)); `null` means implicit zero initialisation |
 | `section` | none | linker section the object is placed in ([section 3.5](#35-memory-placement)); a storage key the producer states |
 | `raster` | none | measurement raster the object is updated in ([section 3.10](#310-measurement-rasters)), else the producing component's default; a key the producer states, on a measurement only |
-| `a2l` | `{}`; exported unless every stated `export` is `false` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier` |
+| `a2l` | `{}`; exported unless every stated `export` is `false` ([section 3.3.1.3](#3313-presentation)) | `export`, `format`, `display_identifier`; a `string` takes no `format` (`schema`) |
 | `extensions` | `{}` | one block per plugin the project names, keyed by plugin name ([section 3.11](#311-plugins)); a key the producer states |
 | `volatile` | required | whether the generated C carries `volatile`, that is whether the value can change without the reading code having written it |
 
@@ -425,6 +425,12 @@ Kind specific attributes:
   range of its datatype and **must** match the shape of the object (`init-invalid`). It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
+  A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
+  string instead: printable ASCII, code points 0x20 to 0x7E, and shorter than its dimension
+  so that the terminating zero fits, else `init-invalid`; the integer and the list spelling
+  stay open to it, the list being how a fixed width field without a terminator is written.
+  A string spelling on any other object is `init-invalid`, and a quoted number is text, not
+  the number.
   The value is raw rather than physical because the generated C carries it verbatim, and
   because under a linear conversion most physical values are the exact image of no raw
   count, so a physical spelling would either round silently or refuse ordinary values.
@@ -591,6 +597,7 @@ member ([section 5.2](#52-a2l)).
 { "kind": "identity" }
 { "kind": "linear", "factor": 0.25, "offset": -40.0 }
 { "kind": "enum", "name": "StateA_t", "enumerators": { "STATE_OFF": 0, "STATE_FAULT": 15 } }
+{ "kind": "string" }
 ```
 
 - `identity` has no further keys.
@@ -609,10 +616,22 @@ member ([section 5.2](#52-a2l)).
   with its base datatype, never with the enum type; the `typedef enum` exists for the
   enumerators ([section 5.1](#51-c-code)). An enum converts nothing: physical and raw value
   coincide, so the limits of an enum object, stated or derived, are enumerator values.
+- `string` reads a one dimensional array of `uint8` or `sint8` as text, one byte per
+  character. `kind` **must** be stated, because the conversion has no key of its own to be
+  inferred from. It sits on a `measurement` or a `value_block` stating exactly one
+  dimension, on a `value` member of one dimension ([section 3.7](#37-type-description)), or
+  on a scalar type, whose declarations and members then state the dimension. Any other
+  datatype, kind or shape, a `bits` member, and a `unit`, `limits` or `a2l.format` beside
+  it are `schema`, where they are written; for a declaration or member naming a string
+  type, at that declaration or member, with a note at the type. Physical and raw value
+  coincide, so the limits of a string are the raw range of its datatype. An array of
+  strings is written as an array of structures with a string member, because the A2L
+  format has no string arrays.
 - `kind` **may** be omitted, unlike the `kind` of a definition, because the other keys
   decide it: a conversion stating `enumerators` or `name` is an `enum`, one stating
-  `factor` or `offset` is `linear`, and one stating nothing, `{}`, is the identity. Unknown
-  keys are rejected here as everywhere, so a conversion cannot match two kinds at once.
+  `factor` or `offset` is `linear`, and one stating nothing, `{}`, is the identity; a
+  `string` is never inferred. Unknown keys are rejected here as everywhere, so a
+  conversion cannot match two kinds at once.
 
 A conversion **must** be stated wherever the datatype is stated as `datatype`, that is on a
 definition, on a member and on a scalar type, although the identity would be derivable
@@ -781,8 +800,10 @@ each stating its `type`: `scalar`, `struct` or `external`.
 
 - A **scalar** type fixes `datatype`, `unit`, `conversion` and `limits`, which is exactly
   what makes two declarations interchangeable, and nothing else; `name`, `datatype` and
-  `conversion` are required, `unit`, `limits` and `description` are optional. `kind`,
-  `dimensions`, `init`, `volatile` and `a2l` stay on the declaration, because two
+  `conversion` are required, `unit`, `limits` and `description` are optional. It **may**
+  carry a `string` conversion, under the rules of [section 3.4](#34-conversions), the
+  length being the naming declaration's or member's to state. `kind`, `dimensions`,
+  `init`, `volatile` and `a2l` stay on the declaration, because two
   measurements of one type can differ in whether an interrupt writes one of them. Its
   `datatype` is a base datatype: a scalar type cannot be declared in terms of a second
   one, so a chain of aliases, and with it a scalar cycle, cannot be written at all. Its
@@ -800,7 +821,9 @@ each stating its `type`: `scalar`, `struct` or `external`.
   `datatype` or a declared `typename`, optionally as an array (`dimensions`). A `bits`
   member holds a base integer `datatype` (a declared type carries no bitfield) and a width
   (`bits`, required there) of at least one bit and at most what that datatype holds; a
-  `bits` member takes no `dimensions`.
+  `bits` member takes no `dimensions`. A `value` member under a `string` conversion,
+  stated or fixed by the scalar type it names, states exactly one dimension, and a `bits`
+  member carries no string (`schema`).
 - An **external** type names a C type that DDD does not declare: `name` (required) is the
   type's C identifier, and `header` (required) is the header that defines it, spelled as
   the generated `#include` writes it, `"my_driver.h"` for the quoted form and
@@ -1140,9 +1163,10 @@ a second declaration of a dropped name is `duplicate-declaration` as it would be
 
 The `schema` check carries every violation of the published file contracts
 ([section 3](#3-file-formats)), including the rules this document states in prose, such as
-a zero `factor`, an enum conversion on a non-integer datatype, or a key restated that a
-named type already fixes: they are shape errors of one file, located where they are
-written, and need no identifier of their own.
+a zero `factor`, an enum conversion on a non-integer datatype, a `string` conversion where
+[section 3.4](#34-conversions) refuses one, or a key restated that a named type already
+fixes: they are shape errors of one file, located where they are written, and need no
+identifier of their own.
 
 A finding about several declarations of one object is reported once per declaration that
 deviates, anchored where the deviation is written, with a note pointing at the reference,
@@ -1245,7 +1269,9 @@ Errors:
 - `enum-conflict`: one enum name is used with different enumerators. The ordered name and
   value pairs are compared, in the textual order of the file, for the list form and the
   mapping form alike, so a reordering conflicts and the free text descriptions do not.
-- `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape.
+- `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape,
+  or a string init is not printable ASCII, leaves no room for its terminator, or is written
+  on an object that is not a string.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
   not exist or has the wrong kind. The referring object is dropped as unresolvable whatever
   severity the finding is given, because a curve without its axis has no shape and an axis
@@ -1517,7 +1543,9 @@ conversions a declaration states, or a structure member carries, or a declared t
 whether or not any declaration names it ([section 3.4](#34-conversions)), are offered with
 their enumerators, and the example templates emit a `typedef enum` for each; a variable
 under an enum conversion is declared with its base datatype, the `typedef enum` being for
-the enumerators alone. The headers of the external types in use
+the enumerators alone. A `string` object is declared as the byte array it is, and a text
+`init` is offered as a C string literal with `"`, `\` and `?` escaped, the rest of the
+array being zero by the rules of C. The headers of the external types in use
 ([section 3.7](#37-type-description)) are offered too, deduplicated and in the sorted order
 of the spellings the types files give, so the angle forms come first, and the example
 templates emit them as `#include` lines in the types header, so that a structure whose
@@ -1577,7 +1605,12 @@ Assignment of objects to freely chosen generated `.c`/`.h` files is *planned*.
 ASAM MCD-2 MC output containing:
 
 - `MEASUREMENT` for every measurement, `CHARACTERISTIC` for parameters, value blocks,
-  curves and maps, `AXIS_PTS` for axes.
+  curves and maps, `AXIS_PTS` for axes. A value block under a `string` conversion is a
+  `CHARACTERISTIC` of type `ASCII` whose length is a `NUMBER`, deposited through the value
+  layout of its datatype, with `NO_COMPU_METHOD`, the raw range of the datatype as limits
+  and no `MATRIX_DIM`; a string measurement is the `UBYTE` or `SBYTE` array it is, with its
+  `MATRIX_DIM` and an `ANNOTATION` labelled `string` saying that the format has no string
+  measurement, which no version of it has.
 - `RECORD_LAYOUT` per datatype and storage category; maps are stored row wise, that is the
   C declaration is `[y][x]` and the A2L index mode is `ROW_DIR`. An axis layout states
   `INDEX_INCR DIRECT` and a value layout `ROW_DIR DIRECT`.
@@ -1586,7 +1619,7 @@ ASAM MCD-2 MC output containing:
   format - an integer and a float object under one conversion therefore share a method
   unless that conversion is an identity with a unit or a linear one whose `factor` and
   `offset` are whole numbers, where the integer defaults to `%8.0` and the float to `%8.3`
-  and each gets its own method - and `COMPU_VTAB` per enum.
+  and each gets its own method - and `COMPU_VTAB` per enum; a string gets no method.
 - `IF_DATA XCP` on every `MEASUREMENT` whose object resolves to a measurement raster
   ([section 3.10](#310-measurement-rasters)), naming the raster's event channel in the
   `DEFAULT_EVENT_LIST` of a `DAQ_EVENT VARIABLE` block, so that a tool preselects the event
@@ -1834,7 +1867,7 @@ names the artefact and is a usage error.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
-its own format (`format`, today `7`), raised only when the document's shape changes, so
+its own format (`format`, today `8`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
 `format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
 `format` is newer than the one it implements refuses it (`schema`), located at the file;

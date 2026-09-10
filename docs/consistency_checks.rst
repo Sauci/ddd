@@ -976,11 +976,17 @@ usage error:
        "check": "file-not-found",
        "default_severity": "error",
        "description": "a referenced file does not exist",
-       "overridable": false
+       "overridable": false,
+       "needs_every_component": false,
+       "comparison": false
      },
      ...
    ]
 
 ``overridable`` is the machine readable form of the ``(fixed)`` marker: ``false`` for the eight
 checks whose severity cannot be changed - the six of load time and the two plugin checks -
-``true`` for every other check.
+``true`` for every other check. ``needs_every_component`` is the machine readable form of the
+``(project)`` marker: ``true`` for the checks needing every component of a project, ``false``
+for the rest. ``comparison`` is the machine readable form of the ``(comparison)`` marker:
+``true`` for the checks of a delivery comparison (:doc:`comparing_deliveries`), ``false`` for
+every other check.

@@ -67,9 +67,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
      - the command did what it was asked and found nothing worth reporting.
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
-       ``ddd sources`` also exits ``1`` when the file it was pointed at cannot be read at all,
-       and ``ddd id`` when one of the files it was given was not readable as json and had to
-       be skipped, which it reports without a diagnostic.
+       ``ddd sources`` and ``ddd artefacts`` also exit ``1`` when the root file cannot be read
+       at all, and ``ddd id`` when one of the files it was given was not readable as json and
+       had to be skipped, which it reports without a diagnostic.
    * - ``2``
      - the command line itself was wrong: a missing or malformed argument, an unknown
        severity, or an unknown check that names no plugin, in ``-W``, a fixed check
@@ -163,8 +163,10 @@ The commands
        the ``ddd-build.json`` an editor reads; ``ddd_generate()`` calls it at configure
        time, so a hand-rolled build is the only caller that needs it directly.
    * - ``ddd checks``
-     - list every check with its identifier, its default severity and whether it can be
-       relaxed; ``--plugin`` lists a named plugin's own checks after the built-in ones.
+     - list every check with its identifier, its default severity, whether it can be relaxed
+       (``(fixed)`` if not), whether it needs every component of a project (``(project)``)
+       and whether it grades a delivery comparison rather than one project (``(comparison)``);
+       ``--plugin`` lists a named plugin's own checks after the built-in ones.
    * - ``ddd cmake-dir``
      - print the directory holding ``Ddd.cmake``, so that a ``CMakeLists.txt`` finds the
        integration module of the installation it is actually using.

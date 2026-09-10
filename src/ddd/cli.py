@@ -1144,6 +1144,10 @@ def _command_artefacts(args: argparse.Namespace) -> int:
             f"renders any template reading such a plugin's block",
             file=sys.stderr,
         )
+    # Flushed again unconditionally: the note above only flushes when it is printed, and the
+    # listing (stdout) must not interleave with the findings (stderr) that follow it either way,
+    # in a buffered pipe.
+    sys.stdout.flush()
     _report(bag, "text")
     return EXIT_OK
 
@@ -1180,6 +1184,16 @@ def _command_sources(args: argparse.Namespace) -> int:
 
 
 def _command_checks(args: argparse.Namespace) -> int:
+    """List the registry: identifier, default severity, and what sets a check apart.
+
+    ``(fixed)`` says the severity cannot be relaxed; ``(project)`` says the check needs every
+    component of a project, which is what ``--standalone`` holds it back for; ``(comparison)``
+    says it grades a delivery comparison rather than one project. The three are independent in
+    principle, so a check carrying more than one lists them together, in the order ``CheckInfo``
+    declares the underlying flags in. JSON carries the same facts as ``overridable``,
+    ``needs_every_component`` and ``comparison`` on every entry, so a build script can tell them
+    apart without parsing the text markers.
+    """
     plugins = _plugins_from_arguments(args.plugin)
     infos = [*CHECKS.values(), *(info for plugin in plugins for info in plugin.checks)]
     if args.format == "json":
@@ -1191,6 +1205,8 @@ def _command_checks(args: argparse.Namespace) -> int:
                         "default_severity": info.default_severity.value,
                         "description": info.description,
                         "overridable": info.overridable,
+                        "needs_every_component": info.needs_every_component,
+                        "comparison": info.comparison,
                     }
                     for info in infos
                 ],
@@ -1200,10 +1216,19 @@ def _command_checks(args: argparse.Namespace) -> int:
         return EXIT_OK
     width = max(len(info.identifier) for info in infos)
     for info in infos:
-        fixed = "" if info.overridable else " (fixed)"
+        markers = [
+            label
+            for keep, label in (
+                (not info.overridable, "fixed"),
+                (info.needs_every_component, "project"),
+                (info.comparison, "comparison"),
+            )
+            if keep
+        ]
+        marked = f" ({', '.join(markers)})" if markers else ""
         print(
             f"{info.identifier:<{width}}  {info.default_severity.value:<7}  "
-            f"{info.description}{fixed}"
+            f"{info.description}{marked}"
         )
     return EXIT_OK
 

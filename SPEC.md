@@ -1780,9 +1780,11 @@ build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
-(`ddd checks`, each with its default severity, the unrelaxable ones marked, the built-in
-ones in the order of the registry and then each `--plugin`'s checks in their declared
-order); reporting where its build system integration and its example templates
+(`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
+need every component of a project marked `(project)` and the ones that grade a delivery
+comparison marked `(comparison)` - `needs_every_component` and `comparison` in JSON - the
+built-in ones in the order of the registry and then each `--plugin`'s checks in their
+declared order); reporting where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
 printing its own version (`ddd --version`). Beside the command line, the package publishes
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.

@@ -1230,6 +1230,27 @@ class TestSchemaAndChecks:
         assert "multiple-producers" in out
         assert "(fixed)" in out
 
+    def test_checks_marks_the_project_wide_and_the_comparison_checks(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``(project)`` and ``(comparison)`` are derived from the registry, not hand listed.
+
+        The set marked ``(project)`` in the text form is exactly what ``STANDALONE_POLICY``
+        holds back, and the set marked ``(comparison)`` is exactly the checks of the delivery
+        comparison (section 4.1) - both read off the registry here too, so a check gaining or
+        losing a flag would fail this test rather than leave the text form silent about it.
+        """
+        from ddd.diagnostics import CHECKS, STANDALONE_POLICY
+
+        project_wide = {entry.removesuffix("=ignore") for entry in STANDALONE_POLICY}
+        comparison = {name for name, info in CHECKS.items() if info.comparison}
+        assert main(["checks"]) == EXIT_OK
+        lines = capsys.readouterr().out.splitlines()
+        marked_project = {line.split()[0] for line in lines if "(project)" in line}
+        marked_comparison = {line.split()[0] for line in lines if "(comparison)" in line}
+        assert marked_project == project_wide
+        assert marked_comparison == comparison
+
     def test_cmake_dir(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["cmake-dir"]) == EXIT_OK
         directory = Path(capsys.readouterr().out.strip())
@@ -1238,7 +1259,25 @@ class TestSchemaAndChecks:
     def test_checks_json(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["checks", "--format", "json"]) == EXIT_OK
         entries = json.loads(capsys.readouterr().out)
-        assert {"check", "default_severity", "description", "overridable"} <= set(entries[0])
+        assert {
+            "check",
+            "default_severity",
+            "description",
+            "overridable",
+            "needs_every_component",
+            "comparison",
+        } <= set(entries[0])
+
+    def test_checks_json_flags_match_the_registry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The two new booleans are the registry's own flags, not a copy that can drift."""
+        from ddd.diagnostics import CHECKS
+
+        assert main(["checks", "--format", "json"]) == EXIT_OK
+        entries = json.loads(capsys.readouterr().out)
+        for entry in entries:
+            info = CHECKS[entry["check"]]
+            assert entry["needs_every_component"] == info.needs_every_component
+            assert entry["comparison"] == info.comparison
 
 
 class TestSingleComponent:

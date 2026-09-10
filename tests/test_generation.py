@@ -383,3 +383,43 @@ class TestWriting:
         """A component named after a shared file is refused, and the message says who by."""
         with pytest.raises(ValueError, match=r"c backend would write 'ddd_types\.h' twice"):
             generate(tree, simple(declare("local", "A"), name="ddd_types"))
+
+
+class TestStringInitialisers:
+    """A string init is a c string literal; c fills the rest of the array with zero."""
+
+    def string(
+        self, init: object, *, datatype: str = "uint8", kind: str = "value_block", size: int = 16
+    ) -> dict[str, Any]:
+        return simple(
+            declare(
+                "local",
+                "Label",
+                datatype,
+                kind=kind,
+                conversion={"kind": "string"},
+                dimensions=[size],
+                init=init,
+            )
+        )
+
+    def test_a_string_init_is_a_string_literal(self, tree: Path) -> None:
+        files = generate(tree, self.string("V1.2.3"))
+        assert 'const uint8_t Label[16] = "V1.2.3";' in files["ddd_globals.c"]
+
+    def test_the_literal_escapes_what_c_reads_specially(self, tree: Path) -> None:
+        """A quote, a backslash, and ``?`` - two of which before ``=`` form a trigraph."""
+        files = generate(tree, self.string('a "b" \\ ??=', size=32))
+        assert r'const uint8_t Label[32] = "a \"b\" \\ \?\?=";' in files["ddd_globals.c"]
+
+    def test_the_empty_string_is_an_explicit_initialiser(self, tree: Path) -> None:
+        files = generate(tree, self.string("", kind="measurement"))
+        assert 'uint8_t Label[16] = "";' in files["ddd_globals.c"]
+
+    def test_a_list_init_on_a_string_object_renders_as_bytes(self, tree: Path) -> None:
+        files = generate(tree, self.string([86, 49, 0, 0], size=4))
+        assert "const uint8_t Label[4] = { 86U, 49U, 0U, 0U };" in files["ddd_globals.c"]
+
+    def test_a_signed_byte_string_takes_the_same_literal(self, tree: Path) -> None:
+        files = generate(tree, self.string("abc", datatype="sint8", size=8))
+        assert 'const int8_t Label[8] = "abc";' in files["ddd_globals.c"]

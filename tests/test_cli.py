@@ -1051,6 +1051,30 @@ class TestList:
         assert "[...]" in out  # a nested init is abbreviated, not spelled out
         assert "1000 (= 1 V)" in out  # the reading round-trips through format_number
 
+    def test_string_init_is_displayed_as_repr(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A string object with a string init displays the init as repr() in the table."""
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Version",
+                        kind="measurement",
+                        conversion={"kind": "string"},
+                        dimensions=[16],
+                        init="V1.2",
+                    ),
+                ),
+            },
+        )
+        assert main(["list", str(tmp_path / "project.ddd.json")]) == EXIT_OK
+        assert "'V1.2'" in capsys.readouterr().out
+
     def test_the_reading_carries_no_float_artifacts(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

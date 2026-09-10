@@ -816,3 +816,24 @@ class TestStringRules:
     def test_a_string_states_nothing_text_lacks(self, key: str, value: Any, expected: str) -> None:
         with pytest.raises(ValidationError, match=expected):
             declared(conversion={"kind": "string"}, dimensions=[16], **{key: value})
+
+
+class TestStringInit:
+    """The third spelling of ``init``: the text of a string object."""
+
+    def test_a_string_init_is_kept_as_text(self) -> None:
+        parsed = definition(conversion={"kind": "string"}, dimensions=[8], init="V1.2")
+        assert parsed.init == "V1.2"
+        assert parsed.scalar_values() == ()
+
+    def test_a_quoted_number_is_text_rather_than_the_number(self) -> None:
+        """The arm is picked by the exact type of the value, so a quoted init no longer reads
+        as a number; the analysis refuses it on anything but a string object."""
+        assert definition(init="12").init == "12"
+
+    def test_a_string_is_neither_broadcast_nor_flattened(self) -> None:
+        from ddd.models.objects import check_shape, flatten
+
+        assert broadcast("abc", (8,)) == "abc"
+        assert flatten("abc") == []
+        assert check_shape("abc", (8,)) is None

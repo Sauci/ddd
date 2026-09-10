@@ -849,6 +849,9 @@
           "type": "number"
         },
         {
+          "type": "string"
+        },
+        {
           "items": {
             "$ref": "#/$defs/InitValue"
           },

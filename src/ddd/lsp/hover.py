@@ -270,7 +270,7 @@ def _enumerators(entry: ResolvedObject) -> list[str]:
 
 def _drawing(entry: ResolvedObject) -> list[str]:
     """The init values, drawn if there is anything to see in them."""
-    if entry.init is not None and not isinstance(entry.init, tuple):
+    if entry.init is not None and not isinstance(entry.init, (tuple, str)):
         return [_stated_init(entry, entry.init)]
     drawn = rows(entry)
     if not drawn:

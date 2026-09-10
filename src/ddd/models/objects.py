@@ -31,7 +31,7 @@ from ddd.models.common import (
 from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
 
 type InitValue = Annotated[
-    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
+    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | str | tuple[InitValue, ...],
     BeforeValidator(within_64_bits),
 ]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object.
@@ -44,6 +44,13 @@ reported against that bound rather than as "not a valid boolean": pydantic still
 json ``true``/``false`` from a ``1``/``0`` by their own type regardless of this order, so
 moving the integer arm first changes only which of several failing branches a wildly wrong
 value is reported against.
+
+The ``str`` arm is for a string object, whose init is its text; the analysis refuses it on
+any other object (``init-invalid``), because only there is the conversion known - a
+declaration naming a scalar type learns its conversion from the type. pydantic picks an arm
+by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is
+now text, refused where a number was meant, where it used to be read as the number: the one
+place the quoted-spelling question left open on :data:`Number` is answered.
 """
 
 type Shape = tuple[int, ...]
@@ -588,7 +595,7 @@ class DataObject(_Frozen):
         return Limits(min=low, max=high)
 
     def scalar_values(self) -> tuple[float | int | bool, ...]:
-        """All raw init values, flattened; empty when no init is given."""
+        """All raw init values, flattened; empty when no init is given, or when it is text."""
         if self.init is None:
             return ()
         return tuple(flatten(self.init))
@@ -745,7 +752,13 @@ def format_shape(shape: WrittenShape) -> str:
 
 
 def check_shape(value: InitValue, shape: Shape) -> str | None:
-    """Validate a nested init value against an array shape."""
+    """Validate a nested init value against an array shape.
+
+    A string is not judged here: whether it fits is a question about the object's
+    conversion as much as its shape, and the analysis answers both at once.
+    """
+    if isinstance(value, str):
+        return None
     if not shape:
         if isinstance(value, tuple):
             return "init is a list but the object is a scalar"
@@ -767,14 +780,21 @@ def check_shape(value: InitValue, shape: Shape) -> str | None:
 
 
 def flatten(value: InitValue) -> list[float | int | bool]:
+    """Every raw scalar of an init, in storage order; a string contributes none.
+
+    A string's bytes are its characters, which the string rules check and the c literal
+    spells; nothing that converts or draws raw numbers has any business with them.
+    """
+    if isinstance(value, str):
+        return []
     if isinstance(value, tuple):
         return [scalar for element in value for scalar in flatten(element)]
     return [value]
 
 
 def broadcast(value: InitValue, shape: Shape) -> InitValue:
-    """Expand a scalar init over ``shape``; a nested value is returned unchanged."""
-    if isinstance(value, tuple):
+    """Expand a scalar init over ``shape``; a nested value or a string is returned unchanged."""
+    if isinstance(value, tuple | str):
         return value
     if not shape:
         return value

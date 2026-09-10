@@ -1395,6 +1395,8 @@ def _init_cell(entry: Comparable) -> str:
     init = entry.init
     if init is None:
         return "-"
+    if isinstance(init, str):
+        return repr(init)
     if isinstance(init, tuple):
         return "[...]"
     reading = raw_reading(entry.conversion, init, entry.unit)

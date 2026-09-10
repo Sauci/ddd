@@ -1035,9 +1035,9 @@ class TestBrokenInitPointers:
     def test_a_wrong_typed_element_of_a_nested_init_is_reported_without_crashing(
         self, tree: Path
     ) -> None:
-        """pydantic tries every branch of the init union and names each one in the location;
-        those names are not keys of the document, and a sort key built from them must not
-        compare a list index with a branch name."""
+        """When a string is used in a nested init on a non-string object, it is caught as
+        init-invalid; the analysis checks for this after strings became a valid arm of the
+        init union, which pydantic now accepts."""
         _, bag = run_analysis(
             tree,
             {
@@ -1049,10 +1049,9 @@ class TestBrokenInitPointers:
             },
         )
         listed = bag.sorted
-        assert listed and {diagnostic.check for diagnostic in listed} == {"schema"}
+        assert listed and {diagnostic.check for diagnostic in listed} == {"init-invalid"}
         pointers = [diagnostic.location.pointer for diagnostic in listed if diagnostic.location]
         assert pointers
-        assert not any(pointer.endswith((".bool", ".int", ".float")) for pointer in pointers)
 
 
 class TestTheA2lClosure:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ddd.backends.c.types import C_TYPE, LITERAL_SUFFIX
 from ddd.ir import ResolvedObject
@@ -40,7 +41,10 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
 def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
     """Render a (possibly nested) init value as a c initialiser."""
     if not isinstance(value, tuple):
-        return c_literal(value, datatype)
+        # Strings in init values are only valid for string objects and are checked by the
+        # analysis layer; c_initializer is only called for non-string objects, so this cast
+        # is safe.
+        return c_literal(cast(bool | int | float, value), datatype)
 
     pad = _INDENT * (indent + 1)
     closing_pad = _INDENT * indent

@@ -138,19 +138,22 @@ def _describe_references(definition: DataObject) -> str:
 def _conversion_value(definition: DataObject) -> object:
     """What two declarations of one object have to agree on in their conversion.
 
-    An enumerator's ``description`` is documentation, not interface: the two spellings the
-    file format offers (the mapping shorthand and the list of objects) cannot even carry the
-    same information. ``enum-conflict`` owns the agreement of the enumerators themselves and
-    deliberately ignores descriptions, so comparing the raw dump here would report a
-    mismatch that check does not see, on declarations that generate identical code. The
-    description free projection itself is :func:`~ddd.models.conversion.conversion_identity`,
-    shared with the delivery comparison so the two answers cannot drift apart.
+    An identity or a linear conversion is compared in full, by
+    :func:`~ddd.models.conversion.conversion_identity` - kind and parameters both. An enum
+    compares by its name alone: the enumerators, descriptions included, are
+    ``enum-conflict``'s to agree on, and folding them in here as well would turn one mistake
+    into two findings - the second of which cannot even say what it means, because this field
+    explains itself by calling :meth:`~ddd.models.conversion.EnumConversion.describe`, which
+    names the enum and nothing else, so a reordered or revalued enumerator used to print
+    identical text on both sides of the mismatch.
     """
     conversion = definition.conversion
     if conversion is None:
         # A structured declaration: the type carries the meaning, so there is no conversion
         # here to disagree about, and every declaration of the object says the same nothing.
         return None
+    if isinstance(conversion, EnumConversion):
+        return ("enum", conversion.name)
     return conversion_identity(conversion)
 
 

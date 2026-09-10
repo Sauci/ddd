@@ -1163,10 +1163,11 @@ Errors:
   another component declares. A reference is a use as much as a declaration is, so the finding
   sits at the reference, with a note at the local declaration, and nothing is dropped: the
   mistake is the ownership violation, not a missing object.
-- `definition-mismatch`: components disagree on kind, datatype, unit, scaling, shape,
-  volatility, referenced objects (axes and the `input` of an axis), or on limits where both
-  of them state limits. A declaration that omits limits defers to the producer rather than
-  disagreeing with it, a relaxation `volatile` has no use for, being required on every
+- `definition-mismatch`: components disagree on kind, datatype, unit, conversion (compared
+  by kind and parameters, an enum by its name - `enum-conflict` compares the enumerators),
+  shape, volatility, referenced objects (axes and the `input` of an axis), or on limits where
+  both of them state limits. A declaration that omits limits defers to the producer rather
+  than disagreeing with it, a relaxation `volatile` has no use for, being required on every
   definition ([section 3.3.1](#331-one-object-several-declarations)).
 - `duplicate-declaration`: a component declares the same object more than once.
 - `consumer-storage`: an `input` declaration states `init` or `section`. What an object

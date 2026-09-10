@@ -626,6 +626,9 @@
             },
             {
               "$ref": "#/$defs/EnumConversion"
+            },
+            {
+              "$ref": "#/$defs/StringConversion"
             }
           ],
           "description": "Always present: the member's conversion, or the identity when none was given.",
@@ -633,7 +636,8 @@
             "mapping": {
               "enum": "#/$defs/EnumConversion",
               "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
+              "linear": "#/$defs/LinearConversion",
+              "string": "#/$defs/StringConversion"
             },
             "propertyName": "kind"
           },
@@ -955,6 +959,9 @@
             },
             {
               "$ref": "#/$defs/EnumConversion"
+            },
+            {
+              "$ref": "#/$defs/StringConversion"
             }
           ],
           "description": "Always present: the declared conversion, or the identity when none was given.",
@@ -962,7 +969,8 @@
             "mapping": {
               "enum": "#/$defs/EnumConversion",
               "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
+              "linear": "#/$defs/LinearConversion",
+              "string": "#/$defs/StringConversion"
             },
             "propertyName": "kind"
           },
@@ -1218,6 +1226,22 @@
       ],
       "title": "Scope",
       "type": "string"
+    },
+    "StringConversion": {
+      "additionalProperties": false,
+      "description": "Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the A2L record states - and no schema\nconsumer has to know that a string exists. A byte has no reading of its own, so no\nreading is produced for it, as for the identity.",
+      "properties": {
+        "kind": {
+          "const": "string",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "StringConversion",
+      "type": "object"
     }
   },
   "additionalProperties": false,

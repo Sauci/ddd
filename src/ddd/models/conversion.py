@@ -186,15 +186,14 @@ class StringConversion(_Frozen):
     """Bytes read as text: each element of the array holds one character code.
 
     Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the
-    datatype, in :func:`ddd.models.objects.refuse_string_misuse`, because the same pair is
-    written in three places. ``kind`` is required here, unlike on the other three kinds: a
-    string has no key of its own for :func:`_infer_kind` to read it off, and ``{}`` is the
-    identity.
+    datatype because the same pair is written in three places. ``kind`` is required here,
+    unlike on the other three kinds: a string has no key of its own to be inferred from,
+    and ``{}`` is the identity.
 
     The two mappings are the identity on one byte, so that the derived limits of a string
-    are the raw range of its datatype - which is what the a2l record states - and no caller
-    of :func:`physical_range` has to know that a string exists. A byte has no reading of its
-    own, so :func:`raw_reading` answers nothing for it, as for the identity.
+    are the raw range of its datatype - which is what the A2L record states - and no schema
+    consumer has to know that a string exists. A byte has no reading of its own, so no
+    reading is produced for it, as for the identity.
     """
 
     kind: Literal["string"]

@@ -1203,7 +1203,8 @@ Errors:
 - `plugin-invalid`: a plugin module raises or exits the interpreter on import, exposes no
   `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
   the language server only, a hook or a model of the plugin's own that raises or exits while a
-  file is checked ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
+  file is checked or while a project is read to find out whether it contains an open file
+  ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
   deliberately carries a block no installed plugin interprets, which then reaches the
@@ -1975,7 +1976,12 @@ search discovers are announced as log messages, and a record that cannot be read
 A plugin hook that raises or exits the interpreter while a file is checked is reported as a
 `plugin-invalid` finding at the project file rather than ending the session, and so is a model
 of the plugin's own that raises or exits while a block is validated against it
-([section 3.11](#311-plugins)).
+([section 3.11](#311-plugins)). A project read only to find out whether it contains an open
+file is reported the same way, at that project file, and the open file is still checked for
+what one file can settle, so that a broken plugin is never the reason a reader is quietly
+given the thinner answer. Each file is published with the findings of one run of it: a run
+that a plugin defect stopped has already reported on every file it read, and those files are
+not read a second time on their own.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server; a frame header whose `Content-Length`

@@ -347,7 +347,10 @@ not, and the templates a project provides are its own.
   `ValueError` or an `AssertionError` from one is the block's finding, as it always was, but
   anything else it raises - and a `sys.exit` - is now `ddd: plugin 'layout' failed validating
   an 'extensions' block: SystemExit(9)`, exit 2, or `plugin-invalid` in the language server,
-  instead of a pydantic traceback or a silent exit.
+  instead of a pydantic traceback or a silent exit.  The server says so wherever it meets the
+  failure: a project read only to find out whether it contains an opened file is reported at
+  that project's description, and the file is still checked for what one file settles, so a
+  broken plugin is never the unexplained reason a reader is given the thinner answer.
   **Migration:** a hook calling `sys.exit` used to end the run with its own code, which a build
   script could read as success; it is a usage error now.  A hook reports through the bag and
   returns, and a validator on a plugin's own model raises `ValueError` to refuse a block.

@@ -664,9 +664,65 @@ class TestDiagnostics:
             },
         )
         document = tmp_path / "a.ddd.json"
-        assert navigation.containing_projects(document, tmp_path) == []
+        found = navigation.containing_projects(document, tmp_path)
+        assert found.projects == ()
+        assert list(found.failed) == [tmp_path / "project.ddd.json"]
         reports = service.collect([], [document], tmp_path)
         assert document in reports
+
+    def test_a_project_that_could_not_be_read_is_named_even_with_no_build_record(
+        self, tmp_path: Path
+    ) -> None:
+        """A component opened in an unconfigured tree is checked through the project above it,
+        and a plugin defect makes that project unreadable. Answering with the standalone
+        analysis alone would be the quietest possible failure: a thin set of findings, no sign
+        that a fuller answer exists, and nothing anywhere naming the plugin that is broken.
+        The finding goes on the project file, where the defect is, and the component still
+        gets the analysis it can have."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        document = tmp_path / "a.ddd.json"
+        reports = service.collect([], [document], tmp_path)
+        (broken,) = reports[tmp_path / "project.ddd.json"]
+        assert broken["code"] == "plugin-invalid"
+        assert "plugin 'exiting' failed validating an 'extensions' block" in broken["message"]
+        # and the component is still checked for what one file can settle
+        assert [entry["code"] for entry in reports[document]] == ["missing-id"]
+
+    def test_a_project_that_could_not_be_read_reports_its_files_once(self, tmp_path: Path) -> None:
+        """A read that a plugin defect stops has already reported on every file it read - the
+        blocks are validated once the whole tree is in - so the findings of an open file are
+        in hand while the project covers, by its own account, nothing but itself. Counting the
+        loaded files alone left the open one looking unchecked, so it was checked again on its
+        own and every finding on it was published twice, on the same line."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("nonsense", "X")),
+                "b.ddd.json": component(
+                    "B", declare("local", "Y", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        build_record(tmp_path, tmp_path / "project.ddd.json")
+        document = tmp_path / "a.ddd.json"
+        reports = service.collect(discover(tmp_path), [document], tmp_path)
+        assert [entry["code"] for entry in reports[document]] == ["schema"]
+        assert [entry["code"] for entry in reports[tmp_path / "project.ddd.json"]] == [
+            "plugin-invalid"
+        ]
 
 
 class TestNavigation:

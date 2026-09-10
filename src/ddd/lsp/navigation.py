@@ -175,6 +175,24 @@ def index(workspace: Workspace) -> Index:
     return built
 
 
+@dataclass(frozen=True, slots=True)
+class Containing:
+    """What the search for a document's project found, including what it could not read."""
+
+    projects: tuple[Path, ...] = ()
+    """The descriptions that turned out to include the document, nearest first."""
+
+    failed: dict[Path, str] = field(default_factory=dict)
+    """Candidate -> why reading it stopped, for the candidates a plugin defect stopped.
+
+    Carried out of the search rather than dropped inside it, because a candidate that cannot
+    be read is the one case where the search has nothing to say and something to report: as
+    far as anybody knows it contains the document, and a caller told only that no project
+    contains it would answer from the file alone, with nothing anywhere naming the plugin
+    that is broken.
+    """
+
+
 def workspaces(
     builds: Sequence[BuildInfo], document: Path, root: Path | None = None
 ) -> list[Workspace]:
@@ -191,41 +209,49 @@ def workspaces(
     component alone has no producers for its inputs, no readers for its outputs, and no types
     or constants beyond the ones it declares inline.
     """
+    # What stopped a read is collected and then dropped: a hover or a jump is a question a
+    # person asked and wants an answer to, and the squiggles are where a broken plugin is
+    # named. Reporting it twice, once as a finding and once instead of a jump, helps nobody.
+    unreadable: dict[Path, str] = {}
     found = []
     for info in builds:
-        workspace = _loaded(Path(info.project))
+        workspace = _loaded(Path(info.project), unreadable)
         if workspace is not None and document.resolve() in workspace.sources():
             found.append(workspace)
     if not found:
         found.extend(
             workspace
-            for workspace in (_loaded(project) for project in containing_projects(document, root))
+            for workspace in (
+                _loaded(project, unreadable)
+                for project in containing_projects(document, root).projects
+            )
             if workspace is not None
         )
     if not found:
-        alone = _loaded(document)
+        alone = _loaded(document, unreadable)
         if alone is not None:
             found.append(alone)
     return found
 
 
-def _loaded(path: Path) -> Workspace | None:
+def _loaded(path: Path, failed: dict[Path, str]) -> Workspace | None:
     """One project read for a question about it, or nothing when it cannot be read.
 
     Reading a project runs the models its plugins declare, over every ``extensions`` block in
     it, and a model that raises is reported as a ``PluginError`` the way a hook that raises
-    is. Every caller here is answering a question a person asked - a jump, a hover, which
-    project covers this file - and the same answer serves all of them: the findings of the
-    last save already say the plugin is broken, and a jump that answers nothing beats a
-    server that exits.
+    is. Nothing here can draw a squiggle, so what stopped the read is written into ``failed``
+    for the caller to do with as its own answer allows: the diagnostics report it at the
+    project file, and a jump discards it, because a jump that answers nothing beats a server
+    that exits and the findings of the same save already name the plugin.
     """
     try:
         return load_workspace(path, DiagnosticBag())
-    except PluginError:
+    except PluginError as error:
+        failed[path] = str(error)
         return None
 
 
-def containing_projects(document: Path, root: Path | None) -> list[Path]:
+def containing_projects(document: Path, root: Path | None) -> Containing:
     """Descriptions lying at or above the document that turn out to include it.
 
     A search rather than a guess: every candidate is loaded and asked whether this file is one
@@ -233,6 +259,9 @@ def containing_projects(document: Path, root: Path | None) -> list[Path]:
     sits. What it buys is the case an editor meets constantly - a description opened in a tree
     where no build has been configured - in which the alternative is a component cut off from
     the shared vocabularies, whose declarations of shared types resolve to nothing at all.
+
+    A candidate that could not be read answers neither way: the walk carries on past it, and
+    it is named in ``failed`` so that the caller can say so.
 
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
@@ -245,22 +274,20 @@ def containing_projects(document: Path, root: Path | None) -> list[Path]:
             break
         current = current.parent
 
+    failed: dict[Path, str] = {}
     for directory in directories:
-        found = [
-            candidate
-            for candidate in sorted(directory.glob("*.ddd.json"))
-            if candidate != document and _includes(candidate, document)
-        ]
+        found = []
+        for candidate in sorted(directory.glob("*.ddd.json")):
+            if candidate == document:
+                continue
+            workspace = _loaded(candidate, failed)
+            if workspace is not None and document.resolve() in workspace.sources():
+                found.append(candidate)
         if found:
             # The nearest wins; one further up as well is a sub-project of it, and answering
             # from both would say everything twice.
-            return found
-    return []
-
-
-def _includes(candidate: Path, document: Path) -> bool:
-    workspace = _loaded(candidate)
-    return workspace is not None and document.resolve() in workspace.sources()
+            return Containing(tuple(found), failed)
+    return Containing((), failed)
 
 
 def variable_at(document: Document, pointer: str) -> str | None:

@@ -30,6 +30,15 @@ its own.
   quoted number as an `init`, `"12"`, used to be read as the number and is now text, refused
   on anything but a string object as `init-invalid` - spell the number as a number.
 
+* **A delivery comparison spells an enum change out.**  `changed-interface` printed a
+  reordered or revalued enumeration as `enum(Mode_t) != enum(Mode_t)`, the name being all
+  the description of an enum said; the finding now lists the enumerators on both sides, in
+  the spelling `enum-conflict` already uses inside a project.
+
+* **The sdist no longer carries `docs/superpowers/`.**  The design and planning records of
+  each feature were shipped beside the documentation, and nothing an sdist is sent to reads
+  them.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

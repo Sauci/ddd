@@ -125,7 +125,7 @@ which the project can change, per run, with ``-W`` (long form ``--severity``), r
 .. code-block:: bash
 
    ddd check project.ddd.json -W unused-output=info
-   ddd check project.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   ddd check project.ddd.json -W missing-id=error -W empty-component=ignore
    ddd check project.ddd.json --strict
 
 The four levels are:

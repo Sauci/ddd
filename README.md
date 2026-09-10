@@ -615,7 +615,7 @@ actually changed, so unchanged output does not trigger a rebuild:
 
 | file | from | content |
 | --- | --- | --- |
-| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
+| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, the headers declaring the external types in use, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
 | `ddd_globals.h` | `ddd_globals.h.jinja2` | `extern` declaration of every variable, for `ddd_globals.c` only |
 | `ddd_globals.c` | `ddd_globals.c.jinja2` | the single definition of every global variable, grouped by owner |
 | `<Component>.h` | `{component}.h.jinja2` | the interface of one component: nothing else is visible |
@@ -808,15 +808,23 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
-the same components: their generated headers differ, so only one image may hand its
-`<image>_ddd_headers` to the components automatically - the second call has to opt out and be
-wired explicitly.
-DDD refuses the ambiguous case rather than letting an include order decide it.
+the same components: their generated headers differ, so two automatic sets would leave an
+include order to decide which set a component compiles against.  DDD refuses that rather than
+letting the order decide it - the second `ddd_generate` stops the configure step.  Such a
+project gives `NO_PROPAGATE_HEADERS` to **both** calls and links the wanted
+`<stem>_ddd_headers` into each component explicitly; opting out of only one of the two leaves
+the same ambiguity in place, because the automatic set still reaches every registered
+component rather than only the ones that image links.
 
 The declared outputs are derived from the template names, and the a2l; a `{component}`
 template is left out because its outputs are named after the components, which are only known
 once the description files have been read.  That is why
 consumers depend on `firmware_ddd_headers` rather than on an individual header path.
+
+Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
+`ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object
+reaches a commit without an identity
+([documentation](https://sauci.github.io/ddd/latest/build_integration.html)).
 
 ## Compiling the generated code (docker / WSL)
 
@@ -851,7 +859,7 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
    `-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual -Wstrict-prototypes`,
 4. links all objects into one binary, which is where a duplicated definition or a
    declaration without a definition would show up, and
-5. compares `nm` against `ddd list --format json` so that every variable DDD promised is
+5. compares `nm` against `ddd dump --format json` so that every variable DDD promised is
    defined exactly once and nothing else is ([docker/verify_symbols.py](docker/verify_symbols.py)).
 
 Steps 2 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional

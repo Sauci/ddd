@@ -393,7 +393,7 @@ where another does not define it.
 .. note::
    The demonstration build exercises both states. ``docker compose run --rm compile``
    generates the demo, compiles it, links it and then compares the symbols of the binary
-   against ``ddd list --format json``, once without defines and once with ``-DFEATURE_X``::
+   against ``ddd dump --format json``, once without defines and once with ``-DFEATURE_X``::
 
       == symbols   [base]
       20 of 21 declared variables are defined
@@ -1097,6 +1097,11 @@ hexadecimal strings, whichever the tool producing it finds easier:
      "AxisA": "0x08004000",
      "ParameterA": 134234112
    }
+
+Writing that file is the project's step: DDD ships no extractor and runs no toolchain tool,
+so the map comes from whatever reads the linked image - ``nm``, the map file, the debug
+information. :doc:`build_integration` shows one worked way of doing it, as a post-build step
+of the image.
 
 Running the generator a second time with that map produces the same a2l with the addresses
 filled in:

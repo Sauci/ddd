@@ -112,7 +112,7 @@ def render(
                     else f"the {backend.name} and {previous} backends would both write "
                     f"'{path.name}'"
                 )
-                msg = f"{who}; rename the component or choose a different prefix"
+                msg = f"{who}; rename the component or the template"
                 raise ValueError(msg)
             produced_by[path] = backend.name
             files.append(GeneratedFile(path, file.content))

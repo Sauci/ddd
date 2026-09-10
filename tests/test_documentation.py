@@ -153,6 +153,7 @@ class TestChecks:
             "cov-fail-under",
             "no-propagate-headers",
             "ddd-compile",
+            "ddd-id",
             "ddd-tool",
         }, f"README mentions unknown checks: {sorted(unknown)}"
 

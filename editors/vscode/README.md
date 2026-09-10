@@ -102,7 +102,7 @@ meaning.
 | setting | what it does |
 | --- | --- |
 | `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
-| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes. Empty searches the usual names next to the workspace |
+| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is relative to the workspace folder. Empty searches the usual names next to the workspace |
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
 collects the project out of the link graph - so the server reads that build record and applies

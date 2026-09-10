@@ -99,9 +99,12 @@ three stages:
 
 * **Build records.** The directories named with ``-b`` are searched recursively for
   ``ddd-build.json``; unconfigured, the conventional directories ``build``, ``out`` and
-  ``cmake-build-*`` under the workspace are. A file claimed by several builds is checked
-  under each of them and the findings are published together - a component linked into two
-  images is in two projects, and the answer to which one the reader cares about is both.
+  ``cmake-build-*`` under the workspace are. A ``-b`` path is taken as written, so a relative
+  one is relative to the directory the server was started in - the workspace folder, where
+  the VS Code extension starts it, which is what makes a bare ``build`` mean the one beside
+  the sources. A file claimed by several builds is checked under each of them and the
+  findings are published together - a component linked into two images is in two projects,
+  and the answer to which one the reader cares about is both.
   The records a search discovers are announced as log messages, and a record that cannot be
   read is skipped.
 * **A containing project.** A file no build record claims is looked for in a containing
@@ -154,8 +157,9 @@ It contributes two settings and one command:
        environment.
    * - ``ddd.buildDirectories``
      - the directories handed to the server as ``-b``, each searched for a
-       ``ddd-build.json``. Left empty, the conventional build directory names next to the
-       workspace are searched.
+       ``ddd-build.json``; a relative entry is relative to the workspace folder, which is
+       where the extension starts the server. Left empty, the conventional build directory
+       names next to the workspace are searched.
 
 The command is **DDD: Restart Language Server**, for picking up a newly installed tool
 without reloading the window.

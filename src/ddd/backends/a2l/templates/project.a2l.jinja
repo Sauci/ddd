@@ -71,6 +71,14 @@ ASAP2_VERSION {{ model.version }}
 {% if measurement.display_identifier %}
       DISPLAY_IDENTIFIER {{ measurement.display_identifier }}
 {% endif %}
+{% if measurement.annotation %}
+      /begin ANNOTATION
+        ANNOTATION_LABEL "string"
+        /begin ANNOTATION_TEXT
+          "{{ measurement.annotation | a2l }}"
+        /end ANNOTATION_TEXT
+      /end ANNOTATION
+{% endif %}
 {% if measurement.event is not none %}
       /begin IF_DATA XCP
         /begin DAQ_EVENT VARIABLE

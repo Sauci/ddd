@@ -103,6 +103,15 @@ class MeasurementView:
     condition: str | None
     """Preprocessor condition of the object; a2l cannot express it, so it is a comment."""
 
+    annotation: str | None = None
+    """The note a string measurement carries, and ``None`` for every other measurement.
+
+    The format has no string measurement in any version, so the record is the byte array it
+    is; ``ANNOTATION`` is the documented place for "an application note which explains the
+    function of an identifier for the calibration engineer", which tools show in the
+    object's properties, and no finding is raised for what the author cannot change.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class AxisDescrView:
@@ -369,6 +378,9 @@ class _A2lModelBuilder:
             event=self._events.get(entry.raster) if entry.raster else None,
             component=entry.owner or "",
             condition=entry.condition,
+            annotation=_string_note(entry)
+            if isinstance(entry.conversion, StringConversion)
+            else None,
         )
 
     def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
@@ -464,6 +476,14 @@ def _matrix_dim(entry: ResolvedObject | ResolvedLeaf) -> str | None:
     dims = list(reversed(entry.shape))
     dims += [1] * (A2L_MATRIX_DIM_RANK - len(dims))
     return " ".join(str(dim) for dim in dims)
+
+
+def _string_note(entry: ResolvedObject | ResolvedLeaf) -> str:
+    """What the annotation of a string measurement says: the one fact the record cannot."""
+    return (
+        f"{entry.shape[0]} bytes of text; ASAP2 1.6.1 has no string measurement, "
+        f"so the tool shows the bytes"
+    )
 
 
 class _RecordLayoutBuilder:

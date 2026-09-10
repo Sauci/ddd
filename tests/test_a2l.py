@@ -271,6 +271,23 @@ class TestMeasurementRasters:
         assert content.count("/begin DAQ_EVENT VARIABLE") == 2
         assert content.count("/begin") == content.count("/end")
 
+    def test_a_string_measurement_keeps_its_event(self, tree: Path) -> None:
+        content = self.a2l_with_rasters(
+            tree,
+            declare(
+                "local",
+                "StateName",
+                "uint8",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                raster="10ms",
+            ),
+        )
+        assert 'ANNOTATION_LABEL "string"' in content
+        assert "/begin IF_DATA XCP" in content
+        assert "EVENT 1" in content
+        assert content.count("/begin") == content.count("/end")
+
 
 class TestSharedCompuMethods:
     def test_objects_of_different_datatype_classes_do_not_share_a_display_format(
@@ -396,3 +413,30 @@ class TestStrings:
         assert "NUMBER 16" in content
         assert '/begin CHARACTERISTIC Info.revision "Info.revision"' in content
         assert "VALUE 0x00000000 RL_VALUES_UWORD 0 NO_COMPU_METHOD 0 65535" in content
+
+    def test_a_string_measurement_is_a_byte_array_with_a_note(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare(
+                "local",
+                "StateName",
+                "uint8",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                description="Name of the current state",
+            ),
+        )
+        assert '/begin MEASUREMENT StateName "Name of the current state"' in content
+        assert "UBYTE NO_COMPU_METHOD 0 0 0 255" in content
+        assert "MATRIX_DIM 16 1 1" in content
+        assert 'ANNOTATION_LABEL "string"' in content
+        assert (
+            '"16 bytes of text; ASAP2 1.6.1 has no string measurement, so the tool shows the bytes"'
+            in content
+        )
+        assert content.count("/begin ANNOTATION") == 2  # the block and its ANNOTATION_TEXT
+        assert content.count("/begin") == content.count("/end")
+        assert "/begin COMPU_METHOD" not in content
+
+    def test_a_numeric_measurement_carries_no_annotation(self, tree: Path) -> None:
+        assert "ANNOTATION" not in a2l(tree, declare("local", "X", dimensions=[16]))

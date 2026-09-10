@@ -141,7 +141,9 @@ The commands
        ``project`` over the named plugins' models.
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
-       the plugins it names - for the dependency list of a build system.
+       the plugins it names - for the dependency list of a build system. It reports its
+       findings the same way every other command does, and exits ``0`` whatever they are -
+       ``1`` only when the root file cannot be read at all.
    * - ``ddd artefacts [FILE]``
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is

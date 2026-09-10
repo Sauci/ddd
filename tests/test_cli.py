@@ -1301,6 +1301,40 @@ class TestSources:
         assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
         assert not any(line.endswith(".py") for line in capsys.readouterr().out.splitlines())
 
+    def test_a_missing_include_is_reported_beside_the_listing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The root still reads, so the listing goes out; the missing file is a finding on
+        stderr rather than a silent gap - only a root that cannot be read stops the listing."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "missing.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert (tmp_path / "a.ddd.json").as_posix() in captured.out.splitlines()
+        assert "error[file-not-found]" in captured.err
+
+    def test_a_missing_include_does_not_change_the_json_contract(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The json document already carried the finding; this task only changes text mode."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "missing.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["sources", str(tmp_path / "p.ddd.json"), "--format", "json"]
+        assert main(arguments) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["diagnostics"][0]["check"] == "file-not-found"
+        assert payload["summary"]["error"] == 1
+
     def test_an_unreadable_root_is_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

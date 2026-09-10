@@ -1768,11 +1768,13 @@ formats and of the dictionary (`ddd schema`, one kind to stdout or every kind wr
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
 closing the extension blocks over the named plugins' models); listing
 the description files a project is built out of
-(`ddd sources`, one sorted absolute POSIX path per line, which lets a build system re-run
-its configure step when one changes; in JSON the paths are a `sources` list beside the
-findings; the plugin modules the project names ([section 3.11](#311-plugins)) are among
-them, each by the file it was imported from, so that an edited plugin re-runs the
-generation as an edited component does); recording
+(`ddd sources`, one sorted absolute POSIX path per line, which lets a build system
+re-run its configure step when one changes; in JSON the paths are a `sources` list
+beside the findings, and in text the findings follow the listing on stderr the same way;
+the plugin modules the project names ([section 3.11](#311-plugins)) are among them,
+each by the file it was imported from, so that an edited plugin re-runs the generation
+as an edited component does; the command reports its findings and exits 0 whatever
+they are, 1 only when the root cannot be read); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same

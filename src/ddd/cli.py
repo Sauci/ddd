@@ -1154,7 +1154,9 @@ def _command_sources(args: argparse.Namespace) -> int:
     Deliberately tolerant: a project whose interfaces disagree still has a well defined set
     of source files, and a build system asking what to watch should get an answer even while
     the project does not check out. Only a root file that cannot be read at all is fatal,
-    and the exit code says so in both output formats.
+    and the exit code says so in both output formats. A finding beyond that - a missing
+    include, say - is still reported, beside the listing rather than instead of it: on
+    stderr in text, already carried by the diagnostics document in json.
     """
     bag = DiagnosticBag()
     workspace = load_workspace(args.project, bag)
@@ -1172,6 +1174,8 @@ def _command_sources(args: argparse.Namespace) -> int:
         return EXIT_FINDINGS
     for path in workspace.sources():
         print(path.as_posix())
+    sys.stdout.flush()
+    _report(bag, "text")
     return EXIT_OK
 
 

@@ -246,10 +246,11 @@ this repository, so cloning it is enough to see the effect.
 }
 ```
 
-`includes` lists components **or other projects**; the kind of each file is detected from
-its content.  Paths are relative to the file that contains them, `*`, `?` and `**`
-wildcards are expanded, and a file reached over two different paths is loaded once.
-Include cycles are reported instead of hanging.
+`includes` lists components **or other projects**, and the types, units, sections,
+constants and rasters files below; the kind of each file is detected from its content.
+Paths are relative to the file that contains them, `*`, `?`, `[...]` and `**` wildcards are
+expanded, and a file reached over two different paths is loaded once.  Include cycles are
+reported instead of hanging.
 
 `plugins` names the python modules the project extends itself with, and `extensions` holds
 each one's settings, keyed by plugin name; see [Plugins](#plugins) below.
@@ -314,7 +315,7 @@ unchanged, and any component may name them
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`.  Exactly one of `datatype` and `typename` is stated |
 | `typename` | one of the two | the name of a declared type, stated instead of `datatype`: a scalar type fixes what the value means, a structure makes this a structured variable |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
-| `unit` | `""` | physical unit; components sharing a variable must agree on it |
+| `unit` | `""` | physical unit, as free text; components sharing a variable must agree on it, and where the project declares a [unit vocabulary](https://sauci.github.io/ddd/latest/file_formats/units.html) the spelling is checked against that too (`unknown-unit`) |
 | `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |
@@ -322,7 +323,7 @@ unchanged, and any component may name them
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
-| `extensions` | none | settings for a [plugin](#plugins)'s block, keyed by plugin name, stated by the producing declaration only |
+| `extensions` | `{}` | settings for a [plugin](#plugins)'s block, keyed by plugin name, stated by the producing declaration only |
 
 `init` accepts a scalar or a nested list matching the shape of the object.  A scalar given
 for an array initialises **every** element, so `"dimensions": [10], "init": 1` is enough.
@@ -330,9 +331,10 @@ for an array initialises **every** element, so `"dimensions": [10], "init": 1` i
 ### Kinds of data object
 
 Every definition states its `kind`.  A `measurement` is an online value that the software
-writes and the calibration tool only reads; everything else is calibration data, which the
-software never writes, so it is generated `const`.  (`kind` is stated rather than defaulting
-to `measurement`, so that a file bound to `ddd schema` in an editor validates without the
+writes and a calibration tool measures - and may itself write, which is one of the reasons
+to declare one `volatile`; everything else is calibration data, which the software never
+writes, so it is generated `const`.  (`kind` is stated rather than defaulting to
+`measurement`, so that a file bound to `ddd schema` in an editor validates without the
 ambiguity a defaulted discriminator leaves in the schema.)
 
 | kind | extra keys | generated c | a2l |
@@ -372,13 +374,14 @@ the same break points store them once.
 answer DDD could derive the way it derives limits from a datatype - the two answers cost
 different things and only the project knows which of them it is paying for.  A measurement
 needs it when something outside the reading component writes the variable: an interrupt, a
-second core, a peripheral.  Calibration data needs it when a calibration tool is to change
-the value in a running ecu, because with plain `const` the compiler is entitled to fold the
-initialiser into the code that reads it, and gcc does wherever it can see that initialiser -
-within one translation unit that is not an optimisation a debug build escapes but a
-substitution the front end makes while parsing, so it happens at `-O0` as much as at `-O2`,
-to an array element at a constant index as much as to a scalar, and to a value read once at
-startup as much as to one read in a loop; across translation units it is what `-flto` does.
+second core, a peripheral, or a calibration tool.  Calibration data needs it when a tool is
+to change the value in a running ecu, because with plain `const` the compiler is entitled
+to fold the initialiser into the code that reads it, and gcc does wherever it can see that
+initialiser - within one translation unit that is not an optimisation a debug build escapes
+but a substitution the front end makes while parsing, so it happens at `-O0` as much as at
+`-O2`, to an array element at a constant index as much as to a scalar, and to a value read
+once at startup as much as to one read in a loop; across translation units it is what
+`-flto` does.
 Where the load survives, `const` still lets the compiler serve two reads from one of them and
 move it across a call.  Either way, a program that writes a new value through such an
 object's address prints it back out of memory and then goes on computing with the old one.

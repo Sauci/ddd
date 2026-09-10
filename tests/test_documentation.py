@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 import jsonschema
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
@@ -931,6 +931,59 @@ class TestTheShorthandsThePagesRecommend:
 
     def test_a_unit_may_be_a_bare_spelling(self) -> None:
         self.accepted("units", {"units": ["Nm", "rpm", {"unit": "degC", "description": "x"}]})
+
+
+class TestWhatTheLoaderRefusesTheSchemaRefusesAsWell:
+    """The published schema is the first reader of a description file, so it has to agree.
+
+    A schema that accepts what ``ddd check`` then refuses is the worse of the two answers: the
+    editor says the file is fine while the build says it is not, and the author is told about
+    the mistake by whoever runs the pipeline. A declared type named after a base datatype is
+    the case that went unnoticed, because the published pattern carried the eleven spellings
+    exactly while the loader compares them without regard to case.
+    """
+
+    @staticmethod
+    def refused(kind: str, model: type[BaseModel], document: dict[str, Any]) -> None:
+        with pytest.raises(ValidationError):
+            model.model_validate(document)
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(document, published(kind))
+
+    @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16", "BOOLEAN", "Float64"])
+    def test_a_declared_type_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
+        from ddd.models import TypesFile
+
+        self.refused(
+            "types",
+            TypesFile,
+            {"types": [{"type": "scalar", "name": name, "datatype": "uint16", "conversion": {}}]},
+        )
+
+    @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16"])
+    def test_a_typename_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
+        from ddd.models import ComponentFile
+
+        self.refused(
+            "component",
+            ComponentFile,
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Speed",
+                                "kind": "measurement",
+                                "typename": name,
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
 
 
 def json_blocks(page: str) -> list[Any]:

@@ -284,8 +284,9 @@ class StructType(BaseModel):
     name: TypeName
     """Name of the structure; every type of a project needs a distinct one.
 
-    Refused if it reads as a base datatype, which would be a type nothing could ever refer to:
-    where a name is written, a base datatype wins the union.
+    Refused if it spells a base datatype, compared without regard to case: a type called
+    ``uint16``, or ``UINT16``, wears the name of storage it is not, and every declaration
+    naming it would read like a typo.
     """
 
     description: str = ""

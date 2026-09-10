@@ -213,7 +213,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",
@@ -235,7 +235,7 @@
     },
     "IdentityConversion": {
       "additionalProperties": false,
-      "description": "``physical == raw``; the default for every variable.",
+      "description": "``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.\n\nNot a default: a definition naming storage by ``datatype`` states this one where raw and\nphysical are the same number, so that the claim is written down rather than left to\nsilence.",
       "properties": {
         "kind": {
           "const": "identity",
@@ -335,7 +335,7 @@
       "type": "object"
     },
     "ObjectKind": {
-      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes and the calibration tool only reads.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
+      "description": "What sort of data object a definition describes.\n\n* ``measurement`` - An online value the software writes; a calibration tool measures it and may write it.\n* ``parameter`` - A single calibratable constant.\n* ``value_block`` - An array of calibratable constants.\n* ``curve`` - A one dimensional calibratable table over one axis.\n* ``map`` - A two dimensional calibratable table over two axes.\n* ``axis`` - Shared axis points a curve or map is interpolated over.",
       "enum": [
         "measurement",
         "parameter",
@@ -345,7 +345,7 @@
         "axis"
       ],
       "enumDescriptions": [
-        "An online value the software writes and the calibration tool only reads.",
+        "An online value the software writes; a calibration tool measures it and may write it.",
         "A single calibratable constant.",
         "An array of calibratable constants.",
         "A one dimensional calibratable table over one axis.",
@@ -1205,7 +1205,7 @@
       "type": "object"
     },
     "Scope": {
-      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
+      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component owns the variable, and for a measurement writes it; exactly one may own it.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
         "input",
         "output",
@@ -1213,7 +1213,7 @@
       ],
       "enumDescriptions": [
         "The component reads the variable; another component has to produce it.",
-        "The component writes the variable; exactly one component may do so.",
+        "The component owns the variable, and for a measurement writes it; exactly one may own it.",
         "The component owns the variable exclusively; no other component may use it."
       ],
       "title": "Scope",

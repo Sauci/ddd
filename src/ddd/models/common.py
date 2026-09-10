@@ -23,7 +23,7 @@ from pydantic import (
 
 
 class FileRoot(BaseModel):
-    """Base of the hand-written file roots: project, component and types.
+    """Base of the seven hand-written file roots, one per top level key a description may have.
 
     The one thing they share is the ``$schema`` key. Editors use it to bind a json file to
     its schema, and that binding is what turns the published contract into completion,
@@ -265,17 +265,30 @@ _DATATYPE_INFO: Final[dict[Datatype, DatatypeInfo]] = {
 
 _BASE_DATATYPE_NAMES: Final = frozenset(member.value for member in Datatype)
 
+
+def _in_either_case(name: str) -> str:
+    """One datatype name spelled so that a pattern matches it whatever case it is written in.
+
+    ``uint16`` becomes ``[Uu][Ii][Nn][Tt]16``. Written out as character classes rather than
+    asked for with a flag, because a json schema pattern carries no flags and the inline form
+    ``(?i:...)`` is recent enough that an editor's regular expression engine may not have it.
+    """
+    return "".join(f"[{letter.upper()}{letter}]" if letter.isalpha() else letter for letter in name)
+
+
 TYPE_NAME_PATTERN: Final = (
-    rf"^(?!(?:{'|'.join(sorted(_BASE_DATATYPE_NAMES))})$)[A-Za-z_][A-Za-z0-9_]*$"
+    rf"^(?!(?:{'|'.join(_in_either_case(name) for name in sorted(_BASE_DATATYPE_NAMES))})$)"
+    r"[A-Za-z_][A-Za-z0-9_]*$"
 )
 """The rule for a declared type's name as a regular expression, for the published schema.
 
 Spelled twice, in two dialects, because the two consumers cannot share one: json schema
 patterns are ECMA-262, where a negative lookahead is ordinary, and the validator pydantic
 compiles has none. So the rule is enforced in python and *published* as this pattern, which an
-editor applies as the file is typed - which is the whole point of having it. The pattern
-carries the exact spellings; matching without regard to case is what the schema dialect
-cannot say, so the loader says it below.
+editor applies as the file is typed - which is the whole point of having it. Both spellings
+ignore case, the pattern by writing each letter as a two-letter class, so that a schema bound
+in an editor refuses exactly what the loader refuses and ``UINT16`` is underlined as it is
+typed rather than accepted and then rejected by ``ddd check``.
 """
 
 

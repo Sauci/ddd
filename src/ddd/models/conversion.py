@@ -43,7 +43,11 @@ class Enumerator(_Frozen):
     """C identifier of the enumerator; enumerators of all enums share one c namespace."""
 
     value: Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)]
-    """The raw value; every enumerator of one enum needs a value of its own.
+    """The raw value; two enumerators of one enum sharing one is reported as a warning.
+
+    ``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and
+    occasionally meant as an alias - but the a2l table then offers a calibration tool two
+    names for one reading.
 
     Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no
     storage could ever represent is refused here rather than overflowing a comparison once
@@ -56,7 +60,12 @@ class Enumerator(_Frozen):
 
 
 class IdentityConversion(_Frozen):
-    """``physical == raw``; the default for every variable."""
+    """``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
+
+    Not a default: a definition naming storage by ``datatype`` states this one where raw and
+    physical are the same number, so that the claim is written down rather than left to
+    silence.
+    """
 
     kind: Literal["identity"] = "identity"
 

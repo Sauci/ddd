@@ -21,10 +21,10 @@ class Project(BaseModel):
     """Free text describing the project."""
 
     includes: tuple[str, ...] = ()
-    """Paths to component, types, units, sections, constants or sub-project files,
+    """Paths to component, types, units, sections, constants, rasters or sub-project files,
     relative to this file.
 
-    Shell style wildcards (``*``, ``?``, ``**``) are expanded; the kind of every
+    Shell style wildcards (``*``, ``?``, ``[...]``, ``**``) are expanded; the kind of every
     included file is detected from its top level key.
     """
 

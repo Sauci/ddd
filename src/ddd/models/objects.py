@@ -68,7 +68,7 @@ class ObjectKind(StrEnum):
     """What sort of data object a definition describes."""
 
     MEASUREMENT = "measurement"
-    """An online value the software writes and the calibration tool only reads."""
+    """An online value the software writes; a calibration tool measures it and may write it."""
 
     PARAMETER = "parameter"
     """A single calibratable constant."""
@@ -319,8 +319,9 @@ class DataObject(_Frozen):
     unit: str = ""
     """Physical unit, e.g. ``"Hz"``.
 
-    Free text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only
-    checks that every component declaring this object spells the unit the same way.
+    Free text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:
+    every component declaring this object has to spell it the same way, and where the project
+    declares a unit vocabulary the spelling is checked against that too (``unknown-unit``).
     """
 
     section: Annotated[str, StringConstraints(pattern=SECTION_NAME_PATTERN)] | None = None
@@ -503,7 +504,11 @@ class DataObject(_Frozen):
 
 
 class Measurement(DataObject):
-    """An online value: written by the software, only measured by the calibration tool."""
+    """An online value: the software writes it, a calibration tool measures it and may write it.
+
+    A tool writing one through its address is one of the reasons to declare a measurement
+    ``volatile``, alongside an interrupt, a second core and a peripheral.
+    """
 
     kind: Literal[ObjectKind.MEASUREMENT]
     dimensions: tuple[Dimension, ...] = ()

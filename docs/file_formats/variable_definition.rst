@@ -73,9 +73,9 @@ rather than ignored.
      - Whether the generated declaration carries the c qualifier of the same name, which
        forbids the compiler to assume it already knows the value. A measurement needs it when
        something outside the reading component writes the variable - an interrupt, a second
-       core, a peripheral - and calibration data needs it when a calibration tool is to change
-       the value in a running ecu, because without it the compiler is entitled to fold the
-       initialiser into the code that reads it - within one translation unit at every
+       core, a peripheral, a calibration tool - and calibration data needs it when a tool is
+       to change the value in a running ecu, because without it the compiler is entitled to
+       fold the initialiser into the code that reads it - within one translation unit at every
        optimisation level, ``-O0`` included, and across them under ``-flto``. The whole
        account, with the compiler output it was measured from, is in
        :doc:`../generated_artefacts`. There is no default because there is no answer DDD could derive, and
@@ -99,7 +99,9 @@ rather than ignored.
      - The physical unit, as free text: ``Hz``, ``degC``, ``%``. It is shown in the c comment
        in brackets, and it is part of the a2l ``COMPU_METHOD``. Components sharing a variable
        have to agree on it, because two components using the same variable in different units
-       is the failure that compiles and links and is wrong by a constant factor.
+       is the failure that compiles and links and is wrong by a constant factor. Free text
+       does not mean unchecked: where the project declares a :doc:`unit vocabulary <units>`,
+       every spelling is checked against it as well (``unknown-unit``).
    * - ``conversion``
      - required beside ``datatype``
      - How the stored number maps to the physical one; see :doc:`conversions`. Required
@@ -423,9 +425,11 @@ Kinds of data object
 
 ``kind`` decides what the object *is*, and with it how it is stored and what the a2l calls it.
 The division that matters is between the one kind the software writes and the five it does
-not: a ``measurement`` is an online value that the software produces and the calibration tool
-only observes, while everything else is calibration data - the software never writes it, so it
-is generated ``const``, and a calibration tool changes it through its address.
+not: a ``measurement`` is an online value that the software produces and a calibration tool
+measures, while everything else is calibration data - the software never writes it, so it is
+generated ``const``, and a calibration tool changes it through its address. A tool can write
+a measurement through its address as well, and a measurement it is meant to poke is one of
+the cases ``volatile`` is for; what the division is about is which kind the *software* writes.
 
 Whether it also ends up in read only memory is the other question, and the one ``volatile``
 answers. ``const`` says who writes the object from inside the software, ``volatile`` says

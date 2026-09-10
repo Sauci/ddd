@@ -49,6 +49,7 @@ PAGES["README.md"] = README
 PROJECT_WIDE_DOCUMENTS = {
     "SPEC.md": (SPEC, "`"),
     "README.md": (README, "`"),
+    "docs/consistency_checks.rst": (CONSISTENCY_CHECKS, "``"),
     "docs/editor_integration.rst": (EDITOR_INTEGRATION, "``"),
 }
 """The documents stating how many checks need every component, each with its own quoting.

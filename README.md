@@ -490,7 +490,7 @@ further to say, or because a project cannot be interpreted without the plugins i
 | error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since every declaration states it and there is no silence to interpret |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
-| error | `duplicate-type` | two files declare the same structured datatype name |
+| error | `duplicate-type` | two files declare the same type name, whichever of the three kinds it is: structure, scalar type or external type |
 | error | `duplicate-unit` | a unit is declared more than once, in one file or across files |
 | error | `duplicate-section` | a memory section is declared more than once, in one file or across files |
 | error | `duplicate-constant` | a constant is declared more than once, in one file or across files |
@@ -509,7 +509,7 @@ further to say, or because a project cannot be interpreted without the plugins i
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
-| error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
+| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares, or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
@@ -568,7 +568,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |

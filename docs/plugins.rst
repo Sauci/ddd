@@ -147,7 +147,11 @@ one.
 
 ``backend`` returns an object satisfying the ``Backend`` protocol - a ``name`` and a
 ``generate(dictionary, output_dir)`` returning ``GeneratedFile`` entries - and is selected as
-``ddd generate <name>``, with the common options ``-o``, ``--dry-run`` and ``--force``. It
+``ddd generate <name>``, with the common options ``-o``, ``--dry-run`` and ``--force``, and
+the severity and format options every analysis takes, ``-W``, ``--strict`` and ``--format``.
+A plugin's artefact takes no option of its own, and none of the built-in artefacts' either:
+``-t`` names the templates the c sources are rendered from, and ``--address-map`` and
+``--byte-order`` belong to the a2l, so each is refused here as an unrecognized argument. It
 runs under the same writer as the built-in artefacts, so two artefacts claiming one path are
 refused exactly as between the c and the a2l backends. ``all`` runs them after the built-in
 pair, in the order the project names the plugins, so a build gets a plugin's artefact without

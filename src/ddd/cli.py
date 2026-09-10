@@ -76,6 +76,14 @@ EXIT_USAGE = 2
 
 GENERATOR = f"ddd {__version__}"
 
+_FORMAT_HELP = "output format"
+"""What ``--format`` says on a command whose whole output it chooses.
+
+``dump`` says something else: there stdout is the dictionary in either format and the switch
+reaches the diagnostics on stderr alone, so "output format" would read as a promise about the
+document a build archives.
+"""
+
 
 def cmake_module_directory() -> Path | None:
     """Directory holding ``Ddd.cmake``, inside the installed package or in a source checkout."""
@@ -236,7 +244,13 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     dump = subparsers.add_parser(
         "dump", help="print the resolved data dictionary, the contract the backends consume"
     )
-    _add_common_arguments(dump)
+    _add_common_arguments(
+        dump,
+        format_help=(
+            "format of the diagnostics, which go to stderr on this command; the dictionary "
+            "on stdout is json either way"
+        ),
+    )
     dump.set_defaults(handler=_command_dump)
 
     identity = subparsers.add_parser(
@@ -398,9 +412,11 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     return parser
 
 
-def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_common_arguments(
+    parser: argparse.ArgumentParser, *, format_help: str = _FORMAT_HELP
+) -> None:
     parser.add_argument("project", type=Path, help="project or component description file")
-    _add_policy_arguments(parser)
+    _add_policy_arguments(parser, format_help=format_help)
 
 
 def _add_generate_arguments(
@@ -492,7 +508,9 @@ def _add_generate_arguments(
     )
 
 
-def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_policy_arguments(
+    parser: argparse.ArgumentParser, *, format_help: str = _FORMAT_HELP
+) -> None:
     parser.add_argument(
         "-W",
         "--severity",
@@ -502,7 +520,7 @@ def _add_policy_arguments(parser: argparse.ArgumentParser) -> None:
         help="change the severity of a check (error, warning, info, ignore); repeatable",
     )
     parser.add_argument("--strict", action="store_true", help="report warnings as errors")
-    parser.add_argument("--format", choices=["text", "json"], default="text", help="output format")
+    parser.add_argument("--format", choices=["text", "json"], default="text", help=format_help)
 
 
 def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:

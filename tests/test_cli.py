@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -299,11 +300,17 @@ class TestGenerate:
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         capsys.readouterr()
         # An unchanged file is left alone, not rewritten in place, so a rerun that changes
-        # nothing leaves its mtime exactly as the first run left it.
-        before = (output / "ddd_globals.c").stat().st_mtime_ns
+        # nothing leaves its mtime exactly as the first run left it. Stamped to a sentinel
+        # well in the past, rather than read straight after the first run, because two runs
+        # close enough together can land on the same clock tick and match by coincidence even
+        # when the second one did rewrite the file - a rewrite would replace the sentinel
+        # with a fresh time, which is what makes this a real check rather than a flaky one.
+        generated = output / "ddd_globals.c"
+        stamp = generated.stat().st_mtime_ns - 10**10
+        os.utime(generated, ns=(stamp, stamp))
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         assert "unchanged" in capsys.readouterr().err
-        assert (output / "ddd_globals.c").stat().st_mtime_ns == before
+        assert generated.stat().st_mtime_ns == stamp
 
     def test_the_a2l_artefact_writes_the_a2l_and_nothing_else(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

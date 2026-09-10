@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import os
 from pathlib import Path
 from typing import Any
 
@@ -232,11 +234,17 @@ class TestWriting:
 
         # An unchanged file is not rewritten, so its mtime survives a rerun untouched - what
         # lets a build system that watches mtimes tell the ninja module depends on skip work a
-        # rerun did not actually change; see test_cmake.py.
-        before = (tree / "gen" / "ddd_globals.c").stat().st_mtime_ns
+        # rerun did not actually change; see test_cmake.py. Stamped to a sentinel well in the
+        # past, rather than read straight after the first write, because two writes close
+        # enough together can land on the same clock tick and match by coincidence even when
+        # the second one did rewrite the file - a rewrite would replace the sentinel with a
+        # fresh time, which is what makes this a real check rather than a flaky one.
+        generated = tree / "gen" / "ddd_globals.c"
+        stamp = generated.stat().st_mtime_ns - 10**10
+        os.utime(generated, ns=(stamp, stamp))
         second = write(render_files(dictionary, tree / "gen"))
         assert {result.status for result in second} == {WriteStatus.UNCHANGED}
-        assert (tree / "gen" / "ddd_globals.c").stat().st_mtime_ns == before
+        assert generated.stat().st_mtime_ns == stamp
 
         (tree / "gen" / "ddd_globals.c").write_text("stale", encoding="utf-8")
         third = write(render_files(dictionary, tree / "gen"))
@@ -289,6 +297,63 @@ class TestWriting:
             write([first, second])
         assert (out / "first.h").read_text(encoding="utf-8") == "new\n"
         assert not any(out.glob("*.tmp"))
+
+    def test_a_failed_write_removes_its_own_partial_temporary(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A temporary is recorded for cleanup before it is written, not after: a write that
+        fails once the file already exists on disk - a full disk partway through, an I/O
+        error - used to leave that ``.tmp`` behind, unrecorded and so never unlinked."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        second = GeneratedFile(out / "second.h", "second\n")
+        real_write_bytes = Path.write_bytes
+
+        def flaky(path: Path, data: bytes) -> int:
+            if path.name == "second.h.tmp":
+                real_write_bytes(path, data)
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_write_bytes(path, data)
+
+        monkeypatch.setattr(Path, "write_bytes", flaky)
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        assert excinfo.value.filename == str(second.path)
+        assert not first.path.exists()
+        assert not second.path.exists()
+        assert not any(out.glob("*.tmp"))
+
+    def test_a_failed_replace_names_only_the_real_target(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed ``Path.replace`` sets ``filename`` to the ``.tmp`` it renamed from and
+        ``filename2`` to the target it could not replace - forced here, rather than provoked,
+        because which ``OSError`` a blocked rename actually raises reads differently by
+        platform. ``write()`` overwrites ``filename`` with the target, so a reader sees the
+        path they typed, and drops ``filename2`` rather than leave it naming that same target
+        a second time; pinning ``str(error)`` is what would show a regression to either half
+        as a diff, rather than only to a ``.filename`` assertion a stray ``.filename2``
+        would not affect."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        second = GeneratedFile(out / "second.h", "second\n")
+        real_replace = Path.replace
+
+        def refuse(path: Path, target: Path) -> Path:
+            if target.name == "second.h":
+                error = OSError(errno.EACCES, "Access is denied", str(path))
+                error.filename2 = str(target)
+                raise error
+            return real_replace(path, target)
+
+        monkeypatch.setattr(Path, "replace", refuse)
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        assert str(excinfo.value) == f"[Errno 13] Access is denied: {str(second.path)!r}"
 
     def test_files_use_unix_line_endings(self, tree: Path) -> None:
         dictionary, _ = run_analysis(tree, simple(declare("local", "A")))

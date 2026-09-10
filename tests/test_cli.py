@@ -1230,6 +1230,77 @@ class TestSchemaAndChecks:
         assert "multiple-producers" in out
         assert "(fixed)" in out
 
+    def test_checks_marks_the_project_wide_and_the_comparison_checks(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """All three markers are derived from the registry, not hand listed.
+
+        The set marked ``(project)`` in the text form is exactly what ``STANDALONE_POLICY``
+        holds back, the set marked ``(comparison)`` is exactly the checks of the delivery
+        comparison (section 4.1), and the set marked ``(fixed)`` is exactly the checks whose
+        severity cannot be relaxed - all three read off the registry here too, so a check
+        gaining or losing a flag would fail this test rather than leave the text form silent
+        about it.
+
+        The markers are read out of the trailing parenthetical rather than looked for anywhere
+        in the line: a check carrying two of them renders them together, ``(fixed, project)``,
+        which a substring search for ``(project)`` would miss.
+        """
+        from ddd.diagnostics import CHECKS, STANDALONE_POLICY
+
+        def markers(line: str) -> set[str]:
+            match = re.search(r"\(([^)]*)\)$", line)
+            return set(match.group(1).split(", ")) if match else set()
+
+        project_wide = {entry.removesuffix("=ignore") for entry in STANDALONE_POLICY}
+        comparison = {name for name, info in CHECKS.items() if info.comparison}
+        fixed = {name for name, info in CHECKS.items() if not info.overridable}
+        assert main(["checks"]) == EXIT_OK
+        lines = capsys.readouterr().out.splitlines()
+        marked_project = {line.split()[0] for line in lines if "project" in markers(line)}
+        marked_comparison = {line.split()[0] for line in lines if "comparison" in markers(line)}
+        marked_fixed = {line.split()[0] for line in lines if "fixed" in markers(line)}
+        assert marked_project == project_wide
+        assert marked_comparison == comparison
+        assert marked_fixed == fixed
+
+    def test_a_check_carrying_two_markers_lists_them_in_one_parenthetical(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The rendering the registry cannot exercise, pinned from a plugin that can.
+
+        The three flags are independent, and no built-in check sets two of them today, so
+        nothing else here would notice the day one did - or the day the two markers started
+        being printed as two parentheticals. A plugin declares the pair instead, and the line
+        it produces is the one the documentation and the changelog quote.
+        """
+        module = tmp_path / "ddd_two_markers.py"
+        module.write_text(
+            """\
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import Plugin
+
+PLUGIN = Plugin(
+    name="two",
+    checks=(
+        CheckInfo(
+            "two/needs-everything",
+            Severity.ERROR,
+            "a plugin check that needs every component and cannot be relaxed",
+            overridable=False,
+            needs_every_component=True,
+        ),
+    ),
+)
+""",
+            encoding="utf-8",
+        )
+        assert main(["checks", "--plugin", str(module)]) == EXIT_OK
+        listed = [
+            line for line in capsys.readouterr().out.splitlines() if "two/needs-everything" in line
+        ]
+        assert listed and listed[0].endswith(" (fixed, project)"), listed
+
     def test_cmake_dir(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["cmake-dir"]) == EXIT_OK
         directory = Path(capsys.readouterr().out.strip())
@@ -1238,7 +1309,25 @@ class TestSchemaAndChecks:
     def test_checks_json(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["checks", "--format", "json"]) == EXIT_OK
         entries = json.loads(capsys.readouterr().out)
-        assert {"check", "default_severity", "description", "overridable"} <= set(entries[0])
+        assert {
+            "check",
+            "default_severity",
+            "description",
+            "overridable",
+            "needs_every_component",
+            "comparison",
+        } <= set(entries[0])
+
+    def test_checks_json_flags_match_the_registry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The two new booleans are the registry's own flags, not a copy that can drift."""
+        from ddd.diagnostics import CHECKS
+
+        assert main(["checks", "--format", "json"]) == EXIT_OK
+        entries = json.loads(capsys.readouterr().out)
+        for entry in entries:
+            info = CHECKS[entry["check"]]
+            assert entry["needs_every_component"] == info.needs_every_component
+            assert entry["comparison"] == info.comparison
 
 
 class TestSingleComponent:
@@ -1300,6 +1389,40 @@ class TestSources:
         write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["missing.py"])})
         assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
         assert not any(line.endswith(".py") for line in capsys.readouterr().out.splitlines())
+
+    def test_a_missing_include_is_reported_beside_the_listing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The root still reads, so the listing goes out; the missing file is a finding on
+        stderr rather than a silent gap - only a root that cannot be read stops the listing."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "missing.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert (tmp_path / "a.ddd.json").as_posix() in captured.out.splitlines()
+        assert "error[file-not-found]" in captured.err
+
+    def test_a_missing_include_does_not_change_the_json_contract(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The json document already carried the finding; this task only changes text mode."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "missing.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["sources", str(tmp_path / "p.ddd.json"), "--format", "json"]
+        assert main(arguments) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["diagnostics"][0]["check"] == "file-not-found"
+        assert payload["summary"]["error"] == 1
 
     def test_an_unreadable_root_is_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -340,6 +340,84 @@ class TestEnums:
         assert checks(bag) == ["enum-conflict"]
         assert "first defined as: A=0" in messages(bag)
 
+    def test_reordered_enumerators_are_one_finding(self, tree: Path) -> None:
+        """A reordering is ``enum-conflict``'s mistake alone, not ``definition-mismatch``'s too.
+
+        ``_conversion_value`` used to fold the enumerators into the compared value, so this
+        same reordering also failed the interface table's ``conversion`` field - reported a
+        second time, and uselessly: that field explains itself with
+        ``EnumConversion.describe``, which names only the enum, so the second message printed
+        identical text (``enum(Mode)``) on both sides.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", conversion=self.enum(("A", 0), ("B", 1)))],
+                b=[declare("input", "X", conversion=self.enum(("B", 1), ("A", 0)))],
+            ),
+        )
+        assert checks(bag) == ["enum-conflict"]
+
+    def test_revalued_enumerators_are_one_finding(self, tree: Path) -> None:
+        """Same shape as the reordering above, but the enumerators keep their order and one
+        changes value instead - ``enum-conflict`` alone owns that disagreement too."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", conversion=self.enum(("A", 0), ("B", 1)))],
+                b=[declare("input", "X", conversion=self.enum(("A", 0), ("B", 2)))],
+            ),
+        )
+        assert checks(bag) == ["enum-conflict"]
+
+    def test_enum_against_linear_is_a_definition_mismatch(self, tree: Path) -> None:
+        """The kinds differ, so this is ``_conversion_value``'s finding, not
+        ``enum-conflict``'s: a linear conversion is never an ``EnumConversion``, so
+        ``_register_enum`` never runs for it and there is nothing there to compare against."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", conversion=self.enum(("A", 0), ("B", 1)))],
+                b=[declare("input", "X", conversion={"factor": 2.0})],
+            ),
+        )
+        assert checks(bag) == ["definition-mismatch"]
+
+    def test_differently_named_enums_are_a_definition_mismatch_not_a_conflict(
+        self, tree: Path
+    ) -> None:
+        """The enum registry keys by name, so two differently named enums never meet inside
+        ``_register_enum`` and there is no ``enum-conflict`` to report - but the generated
+        ``typedef enum`` names still differ, which is exactly what ``definition-mismatch`` is
+        for, even with the same values behind the name.
+
+        The second enum's enumerators are named ``P``/``Q`` rather than ``A``/``B``: enums
+        share one c enumerator namespace, and naming this one ``A``/``B`` too would raise the
+        unrelated ``name-collision`` alongside the finding this test pins.
+        """
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", conversion=self.enum(("A", 0), ("B", 1)))],
+                b=[
+                    declare(
+                        "input",
+                        "X",
+                        conversion={
+                            "kind": "enum",
+                            "name": "OtherMode",
+                            "enumerators": [
+                                {"name": "P", "value": 0},
+                                {"name": "Q", "value": 1},
+                            ],
+                        },
+                    )
+                ],
+            ),
+        )
+        assert checks(bag) == ["definition-mismatch"]
+        assert "conversion: enum(OtherMode) != enum(Mode)" in messages(bag)
+
     def test_duplicate_enumerator_value(self, tree: Path) -> None:
         _, bag = run_analysis(
             tree,

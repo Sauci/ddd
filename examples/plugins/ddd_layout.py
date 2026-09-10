@@ -275,27 +275,40 @@ PLUGIN = Plugin(
         CheckInfo(
             "layout/key-out-of-range", Severity.ERROR, "a key is above the project's max_key"
         ),
+        # The five below are reported by ``compare`` alone, so ``ddd checks`` marks them
+        # ``(comparison)``. Neither check above is one of them: ``layout/duplicate-key`` is
+        # raised by ``check`` and again by ``compare``, an archived dump being read back
+        # rather than re-checked, and ``layout/key-out-of-range`` by ``check`` alone.
         CheckInfo(
             "layout/version-not-bumped",
             Severity.ERROR,
             "the layout of an entry changed and its version did not increase",
+            comparison=True,
         ),
         CheckInfo(
             "layout/reused-key",
             Severity.ERROR,
             "a key of the baseline now belongs to a different object",
+            comparison=True,
         ),
         CheckInfo(
             "layout/key-changed",
             Severity.ERROR,
             "an object of the baseline carries a different key",
+            comparison=True,
         ),
         CheckInfo(
             "layout/needless-version",
             Severity.WARNING,
             "the version of an entry changed while its layout did not",
+            comparison=True,
         ),
-        CheckInfo("layout/removed-entry", Severity.WARNING, "a key of the baseline is gone"),
+        CheckInfo(
+            "layout/removed-entry",
+            Severity.WARNING,
+            "a key of the baseline is gone",
+            comparison=True,
+        ),
     ),
     check=check,
     compare=compare,

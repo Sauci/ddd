@@ -415,6 +415,50 @@ its own.
   an editor holds a generated header open has to close it first; and where a target is one name
   of a hard link, the other name keeps the old bytes rather than seeing the update.
 
+* **`ddd sources` says what it found beside what it listed.**  A missing include was silent in
+  text mode: the command printed the listing, exited `0`, and dropped the `file-not-found` its
+  loader had already recorded.  A hand-written build asking it for a dependency list therefore
+  configured without a word about the mistake and met it later, from whichever DDD command the
+  build ran next, rather than from the run that had already found it.  The findings now follow
+  the listing on stderr, the way `--format json` has always carried them in its `diagnostics`
+  and the way `ddd artefacts` already ended its own listing.  The exit code is untouched: `0`
+  whatever the findings, `1` only when the root file cannot be read at all - the contract `ddd
+  artefacts` has too, and the exit code table of the command line page names both commands now.
+  **Migration:** a script reading `ddd sources` in text form sees findings on stderr that were
+  not there before; stdout and the exit code are unchanged.  `--format json` is the parseable
+  form, and has carried the same findings all along.
+
+* **`ddd checks` says which checks a single component cannot answer.**  The listing marked a
+  check whose severity cannot be relaxed `(fixed)` and said nothing else about any of them, so
+  nothing the tool printed distinguished the checks `ddd check --standalone` holds back - the
+  ones that need every component of the project - from the ones a single file settles, and a
+  build writing a per-component target had to take that list from the documentation.  A check
+  that needs the whole project is marked `(project)` now, one that grades a delivery comparison
+  rather than a project `(comparison)`, beside the existing `(fixed)`; no check in the registry
+  carries two today, and one that did would share a single parenthetical, `(fixed, project)`.
+  Every entry of `--format json` carries the same two facts, as `needs_every_component` and
+  `comparison`, beside the `overridable` it already had.
+  **Migration:** a script parsing the text listing meets the new markers at the end of a line
+  that used to end with the check's description, and `--format json` gained two keys.  Read the
+  two booleans from the json form, which is the parseable one, rather than matching the markers.
+
+* **Two declarations of one object whose enums disagree are one finding.**  A producer and a
+  consumer stating the same enum with its enumerators in a different order, or with one of them
+  on a different value, were reported twice: `enum-conflict`, which owns that disagreement and
+  names the enumerators of both sides, and `definition-mismatch` as well, because the comparison
+  of two declarations folded the enumerator table into the conversion it compares.  The second
+  finding could not even say what differed - that comparison explains a conversion by naming it,
+  so the message read `conversion: enum(Mode) != enum(Mode)`, the same text on both sides.  An
+  enum is compared by its name there now: a reordering or a changed value is `enum-conflict`
+  alone, and `-W enum-conflict=ignore` silences it outright where it used to leave
+  `definition-mismatch` behind - the check being silenced is the one that owns the mistake -
+  while two declarations naming different enums are the `definition-mismatch` they always were,
+  `conversion: enum(OtherMode) != enum(Mode)`.  Identity and linear conversions are still
+  compared in full, and the delivery comparison, which runs no `enum-conflict` of its own, still
+  compares the enumerators itself - and still describes the difference as `enum(Mode) !=
+  enum(Mode)` under `changed-interface`, because `EnumConversion.describe` names the enum and
+  nothing else; that message is a known follow-up rather than part of this change.
+
 ## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that

@@ -213,8 +213,10 @@ def conversion_identity(conversion: Conversion) -> object:
     the same text, and two conversions differing only in it mean the same mapping. The
     ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and
     everything else compares as written, because ``linear`` with factor 1 is deliberately
-    not the identity. One function for both questions - declarations inside a project, and
-    one object across two deliveries - so the two can never drift over what a conversion is.
+    not the identity. This is what a delivery comparison compares and what ``enum-conflict``
+    holds two declarations of one enum to; the in-project interface table narrows an enum to
+    its name instead (:func:`ddd.analysis._conversion_value`), the enumerators being
+    ``enum-conflict``'s there.
     """
     if isinstance(conversion, EnumConversion):
         return (

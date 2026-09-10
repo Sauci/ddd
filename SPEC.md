@@ -1163,10 +1163,11 @@ Errors:
   another component declares. A reference is a use as much as a declaration is, so the finding
   sits at the reference, with a note at the local declaration, and nothing is dropped: the
   mistake is the ownership violation, not a missing object.
-- `definition-mismatch`: components disagree on kind, datatype, unit, scaling, shape,
-  volatility, referenced objects (axes and the `input` of an axis), or on limits where both
-  of them state limits. A declaration that omits limits defers to the producer rather than
-  disagreeing with it, a relaxation `volatile` has no use for, being required on every
+- `definition-mismatch`: components disagree on kind, datatype, unit, conversion (compared
+  by kind and parameters, an enum by its name - `enum-conflict` compares the enumerators),
+  shape, volatility, referenced objects (axes and the `input` of an axis), or on limits where
+  both of them state limits. A declaration that omits limits defers to the producer rather
+  than disagreeing with it, a relaxation `volatile` has no use for, being required on every
   definition ([section 3.3.1](#331-one-object-several-declarations)).
 - `duplicate-declaration`: a component declares the same object more than once.
 - `consumer-storage`: an `input` declaration states `init` or `section`. What an object
@@ -1768,19 +1769,22 @@ formats and of the dictionary (`ddd schema`, one kind to stdout or every kind wr
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
 closing the extension blocks over the named plugins' models); listing
 the description files a project is built out of
-(`ddd sources`, one sorted absolute POSIX path per line, which lets a build system re-run
-its configure step when one changes; in JSON the paths are a `sources` list beside the
-findings; the plugin modules the project names ([section 3.11](#311-plugins)) are among
-them, each by the file it was imported from, so that an edited plugin re-runs the
-generation as an edited component does); recording
+(`ddd sources`, one sorted absolute POSIX path per line, which lets a build system
+re-run its configure step when one changes; in JSON the paths are a `sources` list
+beside the findings, and in text the findings follow the listing on stderr the same way;
+the plugin modules the project names ([section 3.11](#311-plugins)) are among them,
+each by the file it was imported from, so that an edited plugin re-runs the generation
+as an edited component does); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
 project and the same severities; serving the checks to an editor over the Language Server
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); listing the available checks
-(`ddd checks`, each with its default severity, the unrelaxable ones marked, the built-in
-ones in the order of the registry and then each `--plugin`'s checks in their declared
-order); reporting where its build system integration and its example templates
+(`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
+need every component of a project marked `(project)` and the ones that grade a delivery
+comparison marked `(comparison)` - `needs_every_component` and `comparison` in JSON - the
+built-in ones in the order of the registry and then each `--plugin`'s checks in their
+declared order); reporting where its build system integration and its example templates
 live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage error); and
 printing its own version (`ddd --version`). Beside the command line, the package publishes
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.

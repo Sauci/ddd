@@ -403,7 +403,9 @@
             <span class="sa">f</span><span class="s2">"declare it as a 'measurement' or a 'value_block'"</span>
         <span class="p">)</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">shape</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+    <span class="c1"># Only a curve or a map has no shape of its own, and the kind check above refused both.</span>
+    <span class="k">assert</span> <span class="n">shape</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="n">spelled</span> <span class="o">=</span> <span class="s2">"none"</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span>
         <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
             <span class="sa">f</span><span class="s2">"a string states exactly one dimension, its length in bytes, got </span><span class="si">{</span><span class="n">spelled</span><span class="si">}</span><span class="s2">; an "</span>

@@ -675,6 +675,16 @@ would write build/gen/EventLogger.h (created)
 would write build/gen/DemoDevice.a2l (created)
 </pre></div>
 </div>
+<p>A run that does write writes every artefact or none. Each artefact the run has to write -
+an unchanged one is never touched, as above - is staged beside its target under the name
+<code class="docutils literal notranslate"><span class="pre">&lt;target&gt;.ddd-staging</span></code>, and only once every one of them is staged are they renamed into
+place, one after the other. A failure
+to write one - a disk that filled up, a directory that stopped being writable - therefore
+leaves the others as they were, except one the run had already renamed over a file that
+existed before it, which keeps its new content; the failure names the artefact and is a
+usage error. The staging name is fixed rather than random so that a staging file a crashed
+run left behind is overwritten rather than accumulated, and it is a name no artefact of a
+project would carry: <code class="docutils literal notranslate"><span class="pre">.tmp</span></code> is one people give real files.</p>
 </section>
 </section>
 <section id="a2l">

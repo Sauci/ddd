@@ -65,6 +65,7 @@ from ddd.plugins import (
     PluginNotFoundError,
     backend_of,
     block_model,
+    guarding_plugin_model,
     load_plugin,
     run_compare_hooks,
 )
@@ -707,6 +708,30 @@ def _selected(args: argparse.Namespace) -> None:
             raise ValueError(msg)
 
 
+def _displayed_path(path: Path, output_dir: Path) -> str:
+    """``path`` the way the reader would type it, rooted at the ``-o`` they actually gave.
+
+    ``render`` hands every file back resolved against ``output_dir`` resolved once, so that an
+    alias, an escape, or a directory junction cannot hide behind a spelling that looks
+    different from the real location it names or clashes with. Once that is settled the reader
+    is better served by the path the way they would type it themselves than by the resolved
+    one - the same trade ``Location.render`` already makes for a diagnostic - so this measures
+    ``path`` against ``output_dir`` resolved and reattaches it to ``output_dir`` exactly as
+    typed: relative to the current directory if ``-o`` was relative, and following a junction
+    or a symbolic link as typed rather than naming the real directory it lands on - which is
+    the whole of the reason this exists, and is as true of an absolute ``-o`` as of a relative
+    one, so neither spelling is treated specially here. Only a path ``relative_to`` cannot
+    place under the resolved directory falls back to itself: the on-disk failure path hands
+    this the raw text of an ``OSError``, which is not a path ``render`` has already vetted.
+    """
+    with contextlib.suppress(ValueError):
+        # Joined as paths rather than as text: a join collapses the "." that a bare
+        # ``-o .``, or a failure reported on the output directory itself, would
+        # otherwise leave in the spelling.
+        return (output_dir / path.relative_to(output_dir.resolve())).as_posix()
+    return path.as_posix()
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     _selected(args)
 
@@ -791,7 +816,9 @@ def _command_generate(args: argparse.Namespace) -> int:
             # directory, or one nothing may be written to. Naming the file beats the bare
             # errno text, and beats naming the directory, which is usually fine.
             target = (
-                Path(error.filename).as_posix() if error.filename else args.output_dir.as_posix()
+                _displayed_path(Path(error.filename), args.output_dir)
+                if error.filename
+                else args.output_dir.as_posix()
             )
             msg = f"cannot write '{target}': {error.strerror or error}"
             raise OSError(msg) from None
@@ -799,20 +826,19 @@ def _command_generate(args: argparse.Namespace) -> int:
     if args.format == "json":
         payload = _diagnostics_payload(bag)
         payload["generated"] = [
-            {"path": result.path.as_posix(), "status": result.status.value} for result in results
+            {"path": _displayed_path(result.path, args.output_dir), "status": result.status.value}
+            for result in results
         ]
         print(json.dumps(payload, indent=2))
     else:
         _report(bag, args.format)
         prefix = "would write" if args.dry_run else "wrote"
         for result in results:
+            shown = _displayed_path(result.path, args.output_dir)
             if result.status is WriteStatus.UNCHANGED:
-                print(f"unchanged   {result.path.as_posix()}", file=sys.stderr)
+                print(f"unchanged   {shown}", file=sys.stderr)
             else:
-                print(
-                    f"{prefix:<11} {result.path.as_posix()} ({result.status.value})",
-                    file=sys.stderr,
-                )
+                print(f"{prefix:<11} {shown} ({result.status.value})", file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -936,9 +962,10 @@ def _close_extensions(
         model = block_model(plugin, on_project=on_project)
         if model is None:
             continue
-        rendered = model.model_json_schema(
-            ref_template=f"#/$defs/{plugin.name}.{{model}}", schema_generator=PublishedSchema
-        )
+        with guarding_plugin_model(plugin.name, "rendering the schema of its own model"):
+            rendered = model.model_json_schema(
+                ref_template=f"#/$defs/{plugin.name}.{{model}}", schema_generator=PublishedSchema
+            )
         rendered.pop("$schema", None)
         for name, definition in rendered.pop("$defs", {}).items():
             definitions[f"{plugin.name}.{name}"] = definition

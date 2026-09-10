@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import errno
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import WriteStatus, write
+from ddd.backends import GeneratedFile, WriteStatus, write
 
 
 def generate(tree: Path, files: dict[str, Any], **options: Any) -> dict[str, str]:
@@ -230,8 +232,19 @@ class TestWriting:
         assert {result.status for result in first} == {WriteStatus.CREATED}
         assert (tree / "gen" / "ddd_globals.c").is_file()
 
+        # An unchanged file is not rewritten, so its mtime survives a rerun untouched - what
+        # lets a build system that watches mtimes tell the ninja module depends on skip work a
+        # rerun did not actually change; see test_cmake.py. Stamped to a sentinel well in the
+        # past, rather than read straight after the first write, because two writes close
+        # enough together can land on the same clock tick and match by coincidence even when
+        # the second one did rewrite the file - a rewrite would replace the sentinel with a
+        # fresh time, which is what makes this a real check rather than a flaky one.
+        generated = tree / "gen" / "ddd_globals.c"
+        stamp = generated.stat().st_mtime_ns - 10**10
+        os.utime(generated, ns=(stamp, stamp))
         second = write(render_files(dictionary, tree / "gen"))
         assert {result.status for result in second} == {WriteStatus.UNCHANGED}
+        assert generated.stat().st_mtime_ns == stamp
 
         (tree / "gen" / "ddd_globals.c").write_text("stale", encoding="utf-8")
         third = write(render_files(dictionary, tree / "gen"))
@@ -246,6 +259,115 @@ class TestWriting:
         results = write(render_files(dictionary, tree / "gen"), dry_run=True)
         assert {result.status for result in results} == {WriteStatus.CREATED}
         assert not (tree / "gen").exists()
+
+    def test_a_file_of_the_reader_s_own_beside_a_target_is_left_alone(self, tree: Path) -> None:
+        """``.tmp`` is a suffix people give real files; the staging suffix is one nobody else
+        picks. A run stages over its own leftovers and deletes them on the way out, so a
+        neighbour it staged onto would be silently destroyed - which is why it stages onto a
+        name no artefact and no hand-written file carries."""
+        dictionary, _ = run_analysis(tree, simple(declare("local", "A")))
+        assert dictionary is not None
+        out = tree / "gen"
+        out.mkdir()
+        neighbour = out / "ddd_globals.c.tmp"
+        neighbour.write_text("mine\n", encoding="utf-8")
+        write(render_files(dictionary, out))
+        assert neighbour.read_text(encoding="utf-8") == "mine\n"
+
+    def test_a_failed_replace_undoes_an_earlier_creation_in_the_same_call(self, tree: Path) -> None:
+        """Two files; the second's target is a directory, so its replace raises. The first
+        one's replace had already gone through by then - undoing it too is what makes the
+        failure all-or-nothing, rather than leaving the caller with one of the two files it
+        asked for and no sign that the run, as a whole, did not succeed."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        blocked = out / "second.h"
+        blocked.mkdir()
+        second = GeneratedFile(blocked, "second\n")
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        # The path a reader recognises is the target they asked for, not the sibling
+        # temporary file the failure actually happened on.
+        assert excinfo.value.filename == str(blocked)
+        assert not first.path.exists()
+        assert not any(out.glob("*.ddd-staging"))
+
+    def test_a_failed_replace_leaves_an_earlier_update_in_its_new_state(self, tree: Path) -> None:
+        """Unlike a fresh file, an updated one cannot be undone: its old bytes are already
+        gone once its own replace has gone through, so the new content is what a later
+        failure leaves behind - the one window write() documents as accepted rather than
+        solved."""
+        out = tree / "gen"
+        out.mkdir()
+        (out / "first.h").write_text("old\n", encoding="utf-8")
+        first = GeneratedFile(out / "first.h", "new\n")
+        blocked = out / "second.h"
+        blocked.mkdir()
+        second = GeneratedFile(blocked, "second\n")
+
+        with pytest.raises(OSError):
+            write([first, second])
+        assert (out / "first.h").read_text(encoding="utf-8") == "new\n"
+        assert not any(out.glob("*.ddd-staging"))
+
+    def test_a_failed_write_removes_its_own_partial_temporary(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A temporary is recorded for cleanup before it is written, not after: a write that
+        fails once the file already exists on disk - a full disk partway through, an I/O
+        error - used to leave that staging file behind, unrecorded and so never unlinked."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        second = GeneratedFile(out / "second.h", "second\n")
+        real_write_bytes = Path.write_bytes
+
+        def flaky(path: Path, data: bytes) -> int:
+            if path.name == "second.h.ddd-staging":
+                real_write_bytes(path, data)
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_write_bytes(path, data)
+
+        monkeypatch.setattr(Path, "write_bytes", flaky)
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        assert excinfo.value.filename == str(second.path)
+        assert not first.path.exists()
+        assert not second.path.exists()
+        assert not any(out.glob("*.ddd-staging"))
+
+    def test_a_failed_replace_names_only_the_real_target(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed ``Path.replace`` sets ``filename`` to the staging file it renamed from and
+        ``filename2`` to the target it could not replace - forced here, rather than provoked,
+        because which ``OSError`` a blocked rename actually raises reads differently by
+        platform. ``write()`` overwrites ``filename`` with the target, so a reader sees the
+        path they typed, and drops ``filename2`` rather than leave it naming that same target
+        a second time; pinning ``str(error)`` is what would show a regression to either half
+        as a diff, rather than only to a ``.filename`` assertion a stray ``.filename2``
+        would not affect."""
+        out = tree / "gen"
+        out.mkdir()
+        first = GeneratedFile(out / "first.h", "first\n")
+        second = GeneratedFile(out / "second.h", "second\n")
+        real_replace = Path.replace
+
+        def refuse(path: Path, target: Path) -> Path:
+            if target.name == "second.h":
+                error = OSError(errno.EACCES, "Access is denied", str(path))
+                error.filename2 = str(target)
+                raise error
+            return real_replace(path, target)
+
+        monkeypatch.setattr(Path, "replace", refuse)
+
+        with pytest.raises(OSError) as excinfo:
+            write([first, second])
+        assert str(excinfo.value) == f"[Errno 13] Access is denied: {str(second.path)!r}"
 
     def test_files_use_unix_line_endings(self, tree: Path) -> None:
         dictionary, _ = run_analysis(tree, simple(declare("local", "A")))

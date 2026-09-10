@@ -67,20 +67,27 @@ def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]
     is no point resolving references between files that could not all be read. In an editor it
     shows as the semantic findings dropping away while a file is briefly unparseable, and
     coming back with the next save.
+
+    Both phases run under the one guard, not just the second: a plugin's own model is run
+    while the files are read, to validate the ``extensions`` blocks against it, so a defect in
+    that model raises before the analysis is ever reached. ``covered`` is settled as each
+    phase learns it, so a plugin defect during the analysis still withdraws the findings of
+    every file the project covers, rather than of the project file alone.
     """
-    workspace = load_workspace(root, bag)
-    if workspace is None:
-        return bag, frozenset({root})
-    sources = frozenset(workspace.sources())
-    if not bag.has_errors:
-        try:
+    covered = frozenset({root})
+    try:
+        workspace = load_workspace(root, bag)
+        if workspace is None:
+            return bag, covered
+        covered = frozenset(workspace.sources())
+        if not bag.has_errors:
             analyze(workspace, bag)
-        except PluginError as error:
-            # A hook raising is a defect of the plugin, not of the project: ``ddd check``
-            # reports it as a usage error, but the server promises findings and never an
-            # exception, so it is turned into one here, on the project file itself.
-            bag.add("plugin-invalid", str(error), Location(root))
-    return bag, sources
+    except PluginError as error:
+        # A hook or a model raising is a defect of the plugin, not of the project: ``ddd
+        # check`` reports it as a usage error, but the server promises findings and never an
+        # exception, so it is turned into one here, on the project file itself.
+        bag.add("plugin-invalid", str(error), Location(root))
+    return bag, covered
 
 
 def collect(
@@ -97,26 +104,37 @@ def collect(
     above it, and only on its own when none does. That is the same order the hover and the
     jumps follow, and they have to agree: a squiggle saying a datatype names nothing, next to a
     hover that describes it in full, is worse than either answer on its own.
+
+    A file is counted as covered by what a run *reported on*, not only by what the run managed
+    to load. The two differ exactly when a run stopped early - a plugin defect ends the read
+    after every file has been read and before the analysis - and counting only the load would
+    then check an open file a second time on its own and publish everything about it twice.
     """
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
     for info in builds:
         bag, sources = analyse(info)
-        covered |= sources
-        _group(bag, Path(info.project), grouped)
+        covered |= sources | _group(bag, Path(info.project), grouped)
     for document in documents:
         if document.resolve() in covered:
             continue
         containing = containing_projects(document, root)
-        if containing:
-            for project in containing:
+        # A candidate that could not be read is named at its own file. Without this the reader
+        # gets the thin standalone analysis below and nothing at all saying why: the project
+        # that would have given the full answer is broken, and only the plugin can fix it.
+        # Once per file: a candidate an earlier document of this call already named, or
+        # that was itself a document, is not named again by a later search that meets it.
+        unreadable = DiagnosticBag()
+        for path in sorted(set(containing.failed) - covered):
+            unreadable.add("plugin-invalid", containing.failed[path], Location(path))
+        covered |= _group(unreadable, document, grouped)
+        if containing.projects:
+            for project in containing.projects:
                 bag, sources = _run(project, DiagnosticBag())
-                covered |= sources
-                _group(bag, project, grouped)
+                covered |= sources | _group(bag, project, grouped)
             continue
         bag, sources = analyse_standalone(document)
-        covered |= sources
-        _group(bag, document, grouped)
+        covered |= sources | _group(bag, document, grouped)
 
     cache: dict[Path, Document] = {}
     return {
@@ -125,18 +143,23 @@ def collect(
     }
 
 
-def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnostic]]) -> None:
-    """Sort the findings of one run onto the files they belong to.
+def _group(bag: DiagnosticBag, fallback: Path, grouped: dict[Path, list[Diagnostic]]) -> set[Path]:
+    """Sort the findings of one run onto the files they belong to, and say which files those were.
 
     A finding with no location at all is about the project rather than about a place in it -
     an include that matched nothing, for one - and goes on the file the run started from,
     which is the only file the reader can be sure is open.
+
+    The files are returned because they are the ones this run has now spoken for, which is
+    what :func:`collect` needs in order not to speak for any of them twice.
     """
+    filed: set[Path] = set()
     for finding in bag.sorted:
-        path = finding.location.path if finding.location else fallback
-        grouped.setdefault(path, []).append(finding)
-        for mirrored in _mirrors(finding):
-            grouped.setdefault(mirrored.location.path, []).append(mirrored)  # type: ignore[union-attr]
+        for entry in (finding, *_mirrors(finding)):
+            path = entry.location.path if entry.location else fallback
+            grouped.setdefault(path, []).append(entry)
+            filed.add(path)
+    return filed
 
 
 def _mirrors(finding: Diagnostic) -> list[Diagnostic]:

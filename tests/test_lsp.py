@@ -337,6 +337,40 @@ class TestDiscovery:
         assert load_builds([tmp_path / "absent.json"]) == []
 
 
+EXITING_CHECK_PLUGIN = """
+import sys
+
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    sys.exit(0)
+
+
+PLUGIN = Plugin(name="exiting", check=check)
+"""
+
+EXITING_MODEL_PLUGIN = """
+import sys
+
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Tag(BaseModel):
+    tag: str
+
+    @field_validator("tag")
+    @classmethod
+    def own_code(cls, value: str) -> str:
+        sys.exit(9)
+
+
+PLUGIN = Plugin(name="exiting", object_model=Tag)
+"""
+
+
 class TestDiagnostics:
     """What the editor draws, and on which file."""
 
@@ -582,6 +616,113 @@ class TestDiagnostics:
             "schema", Severity.ERROR, "unreadable", Location(tmp_path / "gone.json", "a.b")
         )
         assert service._as_lsp(finding, {})["range"]["start"] == {"line": 0, "character": 0}
+
+    def test_a_hook_that_exits_is_reported_and_the_server_keeps_running(
+        self, tmp_path: Path
+    ) -> None:
+        """``sys.exit()`` in a hook is not a ``PluginError`` by itself - only wrapped as one at
+        the ``_call`` boundary - so before that wrapping this used to propagate out of
+        ``collect`` as a bare ``SystemExit`` and end the server process. The project promises
+        findings and never an exception; this project file opened with no build claiming it is
+        exactly what an editor hands the server on the first keystroke of a new file."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        document = tmp_path / "project.ddd.json"
+        reports = service.collect([], [document])
+        # collect() returned at all, rather than the process going down with it: the server
+        # keeps running.
+        findings = reports[document]
+        plugin_invalid = [entry for entry in findings if entry["code"] == "plugin-invalid"]
+        assert len(plugin_invalid) == 1
+        assert (
+            "plugin 'exiting' failed in its check hook: SystemExit(0)"
+            in plugin_invalid[0]["message"]
+        )
+
+    def test_a_model_that_exits_does_not_take_the_search_for_a_project_down(
+        self, tmp_path: Path
+    ) -> None:
+        """Which project covers an open component is a search: every candidate above it is
+        loaded and asked, and loading one runs the models its plugins declare over every
+        ``extensions`` block in it. The squiggles, the hovers and the jumps all go through that
+        search, so a plugin defect met there has to end as an answer - here, the component read
+        on its own - rather than as an exception nobody catches."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        document = tmp_path / "a.ddd.json"
+        found = navigation.containing_projects(document, tmp_path)
+        assert found.projects == ()
+        assert list(found.failed) == [tmp_path / "project.ddd.json"]
+        reports = service.collect([], [document], tmp_path)
+        assert document in reports
+
+    def test_a_project_that_could_not_be_read_is_named_even_with_no_build_record(
+        self, tmp_path: Path
+    ) -> None:
+        """A component opened in an unconfigured tree is checked through the project above it,
+        and a plugin defect makes that project unreadable. Answering with the standalone
+        analysis alone would be the quietest possible failure: a thin set of findings, no sign
+        that a fuller answer exists, and nothing anywhere naming the plugin that is broken.
+        The finding goes on the project file, where the defect is, and the component still
+        gets the analysis it can have."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        document = tmp_path / "a.ddd.json"
+        reports = service.collect([], [document], tmp_path)
+        (broken,) = reports[tmp_path / "project.ddd.json"]
+        assert broken["code"] == "plugin-invalid"
+        assert "plugin 'exiting' failed validating an 'extensions' block" in broken["message"]
+        # and the component is still checked for what one file can settle
+        assert [entry["code"] for entry in reports[document]] == ["missing-id"]
+
+    def test_a_project_that_could_not_be_read_reports_its_files_once(self, tmp_path: Path) -> None:
+        """A read that a plugin defect stops has already reported on every file it read - the
+        blocks are validated once the whole tree is in - so the findings of an open file are
+        in hand while the project covers, by its own account, nothing but itself. Counting the
+        loaded files alone left the open one looking unchecked, so it was checked again on its
+        own and every finding on it was published twice, on the same line."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("nonsense", "X")),
+                "b.ddd.json": component(
+                    "B", declare("local", "Y", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        build_record(tmp_path, tmp_path / "project.ddd.json")
+        document = tmp_path / "a.ddd.json"
+        reports = service.collect(discover(tmp_path), [document], tmp_path)
+        assert [entry["code"] for entry in reports[document]] == ["schema"]
+        assert [entry["code"] for entry in reports[tmp_path / "project.ddd.json"]] == [
+            "plugin-invalid"
+        ]
 
 
 class TestNavigation:

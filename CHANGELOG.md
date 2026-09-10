@@ -302,6 +302,93 @@ not, and the templates a project provides are its own.
   first project that had one; it now takes the instance, and one structure counts as the one
   object the linker sees however many leaves it has.
 
+* **A plugin module is registered before its body runs.**  A plugin loaded from a `.py` path
+  reached `sys.modules` only once its body had finished, so a module that looks itself up
+  while it runs - a `@dataclass` under `from __future__ import annotations`, resolving its own
+  forward references through `sys.modules` - found nothing there, and the plugin was refused as
+  `plugin-invalid` with "failed to import: 'NoneType' object has no attribute '__dict__'", a
+  reason naming neither the dataclass nor anything its author could act on.  The module is
+  registered before it runs now, the way importlib's own recipe does it, and a body that fails
+  is no longer left cached half-run: one that raises, and one that calls `sys.exit` - which
+  used to end the process with the code it named - are both `plugin-invalid`, the second
+  "exited during import: SystemExit(3)", and the entry is removed again, so the next load in
+  the same process - the language server re-analysing after a keystroke - reports that failure
+  again instead of "exposes no PLUGIN".
+
+* **A backend's files stay inside the output directory.**  A path a backend handed back was
+  compared with the other artefacts' exactly as it was spelled, and then written exactly as it
+  said.  A plugin could therefore claim `ddd_globals.h` under a spelling the clash check did
+  not recognise - `<output>/sub/../ddd_globals.h`, or the same directory reached through a
+  junction - and overwrite the c backend's header in silence; and a path never anchored to the
+  output directory at all - a bare `ddd_globals.c`, or one climbing above what `-o` named - was
+  written wherever it pointed, beside the process's working directory or a level above the
+  directory the reader asked for.  The output directory is resolved once now, before any
+  backend runs, so every backend is handed an absolute directory; every path one returns is
+  anchored there when it is relative, resolved, and measured against it.  One that lands
+  outside is a usage error naming the backend and the path, exit 2, before anything is written,
+  and two that resolve to one file are the refusal two artefacts claiming one path always got,
+  whichever spelling each of them used.  What a run reports, and the `path` of each entry of
+  `--format json`, still reads as the `-o` the reader typed: a relative one stays relative, and
+  a junction is named as typed rather than as the directory its files land in.
+  **Migration:** a plugin backend returning a path outside `-o`, or a bare relative path that
+  used to land beside the process rather than in the output directory, is refused now.  Build
+  every path from the `output_dir` the hook is handed, which arrives resolved.
+
+* **A hook that exits the interpreter is the plugin's failure, not the run's verdict.**
+  `sys.exit()` in a hook is not an `Exception`, so it escaped the guard every other mistake in
+  a hook goes through: `ddd check` ended with the code the hook named, printed none of the
+  findings the run had already gathered, and the language server died with it - a hook exiting
+  0 answered a run whose findings were already in the bag with a silent success.  A hook that
+  exits is now reported exactly as one that raises: `ddd: plugin 'layout' failed in its check
+  hook: SystemExit(0)`, exit 2, after the findings; the language server reports it as
+  `plugin-invalid` and keeps serving the workspace.  `KeyboardInterrupt` is not caught and
+  still interrupts.  The models a plugin declares are held to the same rule, because a
+  validator on one of them is plugin code that runs on every `extensions` block DDD reads: a
+  `ValueError` or an `AssertionError` from one is the block's finding, as it always was, but
+  anything else it raises - and a `sys.exit` - is now `ddd: plugin 'layout' failed validating
+  an 'extensions' block: SystemExit(9)`, exit 2, or `plugin-invalid` in the language server,
+  instead of a pydantic traceback or a silent exit.  The server says so wherever it meets the
+  failure: a project read only to find out whether it contains an opened file is reported at
+  that project's description, and the file is still checked for what one file settles, so a
+  broken plugin is never the unexplained reason a reader is given the thinner answer.
+  **Migration:** a hook calling `sys.exit` used to end the run with its own code, which a build
+  script could read as success; it is a usage error now.  A hook reports through the bag and
+  returns, and a validator on a plugin's own model raises `ValueError` to refuse a block.
+
+* **What a plugin's backend returns, and what a template raises, are usage errors.**  A
+  `backend` hook returning `None` - the shape a hook that reads its settings and forgets to
+  build one takes - or returning something that is not a backend crashed later, as
+  `AttributeError: 'NoneType' object has no attribute 'name'`, out of a frame naming neither
+  the plugin nor the hook; a `generate` returning a string was iterated over its characters
+  before failing the same way.  Both are checked where they are returned now: a backend needs a
+  `name` that is a string and a `generate` that is callable, and `generate` needs a list whose
+  every entry carries a `Path` and a `str`, each failure one line naming the plugin and the
+  hook it came from, exit 2.  A template raising what jinja does not wrap as an error of its
+  own - `{{ 1 / 0 }}`, a filter handed the wrong type - escaped as a python traceback through a
+  library the template's author never imported; it is now the one line every other template
+  mistake already was, `ddd: cannot render template 'ddd_globals.c.jinja2', line 2: division by
+  zero`.
+
+* **A generation writes every file or none.**  Each file was written straight onto its target
+  in turn, so a failure on the third - a target that is a directory, a permission problem, a
+  full disk - left the first two replaced with the new render, the third as it was and the rest
+  untouched: an output directory holding half of one run and half of another, which may not
+  compile together, and nothing saying which file was which.  Every file's status is decided
+  first, against the bytes on disk; each file that needs writing is then staged as a sibling
+  `<name>.ddd-staging` - a suffix no artefact carries and nobody hand-writes, so a file of the
+  reader's own sitting beside a target, `ddd_globals.c.tmp` say, is never staged over and then
+  deleted - and only once all of them are staged is each renamed onto its target.  A
+  failure removes the temporaries and the targets that run had created, and the `cannot write`
+  line names the real target rather than the temporary that could not be moved onto it; a
+  target the run had already updated keeps its new content, the bytes it held being gone once
+  its own rename went through.  An unchanged file is still left alone and keeps its mtime, so a
+  build that watches mtimes still skips what a rerun did not change.
+  **Migration:** the rename is `os.replace`, which fails where writing straight onto the file
+  used to go through.  On Windows, replacing a file another process holds open raises
+  `PermissionError` instead of overwriting it, so a build that regenerates while a compiler or
+  an editor holds a generated header open has to close it first; and where a target is one name
+  of a hard link, the other name keeps the old bytes rather than seeing the update.
+
 ## 0.8.0
 
 * **Checking a component on its own.**  `ddd check --standalone` holds back the checks that

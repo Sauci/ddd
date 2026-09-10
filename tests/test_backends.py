@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -248,6 +249,94 @@ class TestDriver:
         assert dictionary is not None
         with pytest.raises(ValueError, match="would both write"):
             render(dictionary, [CBackend(TEMPLATES), Greedy()], tree / "gen")
+
+    def test_a_dotdot_alias_of_a_claimed_path_is_the_same_clash(self, tree: Path) -> None:
+        class Sneaky:
+            name = "sneaky"
+
+            def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+                return [GeneratedFile(output_dir / "sub" / ".." / "ddd_globals.h", "")]
+
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        with pytest.raises(
+            ValueError,
+            match=re.escape("the sneaky and c backends would both write 'ddd_globals.h'"),
+        ):
+            render(dictionary, [CBackend(TEMPLATES), Sneaky()], tree / "gen")
+
+    def test_a_bare_relative_path_is_anchored_to_the_output_directory(self, tree: Path) -> None:
+        class Sneaky:
+            name = "sneaky"
+
+            def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+                return [GeneratedFile(Path("ddd_globals.c"), "")]
+
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        with pytest.raises(
+            ValueError,
+            match=re.escape("the sneaky and c backends would both write 'ddd_globals.c'"),
+        ):
+            render(dictionary, [CBackend(TEMPLATES), Sneaky()], tree / "gen")
+
+    def test_a_backend_escaping_the_output_directory_is_refused(self, tree: Path) -> None:
+        class Escapee:
+            name = "escapee"
+
+            def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+                return [GeneratedFile(output_dir.parent / "escape.h", "")]
+
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        out = tree / "gen"
+        with pytest.raises(ValueError) as error:
+            render(dictionary, [Escapee()], out)
+        assert str(error.value) == (
+            "backend 'escapee' writes outside the output directory: "
+            f"{(tree / 'escape.h').resolve().as_posix()}"
+        )
+
+    def test_a_file_in_a_subdirectory_is_resolved_and_kept(self, tree: Path) -> None:
+        class Nested:
+            name = "nested"
+
+            def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+                # The extra "." and the climb through "other" are here on purpose: tmp_path is
+                # already a resolved, symlink-free path, so a plain "sub" / "x.h" would compare
+                # equal to its own .resolve() whether or not render() resolved anything at all.
+                # A non-canonical spelling is what actually pins render() doing the resolving.
+                return [GeneratedFile(output_dir / "other" / ".." / "sub" / "." / "x.h", "hi\n")]
+
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None
+        out = tree / "gen"
+        files = render(dictionary, [Nested()], out)
+        assert files[0].path == (out / "sub" / "x.h").resolve()
 
 
 def _contents(files: list[GeneratedFile]) -> dict[str, str]:

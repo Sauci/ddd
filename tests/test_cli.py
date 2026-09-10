@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from conftest import (
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FORMAT
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _displayed_path, main
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
@@ -298,8 +299,18 @@ class TestGenerate:
         output = tmp_path / "gen"
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         capsys.readouterr()
+        # An unchanged file is left alone, not rewritten in place, so a rerun that changes
+        # nothing leaves its mtime exactly as the first run left it. Stamped to a sentinel
+        # well in the past, rather than read straight after the first run, because two runs
+        # close enough together can land on the same clock tick and match by coincidence even
+        # when the second one did rewrite the file - a rewrite would replace the sentinel
+        # with a fresh time, which is what makes this a real check rather than a flaky one.
+        generated = output / "ddd_globals.c"
+        stamp = generated.stat().st_mtime_ns - 10**10
+        os.utime(generated, ns=(stamp, stamp))
         main(["generate", "all", str(DEMO), "-o", str(output), "-t", str(TEMPLATES)])
         assert "unchanged" in capsys.readouterr().err
+        assert generated.stat().st_mtime_ns == stamp
 
     def test_the_a2l_artefact_writes_the_a2l_and_nothing_else(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -507,6 +518,32 @@ class TestGenerate:
         assert main(arguments) == EXIT_USAGE
         err = capsys.readouterr().err
         assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2" in err
+        assert "Traceback" not in err
+
+    def test_a_template_raising_a_bare_exception_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Not every mistake a template's own body makes is one jinja wraps as a
+        ``TemplateError`` - dividing by zero raises a bare ``ZeroDivisionError`` - and it is no
+        less the template author's mistake for that: reported the same one line, not as a
+        python traceback through jinja, a library the author never imported."""
+        arguments = self.broken_template(tmp_path, "/* fine */\n/* {{ 1 / 0 }} */\n")
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        expected = "ddd: cannot render template 'ddd_globals.c.jinja2', line 2: division by zero"
+        assert expected in err
+        assert "Traceback" not in err
+
+    def test_a_template_raising_a_bare_exception_from_a_filter_names_the_template_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = self.broken_template(
+            tmp_path, "/* fine */\n/* {{ model.groups | length + 'x' }} */\n"
+        )
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: cannot render template 'ddd_globals.c.jinja2', line 2:" in err
+        assert "unsupported operand type(s) for +: 'int' and 'str'" in err
         assert "Traceback" not in err
 
     def test_a_component_template_error_names_the_component(
@@ -864,6 +901,19 @@ class TestGenerate:
         )
         payload = json.loads(capsys.readouterr().out)
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
+
+    def test_json_spells_a_path_the_way_the_output_directory_was_typed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The json payload is what a build reads, so the spelling is part of the contract: a
+        relative ``-o`` stays relative here, exactly as it does in the text report, rather than
+        turning into whatever absolute path the run happened to resolve it to."""
+        monkeypatch.chdir(tmp_path)
+        arguments = ["generate", "c", str(DEMO), "-o", "build/gen", "-t", str(TEMPLATES)]
+        assert main([*arguments, "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        paths = [entry["path"] for entry in payload["generated"]]
+        assert "build/gen/ddd_globals.c" in paths
 
 
 PINNED_LIST_PAYLOAD = """\
@@ -1560,7 +1610,13 @@ class TestFindingsSurviveAFailedStep:
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The directory is fine; one target inside it is a directory itself. Naming the
-        directory sent the reader to check its permissions."""
+        directory sent the reader to check its permissions.
+
+        ``ddd_globals.c`` sorts before ``ddd_globals.h`` and so renders and renames first;
+        that it never appears is what shows the failure on the second file takes the first
+        one back out rather than leaving the run half done. No temporary file survives
+        either, wherever in the two files it was writing that the failure actually happened.
+        """
         write_tree(tree, self.files())
         out = tree / "out"
         (out / "ddd_globals.h").mkdir(parents=True)
@@ -1571,6 +1627,8 @@ class TestFindingsSurviveAFailedStep:
         assert code == EXIT_USAGE
         assert "info[missing-id]" in captured.err
         assert "cannot write '" in captured.err and "ddd_globals.h'" in captured.err
+        assert not (out / "ddd_globals.c").exists()
+        assert not any(out.rglob("*.ddd-staging"))
 
     def test_json_output_carries_the_findings_too(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -2138,3 +2196,39 @@ def test_assigning_ids_skips_a_definition_without_a_name(tree, capsys):
     assert main(["id", "--assign", str(path)]) == EXIT_OK
     assert "wrote 0 ids" in capsys.readouterr().err
     assert path.read_bytes() == before
+
+
+class TestDisplayedPath:
+    """A written path is reported the way the reader typed its output directory.
+
+    A failure on the output directory itself hands the reporter that directory, not a file
+    under it, and a text join would print ``out/.``; a path join collapses the dot, for
+    ``-o .`` as much as for a directory reported on its own.
+    """
+
+    def test_the_output_directory_itself_is_spelled_as_typed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert _displayed_path((tmp_path / "out").resolve(), Path("out")) == "out"
+        assert _displayed_path((tmp_path / "out" / "x.h").resolve(), Path("./out")) == "out/x.h"
+        assert _displayed_path(tmp_path.resolve(), Path()) == "."
+        assert _displayed_path((tmp_path / "x.h").resolve(), Path()) == "x.h"
+
+    def test_an_absolute_output_directory_is_spelled_as_typed_too(self, tmp_path: Path) -> None:
+        """An absolute ``-o`` used to be printed resolved, which threw away the very spelling
+        this exists to keep: a junction, or - portably - a climb back out of a directory, is
+        the reader's own way of naming the place and is what the report should say."""
+        out = tmp_path.resolve() / "out"
+        typed = out / ".." / "out"
+        assert _displayed_path(out / "x.h", typed) == (typed / "x.h").as_posix()
+        assert _displayed_path(out / "x.h", out) == (out / "x.h").as_posix()
+
+    def test_a_path_that_is_not_under_the_output_directory_is_left_as_it_is(
+        self, tmp_path: Path
+    ) -> None:
+        """The failure path hands this the raw ``filename`` of an ``OSError``, which is not a
+        path the renderer has already vetted: a ``-o build/gen`` whose ``build`` cannot be
+        created fails on ``build``, which is above the output directory, not under it."""
+        outside = tmp_path.resolve() / "build"
+        assert _displayed_path(outside, outside / "gen") == outside.as_posix()

@@ -7,7 +7,9 @@ the api it is written against, with a plugin small enough to live in this file.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -51,6 +53,7 @@ from ddd.loading import load_dictionary, load_workspace
 from ddd.lsp import analyse_standalone
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import (
+    CheckContext,
     Plugin,
     PluginError,
     PluginInvalidError,
@@ -170,6 +173,17 @@ class TestThePluginObject:
             Plugin(name="tag", checks=(info, info))
 
 
+SELF_AWARE_PLUGIN = """
+import sys
+
+from ddd.plugins import Plugin
+
+assert sys.modules[__name__] is not None
+
+PLUGIN = Plugin(name="selfaware")
+"""
+
+
 class TestLoading:
     def test_a_path_is_relative_to_the_base(self, tmp_path: Path) -> None:
         write_plugin(tmp_path / "tools")
@@ -208,6 +222,59 @@ class TestLoading:
         with pytest.raises(PluginInvalidError, match="failed to import: boom"):
             load_plugin("broken.py", tmp_path)
 
+    def test_a_broken_plugin_is_not_cached_so_a_second_load_reports_again(
+        self, tmp_path: Path
+    ) -> None:
+        """Registering the module before running it must not leave a half-run module cached
+        on failure: it is popped in the ``except``, or a second load would find it sitting in
+        ``sys.modules`` and skip re-reporting the very failure that never got fixed."""
+        write_plugin(tmp_path, "broken.py", "raise RuntimeError('boom')\n")
+        with pytest.raises(PluginInvalidError, match="failed to import: boom"):
+            load_plugin("broken.py", tmp_path)
+        with pytest.raises(PluginInvalidError, match="failed to import: boom"):
+            load_plugin("broken.py", tmp_path)
+
+    def test_a_plugin_body_sees_its_own_module_already_registered(self, tmp_path: Path) -> None:
+        """The importlib recipe registers a module before running it, precisely so its own
+        body can find itself in ``sys.modules`` - which is what a dataclass under ``from
+        __future__ import annotations`` needs, to resolve its own forward references."""
+        write_plugin(tmp_path, "selfaware.py", SELF_AWARE_PLUGIN)
+        assert load_plugin("selfaware.py", tmp_path).name == "selfaware"
+
+    def test_a_plugin_exiting_during_import_is_not_cached_so_a_second_load_reports_again(
+        self, tmp_path: Path
+    ) -> None:
+        """The same half-run gap a broken plugin was fixed against: ``SystemExit`` is not an
+        ``Exception``, so it used to skip the pop that keeps a failed import from being cached,
+        and a second load in the same process - the language server re-analysing after every
+        keystroke - found the half-run module already registered and reported 'exposes no
+        PLUGIN' instead of the real failure."""
+        write_plugin(tmp_path, "exits.py", "import sys\n\nsys.exit(3)\n")
+        with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(3\)"):
+            load_plugin("exits.py", tmp_path)
+        with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(3\)"):
+            load_plugin("exits.py", tmp_path)
+
+    def test_a_keyboardinterrupt_during_import_still_interrupts_and_is_not_cached(
+        self, tmp_path: Path
+    ) -> None:
+        """Only ``SystemExit`` becomes the plugin's own error; anything else - a
+        ``KeyboardInterrupt`` above all - is not this plugin's failure and still has to
+        interrupt. The half-run module must not be left cached either: the plugin's body
+        records the name ``_load_from_path`` registered it under (``__name__``, read from
+        inside its own execution) before interrupting, so the test can confirm that name is
+        gone from ``sys.modules`` afterwards without reproducing the digest scheme itself."""
+        marker = tmp_path / "name.txt"
+        source = (
+            "from pathlib import Path\n\n"
+            f"Path({marker.as_posix()!r}).write_text(__name__, encoding='utf-8')\n"
+            "raise KeyboardInterrupt\n"
+        )
+        write_plugin(tmp_path, "interrupts.py", source)
+        with pytest.raises(KeyboardInterrupt):
+            load_plugin("interrupts.py", tmp_path)
+        assert marker.read_text(encoding="utf-8") not in sys.modules
+
     def test_a_module_whose_own_import_is_missing_is_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -243,6 +310,23 @@ class TestLoading:
                 load_plugin("raises_on_import", tmp_path)
         finally:
             sys.modules.pop("raises_on_import", None)
+
+    def test_a_module_package_that_exits_during_import_is_invalid_not_a_process_exit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same gap ``_load_from_path`` was fixed against, for the dotted-name path:
+        ``SystemExit`` is not an ``Exception``, so it used to escape ``_import`` uncaught,
+        taking ``ddd``'s own exit code and process down with it instead of being reported as
+        the plugin's own failure."""
+        package = tmp_path / "exits_pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("import sys\n\nsys.exit(2)\n", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            with pytest.raises(PluginInvalidError, match=r"exited during import: SystemExit\(2\)"):
+                load_plugin("exits_pkg", tmp_path)
+        finally:
+            sys.modules.pop("exits_pkg", None)
 
     def test_a_module_without_a_plugin_object_is_invalid(self, tmp_path: Path) -> None:
         write_plugin(tmp_path, "empty.py", "X = 1\n")
@@ -298,6 +382,16 @@ class Backend:
 PLUGIN = Plugin(name="clash", backend=lambda context: Backend())
 """
 
+DOTDOT_ALIAS_PLUGIN = COLLIDING_PLUGIN.replace(
+    'output_dir / "ddd_globals.c"', 'output_dir / "sub" / ".." / "ddd_globals.h"'
+)
+"""Claims the c backend's own header through a path that resolves to the same file."""
+
+BARE_RELATIVE_PLUGIN = COLLIDING_PLUGIN.replace(
+    'output_dir / "ddd_globals.c"', 'Path("ddd_globals.c")'
+)
+"""Never anchors to ``output_dir`` at all; it is resolved against it all the same."""
+
 
 class TestGenerateAllWithPlugins:
     """``all`` runs the plugins' backends after the built-in ones, in the project's order."""
@@ -350,6 +444,32 @@ class TestGenerateAllWithPlugins:
     ) -> None:
         """The renderer refuses two backends claiming one path before anything is written."""
         write_plugin(tmp_path, "clash_plugin.py", COLLIDING_PLUGIN)
+        assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert (
+            "clash" in captured.err
+            and "c backends would both write 'ddd_globals.c'" in captured.err
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_dotdot_alias_of_a_built_in_path_is_the_same_clash(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sub/../ddd_globals.h`` is refused exactly like ``ddd_globals.h`` would be."""
+        write_plugin(tmp_path, "clash_plugin.py", DOTDOT_ALIAS_PLUGIN)
+        assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert (
+            "clash" in captured.err
+            and "c backends would both write 'ddd_globals.h'" in captured.err
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_bare_relative_path_is_anchored_to_the_output_directory_and_still_clashes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A path with no ``output_dir`` of its own is resolved against it before comparison."""
+        write_plugin(tmp_path, "clash_plugin.py", BARE_RELATIVE_PLUGIN)
         assert self.generate_all(tmp_path, ["clash_plugin.py"]) == EXIT_USAGE
         captured = capsys.readouterr()
         assert (
@@ -445,6 +565,22 @@ class TestThePolicy:
 
 BARE_PLUGIN = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="bare")\n'
 
+DATACLASS_PLUGIN = """
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ddd.plugins import Plugin
+
+
+@dataclass
+class Cfg:
+    n: int = 1
+
+
+PLUGIN = Plugin(name="dc")
+"""
+
 
 def tagged(base: Path, *declarations: dict, settings: dict | None = None, **project_keys):
     """A project naming the tag plugin, with one component; returns the loaded workspace."""
@@ -497,6 +633,23 @@ class TestLoadingAProject:
         assert checks(bag) == ["plugin-invalid"]
         assert "boom" in messages(bag)
         assert not CHECKS["plugin-invalid"].overridable
+
+    def test_a_plugin_needing_its_own_module_registered_loads(self, tree: Path) -> None:
+        """A dataclass under ``from __future__ import annotations`` resolves ``Cfg``'s forward
+        references through ``sys.modules[Cfg.__module__]`` while its class body still runs, so
+        the plugin's own module has to be registered there before ``exec_module``, not after."""
+        write_plugin(tree, "dc.py", DATACLASS_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["dc.py"]),
+                "a.ddd.json": component("A"),
+            },
+        )
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / "project.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        assert checks(bag) == []
 
     def test_two_plugins_claiming_one_name_is_refused_on_the_second(self, tree: Path) -> None:
         write_plugin(tree, "one.py")
@@ -988,6 +1141,39 @@ RAISING_PLUGIN = TAG_PLUGIN.replace(
     'def check(context: CheckContext) -> None:\n    raise RuntimeError("boom")\n',
 )
 
+EXITING_PLUGIN = TAG_PLUGIN.replace(
+    "from pathlib import Path\n", "import sys\nfrom pathlib import Path\n"
+).replace(
+    "def check(context: CheckContext) -> None:\n",
+    "def check(context: CheckContext) -> None:\n    sys.exit(0)\n",
+)
+
+MODEL_PLUGIN = '''
+"""A plugin whose own model runs code of its own on every block validated against it."""
+
+from __future__ import annotations
+
+import sys
+
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Tag(BaseModel):
+    tag: str
+
+    @field_validator("tag")
+    @classmethod
+    def own_code(cls, value: str) -> str:
+        BODY
+        return value
+
+
+PLUGIN = Plugin(name="broken", object_model=Tag)
+'''
+"""``BODY`` is what the validator does; every use replaces it with one statement."""
+
 
 class TestTheCheckHook:
     def test_a_hook_reports_through_the_bag_at_the_producing_declaration(self, tree: Path) -> None:
@@ -1071,6 +1257,146 @@ class TestTheCheckHook:
             },
         )
         assert checks(bag) == []
+
+    def test_a_hook_that_exits_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sys.exit()`` is not an ``Exception``; unhandled, it would take ``ddd check``'s
+        exit code and leave the findings gathered so far unprinted. It is the plugin's failure
+        like any other raised by a hook, named the same way, down to the findings that were
+        gathered before it ran still reaching the reader first."""
+        write_plugin(tree / "tools", source=EXITING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "info[missing-id]" in captured
+        assert "plugin 'tag' failed in its check hook: SystemExit(0)" in captured
+        assert captured.index("missing-id") < captured.index("failed in its check hook")
+
+    def test_the_language_server_survives_a_hook_that_exits(self, tree: Path) -> None:
+        """The server promises findings and never an exception; a hook calling ``sys.exit()``
+        used to kill it outright, the same gap a hook that raised was already closed against."""
+        write_plugin(tree / "tools", source=EXITING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag, _ = analyse_standalone(tree / "project.ddd.json")
+        assert "plugin-invalid" in checks(bag)
+        assert "failed in its check hook: SystemExit(0)" in messages(bag)
+
+
+class TestTheHookBoundary:
+    """``_call`` wraps every hook - check, compare, generate - the same way; pinned once here
+    through ``run_check_hooks`` rather than once per hook kind."""
+
+    def test_a_keyboardinterrupt_in_a_hook_still_interrupts(self, tree: Path) -> None:
+        """Not caught alongside ``SystemExit``: a hook is not to blame for the user's own
+        Ctrl-C, and it must still be able to stop a run in progress."""
+        from ddd.plugins import run_check_hooks
+
+        def interrupting(context: CheckContext) -> None:
+            raise KeyboardInterrupt
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="interrupting", check=interrupting)
+        with pytest.raises(KeyboardInterrupt):
+            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+
+    @pytest.mark.parametrize(
+        ("code", "rendered"),
+        [(None, "SystemExit(None)"), ("bye", "SystemExit('bye')"), (7, "SystemExit(7)")],
+    )
+    def test_the_exit_code_is_rendered_whatever_shape_it_is(
+        self, tree: Path, code: object, rendered: str
+    ) -> None:
+        """``SystemExit.code`` is ``None``, an int or whatever the plugin passed ``sys.exit``;
+        ``str()`` alone would print an empty string for ``None`` and lose the quotes a string
+        code needs to be told apart from an int one, so it is rendered explicitly instead."""
+        from ddd.plugins import run_check_hooks
+
+        def exiting(context: CheckContext) -> None:
+            raise SystemExit(code)
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="exiting", check=exiting)
+        with pytest.raises(PluginError, match=re.escape(f"failed in its check hook: {rendered}")):
+            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+
+
+class TestThePluginModelBoundary:
+    """A plugin's pydantic model is plugin code too, and is guarded like a hook.
+
+    Every ``extensions`` block DDD reads is validated against the model whose plugin owns it,
+    so a ``@field_validator`` on that model runs on the reader's own files. Pydantic gives two
+    of its verdicts back as a ``ValidationError`` - a ``ValueError`` or an ``AssertionError``
+    from a validator - and those are the block's problem, a finding. Everything else the model
+    raises used to leave the boundary raw, so the tests below are one per branch of
+    ``guarding_plugin_model``: a wrapped raise, a wrapped exit, and a verdict left alone.
+    """
+
+    def broken(self, tree: Path, body: str) -> str:
+        write_plugin(tree / "tools", "model_plugin.py", MODEL_PLUGIN.replace("BODY", body))
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/model_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"broken": {"tag": "t"}})
+                ),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_a_validator_that_raises_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A ``RuntimeError`` in a validator used to end ``ddd check`` in a traceback about
+        pydantic internals, which names neither the plugin nor anything the reader can act on."""
+        assert main(["check", self.broken(tree, 'raise RuntimeError("boom")')]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "ddd: plugin 'broken' failed validating an 'extensions' block: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_a_validator_that_exits_is_a_usage_error_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sys.exit`` in a validator is worse than a traceback: it ended ``ddd check`` with
+        the plugin's own code, printing nothing at all, so a build read a 9 and had to guess."""
+        assert main(["check", self.broken(tree, "sys.exit(9)")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'broken' failed validating an 'extensions' block: SystemExit(9)"
+            in captured
+        )
+        assert "Traceback" not in captured
+
+    def test_a_verdict_of_the_model_stays_the_project_s_own_finding(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Refusing a block that does not fit is what a model is *for*: that verdict is about
+        the reader's file, and is reported where it always was, on the block."""
+        assert main(["check", self.broken(tree, 'raise ValueError("not a tag")')]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "not a tag" in captured
+        assert "failed validating" not in captured
+
+    def test_the_language_server_survives_a_model_that_exits(self, tree: Path) -> None:
+        """The server promises findings and never an exception. A model runs while the files
+        are read, before any hook, so this reaches the boundary by a different road than the
+        hook that exits does - and has to arrive at the same place."""
+        bag, _ = analyse_standalone(Path(self.broken(tree, "sys.exit(9)")))
+        assert "plugin-invalid" in checks(bag)
+        assert "failed validating an 'extensions' block: SystemExit(9)" in messages(bag)
 
 
 class TestSettings:
@@ -1234,6 +1560,53 @@ RAISING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
     _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        raise KeyError("nope")\n'
 )
 
+NONE_BACKEND_PLUGIN = TAG_PLUGIN.replace("return TagBackend(context.settings)", "return None")
+"""The factory hook builds nothing; a defect of the plugin like any other."""
+
+WRONG_TYPE_BACKEND_PLUGIN = TAG_PLUGIN.replace(
+    "return TagBackend(context.settings)", 'return "not a backend"'
+)
+"""The factory hook returns something with neither a ``name`` nor a ``generate``."""
+
+WRONG_GENERATE_BACKEND_PLUGIN = TAG_PLUGIN.replace(
+    "return TagBackend(context.settings)",
+    'return type("Wrong", (), {"name": "tag", "generate": None})()',
+)
+"""A valid ``str`` ``name`` but a ``generate`` that is not callable.
+
+The other half of the same check: ``WRONG_TYPE_BACKEND_PLUGIN`` is a bare string, which fails
+on ``name`` alone and never reaches the ``callable`` half.
+"""
+
+STRING_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE, f'{_GENERATE_SIGNATURE}        return "not a list"\n'
+)
+"""``generate`` returns a single string rather than a list of generated files."""
+
+WRONG_ITEM_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE, f"{_GENERATE_SIGNATURE}        return [1]\n"
+)
+"""``generate`` returns a list, but not one of ``GeneratedFile``."""
+
+WRONG_CONTENT_TYPE_GENERATE_PLUGIN = TAG_PLUGIN.replace(
+    _GENERATE_SIGNATURE,
+    f'{_GENERATE_SIGNATURE}        return [GeneratedFile(output_dir / "x.h", b"bytes")]\n',
+)
+"""A real ``Path`` for ``path``, but a ``content`` that is not a ``str``.
+
+The other half of the same check: ``WRONG_ITEM_GENERATE_PLUGIN`` is a bare ``int``, which
+fails on ``path`` alone and never reaches the ``content`` half.
+"""
+
+ESCAPING_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir.parent / "escape.h"')
+"""Writes beside ``output_dir`` rather than under it."""
+
+NESTED_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'output_dir / "sub" / "x.h"')
+"""A legitimate artefact one directory below ``output_dir``."""
+
+BARE_PROBE_PLUGIN = TAG_PLUGIN.replace('output_dir / "tags.txt"', 'Path("probe.h")')
+"""Never anchors to ``output_dir`` at all; a bare name still means ``output_dir / name``."""
+
 
 class TestGenerate:
     def project_with_tags(self, tree: Path) -> str:
@@ -1267,6 +1640,379 @@ class TestGenerate:
         arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
         assert main(arguments) == EXIT_USAGE
         assert "plugin 'tag' failed in its generate hook" in capsys.readouterr().err
+
+    def test_a_backend_hook_returning_none_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``None`` is what a hook that only checks its settings and forgets to build a
+        backend tends to return; a defect of the plugin, not an ``AttributeError`` later."""
+        write_plugin(tree / "tools", source=NONE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "ddd: plugin 'tag' returned no backend from its backend hook" in err
+        assert "Traceback" not in err
+
+    def test_a_backend_hook_returning_something_else_names_its_type(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A backend needs a ``name`` and a callable ``generate``; a plain string has neither,
+        so it is refused rather than accepted as one because nothing crashed yet."""
+        write_plugin(tree / "tools", source=WRONG_TYPE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a backend from its backend "
+            "hook: str" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_backend_hook_returning_a_valid_name_but_no_generate_names_its_type(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The ``name`` half of the check can pass on its own; a plain string, the only other
+        malformed fixture, fails there and never reaches the ``callable`` half this covers."""
+        write_plugin(tree / "tools", source=WRONG_GENERATE_BACKEND_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a backend from its backend "
+            "hook: Wrong" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_a_string_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=STRING_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_a_list_of_the_wrong_items_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The list itself is the right shape; what it holds is not - checked item by item
+        rather than trusted once the outer type is right."""
+        write_plugin(tree / "tools", source=WRONG_ITEM_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_generate_hook_returning_an_item_with_non_str_content_is_a_usage_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A real ``Path`` for ``path`` is not enough on its own; ``content`` must be a
+        ``str`` too - the bare ``int`` of ``WRONG_ITEM_GENERATE_PLUGIN`` fails on ``path``
+        alone and never reaches the ``content`` half this covers."""
+        write_plugin(tree / "tools", source=WRONG_CONTENT_TYPE_GENERATE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'tag' returned something other than a list of generated files "
+            "from its generate hook" in err
+        )
+        assert "Traceback" not in err
+
+    def test_a_backend_escaping_the_output_directory_is_a_usage_error_naming_the_path(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "backend 'tag' writes outside the output directory" in captured
+        assert (tree / "escape.h").resolve().as_posix() in captured
+        assert not out.exists()
+
+    def test_a_backend_escaping_the_output_directory_is_refused_on_a_dry_run_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The paths are checked whether or not anything is about to be written."""
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = [
+            "generate",
+            "tag",
+            root,
+            "-o",
+            str(out),
+            "--dry-run",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_USAGE
+        assert "writes outside the output directory" in capsys.readouterr().err
+        assert not (tree / "escape.h").exists()
+
+    def test_a_backend_writing_into_a_subdirectory_of_the_output_directory_still_works(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=NESTED_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        out = tree / "out"
+        arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        assert (out / "sub" / "x.h").read_text(encoding="utf-8") == "X t\n"
+        assert "wrote" in capsys.readouterr().err
+
+    def test_a_backend_escaping_the_output_directory_is_refused_with_a_relative_output_directory(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The boundary has to hold for the ``-o`` spelling every documented transcript
+        actually uses - relative - not only for the absolute one ``tmp_path`` defaults tests
+        to. A relative ``-o`` used to be re-anchored back inside itself by the fallback that
+        resolved a plugin's escape only after it had already collapsed to something that
+        looked contained; resolving ``output_dir`` before the backend runs at all is what
+        makes the escape math absolute, and therefore genuinely outside, from the start.
+        """
+        write_plugin(tree / "tools", source=ESCAPING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "tag", root, "-o", "out", "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "backend 'tag' writes outside the output directory" in capsys.readouterr().err
+        # Refused before anything reaches disk: neither where the fallback used to re-anchor
+        # it (inside the output directory) nor where the plugin actually asked for it.
+        assert not (tree / "out" / "escape.h").exists()
+        assert not (tree / "escape.h").exists()
+        assert not (tree / "out").exists()
+
+    def test_generating_into_a_relative_multi_segment_output_directory_does_not_double_it(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every built-in backend builds ``output_dir / name`` from the directory it is
+        handed. Resolving ``output_dir`` before that call, rather than resolving each backend's
+        already-relative result afterwards, is what stops a multi-segment relative ``-o`` such
+        as ``build/gen`` - the documentation's own spelling - from doubling into
+        ``build/gen/build/...``."""
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = [
+            "generate",
+            "c",
+            root,
+            "-o",
+            "build/gen",
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "build" / "gen" / "ddd_globals.h").is_file()
+        assert not (tree / "build" / "gen" / "build").exists()
+        captured = capsys.readouterr().err
+        assert "build/gen/ddd_globals.h (created)" in captured
+        assert "build/gen/build" not in captured
+        assert tree.resolve().as_posix() not in captured
+
+    def test_a_bare_relative_path_from_a_plugin_lands_under_a_relative_output_directory(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A name a plugin never anchors at all still means ``output_dir / name``, not
+        wherever the process happens to be running from - exercised through a relative ``-o``
+        together with a changed working directory, so a regression that resolved a bare name
+        against the cwd instead of the output directory cannot hide behind the two coinciding.
+        """
+        write_plugin(tree / "tools", source=BARE_PROBE_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "t"}})
+                ),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = ["generate", "tag", root, "-o", "out", "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK
+        assert (tree / "out" / "probe.h").read_text(encoding="utf-8") == "X t\n"
+        assert not (tree / "probe.h").exists()
+        assert "out/probe.h (created)" in capsys.readouterr().err
+
+    def test_a_junctioned_output_directory_is_reported_as_typed(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A junction inside the tree is not resolved away in the report: the reader typed
+        ``-o link``, so that is what they should see, even though every file underneath is
+        measured - and physically lands - at the junction's real target. Spelled absolutely it
+        is the same promise, and the same reader.
+
+        Junctions are a windows feature and ``mklink`` is a ``cmd`` builtin, so there is no
+        such thing to make on the linux runner ci uses; asked for there, ``subprocess.run``
+        raises before it can return a code to look at."""
+        if os.name != "nt":
+            pytest.skip("directory junctions are a windows feature")
+        target = tree / "real"
+        target.mkdir()
+        link = tree / "link"
+        try:
+            created = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+            )
+        except OSError as error:
+            pytest.skip(f"cannot run mklink on this machine: {error}")
+        if created.returncode != 0 or not link.is_dir():
+            pytest.skip("cannot create a directory junction on this machine without privilege")
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        monkeypatch.chdir(tree)
+        root = str(tree / "project.ddd.json")
+        arguments = [
+            "generate",
+            "c",
+            root,
+            "-o",
+            "link",
+            "-t",
+            str(TEMPLATES),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert (target / "ddd_globals.h").is_file()
+        captured = capsys.readouterr().err
+        assert "link/ddd_globals.h (created)" in captured
+        assert "real/ddd_globals.h" not in captured
+
+        arguments[arguments.index("-o") + 1] = str(link)
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert f"{(link / 'ddd_globals.h').as_posix()}" in captured
+        assert "real/ddd_globals.h" not in captured
 
     def test_dry_run_writes_nothing(self, tree: Path) -> None:
         root = self.project_with_tags(tree)

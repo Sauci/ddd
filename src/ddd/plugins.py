@@ -10,17 +10,23 @@ comparison rules and an artefact of its own.
 
 This module imports the dictionary and the diagnostics and nothing else at runtime - not the
 loader, not the analysis, not a backend - so a plugin sees exactly what a backend sees. The
-``Backend`` protocol is structural and is only named here under ``TYPE_CHECKING``.
+``Backend`` protocol is structural and is only named here under ``TYPE_CHECKING``: where
+``backend_of`` and ``_GuardedBackend.generate`` need to check that a hook kept the promise its
+own return type made, they check the same shape by hand instead - a ``name`` and a callable
+``generate``, a ``path`` and a ``content`` - rather than importing ``Backend`` or
+``GeneratedFile`` just to ask, which would be exactly the runtime coupling this paragraph
+says the module has none of.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import importlib.util
 import re
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -174,6 +180,13 @@ def _path_of(spelling: str, base: Path) -> Path:
     return (raw if raw.is_absolute() else base / raw).resolve()
 
 
+def _exit_text(error: SystemExit) -> str:
+    """``SystemExit(0)``, ``SystemExit(None)`` or ``SystemExit('bye')`` - ``str()`` alone
+    loses the distinction: ``str(SystemExit(0))`` is just ``'0'``, indistinguishable from a
+    hook that raised ``ValueError('0')``."""
+    return f"SystemExit({error.code!r})"
+
+
 def _load_from_path(spelling: str, base: Path) -> Any:
     path = _path_of(spelling, base)
     if not path.is_file():
@@ -192,12 +205,32 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered before it runs, as importlib's own recipe does: a module body that needs
+    # itself in sys.modules already - a dataclass under `from __future__ import annotations`
+    # resolving its own forward references, for one - would otherwise find nothing there.
+    sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception as error:
-        msg = f"plugin '{spelling}' failed to import: {error}"
+    except (Exception, SystemExit) as error:
+        # Not left cached half-run: a second load must retry it and report again, rather than
+        # hand out a module whose body never finished. A plugin body that calls sys.exit(...)
+        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
+        # that than one that raises: it is reported the same way, naming the code it exited
+        # with rather than the empty or misleading text str(SystemExit(...)) would give.
+        sys.modules.pop(name, None)
+        if isinstance(error, SystemExit):
+            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
+        else:
+            msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
-    sys.modules[name] = module
+    except BaseException:
+        # Anything else - KeyboardInterrupt above all - is not this plugin's error to own, and
+        # still has to interrupt. Only the cache is this function's business: left registered,
+        # a second load in the same process (the language server re-analysing after every
+        # keystroke) would find a module that never finished running and skip re-running its
+        # body at all, rather than trying again.
+        sys.modules.pop(name, None)
+        raise
     return module
 
 
@@ -215,8 +248,18 @@ def _import(spelling: str) -> Any:
             raise PluginNotFoundError(msg) from error
         msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
-    except Exception as error:
-        msg = f"plugin '{spelling}' failed to import: {error}"
+    except (Exception, SystemExit) as error:
+        # SystemExit is not an Exception: a plugin package whose __init__ calls sys.exit(...)
+        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
+        # this than one that raises, and is reported the same way, naming the code it exited
+        # with rather than the empty or misleading text str(SystemExit(...)) would give. Unlike
+        # _load_from_path, nothing here has registered the module into sys.modules by hand, so
+        # there is no cache to unwind on the way out - import_module leaves none behind itself,
+        # on a failure of either kind.
+        if isinstance(error, SystemExit):
+            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
+        else:
+            msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
 
 
@@ -243,11 +286,15 @@ def resolve_blocks(
             if model is None:
                 resolved[name] = dict(blocks[name])
             else:
-                resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+                with guarding_plugin_model(name, "validating a block against its own model"):
+                    resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
         if on_project:
             for name, plugin in plugins.items():
                 if name not in resolved and plugin.project_model is not None:
-                    resolved[name] = plugin.project_model.model_validate({}).model_dump(mode="json")
+                    with guarding_plugin_model(name, "building the defaults of its settings"):
+                        resolved[name] = plugin.project_model.model_validate({}).model_dump(
+                            mode="json"
+                        )
     except ValidationError as error:
         # The loader has validated every block a run of the checks reaches; a hover resolves
         # a project that did not read cleanly, and its blocks are then the plugin's problem.
@@ -269,6 +316,32 @@ class PluginError(ValueError):
     """
 
 
+@contextlib.contextmanager
+def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
+    """Run a plugin's own pydantic model, turning a defect in it into a :class:`PluginError`.
+
+    A model is plugin code as much as a hook is: a ``@field_validator`` runs whenever DDD
+    validates a block against it, and it may do anything a hook may do. Only the two verdicts
+    pydantic itself defines - a ``ValueError`` or an ``AssertionError`` from a validator - come
+    back as a ``ValidationError``; that one is the plugin *user's* mistake, a finding about
+    their block, and is re-raised untouched for the caller to report as one. Anything else the
+    model raises is the plugin author's mistake and reached the caller raw: a ``RuntimeError``
+    ended ``ddd check`` in a traceback, and a ``sys.exit`` in a validator ended it with the
+    plugin's own exit code, printing none of the findings, and took the language server down
+    with it. Both are wrapped here the way :func:`_call` wraps a hook, so that the cli reports
+    one line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
+    ``KeyboardInterrupt`` is deliberately not listed, exactly as in :func:`_call`.
+    """
+    try:
+        yield
+    except ValidationError:
+        raise
+    except (Exception, SystemExit) as error:
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{name}' failed {what}: {detail}"
+        raise PluginError(msg) from error
+
+
 def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> BaseModel | None:
     """The project block validated against the plugin's project model.
 
@@ -279,7 +352,8 @@ def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> 
     if plugin.project_model is None:
         return None
     try:
-        return plugin.project_model.model_validate(extensions.get(plugin.name, {}))
+        with guarding_plugin_model(plugin.name, "validating its settings"):
+            return plugin.project_model.model_validate(extensions.get(plugin.name, {}))
     except ValidationError as error:
         msg = f"the settings of plugin '{plugin.name}' are invalid: {error}"
         raise PluginError(msg) from error
@@ -329,13 +403,45 @@ def run_compare_hooks(
 
 
 def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Backend:
-    """The backend a plugin provides, or a usage error saying it provides none."""
+    """The backend a plugin provides, or a usage error saying it provides none or provides one
+    only in name.
+
+    A hook's own signature says it returns a ``Backend``, but nothing stops it returning
+    ``None`` - the shape a hook that only checks its settings and forgets to build one tends
+    to take - or returning something else entirely; python does not enforce a return type at
+    runtime. Both are the plugin's own mistake rather than ddd's, so both are reported the way
+    a hook that raised already is, rather than surfacing later as an ``AttributeError`` out of
+    :class:`_GuardedBackend` or :func:`~ddd.backends.base.render`. The check below is the
+    ``Backend`` protocol's own check, written out by hand rather than as
+    ``isinstance(backend, Backend)`` - see the module docstring for why.
+    """
     if plugin.backend is None:
         msg = f"plugin '{plugin.name}' provides no artefact"
         raise ValueError(msg)
     context = GenerateContext(settings_of(plugin, dictionary.extensions), generator)
     backend = _call(plugin, "backend", plugin.backend, context)
+    if backend is None:
+        msg = f"plugin '{plugin.name}' returned no backend from its backend hook"
+        raise PluginError(msg)
+    if not isinstance(getattr(backend, "name", None), str) or not callable(
+        getattr(backend, "generate", None)
+    ):
+        msg = (
+            f"plugin '{plugin.name}' returned something other than a backend from its "
+            f"backend hook: {type(backend).__name__}"
+        )
+        raise PluginError(msg)
     return _GuardedBackend(plugin, backend)
+
+
+def _has_the_shape_of_a_generated_file(item: object) -> bool:
+    """The ``GeneratedFile`` protocol check, written out by hand for the same reason
+    ``backend_of`` writes the ``Backend`` one out by hand: a ``path`` that is a real ``Path``
+    and a ``content`` that is a real ``str`` is everything the dataclass is, and everything
+    :func:`~ddd.backends.base.render` and :func:`~ddd.backends.base.write` go on to use."""
+    return isinstance(getattr(item, "path", None), Path) and isinstance(
+        getattr(item, "content", None), str
+    )
 
 
 class _GuardedBackend:
@@ -355,17 +461,35 @@ class _GuardedBackend:
         self.name = backend.name
 
     def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
-        return _call(
+        result = _call(
             self._plugin,
             "generate",
             lambda _: self._backend.generate(dictionary, output_dir),
             None,
         )
+        # Checked here, outside _call, rather than inside the lambda: raised from there, a
+        # PluginError would be caught by _call's own except clause and rewrapped as "failed in
+        # its generate hook", burying this message inside that one instead of standing alone.
+        if not isinstance(result, list) or not all(
+            _has_the_shape_of_a_generated_file(item) for item in result
+        ):
+            msg = (
+                f"plugin '{self._plugin.name}' returned something other than a list of "
+                "generated files from its generate hook"
+            )
+            raise PluginError(msg)
+        return result
 
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:
     try:
         return function(context)
-    except Exception as error:
-        msg = f"plugin '{plugin.name}' failed in its {hook} hook: {error}"
+    except (Exception, SystemExit) as error:
+        # SystemExit is not an Exception: sys.exit() in a hook would otherwise escape _call
+        # uncaught, taking ddd check's exit code and printing none of the run's findings, and
+        # killing the language server outright. It is a defect of the plugin like any other
+        # here. KeyboardInterrupt is not listed and still propagates - it is the user's
+        # interrupt to own, never the plugin's error to be blamed for.
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{plugin.name}' failed in its {hook} hook: {detail}"
         raise PluginError(msg) from error

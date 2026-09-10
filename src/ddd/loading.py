@@ -37,6 +37,7 @@ from ddd.plugins import (
     Plugin,
     PluginInvalidError,
     PluginNotFoundError,
+    guarding_plugin_model,
     load_plugin,
     plugin_source,
 )
@@ -974,7 +975,8 @@ class _Loader:
             )
             return
         try:
-            model.model_validate(block)
+            with guarding_plugin_model(name, "validating an 'extensions' block"):
+                model.model_validate(block)
         except ValidationError as error:
             _report_validation_error(
                 location.path, error, self._bag, prefix=location.pointer, document=block

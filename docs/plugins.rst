@@ -153,8 +153,26 @@ refused exactly as between the c and the a2l backends. ``all`` runs them after t
 pair, in the order the project names the plugins, so a build gets a plugin's artefact without
 naming it; ``ddd_generate`` names the plugins with ``PLUGINS`` (see :doc:`build_integration`).
 
+Both returns are checked where they are made: ``backend`` returns a backend - a ``name`` that
+is a string and a callable ``generate`` - and ``generate`` returns a list of
+``GeneratedFile``, each a ``Path`` and the ``str`` to write to it. Anything else is a usage
+error naming the plugin and the hook it came from, rather than an ``AttributeError`` from
+somewhere further down. ``output_dir`` is handed to ``generate`` already resolved, so a path
+built from it is absolute and says what it means: build every path from it, and keep every
+one inside it. A file that lands outside the output directory - through ``..``, or an
+absolute path elsewhere entirely - is a usage error naming the backend and the path, before
+anything is written. Two paths that resolve to one file are the clash above, however
+differently they are spelled: a plugin's artefact must not take the name of a built-in one,
+and neither a ``..`` in the middle nor a directory junction makes a second claim on that name
+a different one.
+
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
-is reported as a usage error naming the plugin and the hook, with exit code 2.
+is reported as a usage error naming the plugin and the hook, with exit code 2, after the
+findings the run had already gathered. A hook returns; one that calls ``sys.exit`` is reported
+the same way, naming the code it exited with, rather than ending the run with that code and
+printing nothing. The language server, which has no usage error to give, reports either of
+them as a ``plugin-invalid`` finding and keeps serving the workspace; and a module body that
+exits while it is imported is ``plugin-invalid`` exactly as one that raises there.
 
 Writing a well-behaved plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,9 +182,15 @@ Every identifier a hook reports belongs in ``checks``: an undeclared one resolve
 name. Keep the module itself stateless - it is imported once per process and reused across
 every project and every run of the language server, so anything it accumulates in a global
 leaks between projects that have nothing to do with each other; editing the plugin file only
-takes effect the next time a process starts. ``GeneratedFile``, what a ``backend`` hook
-returns from ``generate``, is imported from ``ddd.backends``. A block read back from an older
-dump may predate a field the plugin added since - ``model_validate`` fills it from the
+takes effect the next time a process starts. A ``.py`` plugin is one module, loaded from the
+location the project names rather than imported as part of a package: it has no package of
+its own, so ``from . import helper`` is "attempted relative import with no known parent
+package", and a plain ``import helper`` is resolved against ``sys.path`` like any other
+import, finding the file next to the plugin only where the environment would have found it
+from anywhere else too. Code shared between plugins belongs in a package the environment can
+import, which a project names by its dotted spelling. ``GeneratedFile``, what a ``backend``
+hook returns from ``generate``, is imported from ``ddd.backends``. A block read back from an
+older dump may predate a field the plugin added since - ``model_validate`` fills it from the
 model's default if there is one, and raises otherwise - and what to do about that gap is the
 plugin's own decision, not one the api makes for it.
 

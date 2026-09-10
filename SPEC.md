@@ -1037,12 +1037,12 @@ one on the project, and contributing checks, comparison rules and an artefact of
   includes an opened file
   ([section 7.2](#72-editor-integration)). A module is imported once per process; an edit
   takes effect in the next run, and in the editor after the server is restarted. A module
-  that cannot be found is `plugin-not-found`; one that raises on import, exposes no
-  `PLUGIN`, exposes a malformed one, or claims a name another plugin already has is
-  `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and is none of `c`, `a2l`
-  and `all`, which `ddd generate` already takes: the two built-in artefacts and `all`; each
-  check identifier it registers is `<name>/<check>` with `<check>` matching
-  `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
+  that cannot be found is `plugin-not-found`; one that raises or exits the interpreter
+  during import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another
+  plugin already has is `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and
+  is none of `c`, `a2l` and `all`, which `ddd generate` already takes: the two built-in
+  artefacts and `all`; each check identifier it registers is `<name>/<check>` with
+  `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
   Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
   Both checks have a fixed severity, because a project cannot be interpreted without the
@@ -1076,16 +1076,18 @@ one context object: `check`, run at the end of every analysis over the resolved 
 with the settings, the diagnostic bag and a locator that answers where an object's producing
 declaration is written; `compare`, run after the built-in comparison with both dictionaries;
 and `backend`, returning a backend selected as `ddd generate <name>` and run by
-`ddd generate all` after the built-in backends, in the order the project names the plugins,
-two artefacts claiming one path being refused before anything is written
-([section 7](#7-tool-interface)). A hook reports through the bag exactly as a
-built-in check does, and a hook that raises is a usage error naming the plugin and the
-hook; the language server, which has no usage error to give and does not stop, reports the
-same failure as a `plugin-invalid` finding at the project file
-([section 7.2](#72-editor-integration)). Plugin checks are registered per run rather than
-in the built-in registry, and an override naming a plugin check is accepted provisionally
-and held, once the project is read, to the checks the loaded plugins registered: one that
-no loaded plugin registers is then the usage error an unknown built-in check is.
+`ddd generate all` after the built-in backends, in the order the project names the plugins
+([section 7](#7-tool-interface)). A backend's files lie inside the output directory, which
+it is handed resolved; one that names a path outside it, or a path another artefact writes,
+is a usage error before anything is written. A hook reports through the bag exactly as a
+built-in check does, and a hook that raises, or exits the interpreter rather than
+returning, is a usage error naming the plugin and the hook; the language server, which has
+no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
+finding at the project file ([section 7.2](#72-editor-integration)). Plugin checks are
+registered per run rather than in the built-in registry, and an override naming a plugin
+check is accepted provisionally and held, once the project is read, to the checks the
+loaded plugins registered: one that no loaded plugin registers is then the usage error an
+unknown built-in check is.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every

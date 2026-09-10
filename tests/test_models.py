@@ -176,6 +176,7 @@ class TestConversions:
         )
         assert isinstance(parsed.conversion, EnumConversion)
         assert parsed.conversion.spell_enumerators() == "B=1, A=0, C=15"
+        assert parsed.conversion.spell_enumerators(parsed.conversion.enumerators[1:]) == "A=0, C=15"
 
 
 class TestLimits:

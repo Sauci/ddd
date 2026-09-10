@@ -103,7 +103,9 @@ class TestLayering:
         from ddd.loading import _UNION_TAGS
 
         assert {kind.value for kind in ObjectKind} <= _UNION_TAGS
-        assert {"identity", "linear", "enum"} <= _UNION_TAGS
+        # A floor of the kinds known today rather than a derivation: derived from the same
+        # union, the assertion could not notice a kind dropping out of it.
+        assert {"identity", "linear", "enum", "string"} <= _UNION_TAGS
         assert all(isinstance(tag, str) for tag in _UNION_TAGS)
 
     def test_the_contract_carries_no_presentation_logic(self) -> None:

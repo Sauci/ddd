@@ -2456,7 +2456,7 @@ class _Analysis:
             first, last = except_outside
             outside = [e for e in outside if first <= e.value <= last]
         if outside:
-            spelled = ", ".join(f"{e.name}={e.value}" for e in outside)
+            spelled = conversion.spell_enumerators(outside)
             self._bag.add(
                 "init-invalid",
                 f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into {phrase}",

@@ -178,9 +178,10 @@ not have the rest of the project at all. That check runs <code class="docutils l
 holds back the checks that need every component of the project: a component in isolation has
 nobody on the other side of its interface, and the types, units, sections, constants and
 rasters it names may live in files the supplier does not have. Which checks those are is
-declared in the registry - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> lists them, and <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a> names the
-ten the editor holds back for the same reason - and everything else, from datatypes and
-conversions to initial values and bitfields, is verified as usual.</p>
+declared in the registry - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code> marks each one <code class="docutils literal notranslate"><span class="pre">(project)</span></code>, and
+<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a> names the ten the editor holds back for the same reason - and
+everything else, from datatypes and conversions to initial values and bitfields, is verified
+as usual.</p>
 <p>A registered vocabulary file is left out of that target: it declares no interface, so handing
 one to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> is a <code class="docutils literal notranslate"><span class="pre">file-kind</span></code> error the target could never pass. Such a file is
 checked in context instead, through the project of every image that collects it, and a target

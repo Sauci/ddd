@@ -285,10 +285,11 @@ every component of a project - <code class="docutils literal notranslate"><span 
 <code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>,
 <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and touches
 nothing else, so everything DDD can decide from the file in front of it is still reported.
-Whether a check needs the whole project is stated where the check itself is, and that is what
-keeps this set, the one the language server holds back for a file no build claims (see
-<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>) and the one the per-component target of the CMake integration
-silences (see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>) from drifting apart.</p>
+Whether a check needs the whole project is stated where the check itself is - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code>
+marks each one <code class="docutils literal notranslate"><span class="pre">(project)</span></code> - and that is what keeps this set, the one the language server
+holds back for a file no build claims (see <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>) and the one the
+per-component target of the CMake integration silences (see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>) from
+drifting apart.</p>
 <p>The flag sets the floor rather than having the last word: an explicit <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the same run
 still wins, so a supplier who does want to hear about outputs nobody reads asks for that one
 back with <code class="docutils literal notranslate"><span class="pre">--standalone</span> <span class="pre">-W</span> <span class="pre">unused-output=warning</span></code>.</p>
@@ -650,7 +651,9 @@ omits <code class="docutils literal notranslate"><span class="pre">limits</span>
 the datatype and the conversion when nobody states them. <code class="docutils literal notranslate"><span class="pre">volatile</span></code> cannot be left
 out that way: every definition of every kind has to state it, so a difference there is
 always two components saying two different things rather than one of them saying
-nothing at all.</p></td>
+nothing at all. An enum conversion is compared here by its name alone; the enumerators
+behind it are <code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code>’s, immediately below, so a reordered or revalued
+enumerator is that one finding rather than two.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
 <td><p>error</p></td>
@@ -1127,7 +1130,9 @@ usage error:</p>
     "check": "file-not-found",
     "default_severity": "error",
     "description": "a referenced file does not exist",
-    "overridable": false
+    "overridable": false,
+    "needs_every_component": false,
+    "comparison": false
   },
   ...
 ]
@@ -1135,7 +1140,11 @@ usage error:</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">overridable</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">false</span></code> for the eight
 checks whose severity cannot be changed - the six of load time and the two plugin checks -
-<code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check.</p>
+<code class="docutils literal notranslate"><span class="pre">true</span></code> for every other check. <code class="docutils literal notranslate"><span class="pre">needs_every_component</span></code> is the machine readable form of the
+<code class="docutils literal notranslate"><span class="pre">(project)</span></code> marker: <code class="docutils literal notranslate"><span class="pre">true</span></code> for the checks needing every component of a project, <code class="docutils literal notranslate"><span class="pre">false</span></code>
+for the rest. <code class="docutils literal notranslate"><span class="pre">comparison</span></code> is the machine readable form of the <code class="docutils literal notranslate"><span class="pre">(comparison)</span></code> marker:
+<code class="docutils literal notranslate"><span class="pre">true</span></code> for the checks of a delivery comparison (<a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a>), <code class="docutils literal notranslate"><span class="pre">false</span></code> for
+every other check.</p>
 </section>
 </section>
 

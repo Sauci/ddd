@@ -320,8 +320,10 @@
 <span class="sd">    the same text, and two conversions differing only in it mean the same mapping. The</span>
 <span class="sd">    ordered name and value pairs do count, exactly as ``enum-conflict`` counts them, and</span>
 <span class="sd">    everything else compares as written, because ``linear`` with factor 1 is deliberately</span>
-<span class="sd">    not the identity. One function for both questions - declarations inside a project, and</span>
-<span class="sd">    one object across two deliveries - so the two can never drift over what a conversion is.</span>
+<span class="sd">    not the identity. This is what a delivery comparison compares and what ``enum-conflict``</span>
+<span class="sd">    holds two declarations of one enum to; the in-project interface table narrows an enum to</span>
+<span class="sd">    its name instead (:func:`ddd.analysis._conversion_value`), the enumerators being</span>
+<span class="sd">    ``enum-conflict``'s there.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">):</span>
         <span class="k">return</span> <span class="p">(</span>

@@ -67,9 +67,9 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
      - the command did what it was asked and found nothing worth reporting.
    * - ``1``
      - findings: at least one diagnostic of severity ``error`` survived the severity policy.
-       ``ddd sources`` also exits ``1`` when the file it was pointed at cannot be read at all,
-       and ``ddd id`` when one of the files it was given was not readable as json and had to
-       be skipped, which it reports without a diagnostic.
+       ``ddd sources`` and ``ddd artefacts`` also exit ``1`` when the root file cannot be read
+       at all, and ``ddd id`` when one of the files it was given was not readable as json and
+       had to be skipped, which it reports without a diagnostic.
    * - ``2``
      - the command line itself was wrong: a missing or malformed argument, an unknown
        severity, or an unknown check that names no plugin, in ``-W``, a fixed check
@@ -141,7 +141,8 @@ The commands
        ``project`` over the named plugins' models.
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
-       the plugins it names - for the dependency list of a build system.
+       the plugins it names - for the dependency list of a build system. It reports its
+       findings without letting them change its exit code.
    * - ``ddd artefacts [FILE]``
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is
@@ -161,8 +162,10 @@ The commands
        the ``ddd-build.json`` an editor reads; ``ddd_generate()`` calls it at configure
        time, so a hand-rolled build is the only caller that needs it directly.
    * - ``ddd checks``
-     - list every check with its identifier, its default severity and whether it can be
-       relaxed; ``--plugin`` lists a named plugin's own checks after the built-in ones.
+     - list every check with its identifier, its default severity, whether it can be relaxed
+       (``(fixed)`` if not), whether it needs every component of a project (``(project)``)
+       and whether it grades a delivery comparison rather than one project (``(comparison)``);
+       ``--plugin`` lists a named plugin's own checks after the built-in ones.
    * - ``ddd cmake-dir``
      - print the directory holding ``Ddd.cmake``, so that a ``CMakeLists.txt`` finds the
        integration module of the installation it is actually using.
@@ -295,8 +298,11 @@ translated first, and a file reached over two different include paths appears on
 The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. This is what ``cmake/Ddd.cmake`` uses to make a hand written project description watch
-its own components, described in :doc:`build_integration`.
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
+reported on stderr after the listing, so a configure step hears about it from the run that
+found it rather than from whichever DDD command the build runs next. This is what
+``cmake/Ddd.cmake`` uses to make a hand written project description watch its own components,
+described in :doc:`build_integration`.
 
 With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.

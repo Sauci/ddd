@@ -75,9 +75,10 @@ not have the rest of the project at all. That check runs ``ddd check --standalon
 holds back the checks that need every component of the project: a component in isolation has
 nobody on the other side of its interface, and the types, units, sections, constants and
 rasters it names may live in files the supplier does not have. Which checks those are is
-declared in the registry - ``ddd checks`` lists them, and :doc:`editor_integration` names the
-ten the editor holds back for the same reason - and everything else, from datatypes and
-conversions to initial values and bitfields, is verified as usual.
+declared in the registry - ``ddd checks`` marks each one ``(project)``, and
+:doc:`editor_integration` names the ten the editor holds back for the same reason - and
+everything else, from datatypes and conversions to initial values and bitfields, is verified
+as usual.
 
 A registered vocabulary file is left out of that target: it declares no interface, so handing
 one to ``ddd check`` is a ``file-kind`` error the target could never pass. Such a file is

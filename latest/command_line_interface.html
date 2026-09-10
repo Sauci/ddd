@@ -172,9 +172,9 @@ diagnostics go to standard error, so that both formats leave the dictionary alon
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>findings: at least one diagnostic of severity <code class="docutils literal notranslate"><span class="pre">error</span></code> survived the severity policy.
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> also exits <code class="docutils literal notranslate"><span class="pre">1</span></code> when the file it was pointed at cannot be read at all,
-and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> when one of the files it was given was not readable as json and had to
-be skipped, which it reports without a diagnostic.</p></td>
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span></code> also exit <code class="docutils literal notranslate"><span class="pre">1</span></code> when the root file cannot be read
+at all, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> when one of the files it was given was not readable as json and
+had to be skipped, which it reports without a diagnostic.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
 <td><p>the command line itself was wrong: a missing or malformed argument, an unknown
@@ -260,7 +260,8 @@ a directory; <code class="docutils literal notranslate"><span class="pre">--plug
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span> <span class="pre">FILE</span></code></p></td>
 <td><p>list every file the project is built out of - the description files and the modules of
-the plugins it names - for the dependency list of a build system.</p></td>
+the plugins it names - for the dependency list of a build system. It reports its
+findings without letting them change its exit code.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span> <span class="pre">[FILE]</span></code></p></td>
 <td><p>list the artefacts <code class="docutils literal notranslate"><span class="pre">generate</span></code> accepts for this project: the built-in <code class="docutils literal notranslate"><span class="pre">c</span></code> and
@@ -284,8 +285,10 @@ the <code class="docutils literal notranslate"><span class="pre">ddd-build.json<
 time, so a hand-rolled build is the only caller that needs it directly.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
-<td><p>list every check with its identifier, its default severity and whether it can be
-relaxed; <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> lists a named plugin’s own checks after the built-in ones.</p></td>
+<td><p>list every check with its identifier, its default severity, whether it can be relaxed
+(<code class="docutils literal notranslate"><span class="pre">(fixed)</span></code> if not), whether it needs every component of a project (<code class="docutils literal notranslate"><span class="pre">(project)</span></code>)
+and whether it grades a delivery comparison rather than one project (<code class="docutils literal notranslate"><span class="pre">(comparison)</span></code>);
+<code class="docutils literal notranslate"><span class="pre">--plugin</span></code> lists a named plugin’s own checks after the built-in ones.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code></p></td>
 <td><p>print the directory holding <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code>, so that a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> finds the
@@ -403,8 +406,11 @@ translated first, and a file reached over two different include paths appears on
 <p>The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. This is what <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written project description watch
-its own components, described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
+reported on stderr after the listing, so a configure step hears about it from the run that
+found it rather than from whichever DDD command the build runs next. This is what
+<code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written project description watch its own components,
+described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
 <p>With <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> the same list arrives as the <code class="docutils literal notranslate"><span class="pre">sources</span></code> array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.</p>
 </section>

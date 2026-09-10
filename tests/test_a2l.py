@@ -440,3 +440,46 @@ class TestStrings:
 
     def test_a_numeric_measurement_carries_no_annotation(self, tree: Path) -> None:
         assert "ANNOTATION" not in a2l(tree, declare("local", "X", dimensions=[16]))
+
+    def test_a_string_member_of_a_measurement_carries_the_note_at_every_element(
+        self, tree: Path
+    ) -> None:
+        """A measurement-kind instance, as an array of structures: one annotated byte array
+        per element, which is how an array of strings is written."""
+        files = {
+            "project.ddd.json": project("Device", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "type": "struct",
+                        "name": "Status_t",
+                        "members": [
+                            {
+                                "name": "text",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "string"},
+                                "dimensions": [8],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Status", typename="Status_t", kind="measurement", dimensions=[2]),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        for element in ("Status[0].text", "Status[1].text"):
+            assert f'/begin MEASUREMENT {element} "{element}"' in content
+        assert content.count("UBYTE NO_COMPU_METHOD 0 0 0 255") == 2
+        assert content.count("MATRIX_DIM 8 1 1") == 2
+        assert content.count('ANNOTATION_LABEL "string"') == 2
+        assert content.count("8 bytes of text; ASAP2 1.6.1 has no string measurement") == 2
+        assert "/begin CHARACTERISTIC" not in content
+        assert content.count("/begin") == content.count("/end")

@@ -427,7 +427,8 @@ Kind specific attributes:
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
   A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
   string instead: printable ASCII, code points 0x20 to 0x7E, and shorter than its dimension
-  so that the terminating zero fits, else `init-invalid`; the integer and the list spelling
+  so that the terminating zero fits, else `init-invalid`; the empty string is allowed, an
+  explicit initialiser of zeros rather than no initialiser; the integer and the list spelling
   stay open to it, the list being how a fixed width field without a terminator is written.
   A string spelling on any other object is `init-invalid`, and a quoted number is text, not
   the number.

@@ -32,8 +32,8 @@ kind that is always spelled out: a conversion with no key of its own is the iden
 All four kinds are at work in that demo, and ``ddd list`` shows what each of them comes to: an
 initial value is printed raw, with the reading its conversion gives it beside it - nothing for
 the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, and the name
-``STATE_OFF`` for the enum of ``StateA``, and the quoted text of ``SoftwareLabel`` for the
-string.
+``STATE_OFF`` for the enum of ``StateA`` - and, for the string ``SoftwareLabel``, the quoted
+text itself, which is the raw value spelled as the file spells it, with no reading to add.
 
 .. code-block:: text
 
@@ -353,8 +353,8 @@ is refused when it is read:
 * the shape is exactly one dimension, so the kind is ``measurement`` or ``value_block``, and
   a member is a ``value`` member with one dimension; an array of strings is written as an
   array of structures with a string member, because the a2l format has no string arrays;
-* no ``unit``, no ``limits`` and no ``a2l.format``: text has none of them, and the limits of
-  a string are the byte range of its datatype;
+* no ``unit``, no ``limits`` and, where the ``a2l`` block exists, no ``a2l.format``: text has
+  none of them, and the limits of a string are the byte range of its datatype;
 * a scalar type may be a string, and the declarations and members naming it state the
   length.
 

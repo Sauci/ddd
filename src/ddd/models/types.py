@@ -187,7 +187,8 @@ class Member(BaseModel):
     """
 
     conversion: Conversion | None = None
-    """How this member's raw value maps to a physical one: identity, linear or an enumeration.
+    """How this member's raw value maps to a physical one: identity, linear, an enumeration,
+    or text read from the bytes (``string``).
 
     Required on a member whose storage is a base ``datatype``, exactly as on a definition;
     a member naming a scalar ``typename`` states none, the type fixing it.
@@ -383,7 +384,8 @@ class ScalarType(BaseModel):
     """Physical unit of the value, e.g. ``"rpm"``."""
 
     conversion: Conversion
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+    """How a raw value maps to a physical one: identity, linear scaling, an enumeration, or
+    text read from the bytes (``string``).
 
     Required: fixing what a value means is the one job a scalar type has, and the identity
     is part of the answer rather than a silence to interpret.

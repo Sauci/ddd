@@ -41,10 +41,11 @@ def c_string_literal(text: str) -> str:
     """Render a string init as a c string literal.
 
     Only ``"`` and ``\\`` need escaping in printable ASCII, and ``?`` gets it too: two of
-    them before ``=``, ``/`` or ``(`` form a trigraph under a pedantic pre-C23 dialect, and
-    ``\\?`` is the escape c provides for exactly that. The analysis has refused anything
-    outside 0x20 to 0x7E, so no other escape is ever needed, and it has left room for the
-    terminator, which c writes along with the zeros that fill the rest of the array.
+    them before any of the nine characters that close a trigraph form a trigraph under a
+    pedantic pre-C23 dialect, and ``\\?`` is the escape c provides for exactly that. The
+    analysis has refused anything outside 0x20 to 0x7E, so no other escape is ever needed,
+    and it has left room for the terminator, which c writes along with the zeros that fill
+    the rest of the array.
     """
     escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("?", "\\?")
     return f'"{escaped}"'

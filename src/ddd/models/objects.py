@@ -446,11 +446,13 @@ class DataObject(_Frozen):
 
     ``null`` leaves the object zero initialised by the startup code. For an array shaped
     object, either a nested list matching the shape exactly, or a single scalar, which
-    initialises every element with that value.
+    initialises every element with that value. A string object may state its init as text
+    instead: printable ASCII, shorter than the dimension so that the terminating zero fits.
     """
 
     conversion: Conversion | None = None
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+    """How a raw value maps to a physical one: identity, linear scaling, an enumeration, or
+    text read from the bytes (``string``).
 
     Required wherever storage is named by ``datatype``, although the identity would be
     derivable: raw equalling physical is an engineering claim about the data, not a
@@ -458,7 +460,8 @@ class DataObject(_Frozen):
     without anything looking broken. A definition naming a ``typename`` states no conversion
     - the type fixes it. ``kind`` may be left out when the keys make it unambiguous:
     ``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,
-    and ``{}`` means ``identity``.
+    and ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of
+    its own to be recognised by.
     """
 
     limits: Limits | None = None

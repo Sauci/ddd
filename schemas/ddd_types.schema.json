@@ -405,7 +405,7 @@
             }
           ],
           "default": null,
-          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
+          "description": "How this member's raw value maps to a physical one: identity, linear, an enumeration,\nor text read from the bytes (``string``).\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
           "title": "Conversion"
         },
         "limits": {
@@ -499,7 +499,7 @@
               "$ref": "#/$defs/StringConversion"
             }
           ],
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",

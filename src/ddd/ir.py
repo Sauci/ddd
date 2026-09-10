@@ -184,7 +184,8 @@ class ResolvedObject(_Frozen):
     """
 
     init: InitValue | None = None
-    """Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""
+    """Raw initial value, nested to match ``shape``, or the text of a string object; ``null``
+    means zero initialised."""
 
     section: str | None = None
     """Linker section the producing declaration placed the object in; ``null`` for the

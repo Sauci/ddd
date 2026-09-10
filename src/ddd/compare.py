@@ -24,6 +24,7 @@ like the others, not a drift.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -78,6 +79,21 @@ def _describe_references(entry: Comparable) -> str:
     if not entry.references:
         return "none"
     return ", ".join(f"{key}={value}" for key, value in sorted(entry.references.items()))
+
+
+def _describe_init(value: object) -> str:
+    """``none`` for no init, quoted text for a string init, ``repr`` for everything else.
+
+    ``repr`` single-quotes a string - ``'V1.3' != 'V1.2'`` - which reads as a python value
+    rather than as the text itself, where a description file, ``ddd list`` and the hover all
+    spell it ``"V1.2"``. Every other init is a number, a bool or a nested list of them, which
+    ``repr`` already spells the way this file wants.
+    """
+    if value is None:
+        return "none"
+    if isinstance(value, str):
+        return json.dumps(value)
+    return repr(value)
 
 
 # Change any of these and the consumers of the object are wrong, whether or not they still
@@ -144,7 +160,7 @@ def _interface_fields(old: Comparable, new: Comparable) -> tuple[ComparedField[C
 
 # Changing these alters behaviour or the generated files, but no consumer becomes wrong.
 _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
-    ComparedField("init", lambda o: o.init, lambda o: "none" if o.init is None else repr(o.init)),
+    ComparedField("init", lambda o: o.init, lambda o: _describe_init(o.init)),
     ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
     ComparedField(
         "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"

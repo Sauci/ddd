@@ -22,8 +22,9 @@ its own.
   stays the byte array it is, with an `ANNOTATION` saying so, because no version of the
   format has a string measurement.  A string states no unit, limits or display format, and
   the rules are `schema` where they are broken; a wrong string init is `init-invalid`.
-  **Migration:** none for a description file - no existing file carries the kind, and `{}`
-  is the identity it always was.  The dumped dictionary is format 8, for the new kind and the
+  **Migration:** one spelling changes meaning, see the end of this entry; otherwise none for
+  a description file - no existing file carries the kind, and `{}` is the identity it always
+  was.  The dumped dictionary is format 8, for the new kind and the
   string `init`; a format 7 dictionary reads back unchanged, and a reader that only knows 7
   refuses a format 8 file as it refuses any newer one.  One spelling changes meaning: a
   quoted number as an `init`, `"12"`, used to be read as the number and is now text, refused

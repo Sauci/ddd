@@ -1044,7 +1044,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, nested to match ``shape``; ``null`` means zero initialised."
+          "description": "Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."
         },
         "section": {
           "anyOf": [

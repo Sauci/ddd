@@ -282,6 +282,27 @@ class TestGradedChanges:
         assert checks(bag) == ["changed-storage"]
         assert "init: 2 != 1" in messages(bag)
 
+    def test_gaining_an_initial_value_is_a_warning(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "X"))
+        new = one_component(tree, "new", declare("local", "X", init=1))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "init: 1 != none" in messages(bag)
+
+    def test_a_changed_string_initial_value_is_a_warning(self, tree: Path) -> None:
+        """A string init is spelled the way the file spells it, not as ``repr`` would."""
+        string_block = {
+            "datatype": "uint8",
+            "kind": "value_block",
+            "dimensions": [16],
+            "conversion": {"kind": "string"},
+        }
+        old = one_component(tree, "old", declare("local", "X", init="V1.2", **string_block))
+        new = one_component(tree, "new", declare("local", "X", init="V1.3", **string_block))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert 'init: "V1.3" != "V1.2"' in messages(bag)
+
     def test_a_changed_raster_is_a_warning(self, tree: Path) -> None:
         """A signal moving from the 10 ms to the 1 ms event changes the a2l a calibration
         engineer works with, and invalidates nobody's code."""

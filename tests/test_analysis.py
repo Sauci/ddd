@@ -1642,3 +1642,26 @@ class TestStringTypes:
         assert dictionary is not None
         assert "Info.label" not in dictionary.comparable
         assert not dictionary.instances
+
+    def test_a_string_member_of_a_measurement_instance_and_of_an_array_of_structures(
+        self, tree: Path
+    ) -> None:
+        """Every element of an array of structures contributes its own string leaf, and a
+        leaf takes the storage class of the instance: these are measurement leaves."""
+        dictionary, found, _ = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="measurement", dimensions=[2]),
+            types=[
+                self.structure(
+                    {"name": "label", "member": "value", "typename": "Label_t", "dimensions": [16]}
+                )
+            ],
+        )
+        assert found == []
+        assert dictionary is not None
+        for path in ("Info[0].label", "Info[1].label"):
+            leaf = dictionary.comparable[path]
+            assert leaf.kind.value == "measurement"
+            assert leaf.conversion.describe() == "string"
+            assert leaf.shape == (16,)
+            assert leaf.limits.as_tuple() == (0, 255)

@@ -1731,6 +1731,24 @@ class TestHover:
 
         assert resolve(navigation.workspaces([], tmp_path / "absent.ddd.json")) is None
 
+    def test_a_string_init_draws_no_rows(self, tmp_path: Path) -> None:
+        """Nothing numeric to draw: the string flattens to no values, so the rows are none."""
+        from ddd.lsp.hover import rows
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Label",
+                datatype="uint8",
+                kind="value_block",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                init="V1.2.3",
+            ),
+        )
+        assert rows(dictionary.by_name["Label"]) == []
+
     def test_a_string_init_is_stated_as_text(self, tmp_path: Path) -> None:
         """Quoted as the file spells it; no reading to add, nothing to draw."""
         from ddd.lsp.hover import describe

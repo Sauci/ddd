@@ -302,7 +302,9 @@ def check_string_shape(kind: ObjectKind, shape: WrittenShape | None) -> None:
             f"declare it as a 'measurement' or a 'value_block'"
         )
         raise ValueError(msg)
-    if shape is None or len(shape) != 1:
+    # Only a curve or a map has no shape of its own, and the kind check above refused both.
+    assert shape is not None
+    if len(shape) != 1:
         spelled = "none" if not shape else str(len(shape))
         msg = (
             f"a string states exactly one dimension, its length in bytes, got {spelled}; an "

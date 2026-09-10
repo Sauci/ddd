@@ -64,9 +64,10 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
 
     A map is stored row wise, so the last dimension is the width of a row: that is the
     direction the x axis runs in, and drawing it that way puts the picture the same way round
-    as the calibration tool shows it. A string is drawn as nothing: its init is stated as text.
+    as the calibration tool shows it. A string init flattens to no values and so draws no
+    rows; ``_drawing`` states it as text before it ever asks.
     """
-    if entry.init is None or isinstance(entry.init, str):
+    if entry.init is None:
         return []
     values = [
         entry.conversion.to_physical(value)

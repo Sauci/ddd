@@ -334,24 +334,26 @@ endfunction()
 #              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
 #              [STRICT]                      # treat DDD warnings as errors
-#              [NO_PROPAGATE_HEADERS])       # do not hand <image>_ddd_headers to the registered components
+#              [NO_PROPAGATE_HEADERS])       # do not hand <stem>_ddd_headers to the registered components
 #
 # It creates:
 #
-# * <image>_ddd_generation  custom target running the generator
-# * <image>_ddd_headers     interface library exposing the generated headers, and in the collected mode the compile
-#                           usage - include directories, compile definitions and compile options - of every
-#                           registered component; linked into every registered component unless
-#                           NO_PROPAGATE_HEADERS is given
-# * <image>_ddd_globals     object library compiling the single definition file, linked into the image; links
-#                           <image>_ddd_headers, which is where its compile usage comes from
+# * <stem>_ddd_generation  custom target running the generator
+# * <stem>_ddd_headers     interface library exposing the generated headers, and in the collected mode the compile
+#                          usage - include directories, compile definitions and compile options - of every
+#                          registered component; linked into every registered component unless
+#                          NO_PROPAGATE_HEADERS is given
+# * <stem>_ddd_globals     object library compiling the single definition file, linked into the image; links
+#                          <stem>_ddd_headers, which is where its compile usage comes from
+# * <stem>_ddd_check       custom target running the consistency check alone, for a ci job that wants the verdict
+#                          without the artefacts
 #
-# The helper names are derived from the image name without its extension, so an image named firmware.elf yields
-# firmware_ddd_headers. The path of the generated a2l is available as the DDD_A2L property of the image.
+# <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
+# path of the generated a2l is available as the DDD_A2L property of the image.
 #
 # Only the three shared files are declared as outputs of the generator; the per-component headers are written next to
 # them, but their names come from inside the description files and are therefore unknown at configure time. That is
-# what <image>_ddd_headers is for: a consumer depends on the generation step, not on an individual header path.
+# what <stem>_ddd_headers is for: a consumer depends on the generation step, not on an individual header path.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
@@ -557,7 +559,7 @@ function(ddd_generate image)
     # further wiring. The includes alone would not be safe: a hand written header may change its layout under the
     # component's interface flags, and a file compiled without them finds every header, compiles cleanly, and lays
     # the variables out differently than the image using them - the failure that compiles. Carrying this here rather
-    # than on each consumer is what keeps the integration a two-liner: linking <image>_ddd_headers is enough, and a
+    # than on each consumer is what keeps the integration a two-liner: linking <stem>_ddd_headers is enough, and a
     # file including a generated header never has to mirror the flags of a component it does not otherwise know
     # about. Each $<TARGET_PROPERTY:...> resolves transitively over the component's own interface link closure, and
     # a component publishing nothing expands to an empty entry, which every one of these properties drops at
@@ -583,7 +585,7 @@ function(ddd_generate image)
     # by the calibration tool has no referencing code at all.
     add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
     # The compile usage the definition file needs - the external type headers, read under the flags of the component
-    # that declares them - reaches it through <image>_ddd_headers, which it links below like any other consumer of
+    # that declares them - reaches it through <stem>_ddd_headers, which it links below like any other consumer of
     # the generated headers.
     if(arg_LINK_LIBRARIES)
         target_link_libraries(${image_stem}_ddd_globals PRIVATE ${arg_LINK_LIBRARIES})
@@ -597,7 +599,7 @@ function(ddd_generate image)
     # ddd_generate() last.
     #
     # "Registered so far" is wider than the link closure of this image: a component that this image does not link
-    # still receives <image>_ddd_headers, and with it the compile usage collected above. That is deliberate rather
+    # still receives <stem>_ddd_headers, and with it the compile usage collected above. That is deliberate rather
     # than harmless. ddd_types.h carries the external includes of the whole project and every component header
     # includes it, so a component parses every external type header whether it declares one or not; reading those
     # headers under other flags than the image does would lay the types out differently - the failure that compiles.
@@ -615,7 +617,7 @@ function(ddd_generate image)
                     "ddd_generate: the components already compile against the headers generated for "
                     "\"${propagated_by}\"; \"${image}\" cannot hand them a second set without making their include "
                     "order ambiguous. Give NO_PROPAGATE_HEADERS to *both* \"${propagated_by}\" and \"${image}\", and "
-                    "link the wanted <image>_ddd_headers into each component explicitly - propagating from only one "
+                    "link the wanted <stem>_ddd_headers into each component explicitly - propagating from only one "
                     "of the two leaves that same ambiguity in place, because the automatic set still reaches every "
                     "registered component rather than the ones this image links.")
         endif()

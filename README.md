@@ -39,9 +39,10 @@ when somebody last wrote it down. This README is the short version.
 
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
-while the major version is `0`. The check identifiers, the command names and the json file
-formats are the tool's public interface; the generated a2l is ASAP2 1.6.1. Licence terms are
-in [LICENSE](LICENSE), and problems belong in the
+while the major version is `0`. The check identifiers, the command names and their options,
+the json file formats, the `ddd_generate()` and `ddd_add_component()` signatures and the names
+a c template renders from are the tool's public interface; the generated a2l is ASAP2 1.6.1.
+Licence terms are in [LICENSE](LICENSE), and problems belong in the
 [issue tracker](https://github.com/Sauci/ddd/issues).
 
 ## Installation
@@ -662,11 +663,16 @@ opt-in.
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
 build, once the linker has decided the addresses - and `ddd generate all` produces both, and
-the artefact of every plugin the project names that provides one, in one run.  Each artefact
-takes only its own options.  Useful ones: `--dry-run`
-(reports what would be written and exits `0` either way, so it is not a staleness gate on
-its own), `--force` (generate despite errors - the files are written using the producing
-component's definition, but the command still reports every finding and still exits `1`),
+the artefact of every plugin the project names that provides one, in one run.  `all` alone
+takes `--without c` or `--without a2l`, repeatable, which leaves that built-in artefact out of
+the run and produces everything else, the plugins' artefacts included; naming `c` instead
+produces no plugin artefact at all, so a project that names a plugin and used to spell
+`ddd generate c` wants `ddd generate all --without a2l`.  Each artefact takes only its own
+options, and subtracting an artefact takes its options with it, so `--without a2l` beside an
+`--address-map` is refused rather than quietly ignored.  Useful ones: `--dry-run` (reports
+what would be written and exits `0` either way, so it is not a staleness gate on its own),
+`--force` (generate despite errors - the files are written using the producing component's
+definition, but the command still reports every finding and still exits `1`),
 `--byte-order big`, `--address-map addresses.json`.
 
 ## A2L support
@@ -876,8 +882,12 @@ declarations are covered in both states:
 
 Point it at your own project with
 `docker compose run --rm compile ddd-compile path/to/project.ddd.json build/mine`, and use the
-`CDEFS`, `GENFLAGS`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change the defines,
-the `ddd generate` flags, the warning set or the compiler.
+`CDEFS`, `GENFLAGS`, `TEMPLATES`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change
+the defines, the `ddd generate` flags, the c templates, the warning set, the compiler, and
+where the headers of the project's external types are looked for on top of the nearest
+`include` directory.  `TEMPLATES` defaults to the output of `ddd templates-dir`, which is what
+makes the plain invocation work at all - the generator itself has no templates to fall back
+on.
 
 The working tree is bind mounted at `/work` and `PYTHONPATH=/work/src` shadows the copy
 installed in the image, so code changes take effect without rebuilding.  The container runs

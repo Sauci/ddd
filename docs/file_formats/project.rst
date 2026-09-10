@@ -17,7 +17,7 @@ on the generated a2l. ``examples/demo/demo.ddd.json`` is a complete one:
    {
      "project": {
        "name": "DemoDevice",
-       "description": "Demonstration project showing every DDD feature",
+       "description": "Demonstration project showing every kind of data object",
        "includes": [
          "components/*.ddd.json",
          "subsystems/logging/logging.ddd.json"

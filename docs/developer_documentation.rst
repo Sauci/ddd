@@ -174,17 +174,21 @@ to the existing two and registering it as an artefact of the generate command:
    turns into the ``generate`` subcommands, a ``render_<format>`` flag set by
    ``_add_generate_arguments`` together with the options that configure it, and the branch
    of ``_command_generate`` that appends the backend when the flag is set. Add the name to
-   ``BUILT_IN_ARTEFACTS`` in ``src/ddd/plugins.py`` as well: any other lowercase name is
+   ``BUILT_IN_GENERATED`` in ``src/ddd/plugins.py`` as well: any other lowercase name is
    taken for a plugin's artefact before the parser is built, and a name that is both is a
-   conflicting subparser.
+   conflicting subparser. That tuple is the one to edit rather than ``BUILT_IN_ARTEFACTS``,
+   which derives from it by adding ``all``; the choices of ``--without`` and what
+   ``ddd artefacts`` reports as built-in are read from it too, so both follow on their own.
 #. Add it to the protocol assertion in ``tests/test_backends.py``, and to the lists of
    artefacts ``tests/test_cli.py`` and ``tests/test_plugins.py`` enumerate. The import graph
    tests pick the new package up on their own, so the first thing the suite will tell you is
    whether the new backend reached into the front end.
 
-The front end changes in those two places and nowhere else, neither of the existing backends
-is touched, and ``cmake/Ddd.cmake`` keeps generating ``all`` or ``c`` until the build
-integration is taught the new artefact.
+The front end changes in those two places and nowhere else, and neither of the existing
+backends is touched. ``cmake/Ddd.cmake`` asks for ``all`` on every build, so the new artefact
+reaches every cmake project from the moment it exists; a build that does not want it needs a
+new option on ``ddd_generate`` appending ``--without <format>``, the way ``NO_A2L`` appends
+``--without a2l``.
 
 Diagnostics never raise
 -----------------------
@@ -260,7 +264,7 @@ the paths that only a coverage run reaches - unreadable files, malformed json, r
 severities, odd float literals - are collected in ``tests/test_edge_cases.py`` rather than
 being scattered through the suite that describes behaviour.
 
-Four suites guard things a type checker cannot. ``tests/test_backends.py`` walks the import
+Five suites guard things a type checker cannot. ``tests/test_backends.py`` walks the import
 graph, as described above. ``tests/test_cmake.py`` configures and builds the cmake module -
 over the shipped example, over a collected project naming a plugin and over a hand written
 one - with the ``cmake`` the development requirements install, so that the module is held to
@@ -270,7 +274,12 @@ not compile, a legal name rejected, a description file that ended the run with a
 traceback - grouped by what was at stake rather than by module. ``tests/test_documentation.py``
 asserts that every check identifier, every command, every object kind and every datatype is
 named in ``README.md`` and in ``SPEC.md``, that the README invents no check that is not
-registered, and that no link in either points at a file that no longer exists.
+registered, and that no link in either points at a file that no longer exists. And
+``tests/test_transcripts.py`` re-runs the documentation: every ``$ ddd`` command a page runs
+over the shipped examples, and the whole tutorial through ``bash``, has to print the lines the
+page shows beneath it. It is the stronger of the two documentation guards - a claim about what
+the tool prints is checked against what it prints - so a reworded diagnostic fails there
+first.
 
 Running the checks
 ------------------
@@ -490,6 +499,18 @@ happens on a published GitHub release tagged ``v<version>``, and the build refus
 unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. The prefix is
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with ``v``.
+
+**The version is spelled in eight files, and a test holds only three of them together.**
+``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
+restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,
+which the release tag is checked against, and ``editors/vscode/package.json``, which the
+extension is packaged with, repeat it, and a test each asserts that they agree with
+``__version__``. The other five files spell it out as text and nothing derives it for them: the
+wheel file name in ``README.md`` and in :doc:`getting_started`, the two ``ddd --version``
+transcripts of that page, which are the only spellings the transcript test re-runs, and the
+banner of a generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
+:doc:`faq` and :doc:`templates`. Bumping the version means walking all eight in the release
+commit.
 
 The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and GitHub
 creates an environment with its deployments restricted to the default branch, which is the

@@ -4,9 +4,13 @@ Notable changes per release, newest first.  Versions follow
 [semantic versioning](https://semver.org): while the major version is `0`, a minor bump may
 change the file formats, and this file says how.
 
-The check identifiers, the command names and the json file formats are the tool's public
-interface; anything else - the layout of the generated c, the wording of a diagnostic - is
-not, and the templates a project provides are its own.
+The check identifiers, the command names and their options, the json file formats - the
+description files and, beside them, the address map, the dumped dictionary, the `--renames`
+file and the `ddd-build.json` - the `ddd_generate()` and `ddd_add_component()` signatures and
+the names a c template renders from are the tool's public interface, and a release that
+changes one of them says here what the migration costs.  Anything else - the layout of the
+generated c, the wording of a diagnostic - is not, and the templates a project provides are
+its own.
 
 ## Unreleased
 
@@ -255,12 +259,14 @@ not, and the templates a project provides are its own.
   output does come from: the block such a plugin contributes is part of the vocabulary the
   project's own templates read, and those are rendered by the `c` artefact.
 
-* **A structure DDD only carries is no longer reported as an undeclared symbol.**  The symbol
-  check behind `ddd-compile` read `ddd list`, which reports what can be *described*: the leaves
-  of a structured variable, and none at all for an external member.  A structure whose members
-  are all external therefore had real storage, a real symbol, and no entry, so the check called
-  its definition stray and failed a correct project.  It now reads `ddd dump`, whose `objects`
-  and `instances` are exactly what the definition file defines, one symbol each.
+* **`ddd-compile` counts a structured variable as the one symbol it is.**  The symbol check
+  behind it read `ddd list --format json`, which reports what can be *described*: the leaves of
+  a structured variable, and none at all for an external member.  Those leaves carry no `name`,
+  only the path and the instance they belong to, so the check crashed on the first project that
+  declared a structure; and a structure whose members are all external had real storage, a real
+  symbol and no entry at all, so the check called its definition stray and failed a correct
+  project.  It reads `ddd dump --format json` now, whose `objects` and `instances` are exactly
+  what the definition file defines - one symbol each, however many leaves a structure has.
 
 * **`--without` subtracts an artefact's options along with the artefact.**  `--without a2l`
   beside an `--address-map` used to load and validate the map, and could abort the run over a
@@ -295,12 +301,6 @@ not, and the templates a project provides are its own.
   compile usage it collected - the cmake test that builds the example now fails if it stops.
   `ddd-compile` takes an `INCLUDES` variable for the same reason, defaulting to the project's
   own `include` directory when it has one.
-
-* **`ddd-compile` counts a structured variable as the one symbol it is.**  Its symbol check read
-  a `name` off every entry of `ddd list --format json`.  The leaves of a structured variable
-  carry no `name`, only the path and the instance they belong to, so the check crashed on the
-  first project that had one; it now takes the instance, and one structure counts as the one
-  object the linker sees however many leaves it has.
 
 * **A plugin module is registered before its body runs.**  A plugin loaded from a `.py` path
   reached `sys.modules` only once its body had finished, so a module that looks itself up

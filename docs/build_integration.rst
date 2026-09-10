@@ -487,11 +487,11 @@ Where the address map comes from
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``ADDRESS_MAP`` names a file; writing it is the project's step. DDD ships no extractor and
-runs no toolchain tool of its own - it reads description files and nothing else - which is
-what lets the generator run before anything has been compiled, and what leaves this half of
-the two-run flow to the build. What it needs is the json :doc:`generated_artefacts` describes,
-one flat object of symbol to address; where that comes from is the project's business, so a
-toolchain without ``nm`` costs nothing but the recipe below.
+runs no toolchain tool of its own - it reads no build output at all - which is what lets the
+generator run before anything has been compiled, and what leaves this half of the two-run flow
+to the build. What it needs is the json :doc:`generated_artefacts` describes, one flat object
+of symbol to address; where that comes from is the project's business, so a toolchain without
+``nm`` costs nothing but the recipe below.
 
 The step belongs after the link, so it is a ``POST_BUILD`` command on the image, writing into
 the very path ``ADDRESS_MAP`` names:
@@ -557,10 +557,11 @@ image whose whole purpose is to generate, compile, link and inspect the result o
 toolchain, and a compose file that gives every routine job a name.
 
 The image (``docker/Dockerfile``) is ``python:3.12-slim-bookworm`` with gcc and libc6-dev to
-compile the generated sources, binutils for the ``nm`` that inspects them afterwards, and
-ninja plus a cmake from pypi to build the cmake example - debian bookworm still ships cmake
-3.25, which is older than the 3.30 the module needs. DDD itself is installed with its
-development extra, and ``docker/compile.sh`` is installed as the command ``ddd-compile``.
+compile the generated sources, and binutils for the ``nm`` that inspects them afterwards. DDD
+itself is installed with its development extra, which is also where the cmake and the ninja
+that build the cmake example come from: both are wheels from pypi rather than debian packages,
+because debian bookworm still ships cmake 3.25 and the module needs 3.30. ``docker/compile.sh``
+is installed as the command ``ddd-compile``.
 
 .. note::
    The image is a linux image, so on a Windows host run docker from a WSL shell, where docker

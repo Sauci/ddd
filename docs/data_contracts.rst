@@ -190,11 +190,12 @@ the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them. Where a
 an alias, the alias is the key that belongs in the json file - ``$schema``, not
 ``schema_reference``.
 
-.. Models carrying an identifier field switch the rendered constraint list off. The
+.. Models carrying a name held to a pattern switch the rendered constraint list off. The
    constraint would be written into the page as ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``,
    which docutils reads as two references to targets that do not exist ('A-Za-z_' is a
    valid reference name followed by an underscore), and the documentation is built with
-   warnings as errors. The same information is in the json schema shown below each model.
+   warnings as errors. A linker section name does the same through its own character class.
+   The same information is in the json schema shown below each model.
 
 Project description
 ~~~~~~~~~~~~~~~~~~~
@@ -217,9 +218,11 @@ Software component description
 Structured datatype description
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :doc:`types file <file_formats/types>`. A member states which shape it has and carries only
-the keys that shape needs; what it never carries is a bit position or an offset, because c leaves
-both to the compiler.
+The :doc:`types file <file_formats/types>`, whose entries are told apart by a stated ``type``:
+a structure, a scalar type naming what a number means, and an external type naming a c type a
+hand written header defines and DDD only carries. A member states which shape it has and
+carries only the keys that shape needs; what it never carries is a bit position or an offset,
+because c leaves both to the compiler.
 
 .. autopydantic_model:: ddd.models.TypesFile
 
@@ -227,6 +230,12 @@ both to the compiler.
    :field-show-constraints: False
 
 .. autopydantic_model:: ddd.models.Member
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.ScalarType
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.ExternalType
    :field-show-constraints: False
 
 Data objects
@@ -286,3 +295,45 @@ would otherwise match two variants at once.
 
 .. autopydantic_model:: ddd.models.Enumerator
    :field-show-constraints: False
+
+Unit vocabulary
+~~~~~~~~~~~~~~~
+
+The :doc:`units file <file_formats/units>`. Declaring the vocabulary is opt-in, and a project
+that declares it has every stated unit checked against it.
+
+.. autopydantic_model:: ddd.models.UnitsFile
+
+.. autopydantic_model:: ddd.models.UnitDeclaration
+
+Memory sections
+~~~~~~~~~~~~~~~
+
+The :doc:`sections file <file_formats/sections>`. What a section declares is what the checks
+need to weigh a placement: who may write it, and how strictly it aligns.
+
+.. autopydantic_model:: ddd.models.SectionsFile
+
+.. autopydantic_model:: ddd.models.SectionDeclaration
+   :field-show-constraints: False
+
+Constant vocabulary
+~~~~~~~~~~~~~~~~~~~
+
+The :doc:`constants file <file_formats/constants>`. A shape names one of these where it would
+state a number, so the size lives in one place.
+
+.. autopydantic_model:: ddd.models.ConstantsFile
+
+.. autopydantic_model:: ddd.models.ConstantDeclaration
+   :field-show-constraints: False
+
+Measurement rasters
+~~~~~~~~~~~~~~~~~~~
+
+The :doc:`rasters file <file_formats/rasters>`. A raster is a DAQ event the target offers,
+named so that a definition can refer to it.
+
+.. autopydantic_model:: ddd.models.RastersFile
+
+.. autopydantic_model:: ddd.models.RasterDeclaration

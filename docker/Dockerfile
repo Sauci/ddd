@@ -19,8 +19,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # gcc compiles the generated sources and binutils (nm) verifies that every variable DDD
-# promised really ends up in the object file exactly once; cmake and ninja build the
-# example that integrates the tool through cmake/Ddd.cmake.
+# promised really ends up in the object file exactly once.
 #
 # graphviz and plantuml draw the figures of the documentation, which builds with warnings as
 # errors: without them the `docs` service fails rather than dropping a diagram. plantuml brings
@@ -35,14 +34,9 @@ RUN apt-get update \
         gcc \
         libc6-dev \
         binutils \
-        ninja-build \
         graphviz \
         plantuml \
     && rm -rf /var/lib/apt/lists/*
-
-# cmake/Ddd.cmake needs the TRANSITIVE_LINK_PROPERTIES feature of CMake 3.30; debian bookworm
-# still ships 3.25, so the current release comes from pypi.
-RUN pip install --no-cache-dir "cmake>=3.30"
 
 WORKDIR /opt/ddd
 COPY pyproject.toml README.md LICENSE requirements*.txt ./
@@ -52,6 +46,10 @@ COPY cmake ./cmake
 # The templates are the one that is easy to forget: they live under examples/ rather than
 # beside the other two, and leaving them out fails the image build rather than the tests.
 COPY examples/templates ./examples/templates
+# The dev requirements bring cmake and ninja as wheels, which is what builds the example that
+# integrates the tool through cmake/Ddd.cmake. They come from pypi rather than from apt because
+# the module needs the TRANSITIVE_LINK_PROPERTIES feature of CMake 3.30 and debian bookworm
+# still ships 3.25 - and because tests/test_cmake.py runs against exactly this pair.
 RUN pip install --no-cache-dir ".[dev]"
 
 COPY docker/compile.sh docker/verify_symbols.py /opt/ddd/bin/

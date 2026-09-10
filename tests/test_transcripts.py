@@ -98,7 +98,11 @@ class Transcript:
 
     @property
     def illustrative(self) -> bool:
-        """A trailing comment marks a run that depends on an edit the prose describes."""
+        """A trailing comment marks a run the page shows rather than performs.
+
+        One that depends on an edit the prose describes, or on files the page describes
+        without shipping them.
+        """
         return " #" in self.command
 
     @property
@@ -116,8 +120,17 @@ class Transcript:
         return "examples/" in self.command or not needed
 
     def mode(self, page_writes_files: bool) -> str | None:
-        """How to run this transcript: in this process, through a shell, or not at all."""
+        """How to run this transcript: in this process, through a shell, or not at all.
+
+        ``ddd lsp`` is the one command with no file to find that must not be run for what it
+        prints: without ``--help`` it speaks the Language Server Protocol on stdin, which is a
+        wait for input nobody will type - harmless under pytest's capture, and a hung suite
+        under ``pytest -s``.
+        """
         if self.illustrative:
+            return None
+        words = self.command.split()
+        if words[:2] == ["ddd", "lsp"] and "--help" not in words:
             return None
         if self.over_the_examples and self.command.startswith("ddd "):
             return "process"
@@ -444,3 +457,21 @@ class TestTheMatcher:
 
     def test_the_shown_lines_have_to_appear_in_order(self) -> None:
         assert not matches(["b", "...", "a"], ["a", "b"])
+
+
+class TestWhatIsRun:
+    """What a page's command is run by, and the one command that must not be run at all."""
+
+    @staticmethod
+    def shown(command: str) -> Transcript:
+        return Transcript(ROOT / "README.md", 1, command)
+
+    def test_the_language_server_runs_only_to_print_its_help(self) -> None:
+        assert self.shown("ddd lsp").mode(False) is None
+        assert self.shown("ddd lsp -b build").mode(False) is None
+        assert self.shown("ddd lsp --help").mode(False) == "process"
+
+    def test_a_command_over_the_examples_runs_wherever_it_is_shown(self) -> None:
+        assert self.shown("ddd check examples/demo/demo.ddd.json").mode(False) == "process"
+        assert self.shown("ddd check thermostat.ddd.json").mode(False) is None
+        assert self.shown("ddd check thermostat.ddd.json").mode(True) == "shell"

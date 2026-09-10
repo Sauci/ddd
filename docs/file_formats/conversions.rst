@@ -27,6 +27,22 @@ one with neither is the identity. That is why ``{"factor": 0.001}`` is a complet
 and it is the form most of ``examples/demo/`` uses. Spelling ``kind`` out is never wrong and
 is worth doing wherever the file is read more often than it is written.
 
+All three kinds are at work in that demo, and ``ddd list`` shows what each of them comes to: an
+initial value is printed raw, with the reading its conversion gives it beside it - nothing for
+the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, and the name
+``STATE_OFF`` for the enum of ``StateA``.
+
+.. code-block:: text
+
+   $ ddd list examples/demo/demo.ddd.json
+   VARIABLE          KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+   ...
+   FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
+   ...
+   ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+   ...
+
 identity
 --------
 

@@ -502,17 +502,20 @@ unless that tag is exactly ``v`` followed by the version in ``pyproject.toml``. 
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with ``v``.
 
-**The version is spelled in eight files, and a test holds only three of them together.**
+**The version is spelled in nine files, and a test holds only three of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
 restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,
 which the release tag is checked against, and ``editors/vscode/package.json``, which the
 extension is packaged with, repeat it, and a test each asserts that they agree with
-``__version__``. The other five files spell it out as text and nothing derives it for them: the
-wheel file name in ``README.md`` and in :doc:`getting_started`, the two ``ddd --version``
-transcripts of that page - only the first of which the transcript test re-runs, since the
-second carries a trailing comment and is shown rather than run - and the banner of a
+``__version__``. ``editors/vscode/package-lock.json`` records it twice more - in its own header
+and in the entry for the root package - and nothing asserts that either agrees; ``npm ci``
+refuses a lock file out of step with its manifest, so a bump that edits only the manifest fails
+the extension job rather than a test. The other five files spell it out as text and nothing
+derives it for them: the wheel file name in ``README.md`` and in :doc:`getting_started`, the two
+``ddd --version`` transcripts of that page - only the first of which the transcript test re-runs,
+since the second carries a trailing comment and is shown rather than run - and the banner of a
 generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
-:doc:`faq` and :doc:`templates`. Bumping the version means walking all eight in the release
+:doc:`faq` and :doc:`templates`. Bumping the version means walking all nine in the release
 commit.
 
 The publishing jobs name a deployment environment - ``pypi``, ``testpypi`` - and GitHub

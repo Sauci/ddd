@@ -9,6 +9,8 @@ the editor: a language server that runs the same loader, the same analysis and t
 severity policy as ``ddd check``, so the editor never disagrees with the build about what is
 wrong.
 
+.. The '-b' invocation line is elided: argparse spells it differently on python 3.12 and 3.13.
+
 .. code-block:: text
 
    $ ddd lsp --help
@@ -23,7 +25,7 @@ wrong.
 
    options:
      -h, --help            show this help message and exit
-     -b, --build-directory DIR
+     ...
                            directory holding a build of this project; repeatable.
                            Without it the usual build directory names next to the
                            workspace are searched

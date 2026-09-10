@@ -200,9 +200,10 @@ its own.
   which takes its logo and its favicon from `assets/logo/`, failed on the two missing images
   under `-W`.  It now carries `assets/`, the editor extension's sources under
   `editors/vscode/`, `.github/workflows/` and `.pre-commit-hooks.yaml`.  A test derives the
-  paths the suite and the docs build read from the sources themselves and holds the include
-  list to them, so the next path added is answered in the ordinary test run rather than by
-  whoever installs from the archive.
+  paths the suite and the docs build spell as `ROOT / ...`, and the images `docs/conf.py`
+  names, from the sources themselves and holds the include list to them, so the next path
+  added that way is answered in the ordinary test run rather than by whoever installs from the
+  archive.
 
 * **The language server decodes the uri VS Code sends on Windows.**  A client spells a
   Windows file as `file:///c%3A/...`, drive lower-cased and colon escaped, and the server read

@@ -415,8 +415,11 @@ project may be built against several installations:
 
 .. code-block:: text
 
-   $ ddd templates-dir  # in a virtual environment
-   /home/you/.venv/lib/python3.13/site-packages/ddd/templates
+   $ ddd templates-dir
+   /home/you/ddd/examples/templates
+
+That is what a source checkout answers; an installed wheel answers with the copy inside the
+package - ``/home/you/.venv/lib/python3.13/site-packages/ddd/templates``.
 
 Copy that directory into the project, next to the description files or wherever the coding
 standard says generated-code templates live, and check it in - it is source code of the

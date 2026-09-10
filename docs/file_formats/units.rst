@@ -25,7 +25,12 @@ the ``includes`` of a project like any other description, and ``ddd schema units
 its published contract. ``examples/vocabulary`` is a ready to run project that declares a
 vocabulary like this next to its :doc:`memory sections <sections>` and
 :doc:`constants <constants>`; it checks clean, so it is the file set to start a project of
-your own from.
+your own from:
+
+.. code-block:: text
+
+   $ ddd check examples/vocabulary/project.ddd.json
+   ok: 4 variables in 1 component are consistent
 
 With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:

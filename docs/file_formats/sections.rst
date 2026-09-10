@@ -27,7 +27,12 @@ power of two. The file is listed in the ``includes`` of a project like any other
 description, and ``ddd schema sections`` prints its published contract.
 ``examples/vocabulary`` is a ready to run project placing measurements and a parameter
 into exactly these two sections, next to the :doc:`unit vocabulary <units>` and the
-:doc:`constants <constants>` of the same project; it checks clean.
+:doc:`constants <constants>` of the same project; it checks clean:
+
+.. code-block:: text
+
+   $ ddd check examples/vocabulary/project.ddd.json
+   ok: 4 variables in 1 component are consistent
 
 A definition then states its ``section`` - a storage key like ``init``: the producer states
 it, a consumer stating one is refused as ``consumer-storage``, and a structured variable is

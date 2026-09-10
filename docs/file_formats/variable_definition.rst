@@ -151,6 +151,18 @@ so the simplest possible definition still says five things:
    the image, so it is raw. With a factor of 0.1 a variable whose limits are ``-40`` and
    ``150`` degC is initialised with ``-400``, which is -40.0 degC.
 
+``ddd list`` prints a resolved project as those attributes, one line per variable, the initial
+value raw with its physical reading beside it. ``ValueF`` of the shipped demo is exactly the
+case the note describes:
+
+.. code-block:: text
+
+   $ ddd list examples/demo/demo.ddd.json
+   VARIABLE          KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+   ...
+   ValueF            measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
+   ...
+
 Datatypes
 ~~~~~~~~~
 

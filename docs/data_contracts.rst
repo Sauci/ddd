@@ -63,15 +63,23 @@ is where the problem gets reported: a missing datatype noticed while a jinja tem
 rendering says something about the template, whereas the same problem noticed at the
 boundary says which file, which declaration and which field.
 
+A contract that is kept is not reported at all - the run says only what it checked. Here is one
+of the shipped demo components, checked on its own:
+
+.. code-block:: text
+
+   $ ddd check examples/demo/components/sensor_hub.ddd.json --standalone
+   ok: 6 variables in 1 component are consistent
+
 A violated contract is a *finding*, not a crash. The loader turns every pydantic validation
 error into a diagnostic of the ``schema`` check, located at the json path that carries the
 offending value, and carries on reading whatever else it can:
 
 .. code-block:: text
 
-   $ ddd check sensor_hub.ddd.json  # a component whose first two objects are misnamed
-   sensor_hub.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
-   sensor_hub.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
+   $ ddd check misnamed.ddd.json  # a component whose first two objects are misnamed
+   misnamed.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
+   misnamed.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
    2 errors
 
 Both problems are in one file and both are reported by one run, because an author who has to
@@ -89,8 +97,8 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
 
 .. code-block:: text
 
-   $ ddd check controller.ddd.json  # a declaration spelling 'dimension' for 'dimensions'
-   controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
+   $ ddd check mistyped.ddd.json  # a declaration spelling 'dimension' for 'dimensions'
+   mistyped.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
 The same rule applies at the top level of a file: a document naming none of the seven
@@ -131,8 +139,8 @@ sees the document:
 
 .. code-block:: text
 
-   $ ddd check event_logger.ddd.json  # a file whose json holds Infinity
-   event_logger.ddd.json: error[json-syntax]: 'Infinity' is not valid json; DDD has no representation for it
+   $ ddd check infinity.ddd.json  # a file whose json holds Infinity
+   infinity.ddd.json: error[json-syntax]: 'Infinity' is not valid json; DDD has no representation for it
    1 error
 
 Whole numbers are kept whole for a related reason: a number is read as an ``int`` first and

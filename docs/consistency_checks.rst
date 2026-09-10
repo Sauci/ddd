@@ -246,8 +246,8 @@ like the shape of what it found: a description named ``foo.json`` instead of ``f
 is fully understood; an include pattern that is legitimately empty in one variant of a project
 is a normal thing to allow; a second declaration of a component, a type or a unit is read and
 dropped, the first one standing; and a block for a plugin the project does not load is kept as
-written. (``duplicate-id`` and ``duplicate-event`` are named alike but belong to the interface
-checks below, which need the assembled project.)
+written. (``duplicate-declaration``, ``duplicate-id`` and ``duplicate-event`` are named alike
+but belong to the interface checks below, which need the assembled project.)
 
 Trying to change a fixed check is a usage error rather than a silently ignored request, as is
 naming a check or a severity that does not exist - the value of stable identifiers would be

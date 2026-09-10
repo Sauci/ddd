@@ -1519,3 +1519,126 @@ class TestStringInit:
         )
         assert checks(bag) == ["definition-mismatch"]
         assert "conversion: identity != string" in messages(bag)
+
+
+STRING_TYPE: dict[str, object] = {
+    "type": "scalar",
+    "name": "Label_t",
+    "datatype": "uint8",
+    "conversion": {"kind": "string"},
+}
+
+
+class TestStringTypes:
+    """A scalar type fixes that bytes are text; what names it states how many."""
+
+    def typed(
+        self,
+        tree: Path,
+        *declarations: dict[str, object],
+        types: list[dict[str, object]] | None = None,
+    ) -> tuple[object, list[str], str]:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {"types": [STRING_TYPE, *(types or [])]},
+                "a.ddd.json": component("A", *declarations),
+            },
+        )
+        return dictionary, checks(bag), messages(bag)
+
+    def test_a_declaration_naming_a_string_type_states_its_length(self, tree: Path) -> None:
+        dictionary, found, _ = self.typed(
+            tree,
+            declare(
+                "local",
+                "Label",
+                typename="Label_t",
+                kind="value_block",
+                dimensions=[16],
+                init="V1.2",
+            ),
+        )
+        assert found == []
+        assert dictionary is not None
+        entry = dictionary.by_name["Label"]
+        assert entry.conversion.describe() == "string"
+        assert entry.datatype.value == "uint8"
+        assert entry.shape == (16,)
+        assert entry.limits.as_tuple() == (0, 255)
+        assert entry.init == "V1.2"
+
+    @pytest.mark.parametrize(
+        ("definition", "expected"),
+        [
+            ({"kind": "parameter"}, "one dimensional array of bytes"),
+            ({"kind": "measurement"}, "exactly one dimension"),
+            ({"kind": "value_block", "dimensions": [2, 8]}, "exactly one dimension"),
+            (
+                {"kind": "value_block", "dimensions": [8], "a2l": {"format": "%8.3"}},
+                "has no display format",
+            ),
+        ],
+    )
+    def test_a_declaration_naming_a_string_type_is_held_to_the_string_rules(
+        self, tree: Path, definition: dict[str, object], expected: str
+    ) -> None:
+        dictionary, found, text = self.typed(
+            tree, declare("local", "Label", typename="Label_t", **definition)
+        )
+        assert found == ["schema"]
+        assert expected in text
+        assert "declared here" in text
+        assert dictionary is not None
+        assert "Label" not in dictionary.by_name
+
+    def structure(self, member: dict[str, object]) -> dict[str, object]:
+        return {"type": "struct", "name": "Info_t", "members": [member]}
+
+    def test_a_member_naming_a_string_type_states_its_length(self, tree: Path) -> None:
+        dictionary, found, _ = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="parameter"),
+            types=[
+                self.structure(
+                    {"name": "label", "member": "value", "typename": "Label_t", "dimensions": [16]}
+                )
+            ],
+        )
+        assert found == []
+        assert dictionary is not None
+        leaf = dictionary.comparable["Info.label"]
+        assert leaf.conversion.describe() == "string"
+        assert leaf.shape == (16,)
+
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            ({"name": "label", "member": "value", "typename": "Label_t"}, "exactly one dimension"),
+            (
+                {
+                    "name": "label",
+                    "member": "value",
+                    "typename": "Label_t",
+                    "dimensions": [16],
+                    "a2l": {"format": "%8.3"},
+                },
+                "has no display format",
+            ),
+        ],
+    )
+    def test_a_member_naming_a_string_type_without_a_length_poisons_the_structure(
+        self, tree: Path, member: dict[str, object], expected: str
+    ) -> None:
+        dictionary, found, text = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="parameter"),
+            types=[self.structure(member)],
+        )
+        assert found == ["schema"]
+        assert expected in text
+        assert "declared here" in text
+        assert dictionary is not None
+        assert "Info.label" not in dictionary.comparable
+        assert not dictionary.instances

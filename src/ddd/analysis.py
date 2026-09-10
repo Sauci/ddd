@@ -51,6 +51,8 @@ from ddd.models import (
     WrittenShape,
     bitfield_range,
     check_shape,
+    check_string_member_shape,
+    check_string_shape,
     conversion_identity,
     conversion_range,
     format_number,
@@ -864,6 +866,43 @@ class _Analysis:
             low, high = conversion_range(conversion, datatype)
             self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
 
+    def _check_string_members(self, entry: LoadedType) -> None:
+        """A member naming a string type is a ``value`` member of one dimension.
+
+        The rule a member stating the conversion itself answers in the contract, answered
+        here for the member that names the type, and the structure is poisoned the way one
+        of unknown size is: a string member with no length has no size, so no variable can
+        resolve as the structure.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for index, member in enumerate(structure.members):
+            declared = self._declared_of(member)
+            if not isinstance(declared, ScalarType) or not isinstance(
+                declared.conversion, StringConversion
+            ):
+                continue
+            try:
+                check_string_member_shape(member.member, member.dimensions)
+                if member.a2l.format is not None:
+                    msg = f"a string has no display format, got a2l.format '{member.a2l.format}'"
+                    raise ValueError(msg)
+            except ValueError as error:
+                assert member.typename is not None  # it named the scalar type found above
+                location = entry.location(f"members[{index}]")
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"member '{member.name}' of structure '{entry.name}' names "
+                        f"'{member.typename}', which is a string: {error}",
+                        location,
+                        notes=[("declared here", self._types[member.typename].location())],
+                    )
+                    is not None
+                )
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
+
     def _is_structure(self, named: str) -> bool:
         """Whether that type name is a structure; false for a scalar and for one nobody declared."""
         declared = self._types.get(named)
@@ -1169,6 +1208,7 @@ class _Analysis:
             self._register_member_enums(entry)
             self._check_member_limits(entry)
             self._check_scalar_type(entry)
+            self._check_string_members(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
@@ -1974,6 +2014,10 @@ class _Analysis:
             # to resolve, so it goes the same way a structured one does.
             self._drop_for_type(ref, named)
             return None
+        if isinstance(entry.conversion, StringConversion) and not self._string_type_fits(
+            ref, named, declared
+        ):
+            return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
         # four it fixes are filled in. The definition already refused to restate any of them.
         return replace(
@@ -1987,6 +2031,33 @@ class _Analysis:
                 }
             ),
         )
+
+    def _string_type_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:
+        """A declaration naming a string type is a one dimensional measurement or value block.
+
+        The type fixes that the bytes are text and the declaration states how many there
+        are, so the shape rule a definition stating the conversion itself answers in the
+        contract - :func:`check_string_shape` - is answered here, where the declaration is,
+        with the type it names beside it; a display format is refused for the same reason
+        the contract refuses one. Refused rather than resolved: a string with no dimension
+        or on a table kind is nothing the a2l backend has a record for.
+        """
+        definition = ref.declaration.definition
+        try:
+            check_string_shape(definition.kind, definition.declared_shape)
+            if definition.a2l.format is not None:
+                msg = f"a string has no display format, got a2l.format '{definition.a2l.format}'"
+                raise ValueError(msg)
+        except ValueError as error:
+            self._refuse(
+                "schema",
+                f"'{ref.name}' is declared as '{named}', which is a string: {error}",
+                ref.location("definition"),
+                ref,
+                notes=[("declared here", declared.location())],
+            )
+            return False
+        return True
 
     def _drop_for_type(self, ref: DeclarationRef, named: str) -> None:
         """Drop a declaration of a poisoned type, and say so when nothing else did.

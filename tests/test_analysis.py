@@ -1435,3 +1435,87 @@ class TestLocalReferences:
         rendered = messages(bag)
         assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
         assert "definition.y_axis" not in rendered
+
+
+class TestStringInit:
+    """A string init is the text of a string object, printable, with room for the terminator."""
+
+    def string_object(self, **extra: object) -> dict[str, object]:
+        return declare(
+            "local",
+            "Label",
+            "uint8",
+            kind="value_block",
+            conversion={"kind": "string"},
+            dimensions=[8],
+            **extra,
+        )
+
+    def one(self, tree: Path, declaration: dict[str, object]) -> tuple[object, list[str], str]:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declaration),
+            },
+        )
+        return dictionary, checks(bag), messages(bag)
+
+    def test_a_string_init_that_fits_is_no_finding(self, tree: Path) -> None:
+        dictionary, found, _ = self.one(tree, self.string_object(init="V1.2.3"))
+        assert found == []
+        assert dictionary is not None
+        assert dictionary.by_name["Label"].init == "V1.2.3"
+
+    def test_the_empty_string_is_an_initialiser(self, tree: Path) -> None:
+        _, found, _ = self.one(tree, self.string_object(init=""))
+        assert found == []
+
+    def test_a_string_init_leaves_room_for_the_terminator(self, tree: Path) -> None:
+        _, found, text = self.one(tree, self.string_object(init="12345678"))
+        assert found == ["init-invalid"]
+        assert "8 characters long, but the string holds 8 bytes" in text
+        assert "at most 7 fit" in text
+
+    def test_a_string_init_is_printable_ascii(self, tree: Path) -> None:
+        _, found, text = self.one(tree, self.string_object(init="V1\t2é"))
+        assert found == ["init-invalid"]
+        assert "U+0009, U+00E9" in text
+
+    def test_a_string_init_on_a_number_is_refused(self, tree: Path) -> None:
+        _, found, text = self.one(
+            tree,
+            declare("local", "Speed", "uint16", unit="Hz", conversion={"factor": 0.25}, init="12"),
+        )
+        assert found == ["init-invalid"]
+        assert "initialised with text, but its conversion is linear(factor=0.25, offset=0)" in text
+
+    def test_bytes_and_text_disagree(self, tree: Path) -> None:
+        """A byte array in one component and a string in another is a mismatch, as written."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[
+                    declare(
+                        "output",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        dimensions=[8],
+                        conversion={"kind": "string"},
+                    )
+                ],
+                b=[
+                    declare(
+                        "input",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        dimensions=[8],
+                        conversion={"kind": "identity"},
+                    )
+                ],
+            ),
+        )
+        assert checks(bag) == ["definition-mismatch"]
+        assert "conversion: identity != string" in messages(bag)

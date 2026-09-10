@@ -46,6 +46,7 @@ from ddd.models import (
     ScalarType,
     Scope,
     Shape,
+    StringConversion,
     StructType,
     WrittenShape,
     bitfield_range,
@@ -2975,13 +2976,16 @@ class _Analysis:
         shape: a curve whose axis nobody declares is not here to be asked.
         """
         init = ref.definition.init
-        if not isinstance(init, tuple):
+        if not isinstance(init, tuple | str):
             # A scalar init fills every element of whatever the shape is; nothing to check.
             return
         declared = ref.definition.declared_shape
         # The declaration's own shape, resolved to numbers: an init is counted against the
         # value of a dimension, however that dimension happens to be spelled.
         shape = self._numeric_shape(declared) if declared is not None else resolved
+        if isinstance(init, str):
+            self._check_string_init(ref, init, shape)
+            return
         problem = check_shape(init, shape)
         if problem is None:
             return
@@ -2993,6 +2997,49 @@ class _Analysis:
             f"'{ref.name}'{described}: {problem}",
             ref.location("definition.init"),
         )
+
+    def _check_string_init(self, ref: DeclarationRef, init: str, shape: Shape) -> None:
+        """A string init is the text of a string object, printable, with room for its zero.
+
+        Three ways to be wrong, one identifier - ``init-invalid``, as every wrong init is.
+        The conversion is asked here rather than in the contract because a declaration
+        naming a scalar type only learns it from the type; the length is counted against the
+        resolved dimension, so a length spelled as a constant name is resolved first. The
+        content is printable ASCII, 0x20 to 0x7E, because neither the c literal nor the a2l
+        could carry anything else unambiguously; and the text is shorter than the array so
+        that the terminating zero fits - a string that exactly fills its array is legal c,
+        refused by C++, and indistinguishable in the generated file from one that was meant
+        to be terminated.
+        """
+        conversion = ref.definition.conversion
+        assert conversion is not None  # a structured declaration refuses an init before this
+        location = ref.location("definition.init")
+        if not isinstance(conversion, StringConversion):
+            self._bag.add(
+                "init-invalid",
+                f"'{ref.name}' is initialised with text, but its conversion is "
+                f"{conversion.describe()}; only a string object takes a string init",
+                location,
+            )
+            return
+        unprintable = sorted({character for character in init if not " " <= character <= "~"})
+        if unprintable:
+            spelled = ", ".join(f"U+{ord(character):04X}" for character in unprintable)
+            self._bag.add(
+                "init-invalid",
+                f"the init of '{ref.name}' contains {spelled}, which is not printable ASCII; "
+                f"a string init is written in the characters 0x20 to 0x7E",
+                location,
+            )
+        # One dimension is what the string rules guarantee by the time an object resolves.
+        if len(init) >= shape[0]:
+            self._bag.add(
+                "init-invalid",
+                f"the init of '{ref.name}' is {len(init)} characters long, but the string "
+                f"holds {shape[0]} bytes and needs one for the terminator; at most "
+                f"{shape[0] - 1} fit",
+                location,
+            )
 
     def _compare(self, reference: DeclarationRef, other: DeclarationRef) -> None:
         """Compare two declarations of the same data object."""

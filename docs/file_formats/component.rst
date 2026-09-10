@@ -181,15 +181,15 @@ rule above appears in one run:
 
 .. code-block:: text
 
-   $ ddd check project.ddd.json
-   component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-       note: component_a.ddd.json#component.interface[0]: also written here
-   component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-       note: component_a.ddd.json#component.interface[0].definition: reference declaration
-   component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
-   component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
-       note: component_a.ddd.json#component.interface[2]: declared local here
-   component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+   $ ddd check examples/inconsistent/project.ddd.json
+   examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+   examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+       note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+   examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+   examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+       note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+   examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
    4 errors, 1 warning
 
 What the scope does to the generated code
@@ -444,12 +444,12 @@ dominate the output:
 
 .. code-block:: text
 
-   $ ddd check controller.ddd.json -W missing-producer=ignore
-   controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore
+   examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    5 warnings
 
 ``unused-output`` is the mirror image of the same situation and can be silenced the same way;
@@ -466,15 +466,15 @@ leans on the project only for its sections, its rasters and one shared size:
 
 .. code-block:: text
 
-   $ ddd check pump.ddd.json
-   pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
-   pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
-   pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
-   pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
-   pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
-   pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
+   $ ddd check examples/vocabulary/pump.ddd.json
+   examples/vocabulary/pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
+   examples/vocabulary/pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
+   examples/vocabulary/pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
+   examples/vocabulary/pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
+   examples/vocabulary/pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
+   examples/vocabulary/pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
    6 errors
 
-   $ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
-   pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: the declaration of 'PressureTrend' by component 'Pump' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
+   $ ddd check examples/vocabulary/pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
+   examples/vocabulary/pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: the declaration of 'PressureTrend' by component 'Pump' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
    1 info

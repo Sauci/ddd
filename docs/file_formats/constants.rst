@@ -66,7 +66,7 @@ suggested, and the finding lands on the dimension entry that names it:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose component misspells PRESSURE_CELLS
    a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
    1 error
 
@@ -76,7 +76,7 @@ prevent:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose two constants files both declare PRESSURE_CELLS
    two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is already declared
        note: one.ddd.json#constants[0]: first declared here
    1 error

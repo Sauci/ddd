@@ -239,7 +239,7 @@ it in a generated file nobody wants to read. A name that is a c keyword, or that
 
 .. code-block:: text
 
-   $ ddd check reserved.ddd.json
+   $ ddd check reserved.ddd.json  # a component naming objects 'signed' and 'uint8_t'
    reserved.ddd.json#component.interface[0].definition.name: error[reserved-identifier]: variable name 'signed' is reserved by the c language
    reserved.ddd.json#component.interface[1].definition.name: error[reserved-identifier]: variable name 'uint8_t' is reserved by the c language
    2 errors
@@ -249,7 +249,7 @@ conversion lives in the same c namespace as a variable:
 
 .. code-block:: text
 
-   $ ddd check enumcoll.ddd.json
+   $ ddd check enumcoll.ddd.json  # a variable named after an enumerator of the same project
    enumcoll.ddd.json#component.interface[0].definition.name: error[name-collision]: 'STATE_OFF' is declared as a variable and is also an enumerator of enum 'S_t'; both become the same c identifier
        note: enumcoll.ddd.json#component.interface[1].definition.conversion: enumerator declared here
    1 error
@@ -260,7 +260,7 @@ from the wrong variable for a year:
 
 .. code-block:: text
 
-   $ ddd check similar.ddd.json
+   $ ddd check similar.ddd.json  # a component declaring both 'ValueA' and 'valuea'
    similar.ddd.json#component.interface[1].definition.name: warning[name-similar]: 'valuea' and 'ValueA' differ only in upper/lower case
        note: similar.ddd.json#component.interface[0].definition: other variable
    1 warning
@@ -302,7 +302,7 @@ the wrong shape are all errors, each naming what it actually is:
 
 .. code-block:: text
 
-   $ ddd check ranges.ddd.json
+   $ ddd check ranges.ddd.json  # a component whose init values and limits do not fit
    ranges.ddd.json#component.interface[0].definition.init: error[init-invalid]: init value 300 does not fit into uint8 (0 .. 255)
    ranges.ddd.json#component.interface[2].definition.init: error[init-invalid]: init value 1.5 is written as a fractional number, but 'Fractional' has the integer datatype uint8
    ranges.ddd.json#component.interface[1].definition.limits: warning[limits-out-of-range]: limits [0, 200] exceed the range [0, 127.5] that uint8 can represent with this conversion
@@ -317,7 +317,7 @@ the software will silently wrap. Limits are also checked for being the right way
 
 .. code-block:: text
 
-   $ ddd check misc.ddd.json
+   $ ddd check misc.ddd.json  # a component whose limits are the wrong way round
    misc.ddd.json#component.interface[0].definition.limits: error[schema]: Value error, min (10) is greater than max (5) (got: {'min': 10, 'max': 5})
    1 error
 
@@ -412,7 +412,7 @@ match is refused when the file is read:
 
 .. code-block:: text
 
-   $ ddd check badfmt.ddd.json
+   $ ddd check badfmt.ddd.json  # an a2l format string of '%8'
    badfmt.ddd.json#component.interface[0].definition.a2l.format: error[schema]: String should match pattern '^%\d*\.\d+$' (got: '%8')
    1 error
 
@@ -732,7 +732,7 @@ against it:
 
 .. code-block:: text
 
-   $ ddd check badshape.ddd.json
+   $ ddd check badshape.ddd.json  # a curve whose init has one element fewer than its axis
    badshape.ddd.json#component.interface[1].definition.init: error[init-invalid]: 'CurveS' has the shape [3] given by its axes: init has 2 elements, expected 3
    1 error
 
@@ -823,14 +823,14 @@ dictionary along with what refers to it, whatever severity the finding is given,
 
 .. code-block:: text
 
-   $ ddd check refs.ddd.json
+   $ ddd check refs.ddd.json  # curves naming a missing axis and a parameter as their axis
    refs.ddd.json#component.interface[1].definition.axis: error[unknown-reference]: curve 'CurveMissing' refers to 'NoSuchAxis' as its axis, but no component declares 'NoSuchAxis'
    refs.ddd.json#component.interface[2].definition.axis: error[reference-kind]: the axis of curve 'CurveWrong' must be of kind 'axis', but 'NotAnAxis' is of kind 'parameter'
    2 errors
 
 .. code-block:: text
 
-   $ ddd check axinput.ddd.json
+   $ ddd check axinput.ddd.json  # axes naming a parameter and a missing object as their input
    axinput.ddd.json#component.interface[1].definition.input: error[reference-kind]: the input of axis 'Ax1' must be of kind 'measurement', but 'NotAMeas' is of kind 'parameter'
    axinput.ddd.json#component.interface[2].definition.input: error[unknown-reference]: axis 'Ax2' refers to 'Nowhere' as its input, but no component declares 'Nowhere'
    2 errors

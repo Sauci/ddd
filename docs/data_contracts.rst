@@ -69,7 +69,7 @@ offending value, and carries on reading whatever else it can:
 
 .. code-block:: text
 
-   $ ddd check sensor_hub.ddd.json
+   $ ddd check sensor_hub.ddd.json  # a component whose first two objects are misnamed
    sensor_hub.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
    sensor_hub.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
    2 errors
@@ -89,7 +89,7 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
 
 .. code-block:: text
 
-   $ ddd check controller.ddd.json
+   $ ddd check controller.ddd.json  # a declaration spelling 'dimension' for 'dimensions'
    controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
@@ -131,7 +131,7 @@ sees the document:
 
 .. code-block:: text
 
-   $ ddd check event_logger.ddd.json
+   $ ddd check event_logger.ddd.json  # a file whose json holds Infinity
    event_logger.ddd.json: error[json-syntax]: 'Infinity' is not valid json; DDD has no representation for it
    1 error
 

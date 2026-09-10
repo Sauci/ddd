@@ -32,7 +32,7 @@ a scalar type - is checked where it is written:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose component states the unit 'newton_meter'
    a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'newton_meter' is not a unit this project declares
    1 error
 
@@ -46,7 +46,7 @@ A unit declared a second time, in the same file or another, is refused rather th
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose two units files both declare 'Nm'
    two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is already declared
        note: one.ddd.json#units[0]: first declared here
    1 error

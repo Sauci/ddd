@@ -415,7 +415,7 @@ project may be built against several installations:
 
 .. code-block:: text
 
-   $ ddd templates-dir
+   $ ddd templates-dir  # in a virtual environment
    /home/you/.venv/lib/python3.13/site-packages/ddd/templates
 
 Copy that directory into the project, next to the description files or wherever the coding

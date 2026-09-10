@@ -27,7 +27,7 @@ on the generated a2l. ``examples/demo/demo.ddd.json`` is a complete one:
 
 .. code-block:: text
 
-   $ ddd check demo.ddd.json
+   $ ddd check examples/demo/demo.ddd.json
    ok: 21 variables in 4 components are consistent
 
 The keys
@@ -248,7 +248,7 @@ sub-project and every component:
 
 .. code-block:: text
 
-   $ ddd sources demo.ddd.json
+   $ ddd sources examples/demo/demo.ddd.json
    /home/you/ddd/examples/demo/components/controller.ddd.json
    /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
    /home/you/ddd/examples/demo/components/user_interface.ddd.json

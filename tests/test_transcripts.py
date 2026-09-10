@@ -10,10 +10,11 @@ Four conventions keep the transcripts honest without making them unreadable:
 
 * a line that is only ``...`` stands for any run of lines the page left out;
 * ``$ echo $?`` followed by a number pins the exit status of the command before it;
-* a command carrying a trailing ``# comment`` depends on an edit the prose describes, and
-  is shown rather than run;
+* a command carrying a trailing ``# comment`` is shown rather than run: it depends on an
+  edit the prose describes, or on a set of files the page describes without shipping them;
 * ``/home/you/ddd`` stands for the reader's checkout wherever a command prints an absolute
-  path.
+  path - both the scratch directory a page's runs happen in, and this checkout, which is
+  what a command asked where the tool keeps its templates or its cmake module prints.
 
 A transcript that shows a file being ``created`` runs against an emptied output directory,
 so a page may show a first run wherever its story needs one; ``updated`` and ``unchanged``
@@ -29,6 +30,14 @@ page's own working directory, exactly as the reader types them - globs, redirect
 ``cp`` included. The commands over the shipped examples run in-process on every page, and a
 page quoting a shipped file under its own name, or naming files it never writes, has its
 other commands read as illustrations.
+
+That last sentence is the hole this module used to fall through: a page whose every command
+was read as an illustration was not a page that failed, it was a page that never appeared,
+and nothing on it was checked at all. So a page that shows ``$ ddd`` commands now has to
+re-run at least one of them. A page that runs none of them fails, naming the page and every
+command it could not run, unless each of those commands carries a trailing comment - which
+is how a page says that what it shows illustrates a project it describes rather than a run
+its reader can reproduce.
 """
 
 from __future__ import annotations
@@ -60,6 +69,8 @@ SHELL = re.compile(r"^(?P<indent>\s*)\$ (?P<command>.*)$")
 ELISION = "..."
 CHECKOUT = "/home/you/ddd"
 NAMED_FILE = re.compile(r"``([\w./-]+\.ddd\.json)``")
+OUTPUT = ("-o", "--output-dir")
+"""The flags whose argument names something the command writes rather than something it reads."""
 SCRIPTS = Path(sysconfig.get_path("scripts"))
 """Where ``ddd`` is installed for this interpreter, put first on the path of a shell run."""
 
@@ -85,8 +96,17 @@ class Transcript:
 
     @property
     def over_the_examples(self) -> bool:
-        """Whether the run needs nothing but the shipped examples, and so runs on every page."""
-        return "examples/" in self.command or self.command.split()[:2] == ["ddd", "checks"]
+        """Whether the run needs nothing but the shipped examples, and so runs on every page.
+
+        A command naming a path under ``examples/`` is one, and so is a command with no file
+        to find at all: ``ddd checks``, ``ddd templates-dir`` and ``ddd lsp --help`` read
+        nothing, and the file ``ddd schema project -o project.schema.json`` names is one it
+        writes rather than one it has to be given.
+        """
+        arguments = shlex.split(self.command.partition(" > ")[0])[1:]
+        written = [after for flag, after in itertools.pairwise(arguments) if flag in OUTPUT]
+        needed = [name for name in arguments if name.endswith(".json") and name not in written]
+        return "examples/" in self.command or not needed
 
     def mode(self, page_writes_files: bool) -> str | None:
         """How to run this transcript: in this process, through a shell, or not at all."""
@@ -202,11 +222,11 @@ def json_block_before(page: Path, line: int) -> str | None:
 def prepare(transcript: Transcript, cwd: Path) -> None:
     """Puts the working directory in the state the page's reader would have it in."""
     arguments = shlex.split(transcript.command)[1:]
-    for flag in ("-o", "--output-dir"):
+    for flag in OUTPUT:
         if flag in arguments and any("(created)" in line for line in transcript.shown):
             shutil.rmtree(cwd / arguments[arguments.index(flag) + 1], ignore_errors=True)
     for previous, argument in zip(["", *arguments[:-1]], arguments, strict=True):
-        if previous in ("-o", "--output-dir") or not argument.endswith(".json"):
+        if previous in OUTPUT or not argument.endswith(".json"):
             continue
         if any(character in argument for character in "*?["):
             continue  # a glob names files that exist already, for the shell to expand
@@ -222,11 +242,17 @@ def prepare(transcript: Transcript, cwd: Path) -> None:
 def normalized(text: str, cwd: Path) -> list[str]:
     """The printed lines as a page shows them, the scratch directory standing for the checkout.
 
-    The tool prints paths in posix form on every platform, so both spellings of the directory
+    This checkout stands for it too: a command asked where the tool keeps its templates or its
+    cmake module answers with the installation it is running from, which here is this tree.
+    The tool prints paths in posix form on every platform, so both spellings of each directory
     are replaced: the native one and the posix one.
     """
     printed = [
-        line.rstrip().replace(str(cwd), CHECKOUT).replace(cwd.as_posix(), CHECKOUT)
+        line.rstrip()
+        .replace(str(cwd), CHECKOUT)
+        .replace(cwd.as_posix(), CHECKOUT)
+        .replace(str(ROOT), CHECKOUT)
+        .replace(ROOT.as_posix(), CHECKOUT)
         for line in text.splitlines()
     ]
     while printed and not printed[-1]:
@@ -323,6 +349,36 @@ def builds_its_own_project(page: Path) -> bool:
 
 BUILDS = {page: builds_its_own_project(page) for page in PAGES}
 RUNS = {page: [t for t in transcripts(page) if t.mode(BUILDS[page]) is not None] for page in PAGES}
+SHOWN = {page: [t for t in transcripts(page) if t.command.startswith("ddd ")] for page in PAGES}
+
+
+def unrun(page: Path) -> list[Transcript]:
+    """The commands of a page that nothing runs, on a page that runs none of them at all.
+
+    A page that runs one of its commands has the rest read as illustrations, as it always
+    has; a page that runs none has to say so command by command, so that the difference
+    between "shown on purpose" and "quietly not tested" is written down rather than guessed.
+    """
+    if RUNS[page]:
+        return []
+    return [t for t in SHOWN[page] if not t.illustrative]
+
+
+@pytest.mark.parametrize(
+    "page",
+    [page for page, shown in SHOWN.items() if shown],
+    ids=lambda page: str(page.relative_to(ROOT)),
+)
+def test_every_page_showing_a_command_runs_one_of_them(page: Path) -> None:
+    """A page nothing on this module reaches is a page whose transcripts nothing guards."""
+    listed = "\n".join(f"  {t.where}: $ {t.command}" for t in unrun(page))
+    assert not listed, (
+        f"{page.relative_to(ROOT)} shows commands and runs none of them, so nothing here\n"
+        f"checks what it prints. Spell the shipped example a command reads - "
+        f"examples/demo/demo.ddd.json rather than demo.ddd.json - or, where the page "
+        f"describes\na set of files it does not ship, end the command with a comment saying "
+        f"what they are:\n{listed}"
+    )
 
 
 @pytest.mark.parametrize(

@@ -277,9 +277,11 @@ named in ``README.md`` and in ``SPEC.md``, that the README invents no check that
 registered, and that no link in either points at a file that no longer exists. And
 ``tests/test_transcripts.py`` re-runs the documentation: every ``$ ddd`` command a page runs
 over the shipped examples, and the whole tutorial through ``bash``, has to print the lines the
-page shows beneath it. It is the stronger of the two documentation guards - a claim about what
-the tool prints is checked against what it prints - so a reworded diagnostic fails there
-first.
+page shows beneath it. A page that shows commands and runs none of them fails as well, unless
+each of those commands ends in a comment marking it as an illustration, so that no page can
+quietly leave the harness by naming files the examples do not ship. It is the stronger of the
+two documentation guards - a claim about what the tool prints is checked against what it
+prints - so a reworded diagnostic fails there first.
 
 Running the checks
 ------------------

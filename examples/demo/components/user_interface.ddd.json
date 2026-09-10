@@ -100,6 +100,22 @@
       {
         "scope": "input",
         "definition": {
+          "name": "StateName",
+          "kind": "measurement",
+          "description": "Name of the current state, as text",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "string"
+          },
+          "dimensions": [
+            16
+          ],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "input",
+        "definition": {
           "name": "ValueB",
           "kind": "measurement",
           "description": "Array measurement with four elements",

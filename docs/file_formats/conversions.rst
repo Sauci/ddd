@@ -40,6 +40,7 @@ the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, a
    FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
    ...
    ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   SoftwareLabel     value_block  uint8     -     [16]    "V1.2.3"           Controller (local)     -
    StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
    ...
 

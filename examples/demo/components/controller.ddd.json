@@ -85,6 +85,20 @@
       },
       {
         "scope": "output",
+        "definition": {
+          "name": "StateName",
+          "id": "kak9nekxcmwd",
+          "kind": "measurement",
+          "description": "Name of the current state, as text",
+          "datatype": "uint8",
+          "conversion": { "kind": "string" },
+          "dimensions": [16],
+          "init": "OFF",
+          "volatile": false
+        }
+      },
+      {
+        "scope": "output",
         "condition": "defined(FEATURE_X)",
         "definition": {
           "name": "ValueG",
@@ -126,6 +140,20 @@
           "conversion": { "factor": 0.25 },
           "limits": { "min": 500, "max": 1500 },
           "init": 3200,
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "kind": "value_block",
+          "name": "SoftwareLabel",
+          "id": "94ges2r1yvb7",
+          "description": "Software label of the controller, as text",
+          "datatype": "uint8",
+          "conversion": { "kind": "string" },
+          "dimensions": [16],
+          "init": "V1.2.3",
           "volatile": false
         }
       },

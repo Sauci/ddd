@@ -674,7 +674,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 The record layouts and the compu methods are shared rather than repeated per object, because
 they describe *how* a value is stored and scaled rather than *which* value it is, and two
 objects that agree on both have no reason to carry two copies. The seven calibration objects
-of the demo share five record layouts, and its twenty-one objects share eight compu methods:
+of the demo share five record layouts, and its twenty-three objects share eight compu methods:
 
 .. code-block:: text
 

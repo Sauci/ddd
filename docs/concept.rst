@@ -341,7 +341,9 @@ controller and nothing else:
    FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
    MapA              map          sint8     %     [4][6]  [...]              Controller (local)     -
    ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   SoftwareLabel     value_block  uint8     -     [16]    "V1.2.3"           Controller (local)     -
    StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+   StateName         measurement  uint8     -     [16]    "OFF"              Controller             UserInterface
    ValueA            measurement  uint8     %     -       0 (= 0 %)          SensorHub              Controller
    ValueB            measurement  uint16    V     [4]     0 (= 0 V)          SensorHub              Controller, UserInterface
    ValueC            measurement  float32   degC  -       -                  SensorHub              UserInterface
@@ -408,7 +410,7 @@ with the addresses written in decimal or hexadecimal:
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
-   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 11 others; they reach the a2l at address 0
+   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 13 others; they reach the a2l at address 0
    1 warning
    wrote       build/gen/DemoDevice.a2l (updated)
 

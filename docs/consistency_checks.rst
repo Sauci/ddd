@@ -104,7 +104,7 @@ project is entirely clean, with a statement of what was checked:
 .. code-block:: text
 
    $ ddd check examples/demo/demo.ddd.json
-   ok: 21 variables in 4 components are consistent
+   ok: 23 variables in 4 components are consistent
 
 All of this goes to **stderr** - every finding, every note and the closing summary or ``ok:``
 line. Stdout is reserved for whatever the command was asked to produce: the dictionary of
@@ -186,10 +186,10 @@ definition not part of the file:
    examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
    examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
    ...
-   2 errors, 5 warnings
+   2 errors, 6 warnings
 
    $ ddd check examples/demo/components/controller.ddd.json --standalone
-   ok: 12 variables in 1 component are consistent
+   ok: 14 variables in 1 component are consistent
 
 ``--standalone`` is that policy, and the whole of it. It holds back the ten checks that need
 every component of a project - ``incomplete-project``, ``missing-producer``,

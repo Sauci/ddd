@@ -231,12 +231,13 @@ checks it covers, and an explicit ``-W`` on the same run still wins over it.
    examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
    examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
    examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
-   2 errors, 5 warnings
+   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'StateName' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[6]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[10]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   2 errors, 6 warnings
 
    $ ddd check examples/demo/components/controller.ddd.json --standalone
-   ok: 12 variables in 1 component are consistent
+   ok: 14 variables in 1 component are consistent
 
 A check identifier or a severity that DDD does not know is a usage error rather than a silent
 no-op, because the opposite behaviour would let a typo in a ci script disable a check for

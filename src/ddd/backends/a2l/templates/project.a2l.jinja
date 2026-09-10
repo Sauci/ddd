@@ -109,6 +109,9 @@ ASAP2_VERSION {{ model.version }}
 {% if characteristic.matrix_dim %}
       MATRIX_DIM {{ characteristic.matrix_dim }}
 {% endif %}
+{% if characteristic.number is not none %}
+      NUMBER {{ characteristic.number }}
+{% endif %}
 {% if characteristic.format %}
       FORMAT "{{ characteristic.format }}"
 {% endif %}

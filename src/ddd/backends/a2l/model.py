@@ -13,6 +13,11 @@ The mapping follows ASAM MCD-2 MC (ASAP2) 1.6.1:
   ``COEFFS a b c d e f`` describe ``raw = (a*phys^2 + b*phys + c) / (d*phys^2 + e*phys + f)``,
   so ``phys = raw * factor + offset`` is written as ``COEFFS 0 1 -offset 0 0 factor``
 * an enum conversion becomes a ``COMPU_METHOD`` of type ``TAB_VERB`` plus a ``COMPU_VTAB``
+* a string parameter - a value block under a string conversion - becomes a ``CHARACTERISTIC``
+  of type ``ASCII`` whose length is a ``NUMBER``, over the ordinary value layout of its
+  datatype and with no compu method, which is the 1.6.1 form Vector's own files use; a
+  string measurement is the byte array it is, with an ``ANNOTATION`` saying so, because no
+  version of the format has a string measurement
 * every component becomes a ``GROUP`` referencing the objects it declares
 """
 
@@ -32,6 +37,7 @@ from ddd.models import (
     IdentityConversion,
     LinearConversion,
     ObjectKind,
+    StringConversion,
     format_number,
 )
 
@@ -124,6 +130,13 @@ class CharacteristicView:
     display_identifier: str | None
     axis_descrs: tuple[AxisDescrView, ...]
     condition: str | None
+    number: int | None = None
+    """The length of an ``ASCII`` characteristic in bytes; ``None`` for every other type.
+
+    ``NUMBER`` rather than ``MATRIX_DIM``: the 1.51 text already prefers the latter, but the
+    1.61 demo file and Vector's generator both emit ``NUMBER`` for a string and every reader
+    of a 1.6.1 file understands it. The two are never written together.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,20 +336,22 @@ class _A2lModelBuilder:
         A member refers to no other object - a structure cannot hold an axis reference - so the
         two table shapes cannot arise here and there is no ``AXIS_DESCR`` to write.
         """
+        string = isinstance(leaf.conversion, StringConversion)
         return CharacteristicView(
             name=leaf.path,
             description=leaf.description or leaf.path,
-            type="VAL_BLK" if leaf.shape else "VALUE",
+            type="ASCII" if string else ("VAL_BLK" if leaf.shape else "VALUE"),
             address=self._options.address_of(leaf.path),
             deposit=self._layouts.values(leaf.datatype),
             compu_method=self._methods.reference(leaf),
             lower=format_number(leaf.limits.min),
             upper=format_number(leaf.limits.max),
-            matrix_dim=_matrix_dim(leaf) if leaf.shape else None,
+            matrix_dim=_matrix_dim(leaf) if leaf.shape and not string else None,
             format=leaf.a2l.format,
             display_identifier=leaf.a2l.display_identifier,
             axis_descrs=(),
             condition=leaf.condition,
+            number=leaf.shape[0] if string else None,
         )
 
     def _measurement(self, entry: ResolvedObject | ResolvedLeaf) -> MeasurementView:
@@ -359,20 +374,24 @@ class _A2lModelBuilder:
     def _characteristic(self, entry: ResolvedObject) -> CharacteristicView:
         references = entry.references
         axes = [references[key] for key in ("axis", "x_axis", "y_axis") if key in references]
+        string = isinstance(entry.conversion, StringConversion)
         return CharacteristicView(
             name=entry.name,
             description=entry.description or entry.name,
-            type=_CHARACTERISTIC_TYPE[entry.kind],
+            type="ASCII" if string else _CHARACTERISTIC_TYPE[entry.kind],
             address=self._options.address_of(entry.name),
             deposit=self._layouts.values(entry.datatype),
             compu_method=self._methods.reference(entry),
             lower=format_number(entry.limits.min),
             upper=format_number(entry.limits.max),
-            matrix_dim=_matrix_dim(entry) if entry.kind is ObjectKind.VALUE_BLOCK else None,
+            matrix_dim=_matrix_dim(entry)
+            if entry.kind is ObjectKind.VALUE_BLOCK and not string
+            else None,
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
             axis_descrs=tuple(self._axis_descr(self._by_name[name], name) for name in axes),
             condition=entry.condition,
+            number=entry.shape[0] if string else None,
         )
 
     def _axis_descr(self, axis: ResolvedObject, name: str) -> AxisDescrView:
@@ -482,6 +501,11 @@ class _CompuMethodBuilder:
     def reference(self, entry: ResolvedObject | ResolvedLeaf) -> str:
         conversion = entry.conversion
         unit = entry.unit
+        if isinstance(conversion, StringConversion):
+            # Text has no method: no unit may be stated, and no rational function or table
+            # reads a byte as a character. Answered before any key is built, so that the
+            # identity's early return below is not the only way a string could avoid one.
+            return NO_COMPU_METHOD
         if isinstance(conversion, IdentityConversion) and not unit:
             return NO_COMPU_METHOD
 

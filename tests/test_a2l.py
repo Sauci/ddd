@@ -321,3 +321,78 @@ class TestForcedOutput:
         rendered = render_files(dictionary, tree / "gen")
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "CHARACTERISTIC Cv" not in content
+
+
+class TestStrings:
+    """A calibration string is an ASCII characteristic; the format has nothing else for text."""
+
+    def block(self, datatype: str = "uint8", size: int = 16, **extra: Any) -> dict[str, Any]:
+        return declare(
+            "local",
+            "Label",
+            datatype,
+            kind="value_block",
+            conversion={"kind": "string"},
+            dimensions=[size],
+            description="Software label",
+            **extra,
+        )
+
+    def test_a_string_parameter_is_an_ascii_characteristic(self, tree: Path) -> None:
+        content = a2l(tree, self.block())
+        assert '/begin CHARACTERISTIC Label "Software label"' in content
+        assert "ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255" in content
+        assert "NUMBER 16" in content
+        assert "MATRIX_DIM" not in content
+        assert "FORMAT" not in content
+        assert "/begin COMPU_METHOD" not in content
+        assert "FNC_VALUES 1 UBYTE ROW_DIR DIRECT" in content
+
+    def test_a_signed_string_deposits_as_sbyte(self, tree: Path) -> None:
+        content = a2l(tree, self.block(datatype="sint8", size=8))
+        assert "ASCII 0x00000000 RL_VALUES_SBYTE 0 NO_COMPU_METHOD -128 127" in content
+        assert "NUMBER 8" in content
+
+    def test_a_string_member_of_a_parameter_is_an_ascii_characteristic_at_its_path(
+        self, tree: Path
+    ) -> None:
+        files = {
+            "project.ddd.json": project("Device", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "type": "struct",
+                        "name": "Info_t",
+                        "members": [
+                            {
+                                "name": "label",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "string"},
+                                "dimensions": [16],
+                            },
+                            {
+                                "name": "revision",
+                                "member": "value",
+                                "datatype": "uint16",
+                                "conversion": {},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Info", typename="Info_t", kind="parameter"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert '/begin CHARACTERISTIC Info.label "Info.label"' in content
+        assert "ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255" in content
+        assert "NUMBER 16" in content
+        assert '/begin CHARACTERISTIC Info.revision "Info.revision"' in content
+        assert "VALUE 0x00000000 RL_VALUES_UWORD 0 NO_COMPU_METHOD 0 65535" in content

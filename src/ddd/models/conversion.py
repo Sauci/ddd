@@ -172,6 +172,14 @@ class EnumConversion(_Frozen):
     def values(self) -> tuple[int, ...]:
         return tuple(enumerator.value for enumerator in self.enumerators)
 
+    def spell_enumerators(self) -> str:
+        """``NAME=value`` pairs in the order they are written, for every finding that shows them.
+
+        One spelling, shared by ``enum-conflict`` inside a project and the delivery comparison
+        across two, so that a reader meets the same list wherever an enumeration is quoted.
+        """
+        return ", ".join(f"{entry.name}={entry.value}" for entry in self.enumerators)
+
     def to_physical(self, raw: float) -> float:
         return raw
 

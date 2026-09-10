@@ -2367,8 +2367,8 @@ class _Analysis:
                 f"enum '{conversion.name}' is defined with different enumerators",
                 location,
                 notes=[
-                    (f"here: {_enum_summary(conversion)}", None),
-                    (f"first defined as: {_enum_summary(previous)}", previous_location),
+                    (f"here: {conversion.spell_enumerators()}", None),
+                    (f"first defined as: {previous.spell_enumerators()}", previous_location),
                 ],
             )
         elif _documentation_rank(conversion) > _documentation_rank(previous):
@@ -3230,10 +3230,6 @@ def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...
     """How well an enum is documented, as a totally ordered, order independent key."""
     descriptions = tuple(e.description for e in conversion.enumerators)
     return (sum(1 for text in descriptions if text), descriptions)
-
-
-def _enum_summary(conversion: EnumConversion) -> str:
-    return ", ".join(f"{e.name}={e.value}" for e in conversion.enumerators)
 
 
 def _derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: float) -> bool:

@@ -169,6 +169,14 @@ class TestConversions:
         assert physical_range(conversion, 0, 255) == (0, 255)
         assert raw_reading(conversion, 86) is None
 
+    def test_an_enum_spells_its_enumerators_in_order(self) -> None:
+        """One spelling for every finding that shows an enumerator list."""
+        parsed = definition(
+            conversion={"kind": "enum", "name": "E", "enumerators": {"B": 1, "A": 0, "C": 15}}
+        )
+        assert isinstance(parsed.conversion, EnumConversion)
+        assert parsed.conversion.spell_enumerators() == "B=1, A=0, C=15"
+
 
 class TestLimits:
     def test_derived_from_datatype_and_conversion(self) -> None:

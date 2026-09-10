@@ -1,0 +1,6 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="5,5,172,117"/>
+</map>

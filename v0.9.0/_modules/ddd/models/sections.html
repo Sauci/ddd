@@ -1,0 +1,234 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.models.sections &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=39bb1c6d"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.models.sections</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.models.sections</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Contract for the memory section vocabulary file.</span>
+
+<span class="sd">A ``sections`` file declares the linker sections a project places its data in.  Placement is</span>
+<span class="sd">a property of one object - one address, one section - so a definition names a section the</span>
+<span class="sd">way it names a declared type: a reference to something declared once, not free text.  A</span>
+<span class="sd">section carries the two properties the checks need: whether the running software can write</span>
+<span class="sd">it, and the alignment it guarantees.</span>
+
+<span class="sd">Whether a calibration tool can write a ``read-only`` section - an emulation overlay, a</span>
+<span class="sd">calibratable flash - is the target's business and deliberately not modelled here: DDD cannot</span>
+<span class="sd">tell a plain ROM from a calibratable one, and the object's ``volatile`` already states what</span>
+<span class="sd">the software has to assume.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">SECTION_NAME_PATTERN</span><span class="p">,</span> <span class="n">FileRoot</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">SectionAccess</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""What the running software may do with a section, which is all DDD can check."""</span>
+
+    <span class="n">READ_WRITE</span> <span class="o">=</span> <span class="s2">"read-write"</span>
+<span class="w">    </span><span class="sd">"""The software reads and writes it: RAM, NVM."""</span>
+
+    <span class="n">READ_ONLY</span> <span class="o">=</span> <span class="s2">"read-only"</span>
+<span class="w">    </span><span class="sd">"""The software only reads it: flash, ROM - calibratable or not, which is the target's</span>
+<span class="sd">    secret."""</span>
+
+
+<div class="viewcode-block" id="SectionDeclaration">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.SectionDeclaration">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SectionDeclaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One linker section, with the properties the checks need."""</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">section</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">SECTION_NAME_PATTERN</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The name as the linker script spells it: ``.calib``, ``.nvm``.</span>
+
+<span class="sd">    A linker name rather than a C identifier, so a leading dot is a normal spelling: letters,</span>
+<span class="sd">    digits, ``.``, ``_`` and ``$``, and nothing that could end the string literal the generated</span>
+<span class="sd">    c writes it into.</span>
+<span class="sd">    """</span>
+
+    <span class="n">access</span><span class="p">:</span> <span class="n">SectionAccess</span>
+<span class="w">    </span><span class="sd">"""``read-write`` or ``read-only``, from the running software's point of view."""</span>
+
+    <span class="n">alignment</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""The alignment the section guarantees, in bytes; a power of two.</span>
+
+<span class="sd">    What it is checked against: an object whose datatype needs stricter alignment than the</span>
+<span class="sd">    section guarantees would be padded or faulting, and either is worth a finding.  Bounded</span>
+<span class="sd">    to what 64 bits can hold: an alignment no address on a real target could satisfy is</span>
+<span class="sd">    refused here rather than accepted as a power of two nothing could ever place.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text saying what the section is for, e.g. ``calibration flash behind the</span>
+<span class="sd">    emulation overlay``."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">writable</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Whether the running software can write the section."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">access</span> <span class="ow">is</span> <span class="n">SectionAccess</span><span class="o">.</span><span class="n">READ_WRITE</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_alignment_is_a_power_of_two</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SectionDeclaration</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment</span> <span class="o">&amp;</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alignment</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"alignment </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">alignment</span><span class="si">}</span><span class="s2"> is not a power of two"</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<div class="viewcode-block" id="SectionsFile">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.SectionsFile">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SectionsFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` memory section description.</span>
+
+<span class="sd">    ``sections`` is the top level key that makes this a sections file; DDD decides what a</span>
+<span class="sd">    file is from that key alone.  The file is listed in the ``includes`` of a project like</span>
+<span class="sd">    any other description.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD memory sections"</span><span class="p">)</span>
+
+    <span class="n">sections</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">SectionDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The sections this project places data in; an empty list is no file at all."""</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

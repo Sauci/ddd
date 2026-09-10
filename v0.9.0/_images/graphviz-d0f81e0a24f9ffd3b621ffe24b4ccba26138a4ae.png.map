@@ -1,0 +1,14 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.constants.ConstantDeclaration
+
+One named integer constant, declared once and named wherever a shape needs it.
+" alt="" coords="519,63,688,175"/>
+<area shape="rect" id="node2" title="ddd.models.constants.ConstantsFile
+
+Root object of a ``*.ddd.json`` constant vocabulary description.
+
+``constants`` is the top level key that makes this a constants file rather than a
+project, a component or a types file; DDD decides what a file is from that key alone.
+The file is listed in the ``includes`` of a project like any other description.
+" alt="" coords="5,5,375,89"/>
+</map>

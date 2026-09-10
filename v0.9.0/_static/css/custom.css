@@ -1,0 +1,48 @@
+.wy-nav-content img {
+    max-width: 100%;
+}
+
+/* The theme's default blue is not a colour of this product, and the logo is drawn for the
+   ink rather than for it. The mobile header is the same block, folded. */
+.wy-side-nav-search,
+.wy-nav-top {
+    background-color: #123540;
+}
+
+/* The theme sizes a logo to the full width of the sidebar; the lockup is a wordmark next to
+   a mark, so at 300 px it dwarfs the navigation it belongs to. */
+.wy-side-nav-search > a img.logo {
+    width: auto;
+    max-width: 160px;
+    margin-bottom: 0.4rem;
+}
+
+/* That link carries the project name as text as well, which the lockup has just said. The
+   name goes, the link stays: the logo is what it is wrapped around. */
+.wy-side-nav-search > a {
+    font-size: 0;
+}
+
+/* The version menu sits under the navigation, so it is the same block again and takes the
+   same ink. The theme's own grey would read as a third colour in a two colour sidebar. */
+.rst-versions .rst-current-version {
+    background-color: #123540;
+}
+
+/* The theme styles .rst-versions with a display of its own, and an author rule outranks the
+   one the browser attaches to the attribute - so the hidden the template starts out with has
+   to be spelled out here to have any effect. Without this, every build that has no versions
+   to offer, local ones included, shows an empty menu until the fetch fails. */
+.rst-versions[hidden] {
+    display: none;
+}
+
+/* The links the menu is filled with are a plain list, and the theme only paints anchors it
+   expects. Reading them as a column of versions is the whole point of the panel. */
+.rst-versions .rst-other-versions dd a {
+    color: #fcfcfc;
+}
+
+.rst-versions .rst-other-versions dd a[aria-current] {
+    font-weight: bold;
+}

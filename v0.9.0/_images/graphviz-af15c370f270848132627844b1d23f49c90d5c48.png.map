@@ -1,0 +1,14 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.ir.ComponentDeclaration
+
+One entry of a component interface, in the order the component declared it.
+
+A reference to an object rather than the object itself: the definition lives once, under
+``objects``, and is the one the producing component gave. Two components declaring the
+same name appear here twice and in ``objects`` once.
+" alt="" coords="496,119,685,231"/>
+<area shape="rect" id="node2" title="ddd.ir.ResolvedComponent
+
+A component and the objects it declares.
+" alt="" coords="5,5,352,145"/>
+</map>

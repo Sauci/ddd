@@ -1679,7 +1679,7 @@ themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *p
 ### 5.3 Data dictionary
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
-checking front end and every backend, DDD's own and a project's. Its `format` is `7`: a
+checking front end and every backend, DDD's own and a project's. Its `format` is `8`: a
 reader **shall** refuse a higher number, and reads a lower one with the defaults of that
 format ([section 4.1](#41-comparing-two-deliveries)). Its schema is published by
 `ddd schema dictionary`. The top level carries `format`, `name`, `description`, `source`

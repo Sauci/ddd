@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis
+from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.models import (
     ComponentFile,
     ConversionRule,
@@ -837,3 +838,35 @@ class TestStringInit:
         assert broadcast("abc", (8,)) == "abc"
         assert flatten("abc") == []
         assert check_shape("abc", (8,)) is None
+
+
+class TestDictionaryFormat:
+    def test_a_string_object_round_trips_through_the_dump(self, tree: Path) -> None:
+        """The fourth kind and the string init are new shapes of the document: format 8."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        conversion={"kind": "string"},
+                        dimensions=[8],
+                        init="V1.2",
+                    ),
+                ),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        payload = dictionary.model_dump(mode="json")
+        assert payload["format"] == DICTIONARY_FORMAT == 8
+        entry = next(o for o in payload["objects"] if o["name"] == "Label")
+        assert entry["conversion"] == {"kind": "string"}
+        assert entry["init"] == "V1.2"
+        read_back = DataDictionary.model_validate(payload).by_name["Label"]
+        assert read_back.conversion.describe() == "string"
+        assert read_back.init == "V1.2"

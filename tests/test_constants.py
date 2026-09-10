@@ -664,7 +664,7 @@ class TestTheDictionary:
             _vocabulary_project(declare("local", "Cells", dimensions=["PRESSURE_CELLS"])),
         )
         assert dictionary is not None
-        assert dictionary.format == DICTIONARY_FORMAT == 7
+        assert dictionary.format == DICTIONARY_FORMAT == 8
         assert [(c.name, c.value, c.description) for c in dictionary.constants] == [
             ("PRESSURE_CELLS", 8, "cells of the manifold"),
             ("TAPS", 2, ""),

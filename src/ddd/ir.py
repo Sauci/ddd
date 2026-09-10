@@ -565,13 +565,16 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 7
+DICTIONARY_FORMAT = 8
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years on. Stamping the format is what lets that later version say
 "this file is newer than I understand" instead of misreading it or rejecting it for a
 missing field. It changes only when the shape of the document changes, not with the tool.
+
+Format 8 added the ``string`` conversion kind and the string spelling of ``init``. A format
+7 dictionary carries neither, and reads back unchanged.
 """
 
 

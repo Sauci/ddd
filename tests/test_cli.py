@@ -1239,15 +1239,23 @@ class TestSchemaAndChecks:
         holds back, and the set marked ``(comparison)`` is exactly the checks of the delivery
         comparison (section 4.1) - both read off the registry here too, so a check gaining or
         losing a flag would fail this test rather than leave the text form silent about it.
+
+        The markers are read out of the trailing parenthetical rather than looked for anywhere
+        in the line: a check carrying two of them renders them together, ``(fixed, project)``,
+        which a substring search for ``(project)`` would miss.
         """
         from ddd.diagnostics import CHECKS, STANDALONE_POLICY
+
+        def markers(line: str) -> set[str]:
+            match = re.search(r"\(([^)]*)\)$", line)
+            return set(match.group(1).split(", ")) if match else set()
 
         project_wide = {entry.removesuffix("=ignore") for entry in STANDALONE_POLICY}
         comparison = {name for name, info in CHECKS.items() if info.comparison}
         assert main(["checks"]) == EXIT_OK
         lines = capsys.readouterr().out.splitlines()
-        marked_project = {line.split()[0] for line in lines if "(project)" in line}
-        marked_comparison = {line.split()[0] for line in lines if "(comparison)" in line}
+        marked_project = {line.split()[0] for line in lines if "project" in markers(line)}
+        marked_comparison = {line.split()[0] for line in lines if "comparison" in markers(line)}
         assert marked_project == project_wide
         assert marked_comparison == comparison
 

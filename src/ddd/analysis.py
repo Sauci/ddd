@@ -59,6 +59,7 @@ from ddd.models import (
     format_shape,
     is_reserved_identifier,
     physical_range,
+    refuse_string_misuse,
     resolve_export,
     spelled_dimensions,
 )
@@ -885,9 +886,13 @@ class _Analysis:
                 continue
             try:
                 check_string_member_shape(member.member, member.dimensions)
-                if member.a2l.format is not None:
-                    msg = f"a string has no display format, got a2l.format '{member.a2l.format}'"
-                    raise ValueError(msg)
+                refuse_string_misuse(
+                    None,
+                    declared.conversion,
+                    unit="",
+                    limits=None,
+                    display_format=member.a2l.format,
+                )
             except ValueError as error:
                 assert member.typename is not None  # it named the scalar type found above
                 location = entry.location(f"members[{index}]")
@@ -2045,9 +2050,13 @@ class _Analysis:
         definition = ref.declaration.definition
         try:
             check_string_shape(definition.kind, definition.declared_shape)
-            if definition.a2l.format is not None:
-                msg = f"a string has no display format, got a2l.format '{definition.a2l.format}'"
-                raise ValueError(msg)
+            refuse_string_misuse(
+                None,
+                declared.declared.conversion,
+                unit="",
+                limits=None,
+                display_format=definition.a2l.format,
+            )
         except ValueError as error:
             self._refuse(
                 "schema",

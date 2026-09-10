@@ -350,6 +350,26 @@ def check(context: CheckContext) -> None:
 PLUGIN = Plugin(name="exiting", check=check)
 """
 
+EXITING_MODEL_PLUGIN = """
+import sys
+
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Tag(BaseModel):
+    tag: str
+
+    @field_validator("tag")
+    @classmethod
+    def own_code(cls, value: str) -> str:
+        sys.exit(9)
+
+
+PLUGIN = Plugin(name="exiting", object_model=Tag)
+"""
+
 
 class TestDiagnostics:
     """What the editor draws, and on which file."""
@@ -624,6 +644,29 @@ class TestDiagnostics:
             "plugin 'exiting' failed in its check hook: SystemExit(0)"
             in plugin_invalid[0]["message"]
         )
+
+    def test_a_model_that_exits_does_not_take_the_search_for_a_project_down(
+        self, tmp_path: Path
+    ) -> None:
+        """Which project covers an open component is a search: every candidate above it is
+        loaded and asked, and loading one runs the models its plugins declare over every
+        ``extensions`` block in it. The squiggles, the hovers and the jumps all go through that
+        search, so a plugin defect met there has to end as an answer - here, the component read
+        on its own - rather than as an exception nobody catches."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        document = tmp_path / "a.ddd.json"
+        assert navigation.containing_projects(document, tmp_path) == []
+        reports = service.collect([], [document], tmp_path)
+        assert document in reports
 
 
 class TestNavigation:

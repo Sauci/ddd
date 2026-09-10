@@ -260,6 +260,20 @@ class TestWriting:
         assert {result.status for result in results} == {WriteStatus.CREATED}
         assert not (tree / "gen").exists()
 
+    def test_a_file_of_the_reader_s_own_beside_a_target_is_left_alone(self, tree: Path) -> None:
+        """``.tmp`` is a suffix people give real files; the staging suffix is one nobody else
+        picks. A run stages over its own leftovers and deletes them on the way out, so a
+        neighbour it staged onto would be silently destroyed - which is why it stages onto a
+        name no artefact and no hand-written file carries."""
+        dictionary, _ = run_analysis(tree, simple(declare("local", "A")))
+        assert dictionary is not None
+        out = tree / "gen"
+        out.mkdir()
+        neighbour = out / "ddd_globals.c.tmp"
+        neighbour.write_text("mine\n", encoding="utf-8")
+        write(render_files(dictionary, out))
+        assert neighbour.read_text(encoding="utf-8") == "mine\n"
+
     def test_a_failed_replace_undoes_an_earlier_creation_in_the_same_call(self, tree: Path) -> None:
         """Two files; the second's target is a directory, so its replace raises. The first
         one's replace had already gone through by then - undoing it too is what makes the
@@ -278,7 +292,7 @@ class TestWriting:
         # temporary file the failure actually happened on.
         assert excinfo.value.filename == str(blocked)
         assert not first.path.exists()
-        assert not any(out.glob("*.tmp"))
+        assert not any(out.glob("*.ddd-staging"))
 
     def test_a_failed_replace_leaves_an_earlier_update_in_its_new_state(self, tree: Path) -> None:
         """Unlike a fresh file, an updated one cannot be undone: its old bytes are already
@@ -296,14 +310,14 @@ class TestWriting:
         with pytest.raises(OSError):
             write([first, second])
         assert (out / "first.h").read_text(encoding="utf-8") == "new\n"
-        assert not any(out.glob("*.tmp"))
+        assert not any(out.glob("*.ddd-staging"))
 
     def test_a_failed_write_removes_its_own_partial_temporary(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A temporary is recorded for cleanup before it is written, not after: a write that
         fails once the file already exists on disk - a full disk partway through, an I/O
-        error - used to leave that ``.tmp`` behind, unrecorded and so never unlinked."""
+        error - used to leave that staging file behind, unrecorded and so never unlinked."""
         out = tree / "gen"
         out.mkdir()
         first = GeneratedFile(out / "first.h", "first\n")
@@ -311,7 +325,7 @@ class TestWriting:
         real_write_bytes = Path.write_bytes
 
         def flaky(path: Path, data: bytes) -> int:
-            if path.name == "second.h.tmp":
+            if path.name == "second.h.ddd-staging":
                 real_write_bytes(path, data)
                 raise OSError(errno.ENOSPC, "No space left on device")
             return real_write_bytes(path, data)
@@ -323,12 +337,12 @@ class TestWriting:
         assert excinfo.value.filename == str(second.path)
         assert not first.path.exists()
         assert not second.path.exists()
-        assert not any(out.glob("*.tmp"))
+        assert not any(out.glob("*.ddd-staging"))
 
     def test_a_failed_replace_names_only_the_real_target(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A failed ``Path.replace`` sets ``filename`` to the ``.tmp`` it renamed from and
+        """A failed ``Path.replace`` sets ``filename`` to the staging file it renamed from and
         ``filename2`` to the target it could not replace - forced here, rather than provoked,
         because which ``OSError`` a blocked rename actually raises reads differently by
         platform. ``write()`` overwrites ``filename`` with the target, so a reader sees the

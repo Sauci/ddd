@@ -65,6 +65,7 @@ from ddd.plugins import (
     PluginNotFoundError,
     backend_of,
     block_model,
+    guarding_plugin_model,
     load_plugin,
     run_compare_hooks,
 )
@@ -716,18 +717,18 @@ def _displayed_path(path: Path, output_dir: Path) -> str:
     is better served by the path the way they would type it themselves than by the resolved
     one - the same trade ``Location.render`` already makes for a diagnostic - so this measures
     ``path`` against ``output_dir`` resolved and reattaches it to ``output_dir`` exactly as
-    typed: relative to the current directory if ``-o`` was relative, following a junction as
-    typed rather than the real directory it lands on. An absolute ``-o`` is left as it always
-    was, printed resolved in full, and a spelling that ``relative_to`` cannot place under the
-    resolved directory after all - the on-disk failure path hands this the raw text of an
-    ``OSError``, not a path ``render`` has already vetted - falls back the same way.
+    typed: relative to the current directory if ``-o`` was relative, and following a junction
+    or a symbolic link as typed rather than naming the real directory it lands on - which is
+    the whole of the reason this exists, and is as true of an absolute ``-o`` as of a relative
+    one, so neither spelling is treated specially here. Only a path ``relative_to`` cannot
+    place under the resolved directory falls back to itself: the on-disk failure path hands
+    this the raw text of an ``OSError``, which is not a path ``render`` has already vetted.
     """
-    if not output_dir.is_absolute():
-        with contextlib.suppress(ValueError):
-            # Joined as paths rather than as text: a join collapses the "." that a bare
-            # ``-o .``, or a failure reported on the output directory itself, would
-            # otherwise leave in the spelling.
-            return (output_dir / path.relative_to(output_dir.resolve())).as_posix()
+    with contextlib.suppress(ValueError):
+        # Joined as paths rather than as text: a join collapses the "." that a bare
+        # ``-o .``, or a failure reported on the output directory itself, would
+        # otherwise leave in the spelling.
+        return (output_dir / path.relative_to(output_dir.resolve())).as_posix()
     return path.as_posix()
 
 
@@ -961,9 +962,10 @@ def _close_extensions(
         model = block_model(plugin, on_project=on_project)
         if model is None:
             continue
-        rendered = model.model_json_schema(
-            ref_template=f"#/$defs/{plugin.name}.{{model}}", schema_generator=PublishedSchema
-        )
+        with guarding_plugin_model(plugin.name, "rendering the schema of its own model"):
+            rendered = model.model_json_schema(
+                ref_template=f"#/$defs/{plugin.name}.{{model}}", schema_generator=PublishedSchema
+            )
         rendered.pop("$schema", None)
         for name, definition in rendered.pop("$defs", {}).items():
             definitions[f"{plugin.name}.{name}"] = definition

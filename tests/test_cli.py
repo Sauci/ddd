@@ -902,6 +902,19 @@ class TestGenerate:
         payload = json.loads(capsys.readouterr().out)
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
 
+    def test_json_spells_a_path_the_way_the_output_directory_was_typed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The json payload is what a build reads, so the spelling is part of the contract: a
+        relative ``-o`` stays relative here, exactly as it does in the text report, rather than
+        turning into whatever absolute path the run happened to resolve it to."""
+        monkeypatch.chdir(tmp_path)
+        arguments = ["generate", "c", str(DEMO), "-o", "build/gen", "-t", str(TEMPLATES)]
+        assert main([*arguments, "--format", "json"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        paths = [entry["path"] for entry in payload["generated"]]
+        assert "build/gen/ddd_globals.c" in paths
+
 
 PINNED_LIST_PAYLOAD = """\
 {
@@ -1615,7 +1628,7 @@ class TestFindingsSurviveAFailedStep:
         assert "info[missing-id]" in captured.err
         assert "cannot write '" in captured.err and "ddd_globals.h'" in captured.err
         assert not (out / "ddd_globals.c").exists()
-        assert not any(out.rglob("*.tmp"))
+        assert not any(out.rglob("*.ddd-staging"))
 
     def test_json_output_carries_the_findings_too(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -2201,3 +2214,21 @@ class TestDisplayedPath:
         assert _displayed_path((tmp_path / "out" / "x.h").resolve(), Path("./out")) == "out/x.h"
         assert _displayed_path(tmp_path.resolve(), Path()) == "."
         assert _displayed_path((tmp_path / "x.h").resolve(), Path()) == "x.h"
+
+    def test_an_absolute_output_directory_is_spelled_as_typed_too(self, tmp_path: Path) -> None:
+        """An absolute ``-o`` used to be printed resolved, which threw away the very spelling
+        this exists to keep: a junction, or - portably - a climb back out of a directory, is
+        the reader's own way of naming the place and is what the report should say."""
+        out = tmp_path.resolve() / "out"
+        typed = out / ".." / "out"
+        assert _displayed_path(out / "x.h", typed) == (typed / "x.h").as_posix()
+        assert _displayed_path(out / "x.h", out) == (out / "x.h").as_posix()
+
+    def test_a_path_that_is_not_under_the_output_directory_is_left_as_it_is(
+        self, tmp_path: Path
+    ) -> None:
+        """The failure path hands this the raw ``filename`` of an ``OSError``, which is not a
+        path the renderer has already vetted: a ``-o build/gen`` whose ``build`` cannot be
+        created fails on ``build``, which is above the output directory, not under it."""
+        outside = tmp_path.resolve() / "build"
+        assert _displayed_path(outside, outside / "gen") == outside.as_posix()

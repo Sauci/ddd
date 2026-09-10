@@ -67,20 +67,27 @@ def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]
     is no point resolving references between files that could not all be read. In an editor it
     shows as the semantic findings dropping away while a file is briefly unparseable, and
     coming back with the next save.
+
+    Both phases run under the one guard, not just the second: a plugin's own model is run
+    while the files are read, to validate the ``extensions`` blocks against it, so a defect in
+    that model raises before the analysis is ever reached. ``covered`` is settled as each
+    phase learns it, so a plugin defect during the analysis still withdraws the findings of
+    every file the project covers, rather than of the project file alone.
     """
-    workspace = load_workspace(root, bag)
-    if workspace is None:
-        return bag, frozenset({root})
-    sources = frozenset(workspace.sources())
-    if not bag.has_errors:
-        try:
+    covered = frozenset({root})
+    try:
+        workspace = load_workspace(root, bag)
+        if workspace is None:
+            return bag, covered
+        covered = frozenset(workspace.sources())
+        if not bag.has_errors:
             analyze(workspace, bag)
-        except PluginError as error:
-            # A hook raising is a defect of the plugin, not of the project: ``ddd check``
-            # reports it as a usage error, but the server promises findings and never an
-            # exception, so it is turned into one here, on the project file itself.
-            bag.add("plugin-invalid", str(error), Location(root))
-    return bag, sources
+    except PluginError as error:
+        # A hook or a model raising is a defect of the plugin, not of the project: ``ddd
+        # check`` reports it as a usage error, but the server promises findings and never an
+        # exception, so it is turned into one here, on the project file itself.
+        bag.add("plugin-invalid", str(error), Location(root))
+    return bag, covered
 
 
 def collect(

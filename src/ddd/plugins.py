@@ -20,12 +20,13 @@ says the module has none of.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import importlib.util
 import re
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -285,11 +286,15 @@ def resolve_blocks(
             if model is None:
                 resolved[name] = dict(blocks[name])
             else:
-                resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+                with guarding_plugin_model(name, "validating a block against its own model"):
+                    resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
         if on_project:
             for name, plugin in plugins.items():
                 if name not in resolved and plugin.project_model is not None:
-                    resolved[name] = plugin.project_model.model_validate({}).model_dump(mode="json")
+                    with guarding_plugin_model(name, "building the defaults of its settings"):
+                        resolved[name] = plugin.project_model.model_validate({}).model_dump(
+                            mode="json"
+                        )
     except ValidationError as error:
         # The loader has validated every block a run of the checks reaches; a hover resolves
         # a project that did not read cleanly, and its blocks are then the plugin's problem.
@@ -311,6 +316,32 @@ class PluginError(ValueError):
     """
 
 
+@contextlib.contextmanager
+def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
+    """Run a plugin's own pydantic model, turning a defect in it into a :class:`PluginError`.
+
+    A model is plugin code as much as a hook is: a ``@field_validator`` runs whenever DDD
+    validates a block against it, and it may do anything a hook may do. Only the two verdicts
+    pydantic itself defines - a ``ValueError`` or an ``AssertionError`` from a validator - come
+    back as a ``ValidationError``; that one is the plugin *user's* mistake, a finding about
+    their block, and is re-raised untouched for the caller to report as one. Anything else the
+    model raises is the plugin author's mistake and reached the caller raw: a ``RuntimeError``
+    ended ``ddd check`` in a traceback, and a ``sys.exit`` in a validator ended it with the
+    plugin's own exit code, printing none of the findings, and took the language server down
+    with it. Both are wrapped here the way :func:`_call` wraps a hook, so that the cli reports
+    one line and exit 2 and the server reports ``plugin-invalid`` and keeps running.
+    ``KeyboardInterrupt`` is deliberately not listed, exactly as in :func:`_call`.
+    """
+    try:
+        yield
+    except ValidationError:
+        raise
+    except (Exception, SystemExit) as error:
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{name}' failed {what}: {detail}"
+        raise PluginError(msg) from error
+
+
 def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> BaseModel | None:
     """The project block validated against the plugin's project model.
 
@@ -321,7 +352,8 @@ def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> 
     if plugin.project_model is None:
         return None
     try:
-        return plugin.project_model.model_validate(extensions.get(plugin.name, {}))
+        with guarding_plugin_model(plugin.name, "validating its settings"):
+            return plugin.project_model.model_validate(extensions.get(plugin.name, {}))
     except ValidationError as error:
         msg = f"the settings of plugin '{plugin.name}' are invalid: {error}"
         raise PluginError(msg) from error

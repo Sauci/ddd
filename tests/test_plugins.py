@@ -7,6 +7,7 @@ the api it is written against, with a plugin small enough to live in this file.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -1147,6 +1148,32 @@ EXITING_PLUGIN = TAG_PLUGIN.replace(
     "def check(context: CheckContext) -> None:\n    sys.exit(0)\n",
 )
 
+MODEL_PLUGIN = '''
+"""A plugin whose own model runs code of its own on every block validated against it."""
+
+from __future__ import annotations
+
+import sys
+
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Tag(BaseModel):
+    tag: str
+
+    @field_validator("tag")
+    @classmethod
+    def own_code(cls, value: str) -> str:
+        BODY
+        return value
+
+
+PLUGIN = Plugin(name="broken", object_model=Tag)
+'''
+"""``BODY`` is what the validator does; every use replaces it with one statement."""
+
 
 class TestTheCheckHook:
     def test_a_hook_reports_through_the_bag_at_the_producing_declaration(self, tree: Path) -> None:
@@ -1304,6 +1331,72 @@ class TestTheHookBoundary:
         plugin = Plugin(name="exiting", check=exiting)
         with pytest.raises(PluginError, match=re.escape(f"failed in its check hook: {rendered}")):
             run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+
+
+class TestThePluginModelBoundary:
+    """A plugin's pydantic model is plugin code too, and is guarded like a hook.
+
+    Every ``extensions`` block DDD reads is validated against the model whose plugin owns it,
+    so a ``@field_validator`` on that model runs on the reader's own files. Pydantic gives two
+    of its verdicts back as a ``ValidationError`` - a ``ValueError`` or an ``AssertionError``
+    from a validator - and those are the block's problem, a finding. Everything else the model
+    raises used to leave the boundary raw, so the tests below are one per branch of
+    ``guarding_plugin_model``: a wrapped raise, a wrapped exit, and a verdict left alone.
+    """
+
+    def broken(self, tree: Path, body: str) -> str:
+        write_plugin(tree / "tools", "model_plugin.py", MODEL_PLUGIN.replace("BODY", body))
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/model_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"broken": {"tag": "t"}})
+                ),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_a_validator_that_raises_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A ``RuntimeError`` in a validator used to end ``ddd check`` in a traceback about
+        pydantic internals, which names neither the plugin nor anything the reader can act on."""
+        assert main(["check", self.broken(tree, 'raise RuntimeError("boom")')]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "ddd: plugin 'broken' failed validating an 'extensions' block: boom" in captured
+        assert "Traceback" not in captured
+
+    def test_a_validator_that_exits_is_a_usage_error_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``sys.exit`` in a validator is worse than a traceback: it ended ``ddd check`` with
+        the plugin's own code, printing nothing at all, so a build read a 9 and had to guess."""
+        assert main(["check", self.broken(tree, "sys.exit(9)")]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert (
+            "ddd: plugin 'broken' failed validating an 'extensions' block: SystemExit(9)"
+            in captured
+        )
+        assert "Traceback" not in captured
+
+    def test_a_verdict_of_the_model_stays_the_project_s_own_finding(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Refusing a block that does not fit is what a model is *for*: that verdict is about
+        the reader's file, and is reported where it always was, on the block."""
+        assert main(["check", self.broken(tree, 'raise ValueError("not a tag")')]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "not a tag" in captured
+        assert "failed validating" not in captured
+
+    def test_the_language_server_survives_a_model_that_exits(self, tree: Path) -> None:
+        """The server promises findings and never an exception. A model runs while the files
+        are read, before any hook, so this reaches the boundary by a different road than the
+        hook that exits does - and has to arrive at the same place."""
+        bag, _ = analyse_standalone(Path(self.broken(tree, "sys.exit(9)")))
+        assert "plugin-invalid" in checks(bag)
+        assert "failed validating an 'extensions' block: SystemExit(9)" in messages(bag)
 
 
 class TestSettings:
@@ -1870,13 +1963,23 @@ class TestGenerate:
     ) -> None:
         """A junction inside the tree is not resolved away in the report: the reader typed
         ``-o link``, so that is what they should see, even though every file underneath is
-        measured - and physically lands - at the junction's real target."""
+        measured - and physically lands - at the junction's real target. Spelled absolutely it
+        is the same promise, and the same reader.
+
+        Junctions are a windows feature and ``mklink`` is a ``cmd`` builtin, so there is no
+        such thing to make on the linux runner ci uses; asked for there, ``subprocess.run``
+        raises before it can return a code to look at."""
+        if os.name != "nt":
+            pytest.skip("directory junctions are a windows feature")
         target = tree / "real"
         target.mkdir()
         link = tree / "link"
-        created = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
-        )
+        try:
+            created = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+            )
+        except OSError as error:
+            pytest.skip(f"cannot run mklink on this machine: {error}")
         if created.returncode != 0 or not link.is_dir():
             pytest.skip("cannot create a directory junction on this machine without privilege")
         write_tree(
@@ -1903,6 +2006,12 @@ class TestGenerate:
         assert (target / "ddd_globals.h").is_file()
         captured = capsys.readouterr().err
         assert "link/ddd_globals.h (created)" in captured
+        assert "real/ddd_globals.h" not in captured
+
+        arguments[arguments.index("-o") + 1] = str(link)
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert f"{(link / 'ddd_globals.h').as_posix()}" in captured
         assert "real/ddd_globals.h" not in captured
 
     def test_dry_run_writes_nothing(self, tree: Path) -> None:

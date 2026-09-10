@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from jinja2 import (
     Environment,
@@ -26,6 +26,17 @@ from jinja2 import (
 )
 
 from ddd.ir import DataDictionary
+
+STAGING_SUFFIX: Final = ".ddd-staging"
+"""What :func:`write` appends to a target's name to stage that target's bytes beside it.
+
+A staging file is overwritten and deleted without asking, so the name has to be one no
+artefact would ever carry: ``.tmp`` is a name people give real files, and a project keeping a
+hand-written ``ddd_globals.c.tmp`` beside the generated ``ddd_globals.c`` - or a backend
+emitting an ``x.h.tmp`` of its own beside ``x.h`` - would have watched a plain run overwrite
+it and then delete it. This spelling nobody else picks is what makes the reservation logic
+that would otherwise be needed unnecessary; a leftover of a crashed earlier run still carries
+it, and overwriting that one is right, because it is ours by construction."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,10 +131,11 @@ def write(files: Iterable[GeneratedFile], *, dry_run: bool = False) -> list[Writ
     is already a rendered ``str`` - :func:`render_template` produced it, and the decide loop
     above already encoded it to bytes - so staging cannot catch a mistake in the render itself;
     that would already have raised before ``write`` was ever called. What staging buys instead:
-    each payload is first written to a sibling ``<name>.tmp`` - a fixed name, so it overwrites
-    any stale temporary of that name an earlier run left behind, and two concurrent runs into the
-    same directory race on it exactly as they always raced on the real targets - and only once
-    every temporary exists does the function start renaming them onto their real targets in turn.
+    each payload is first written to a sibling ``<name>.ddd-staging`` - a fixed name
+    (:data:`STAGING_SUFFIX` says why it is that one and not ``.tmp``), so it overwrites any
+    stale staging file an earlier run left behind, and two concurrent runs into the same
+    directory race on it exactly as they always raced on the real targets - and only once every
+    temporary exists does the function start renaming them onto their real targets in turn.
     A filesystem failure on file *N* - no space left, a parent directory that cannot be created,
     a target that cannot be replaced - therefore happens while file 1's target is still
     untouched, so the run fails before it has committed to anything rather than partway through
@@ -174,7 +186,7 @@ def write(files: Iterable[GeneratedFile], *, dry_run: bool = False) -> list[Writ
         for file, payload, _ in pending:
             target = file.path
             target.parent.mkdir(parents=True, exist_ok=True)
-            temporary = target.with_name(target.name + ".tmp")
+            temporary = target.with_name(target.name + STAGING_SUFFIX)
             # Recorded before writing, not after: a write that fails once the file already
             # exists on disk - a full disk partway through, an I/O error - must still be found
             # and removed below. The unlink there is already wrapped in

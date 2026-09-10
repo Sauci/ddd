@@ -42,6 +42,7 @@ from ddd.models import (
     is_reserved_identifier,
     spelled_dimensions,
 )
+from ddd.plugins import PluginError
 
 VARIABLE_KEYS: Final = frozenset({"name", "axis", "x_axis", "y_axis", "input"})
 """Keys of a declaration whose value is the name of a data object.
@@ -192,23 +193,36 @@ def workspaces(
     """
     found = []
     for info in builds:
-        workspace = load_workspace(Path(info.project), DiagnosticBag())
+        workspace = _loaded(Path(info.project))
         if workspace is not None and document.resolve() in workspace.sources():
             found.append(workspace)
     if not found:
         found.extend(
             workspace
-            for workspace in (
-                load_workspace(project, DiagnosticBag())
-                for project in containing_projects(document, root)
-            )
+            for workspace in (_loaded(project) for project in containing_projects(document, root))
             if workspace is not None
         )
     if not found:
-        alone = load_workspace(document, DiagnosticBag())
+        alone = _loaded(document)
         if alone is not None:
             found.append(alone)
     return found
+
+
+def _loaded(path: Path) -> Workspace | None:
+    """One project read for a question about it, or nothing when it cannot be read.
+
+    Reading a project runs the models its plugins declare, over every ``extensions`` block in
+    it, and a model that raises is reported as a ``PluginError`` the way a hook that raises
+    is. Every caller here is answering a question a person asked - a jump, a hover, which
+    project covers this file - and the same answer serves all of them: the findings of the
+    last save already say the plugin is broken, and a jump that answers nothing beats a
+    server that exits.
+    """
+    try:
+        return load_workspace(path, DiagnosticBag())
+    except PluginError:
+        return None
 
 
 def containing_projects(document: Path, root: Path | None) -> list[Path]:
@@ -245,7 +259,7 @@ def containing_projects(document: Path, root: Path | None) -> list[Path]:
 
 
 def _includes(candidate: Path, document: Path) -> bool:
-    workspace = load_workspace(candidate, DiagnosticBag())
+    workspace = _loaded(candidate)
     return workspace is not None and document.resolve() in workspace.sources()
 
 

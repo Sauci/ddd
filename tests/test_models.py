@@ -135,6 +135,31 @@ class TestConversions:
         assert conversion.to_physical(4) == -39.0
         assert conversion.to_raw(-39.0) == 4
 
+    def test_a_string_conversion_is_spelled_with_its_kind(self) -> None:
+        """A string has no key of its own to be inferred from, so ``{}`` stays the identity."""
+        from ddd.models import StringConversion
+
+        parsed = definition(conversion={"kind": "string"}, dimensions=[8])
+        assert isinstance(parsed.conversion, StringConversion)
+        assert isinstance(parsed.conversion, ConversionRule)
+        assert parsed.conversion.describe() == "string"
+        assert isinstance(definition(conversion={}).conversion, IdentityConversion)
+
+    def test_a_string_conversion_takes_no_other_key(self) -> None:
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            definition(conversion={"kind": "string", "factor": 2}, dimensions=[8])
+
+    def test_a_string_is_the_identity_on_one_byte(self) -> None:
+        """Compared as written, ranged as its datatype, and one byte reads as nothing."""
+        from ddd.models import StringConversion, conversion_identity, physical_range, raw_reading
+
+        conversion = StringConversion(kind="string")
+        assert conversion.to_physical(86) == 86
+        assert conversion.to_raw(86) == 86
+        assert conversion_identity(conversion) == {"kind": "string"}
+        assert physical_range(conversion, 0, 255) == (0, 255)
+        assert raw_reading(conversion, 86) is None
+
 
 class TestLimits:
     def test_derived_from_datatype_and_conversion(self) -> None:

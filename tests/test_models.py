@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -11,6 +12,7 @@ from conftest import checks, component, declare, messages, project, run_analysis
 from ddd.models import (
     ComponentFile,
     ConversionRule,
+    DataObject,
     Datatype,
     EnumConversion,
     IdentityConversion,
@@ -30,6 +32,12 @@ def definition(**kwargs: object) -> Measurement:
     return Measurement.model_validate(
         {"name": "X", "kind": "measurement", "volatile": False, **storage, **kwargs}
     )
+
+
+def declared(**definition: Any) -> DataObject:
+    """A definition of any kind, validated the way a component file validates it."""
+    parsed = ComponentFile.model_validate(component("A", declare("output", "X", **definition)))
+    return parsed.component.interface[0].definition
 
 
 class TestDatatype:
@@ -760,3 +768,51 @@ class TestSixtyFourBitBound:
 
         with pytest.raises(ValidationError, match="less than or equal"):
             ConstantsFile.model_validate({"constants": [{"name": "N", "value": self.HUGE}]})
+
+
+class TestStringRules:
+    """A string is a one dimensional byte array read as text, and states nothing text lacks."""
+
+    def test_a_string_is_a_measurement_or_a_value_block_of_one_dimension(self) -> None:
+        for kind in ("measurement", "value_block"):
+            parsed = declared(kind=kind, conversion={"kind": "string"}, dimensions=[16])
+            assert parsed.conversion is not None
+            assert parsed.conversion.describe() == "string"
+
+    def test_sint8_is_a_byte_too(self) -> None:
+        declared(datatype="sint8", conversion={"kind": "string"}, dimensions=[16])
+
+    @pytest.mark.parametrize("datatype", ["uint16", "boolean", "float32"])
+    def test_a_string_needs_a_byte_datatype(self, datatype: str) -> None:
+        with pytest.raises(ValidationError, match="needs a byte datatype"):
+            declared(datatype=datatype, conversion={"kind": "string"}, dimensions=[16])
+
+    @pytest.mark.parametrize(
+        ("kind", "extra"),
+        [
+            ("parameter", {}),
+            ("axis", {"size": 4}),
+            ("curve", {"axis": "A"}),
+            ("map", {"x_axis": "A", "y_axis": "B"}),
+        ],
+    )
+    def test_a_string_is_no_table_and_no_scalar(self, kind: str, extra: dict[str, Any]) -> None:
+        with pytest.raises(ValidationError, match="one dimensional array of bytes"):
+            declared(kind=kind, conversion={"kind": "string"}, **extra)
+
+    @pytest.mark.parametrize("dimensions", [[], [4, 4]])
+    def test_a_string_states_exactly_one_dimension(self, dimensions: list[int]) -> None:
+        with pytest.raises(ValidationError, match="exactly one dimension"):
+            declared(conversion={"kind": "string"}, dimensions=dimensions)
+
+    @pytest.mark.parametrize(
+        ("key", "value", "expected"),
+        [
+            ("unit", "s", "has no unit"),
+            ("limits", {"min": 0, "max": 9}, "has no limits"),
+            ("a2l", {"format": "%8.3"}, "has no display format"),
+        ],
+    )
+    def test_a_string_states_nothing_text_lacks(self, key: str, value: Any, expected: str) -> None:
+        with pytest.raises(ValidationError, match=expected):
+            declared(conversion={"kind": "string"}, dimensions=[16], **{key: value})

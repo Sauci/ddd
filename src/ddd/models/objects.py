@@ -28,7 +28,7 @@ from ddd.models.common import (
     hash_excluding_mappings,
     within_64_bits,
 )
-from ddd.models.conversion import Conversion, EnumConversion, conversion_range
+from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
 
 type InitValue = Annotated[
     Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
@@ -212,6 +212,83 @@ def refuse_enum_on_non_integer(datatype: Datatype | None, conversion: Conversion
         msg = (
             f"enum conversion '{conversion.name}' requires an integer datatype, "
             f"got '{datatype.value}'"
+        )
+        raise ValueError(msg)
+
+
+STRING_DATATYPES: Final = frozenset({Datatype.UINT8, Datatype.SINT8})
+"""What a string may be stored in: one byte per character, of either signedness.
+
+Vector's checker accepts an unsigned or a signed byte record layout for an ASCII string and
+nothing else, and c lets a string literal initialise an array of either character type.
+"""
+
+STRING_OBJECT_KINDS: Final = frozenset({ObjectKind.MEASUREMENT, ObjectKind.VALUE_BLOCK})
+"""The kinds a string may be: the two that state their own dimensions.
+
+A ``parameter`` has no dimensions to hold characters in, and an ``axis``, a ``curve`` and a
+``map`` are tables of numbers.
+"""
+
+
+def refuse_string_misuse(
+    datatype: Datatype | None,
+    conversion: Conversion | None,
+    *,
+    unit: str,
+    limits: Limits | None,
+    display_format: str | None,
+) -> None:
+    """Refuse what a string cannot sit on or carry, wherever a datatype and a conversion meet.
+
+    Shared between a definition, a structure member and a scalar type the way
+    :func:`refuse_enum_on_non_integer` is, so that the verdict cannot depend on where the
+    same pair happens to be written. The shape rule is not here: what "one dimension" is
+    spelled as differs between a definition and a member, and a scalar type has no shape,
+    so each states it in its own words - :func:`check_string_shape` for a definition.
+
+    Text has no unit, no physical range and no display format, which is why all three are
+    refused rather than ignored: a unit would reach the a2l as the unit of a method that
+    cannot exist, limits would offer a calibration tool a range over character codes, and
+    a format would claim decimals of a string.
+    """
+    if not isinstance(conversion, StringConversion):
+        return
+    if isinstance(datatype, Datatype) and datatype not in STRING_DATATYPES:
+        msg = f"a string conversion needs a byte datatype, uint8 or sint8, got '{datatype.value}'"
+        raise ValueError(msg)
+    if unit:
+        msg = f"a string has no unit, got '{unit}'"
+        raise ValueError(msg)
+    if limits is not None:
+        msg = "a string has no limits; its range is the byte range of its datatype"
+        raise ValueError(msg)
+    if display_format is not None:
+        msg = f"a string has no display format, got a2l.format '{display_format}'"
+        raise ValueError(msg)
+
+
+def check_string_shape(kind: ObjectKind, shape: WrittenShape | None) -> None:
+    """Refuse a string that is not a one dimensional measurement or value block.
+
+    A function raising ``ValueError`` rather than a validator, because the rule is answered
+    twice: by the contract for a definition that states the conversion itself, and by the
+    analysis for a declaration naming a scalar type that carries it, once the type is known.
+    A second dimension would be an array of strings, which the a2l format cannot describe -
+    Vector's generator splits one into single string objects for that reason - and an array
+    of structures with a string member is how DDD writes it.
+    """
+    if kind not in STRING_OBJECT_KINDS:
+        msg = (
+            f"a string is a one dimensional array of bytes, which a '{kind.value}' is not; "
+            f"declare it as a 'measurement' or a 'value_block'"
+        )
+        raise ValueError(msg)
+    if shape is None or len(shape) != 1:
+        spelled = "none" if not shape else str(len(shape))
+        msg = (
+            f"a string states exactly one dimension, its length in bytes, got {spelled}; an "
+            f"array of strings is written as an array of structures with a string member"
         )
         raise ValueError(msg)
 
@@ -458,6 +535,19 @@ class DataObject(_Frozen):
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> DataObject:
         refuse_enum_on_non_integer(self.datatype, self.conversion)
+        return self
+
+    @model_validator(mode="after")
+    def _a_string_is_a_one_dimensional_byte_array(self) -> DataObject:
+        refuse_string_misuse(
+            self.datatype,
+            self.conversion,
+            unit=self.unit,
+            limits=self.limits,
+            display_format=self.a2l.format,
+        )
+        if isinstance(self.conversion, StringConversion):
+            check_string_shape(self.kind, self.declared_shape)
         return self
 
     @model_validator(mode="after")

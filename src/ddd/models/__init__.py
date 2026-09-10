@@ -25,6 +25,8 @@ from ddd.models.conversion import (
     raw_reading,
 )
 from ddd.models.objects import (
+    STRING_DATATYPES,
+    STRING_OBJECT_KINDS,
     A2lObjectOptions,
     AnyDataObject,
     Axis,
@@ -42,9 +44,11 @@ from ddd.models.objects import (
     WrittenShape,
     broadcast,
     check_shape,
+    check_string_shape,
     definition_keys,
     discriminator_tags,
     format_shape,
+    refuse_string_misuse,
     resolve_export,
     spelled_dimensions,
 )
@@ -63,6 +67,7 @@ from ddd.models.types import (
     StructType,
     TypesFile,
     bitfield_range,
+    check_string_member_shape,
 )
 from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
@@ -73,6 +78,8 @@ __all__ = [
     "IDENTIFIER_MAX_LENGTH",
     "IDENTITY",
     "MEMBER_OBJECT_KINDS",
+    "STRING_DATATYPES",
+    "STRING_OBJECT_KINDS",
     "A2lObjectOptions",
     "AnyDataObject",
     "AnyType",
@@ -124,6 +131,8 @@ __all__ = [
     "bitfield_range",
     "broadcast",
     "check_shape",
+    "check_string_member_shape",
+    "check_string_shape",
     "conversion_identity",
     "conversion_range",
     "definition_keys",
@@ -133,6 +142,7 @@ __all__ = [
     "is_reserved_identifier",
     "physical_range",
     "raw_reading",
+    "refuse_string_misuse",
     "resolve_export",
     "spelled_dimensions",
 ]

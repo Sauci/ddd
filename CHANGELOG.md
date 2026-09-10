@@ -308,12 +308,12 @@ not, and the templates a project provides are its own.
   forward references through `sys.modules` - found nothing there, and the plugin was refused as
   `plugin-invalid` with "failed to import: 'NoneType' object has no attribute '__dict__'", a
   reason naming neither the dataclass nor anything its author could act on.  The module is
-  registered before it runs now, the way
-  importlib's own recipe does it, and a body that fails is no longer left cached half-run: one
-  that raises, and one that calls `sys.exit` - which used to end the process with the code it
-  named - are both `plugin-invalid`, the second "exited during import: SystemExit(3)", and the
-  entry is removed again, so the next load in the same process - the language server
-  re-analysing after a keystroke - reports that failure again instead of "exposes no PLUGIN".
+  registered before it runs now, the way importlib's own recipe does it, and a body that fails
+  is no longer left cached half-run: one that raises, and one that calls `sys.exit` - which
+  used to end the process with the code it named - are both `plugin-invalid`, the second
+  "exited during import: SystemExit(3)", and the entry is removed again, so the next load in
+  the same process - the language server re-analysing after a keystroke - reports that failure
+  again instead of "exposes no PLUGIN".
 
 * **A backend's files stay inside the output directory.**  A path a backend handed back was
   compared with the other artefacts' exactly as it was spelled, and then written exactly as it
@@ -342,10 +342,15 @@ not, and the templates a project provides are its own.
   exits is now reported exactly as one that raises: `ddd: plugin 'layout' failed in its check
   hook: SystemExit(0)`, exit 2, after the findings; the language server reports it as
   `plugin-invalid` and keeps serving the workspace.  `KeyboardInterrupt` is not caught and
-  still interrupts.
+  still interrupts.  The models a plugin declares are held to the same rule, because a
+  validator on one of them is plugin code that runs on every `extensions` block DDD reads: a
+  `ValueError` or an `AssertionError` from one is the block's finding, as it always was, but
+  anything else it raises - and a `sys.exit` - is now `ddd: plugin 'layout' failed validating
+  an 'extensions' block: SystemExit(9)`, exit 2, or `plugin-invalid` in the language server,
+  instead of a pydantic traceback or a silent exit.
   **Migration:** a hook calling `sys.exit` used to end the run with its own code, which a build
   script could read as success; it is a usage error now.  A hook reports through the bag and
-  returns.
+  returns, and a validator on a plugin's own model raises `ValueError` to refuse a block.
 
 * **What a plugin's backend returns, and what a template raises, are usage errors.**  A
   `backend` hook returning `None` - the shape a hook that reads its settings and forgets to
@@ -367,7 +372,9 @@ not, and the templates a project provides are its own.
   untouched: an output directory holding half of one run and half of another, which may not
   compile together, and nothing saying which file was which.  Every file's status is decided
   first, against the bytes on disk; each file that needs writing is then staged as a sibling
-  `<name>.tmp`, and only once all of them are staged is each renamed onto its target.  A
+  `<name>.ddd-staging` - a suffix no artefact carries and nobody hand-writes, so a file of the
+  reader's own sitting beside a target, `ddd_globals.c.tmp` say, is never staged over and then
+  deleted - and only once all of them are staged is each renamed onto its target.  A
   failure removes the temporaries and the targets that run had created, and the `cannot write`
   line names the real target rather than the temporary that could not be moved onto it; a
   target the run had already updated keeps its new content, the bytes it held being gone once

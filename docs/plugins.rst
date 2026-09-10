@@ -168,11 +168,19 @@ a different one.
 
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2, after the
-findings the run had already gathered. A hook returns; one that calls ``sys.exit`` is reported
-the same way, naming the code it exited with, rather than ending the run with that code and
-printing nothing. The language server, which has no usage error to give, reports either of
-them as a ``plugin-invalid`` finding and keeps serving the workspace; and a module body that
-exits while it is imported is ``plugin-invalid`` exactly as one that raises there.
+findings the run had already gathered. A hook, or a validator on a plugin's own model,
+returns; one that calls ``sys.exit`` is reported the same way, naming the code it exited with,
+rather than ending the run with that code and printing nothing. The language server, which has
+no usage error to give, reports either of them as a ``plugin-invalid`` finding and keeps
+serving the workspace; and a module body that exits while it is imported is ``plugin-invalid``
+exactly as one that raises there.
+
+The models are the one place where raising is part of the contract. A ``@field_validator`` on
+``object_model`` or ``project_model`` runs on every block written against it, and the
+``ValueError`` or ``AssertionError`` pydantic turns into a ``ValidationError`` is how a model
+refuses a block: that verdict is a ``schema`` finding on the reader's file, located at the
+failing key. Anything else the model raises is the plugin's own defect and is reported the way
+a hook's is - one line naming the plugin, exit 2, ``plugin-invalid`` in the language server.
 
 Writing a well-behaved plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

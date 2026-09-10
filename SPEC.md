@@ -1083,11 +1083,14 @@ is a usage error before anything is written. A hook reports through the bag exac
 built-in check does, and a hook that raises, or exits the interpreter rather than
 returning, is a usage error naming the plugin and the hook; the language server, which has
 no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
-finding at the project file ([section 7.2](#72-editor-integration)). Plugin checks are
-registered per run rather than in the built-in registry, and an override naming a plugin
-check is accepted provisionally and held, once the project is read, to the checks the
-loaded plugins registered: one that no loaded plugin registers is then the usage error an
-unknown built-in check is.
+finding at the project file ([section 7.2](#72-editor-integration)). A plugin's own models
+are held to the same rule: a validator on one of them refusing a block is the `schema`
+finding above, but one that raises anything else, or exits the interpreter, is the plugin's
+failure and is reported exactly as a hook's is. Plugin checks are registered per run rather
+than in the built-in registry, and an override naming a plugin check is accepted
+provisionally and held, once the project is read, to the checks the loaded plugins
+registered: one that no loaded plugin registers is then the usage error an unknown built-in
+check is.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
@@ -1197,10 +1200,10 @@ Errors:
   across files ([section 3.10](#310-measurement-rasters)).
 - `plugin-not-found`: a project names a plugin ([section 3.11](#311-plugins)) that cannot be
   found. Fixed severity, because a project cannot be interpreted without the plugins it names.
-- `plugin-invalid`: a plugin module raises on import, exposes no `PLUGIN`, exposes one that is
-  malformed, or claims a name another plugin already has, and, in the language server only, a
-  hook that raises while a file is checked ([section 3.11](#311-plugins)). Fixed severity, for
-  the same reason.
+- `plugin-invalid`: a plugin module raises or exits the interpreter on import, exposes no
+  `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
+  the language server only, a hook or a model of the plugin's own that raises or exits while a
+  file is checked ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
   deliberately carries a block no installed plugin interprets, which then reaches the
@@ -1489,10 +1492,11 @@ directory is importable but never rendered. A project template receives two vari
 dictionary; a `{component}` template additionally receives `header`, the view of its
 component. The rendering is strict: a name a template misspells, or a template that does
 not parse, is a usage error naming the template, the line and, for a template rendered
-per component, the component
-([section 7](#7-tool-interface)), not silently empty output. A template directory containing no template, and two artefacts claiming the
-same output path, are usage errors rather than findings
-([section 7](#7-tool-interface)).
+per component, the component ([section 7](#7-tool-interface)), not silently empty output;
+so is any other exception a template's own body raises - a division by zero, a filter handed
+the wrong type - reported the same way rather than as a python traceback. A template
+directory containing no template, and two artefacts claiming the same output path, are usage
+errors rather than findings ([section 7](#7-tool-interface)).
 
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
@@ -1817,7 +1821,11 @@ of does not depend on whether it is consistent; they exit 1 only when the root c
 be read. `ddd generate` with error findings writes nothing, because a stale artefact is
 preferable to a wrong one written halfway into a build, unless `--force` asks for the
 outputs anyway; the exit stays a findings exit in either case. `ddd generate --dry-run`
-reports what it would write and writes nothing.
+reports what it would write and writes nothing. A run that does write writes every artefact
+or none: each is staged beside its target and renamed into place only once all of them are
+staged, so a failure to write one leaves the others as they were - except one this run had
+already renamed over a file that existed before it, which keeps its new content. The failure
+names the artefact and is a usage error.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
@@ -1964,8 +1972,10 @@ an edit lands where the editor shows it; a client that takes versioned edits is 
 version of each document an edit was computed for. Each finding is also published at the
 locations of its notes, so that both sides of a conflict carry a mark. The build records a
 search discovers are announced as log messages, and a record that cannot be read is skipped.
-A plugin hook that raises while a file is checked is reported as a `plugin-invalid` finding
-at the project file rather than ending the session ([section 3.11](#311-plugins)).
+A plugin hook that raises or exits the interpreter while a file is checked is reported as a
+`plugin-invalid` finding at the project file rather than ending the session, and so is a model
+of the plugin's own that raises or exits while a block is validated against it
+([section 3.11](#311-plugins)).
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server; a frame header whose `Content-Length`

@@ -198,7 +198,10 @@ The records a search discovers are announced as log messages, and a record that 
 read is skipped.</p></li>
 <li><p><strong>A containing project.</strong> A file no build record claims is looked for in a containing
 project instead: the server walks from the file’s directory up to the workspace root and
-checks the file under the project descriptions of the nearest directory that include it.</p></li>
+checks the file under the project descriptions of the nearest directory that include it.
+A description the server cannot read, because a plugin of its own raises, is named as a
+<code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> finding on that description, and the opened file falls through to the
+standalone checks below - so the thinner answer is never given silently.</p></li>
 <li><p><strong>Standalone.</strong> A file belonging to no build and to no such project is still checked, on
 its own, but only for what one file can decide. The ten checks that need every component
 of a project - <code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,

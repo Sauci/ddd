@@ -252,8 +252,32 @@ runs under the same writer as the built-in artefacts, so two artefacts claiming 
 refused exactly as between the c and the a2l backends. <code class="docutils literal notranslate"><span class="pre">all</span></code> runs them after the built-in
 pair, in the order the project names the plugins, so a build gets a plugin’s artefact without
 naming it; <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> names the plugins with <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> (see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>).</p>
+<p>Both returns are checked where they are made: <code class="docutils literal notranslate"><span class="pre">backend</span></code> returns a backend - a <code class="docutils literal notranslate"><span class="pre">name</span></code> that
+is a string and a callable <code class="docutils literal notranslate"><span class="pre">generate</span></code> - and <code class="docutils literal notranslate"><span class="pre">generate</span></code> returns a list of
+<code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code>, each a <code class="docutils literal notranslate"><span class="pre">Path</span></code> and the <code class="docutils literal notranslate"><span class="pre">str</span></code> to write to it. Anything else is a usage
+error naming the plugin and the hook it came from, rather than an <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> from
+somewhere further down. <code class="docutils literal notranslate"><span class="pre">output_dir</span></code> is handed to <code class="docutils literal notranslate"><span class="pre">generate</span></code> already resolved, so a path
+built from it is absolute and says what it means: build every path from it, and keep every
+one inside it. A file that lands outside the output directory - through <code class="docutils literal notranslate"><span class="pre">..</span></code>, or an
+absolute path elsewhere entirely - is a usage error naming the backend and the path, before
+anything is written. Two paths that resolve to one file are the clash above, however
+differently they are spelled: a plugin’s artefact must not take the name of a built-in one,
+and neither a <code class="docutils literal notranslate"><span class="pre">..</span></code> in the middle nor a directory junction makes a second claim on that name
+a different one.</p>
 <p>A hook that raises is a defect of the plugin, not a finding about the project: the exception
-is reported as a usage error naming the plugin and the hook, with exit code 2.</p>
+is reported as a usage error naming the plugin and the hook, with exit code 2, after the
+findings the run had already gathered. A hook, or a validator on a plugin’s own model,
+returns; one that calls <code class="docutils literal notranslate"><span class="pre">sys.exit</span></code> is reported the same way, naming the code it exited with,
+rather than ending the run with that code and printing nothing. The language server, which has
+no usage error to give, reports either of them as a <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> finding and keeps
+serving the workspace; and a module body that exits while it is imported is <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>
+exactly as one that raises there.</p>
+<p>The models are the one place where raising is part of the contract. A <code class="docutils literal notranslate"><span class="pre">&#64;field_validator</span></code> on
+<code class="docutils literal notranslate"><span class="pre">object_model</span></code> or <code class="docutils literal notranslate"><span class="pre">project_model</span></code> runs on every block written against it, and the
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> or <code class="docutils literal notranslate"><span class="pre">AssertionError</span></code> pydantic turns into a <code class="docutils literal notranslate"><span class="pre">ValidationError</span></code> is how a model
+refuses a block: that verdict is a <code class="docutils literal notranslate"><span class="pre">schema</span></code> finding on the reader’s file, located at the
+failing key. Anything else the model raises is the plugin’s own defect and is reported the way
+a hook’s is - one line naming the plugin, exit 2, <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> in the language server.</p>
 </section>
 <section id="writing-a-well-behaved-plugin">
 <h3>Writing a well-behaved plugin<a class="headerlink" href="#writing-a-well-behaved-plugin" title="Link to this heading"></a></h3>
@@ -262,9 +286,15 @@ is reported as a usage error naming the plugin and the hook, with exit code 2.</
 name. Keep the module itself stateless - it is imported once per process and reused across
 every project and every run of the language server, so anything it accumulates in a global
 leaks between projects that have nothing to do with each other; editing the plugin file only
-takes effect the next time a process starts. <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code>, what a <code class="docutils literal notranslate"><span class="pre">backend</span></code> hook
-returns from <code class="docutils literal notranslate"><span class="pre">generate</span></code>, is imported from <code class="docutils literal notranslate"><span class="pre">ddd.backends</span></code>. A block read back from an older
-dump may predate a field the plugin added since - <code class="docutils literal notranslate"><span class="pre">model_validate</span></code> fills it from the
+takes effect the next time a process starts. A <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin is one module, loaded from the
+location the project names rather than imported as part of a package: it has no package of
+its own, so <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">.</span> <span class="pre">import</span> <span class="pre">helper</span></code> is “attempted relative import with no known parent
+package”, and a plain <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">helper</span></code> is resolved against <code class="docutils literal notranslate"><span class="pre">sys.path</span></code> like any other
+import, finding the file next to the plugin only where the environment would have found it
+from anywhere else too. Code shared between plugins belongs in a package the environment can
+import, which a project names by its dotted spelling. <code class="docutils literal notranslate"><span class="pre">GeneratedFile</span></code>, what a <code class="docutils literal notranslate"><span class="pre">backend</span></code>
+hook returns from <code class="docutils literal notranslate"><span class="pre">generate</span></code>, is imported from <code class="docutils literal notranslate"><span class="pre">ddd.backends</span></code>. A block read back from an
+older dump may predate a field the plugin added since - <code class="docutils literal notranslate"><span class="pre">model_validate</span></code> fills it from the
 model’s default if there is one, and raises otherwise - and what to do about that gap is the
 plugin’s own decision, not one the api makes for it.</p>
 <p>Naming a plugin runs it. That is true of every <code class="docutils literal notranslate"><span class="pre">ddd</span></code> command on the project, and of the

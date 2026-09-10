@@ -107,6 +107,9 @@ three stages:
 * **A containing project.** A file no build record claims is looked for in a containing
   project instead: the server walks from the file's directory up to the workspace root and
   checks the file under the project descriptions of the nearest directory that include it.
+  A description the server cannot read, because a plugin of its own raises, is named as a
+  ``plugin-invalid`` finding on that description, and the opened file falls through to the
+  standalone checks below - so the thinner answer is never given silently.
 * **Standalone.** A file belonging to no build and to no such project is still checked, on
   its own, but only for what one file can decide. The ten checks that need every component
   of a project - ``unknown-type``, ``unknown-unit``, ``unknown-section``,

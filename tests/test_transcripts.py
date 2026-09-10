@@ -71,6 +71,13 @@ CHECKOUT = "/home/you/ddd"
 NAMED_FILE = re.compile(r"``([\w./-]+\.ddd\.json)``")
 OUTPUT = ("-o", "--output-dir")
 """The flags whose argument names something the command writes rather than something it reads."""
+TERMINAL_WIDTH = 80
+"""The width a page's transcripts are shown at, which is what argparse wraps a help text to.
+
+Without it the width is whoever is running the suite's: captured output falls back to eighty
+columns, but ``pytest -s`` in a wide terminal would rewrap ``ddd lsp --help`` and fail the page
+that pins it.
+"""
 SCRIPTS = Path(sysconfig.get_path("scripts"))
 """Where ``ddd`` is installed for this interpreter, put first on the path of a shell run."""
 
@@ -270,6 +277,7 @@ def run(
     """
     prepare(transcript, cwd)
     monkeypatch.chdir(cwd)
+    monkeypatch.setenv("COLUMNS", str(TERMINAL_WIDTH))
     command, _, target = transcript.command.partition(" > ")
     stream, payload = io.StringIO(), io.StringIO()
     with (
@@ -295,6 +303,7 @@ def run_in_shell(transcript: Transcript, cwd: Path) -> tuple[list[str], int]:
         "PATH": f"{SCRIPTS}{os.pathsep}{os.environ.get('PATH', '')}",
         "PYTHONPATH": str(ROOT / "src"),
         "PYTHONUTF8": "1",
+        "COLUMNS": str(TERMINAL_WIDTH),
     }
     completed = subprocess.run(
         [bash, "-c", transcript.command],

@@ -818,9 +818,10 @@ the same components: their generated headers differ, so two automatic sets would
 include order to decide which set a component compiles against.  DDD refuses that rather than
 letting the order decide it - the second `ddd_generate` stops the configure step.  Such a
 project gives `NO_PROPAGATE_HEADERS` to **both** calls and links the wanted
-`<stem>_ddd_headers` into each component explicitly; opting out of only one of the two leaves
-the same ambiguity in place, because the automatic set still reaches every registered
-component rather than only the ones that image links.
+`<stem>_ddd_headers` into each component explicitly - the helper targets are named after the
+image without its extension, so `firmware.elf` gives `firmware_ddd_headers`.  Opting out of
+only one of the two leaves the same ambiguity in place, because the automatic set still
+reaches every registered component rather than only the ones that image links.
 
 The declared outputs are derived from the template names, and the a2l; a `{component}`
 template is left out because its outputs are named after the components, which are only known

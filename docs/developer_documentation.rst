@@ -509,8 +509,9 @@ which the release tag is checked against, and ``editors/vscode/package.json``, w
 extension is packaged with, repeat it, and a test each asserts that they agree with
 ``__version__``. The other five files spell it out as text and nothing derives it for them: the
 wheel file name in ``README.md`` and in :doc:`getting_started`, the two ``ddd --version``
-transcripts of that page, which are the only spellings the transcript test re-runs, and the
-banner of a generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
+transcripts of that page - only the first of which the transcript test re-runs, since the
+second carries a trailing comment and is shown rather than run - and the banner of a
+generated file quoted in :doc:`getting_started`, :doc:`generated_artefacts`,
 :doc:`faq` and :doc:`templates`. Bumping the version means walking all eight in the release
 commit.
 

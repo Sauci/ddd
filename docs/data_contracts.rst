@@ -190,12 +190,13 @@ the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them. Where a
 an alias, the alias is the key that belongs in the json file - ``$schema``, not
 ``schema_reference``.
 
-.. Models carrying a name held to a pattern switch the rendered constraint list off. The
-   constraint would be written into the page as ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``,
-   which docutils reads as two references to targets that do not exist ('A-Za-z_' is a
-   valid reference name followed by an underscore), and the documentation is built with
-   warnings as errors. A linker section name does the same through its own character class.
-   The same information is in the json schema shown below each model.
+.. Models whose pattern docutils would read as a reference switch the rendered constraint
+   list off. The constraint would be written into the page as
+   ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``, which docutils reads as two references to targets
+   that do not exist ('A-Za-z_' is a valid reference name followed by an underscore), and the
+   documentation is built with warnings as errors. A linker section name does the same
+   through its own character class; a pattern with no such token - a raster name's ``^\S+$``
+   - renders as it is. The same information is in the json schema shown below each model.
 
 Project description
 ~~~~~~~~~~~~~~~~~~~

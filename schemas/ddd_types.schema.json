@@ -535,7 +535,7 @@
     },
     "StringConversion": {
       "additionalProperties": false,
-      "description": "Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the A2L record states - and no schema\nconsumer has to know that a string exists. A byte has no reading of its own, so no\nreading is produced for it, as for the identity.",
+      "description": "Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity.",
       "properties": {
         "kind": {
           "const": "string",

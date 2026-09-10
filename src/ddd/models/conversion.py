@@ -191,9 +191,9 @@ class StringConversion(_Frozen):
     and ``{}`` is the identity.
 
     The two mappings are the identity on one byte, so that the derived limits of a string
-    are the raw range of its datatype - which is what the A2L record states - and no schema
-    consumer has to know that a string exists. A byte has no reading of its own, so no
-    reading is produced for it, as for the identity.
+    are the raw range of its datatype - which is what the a2l record states - and nothing
+    that ranges a conversion has to know that a string exists. A byte has no reading of its
+    own, so no reading is produced for it, as for the identity.
     """
 
     kind: Literal["string"]

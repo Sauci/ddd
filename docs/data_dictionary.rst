@@ -36,7 +36,7 @@ implementation:
    {
      "format": 7,
      "name": "DemoDevice",
-     "description": "Demonstration project showing every DDD feature",
+     "description": "Demonstration project showing every kind of data object",
      "source": "demo.ddd.json",
      "components": [
        {

@@ -104,7 +104,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -123,7 +123,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -219,7 +219,7 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -456,7 +456,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -475,7 +475,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -571,7 +571,7 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -754,7 +754,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",
@@ -788,7 +788,7 @@
           "description": "The type's c identifier, as the defining header spells it.\n\nEvery type of a project needs a distinct name, and the rules are those of the declared\ntypes: it cannot read as a base datatype, and it shares the project wide namespace with\nthe structures and the scalars.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -815,7 +815,7 @@
     },
     "IdentityConversion": {
       "additionalProperties": false,
-      "description": "``physical == raw``; the default for every variable.",
+      "description": "``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.\n\nNot a default: a definition naming storage by ``datatype`` states this one where raw and\nphysical are the same number, so that the claim is written down rather than left to\nsilence.",
       "properties": {
         "kind": {
           "const": "identity",
@@ -966,7 +966,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -985,7 +985,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -1081,7 +1081,7 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -1120,7 +1120,7 @@
     },
     "Measurement": {
       "additionalProperties": false,
-      "description": "An online value: written by the software, only measured by the calibration tool.",
+      "description": "An online value: the software writes it, a calibration tool measures it and may write it.\n\nA tool writing one through its address is one of the reasons to declare a measurement\n``volatile``, alongside an interrupt, a second core and a peripheral.",
       "properties": {
         "name": {
           "description": "C identifier of the object; also its name in the a2l.",
@@ -1170,7 +1170,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -1189,7 +1189,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -1285,13 +1285,13 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },
         "kind": {
           "const": "measurement",
-          "description": "An online value the software writes and the calibration tool only reads.",
+          "description": "An online value the software writes; a calibration tool measures it and may write it.",
           "title": "Kind",
           "type": "string"
         },
@@ -1364,7 +1364,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -1541,7 +1541,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -1560,7 +1560,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -1656,7 +1656,7 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },
@@ -1689,7 +1689,7 @@
           "description": "Name of the type; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, for the reason a structure's name is.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -1755,7 +1755,7 @@
       "type": "object"
     },
     "Scope": {
-      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component writes the variable; exactly one component may do so.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
+      "description": "Direction of a variable with respect to the declaring component.\n\n* ``input`` - The component reads the variable; another component has to produce it.\n* ``output`` - The component owns the variable, and for a measurement writes it; exactly one may own it.\n* ``local`` - The component owns the variable exclusively; no other component may use it.",
       "enum": [
         "input",
         "output",
@@ -1763,7 +1763,7 @@
       ],
       "enumDescriptions": [
         "The component reads the variable; another component has to produce it.",
-        "The component writes the variable; exactly one component may do so.",
+        "The component owns the variable, and for a measurement writes it; exactly one may own it.",
         "The component owns the variable exclusively; no other component may use it."
       ],
       "title": "Scope",
@@ -1780,10 +1780,10 @@
           "type": "string"
         },
         "name": {
-          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, which would be a type nothing could ever refer to:\nwhere a name is written, a base datatype wins the union.",
+          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it spells a base datatype, compared without regard to case: a type called\n``uint16``, or ``UINT16``, wears the name of storage it is not, and every declaration\nnaming it would read like a typo.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -1863,7 +1863,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -1882,7 +1882,7 @@
         },
         "unit": {
           "default": "",
-          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only\nchecks that every component declaring this object spells the unit the same way.",
+          "description": "Physical unit, e.g. ``\"Hz\"``.\n\nFree text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:\nevery component declaring this object has to spell it the same way, and where the project\ndeclares a unit vocabulary the spelling is checked against that too (``unknown-unit``).",
           "title": "Unit",
           "type": "string"
         },
@@ -1978,7 +1978,7 @@
           "description": "What this object asks of the a2l file: whether to export it, how to display it.\n\nOnly the a2l backend reads it, so a project that generates no a2l can leave it out\nentirely."
         },
         "volatile": {
-          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral. A calibration object needs it when\nthe calibration tool is to change the value in a running ecu: without it the compiler is\nentitled to use the initialiser in place of a read wherever it can see it - within one\ntranslation unit at every optimisation level, ``-O0`` included, and across them under link\ntime optimisation - and, where the load does survive, to serve two reads from one of them.\nEither way the tool writes a new value the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
+          "description": "Whether the c declaration carries ``volatile``; stated on every definition.\n\nRequired, with no default, and on every kind rather than on measurements alone. Both\nfollow from what the qualifier does, which is to forbid the compiler to assume it already\nknows the value.\n\nA measurement needs it when something outside the reading component's control writes the\nvariable - an interrupt, a second core, a peripheral, or a calibration tool writing\nthrough its address. A calibration object needs it when the calibration tool is to change\nthe value in a running ecu: without it the compiler is entitled to use the initialiser in\nplace of a read wherever it can see it - within one translation unit at every optimisation\nlevel, ``-O0`` included, and across them under link time optimisation - and, where the\nload does survive, to serve two reads from one of them. Either way the tool writes a new\nvalue the software does not pick up.\n\nInterface rather than storage, because it reaches every component that reads the object:\ntheir header declares it ``extern volatile``, which is what tells their code not to cache\nthe value and not to expect two reads to agree. Every declaration of one object therefore\nhas to say the same thing, and a disagreement is an error.\n\nThere is no default because there is no answer DDD could derive - unlike ``limits``, which\nfollow from the datatype and the conversion. The two answers have different costs and only\nthe project knows which it is paying: ``true`` keeps a value tunable and, on a typical\ntoolchain, moves a calibration object out of read-only memory; ``false`` keeps it in flash\nand lets the optimiser cache it. Saying nothing would pick one of them silently, and the\none it picked would be wrong roughly as often as not.",
           "title": "Volatile",
           "type": "boolean"
         },

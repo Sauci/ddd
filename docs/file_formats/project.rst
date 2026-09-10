@@ -17,7 +17,7 @@ on the generated a2l. ``examples/demo/demo.ddd.json`` is a complete one:
    {
      "project": {
        "name": "DemoDevice",
-       "description": "Demonstration project showing every DDD feature",
+       "description": "Demonstration project showing every kind of data object",
        "includes": [
          "components/*.ddd.json",
          "subsystems/logging/logging.ddd.json"
@@ -27,7 +27,7 @@ on the generated a2l. ``examples/demo/demo.ddd.json`` is a complete one:
 
 .. code-block:: text
 
-   $ ddd check demo.ddd.json
+   $ ddd check examples/demo/demo.ddd.json
    ok: 21 variables in 4 components are consistent
 
 The keys
@@ -92,9 +92,10 @@ Wildcards
 ~~~~~~~~~
 
 Shell style wildcards are expanded: ``*`` for any part of a name, ``?`` for a single
-character, and ``**`` for any number of directory levels. With ``components/*.ddd.json``,
-adding a component to the project is a matter of adding its file - nobody has to remember to
-edit the project as well, and nobody can forget to.
+character, ``[...]`` for a character class, and ``**`` for any number of directory levels.
+An entry holding one of ``*``, ``?`` or ``[`` is a pattern; anything else is a literal path.
+With ``components/*.ddd.json``, adding a component to the project is a matter of adding its
+file - nobody has to remember to edit the project as well, and nobody can forget to.
 
 .. code-block:: json
 
@@ -128,6 +129,18 @@ renamed or a component that never arrived:
 ``include-empty`` is an error by default but can be relaxed, because a pattern that is
 legitimately empty in one variant of a project is a normal thing to allow - a project built
 for several targets may have an ``optional/*.ddd.json`` that only some of them fill.
+
+An entry without a wildcard character is a literal path naming exactly one file, and a
+missing one - or a path that turns out to name a directory - is ``file-not-found``, which
+cannot be relaxed at all: a pattern may legitimately match nothing, a named file may not be
+absent.
+
+The matches of one pattern are processed in sorted order of their resolved paths, so that
+which component loads first is a property of the names rather than of how a file system
+happens to enumerate a directory. That order is what "the first declaration in load order"
+means wherever a rule falls back to it: the declaration that stands in for the producer in a
+project relaxing ``missing-producer``, and the limits an object takes when its producer
+states none.
 
 Components and sub-projects in the same list
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -235,7 +248,7 @@ sub-project and every component:
 
 .. code-block:: text
 
-   $ ddd sources demo.ddd.json
+   $ ddd sources examples/demo/demo.ddd.json
    /home/you/ddd/examples/demo/components/controller.ddd.json
    /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
    /home/you/ddd/examples/demo/components/user_interface.ddd.json

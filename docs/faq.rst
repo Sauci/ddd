@@ -86,7 +86,7 @@ What remains is everything a component can get wrong on its own: reserved and co
 identifiers, initial values that do not fit their datatype, limits outside the range the
 datatype can represent, references to axes that do not exist or are of the wrong
 kind. That is the check worth running in the component's own
-pipeline, and the cmake integration wires exactly this invocation - the same two overrides -
+pipeline, and the cmake integration wires exactly this invocation, ``ddd check --standalone``,
 into the ``<target>.ddd`` target it creates for every registered component (see
 :doc:`build integration </build_integration>`).
 
@@ -506,8 +506,8 @@ from the linker output by whatever already parses it in your build:
 
 .. code-block:: text
 
-   $ ddd generate all demo.ddd.json -o gen -t templates --address-map addresses.json
-   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'FlagA' and 10 others; they reach the a2l at address 0
+   $ ddd generate all examples/demo/demo.ddd.json -o gen -t examples/templates --address-map addresses.json
+   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 11 others; they reach the a2l at address 0
    1 warning
    ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
@@ -656,12 +656,13 @@ produces each of its inputs, and that answer depends on what else is in the imag
    extern uint8_t ValueA;  /* produced by <unresolved> */
 
 This is why the cmake integration refuses the ambiguous case instead of letting an include
-order decide it: only one ``ddd_generate`` call may hand its ``<image>_ddd_headers`` to the
-registered components automatically, and a project with several images has to give
-``NO_PROPAGATE_HEADERS`` to *both* calls and link the wanted ``<image>_ddd_headers`` into
-each component explicitly. That target carries the registered components' compile usage as
-well as the include directory, so linking it by hand hands a component those flags too. See
-:doc:`build integration </build_integration>`.
+order decide it: only one ``ddd_generate`` call may hand its ``<stem>_ddd_headers`` to the
+registered components automatically - the helper targets are named after the image without its
+extension, so ``firmware.elf`` gives ``firmware_ddd_headers`` - and a project with several
+images has to give ``NO_PROPAGATE_HEADERS`` to *both* calls and link the wanted
+``<stem>_ddd_headers`` into each component explicitly. That target carries the registered
+components' compile usage as well as the include directory, so linking it by hand hands a
+component those flags too. See :doc:`build integration </build_integration>`.
 
 Why does regenerating not retrigger my build?
 ----------------------------------------------

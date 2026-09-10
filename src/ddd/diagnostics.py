@@ -151,7 +151,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a declared type is used where its shape does not fit"),
         _check("type-cycle", Severity.ERROR,
                "structures nest each other, directly or through others"),
-        _check("reserved-identifier", Severity.ERROR, "a name collides with a c keyword"),
+        _check("reserved-identifier", Severity.ERROR,
+               "a name is a c keyword, a name <stdint.h> or <stdbool.h> declares, or one c "
+               "reserves for the implementation"),
         _check("name-collision", Severity.ERROR,
                "two generated names collide in the same c namespace or file name"),
         _check("duplicate-declaration", Severity.ERROR,

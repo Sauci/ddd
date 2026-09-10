@@ -61,14 +61,24 @@ packages = ["src/ddd"]
 # The file patterns are anchored with a leading slash: an unanchored "README.md" matches at
 # any depth, the way a .gitignore line would, and pulled editors/vscode/README.md and
 # assets/logo/README.md into the sdist.
+#
+# The sdist carries the tests and the documentation on purpose - it is what an evaluator is
+# sent - so it has to carry what those two read outside src/. The documentation tests read
+# the workflows, the extension manifest and the pre-commit hook definition; the docs build
+# takes its logo and its favicon from assets/logo/. Anything left out here is not a smaller
+# archive, it is a suite that stops at collection and a build that fails on a missing image.
 include = [
     "/src/ddd",
+    "/assets",
     "/cmake",
     "/docker",
     "/docs",
+    "/editors/vscode",
     "/examples",
     "/schemas",
     "/tests",
+    "/.github/workflows",
+    "/.pre-commit-hooks.yaml",
     "/CHANGELOG.md",
     "/LICENSE",
     "/README.md",

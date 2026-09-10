@@ -27,7 +27,12 @@ power of two. The file is listed in the ``includes`` of a project like any other
 description, and ``ddd schema sections`` prints its published contract.
 ``examples/vocabulary`` is a ready to run project placing measurements and a parameter
 into exactly these two sections, next to the :doc:`unit vocabulary <units>` and the
-:doc:`constants <constants>` of the same project; it checks clean.
+:doc:`constants <constants>` of the same project; it checks clean:
+
+.. code-block:: text
+
+   $ ddd check examples/vocabulary/project.ddd.json
+   ok: 4 variables in 1 component are consistent
 
 A definition then states its ``section`` - a storage key like ``init``: the producer states
 it, a consumer stating one is refused as ``consumer-storage``, and a structured variable is
@@ -55,7 +60,7 @@ declared properties is a name the checks below can say nothing about:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project placing an object in the undeclared '.calibb'
    a.ddd.json#component.interface[2].definition.section: error[unknown-section]: 'Bad' is placed in '.calibb', which is not a section any file of this project declares - did you mean '.calib'?
    1 error
 
@@ -65,7 +70,7 @@ live in either - ``const`` data in RAM is a mirrored calibration:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # the same project with 'Bad' a measurement in the read-only '.calib'
    a.ddd.json#component.interface[2].definition.section: error[section-access]: 'Bad' is a measurement, which the software writes, but '.calib' is read-only
    1 error
 
@@ -75,7 +80,7 @@ its members' datatypes and the compiler's word on the real layout is final:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # the same project with 'Gain' needing four byte alignment
    a.ddd.json#component.interface[1].definition.section: warning[section-alignment]: 'Gain' needs an alignment of 4, but '.calib' guarantees 2
    1 warning
 

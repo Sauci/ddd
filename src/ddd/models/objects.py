@@ -68,7 +68,7 @@ class ObjectKind(StrEnum):
     """What sort of data object a definition describes."""
 
     MEASUREMENT = "measurement"
-    """An online value the software writes and the calibration tool only reads."""
+    """An online value the software writes; a calibration tool measures it and may write it."""
 
     PARAMETER = "parameter"
     """A single calibratable constant."""
@@ -319,8 +319,9 @@ class DataObject(_Frozen):
     unit: str = ""
     """Physical unit, e.g. ``"Hz"``.
 
-    Free text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only
-    checks that every component declaring this object spells the unit the same way.
+    Free text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:
+    every component declaring this object has to spell it the same way, and where the project
+    declares a unit vocabulary the spelling is checked against that too (``unknown-unit``).
     """
 
     section: Annotated[str, StringConstraints(pattern=SECTION_NAME_PATTERN)] | None = None
@@ -388,12 +389,13 @@ class DataObject(_Frozen):
     knows the value.
 
     A measurement needs it when something outside the reading component's control writes the
-    variable - an interrupt, a second core, a peripheral. A calibration object needs it when
-    the calibration tool is to change the value in a running ecu: without it the compiler is
-    entitled to use the initialiser in place of a read wherever it can see it - within one
-    translation unit at every optimisation level, ``-O0`` included, and across them under link
-    time optimisation - and, where the load does survive, to serve two reads from one of them.
-    Either way the tool writes a new value the software does not pick up.
+    variable - an interrupt, a second core, a peripheral, or a calibration tool writing
+    through its address. A calibration object needs it when the calibration tool is to change
+    the value in a running ecu: without it the compiler is entitled to use the initialiser in
+    place of a read wherever it can see it - within one translation unit at every optimisation
+    level, ``-O0`` included, and across them under link time optimisation - and, where the
+    load does survive, to serve two reads from one of them. Either way the tool writes a new
+    value the software does not pick up.
 
     Interface rather than storage, because it reaches every component that reads the object:
     their header declares it ``extern volatile``, which is what tells their code not to cache
@@ -503,7 +505,11 @@ class DataObject(_Frozen):
 
 
 class Measurement(DataObject):
-    """An online value: written by the software, only measured by the calibration tool."""
+    """An online value: the software writes it, a calibration tool measures it and may write it.
+
+    A tool writing one through its address is one of the reasons to declare a measurement
+    ``volatile``, alongside an interrupt, a second core and a peripheral.
+    """
 
     kind: Literal[ObjectKind.MEASUREMENT]
     dimensions: tuple[Dimension, ...] = ()

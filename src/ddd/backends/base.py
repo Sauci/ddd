@@ -4,8 +4,9 @@ A backend turns a :class:`~ddd.ir.DataDictionary` into files. It may know everyt
 its own output format and nothing about the others: the c backend does not know that a2l
 exists, the a2l backend does not know what a ``uint16_t`` is called. Adding a third output -
 a header for another language, a csv, an ARXML - means adding a package next to them,
-exporting it from :mod:`ddd.backends`, and adding it to the list ``_command_generate``
-assembles in :mod:`ddd.cli`. Nothing else has to change.
+exporting it from :mod:`ddd.backends`, registering the artefact in :mod:`ddd.cli` and naming
+it in the suites that enumerate the artefacts; "Adding an output format" in the developer
+documentation lists the steps. Neither existing backend is touched by any of them.
 """
 
 from __future__ import annotations
@@ -112,7 +113,7 @@ def render(
                     else f"the {backend.name} and {previous} backends would both write "
                     f"'{path.name}'"
                 )
-                msg = f"{who}; rename the component or choose a different prefix"
+                msg = f"{who}; rename the component or the template"
                 raise ValueError(msg)
             produced_by[path] = backend.name
             files.append(GeneratedFile(path, file.content))

@@ -18,7 +18,8 @@ Two properties are deliberate and easy to lose:
   this file. Requiring it to exist would fail every first configure.
 * **The file is not named** ``*.ddd.json``. That extension means "a DDD description file", the
   ``file-extension`` check enforces it, and ``file-kind`` would then reject this content for
-  having none of the four top level keys. It is a document *about* a project, not one.
+  having none of the top level keys a description may have. It is a document *about* a
+  project, not one.
 """
 
 from __future__ import annotations

@@ -143,7 +143,7 @@
           "type": "string"
         },
         "value": {
-          "description": "The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
+          "description": "The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it.",
           "maximum": 18446744073709551615,
           "minimum": -9223372036854775808,
           "title": "Value",
@@ -177,7 +177,7 @@
           "description": "The type's c identifier, as the defining header spells it.\n\nEvery type of a project needs a distinct name, and the rules are those of the declared\ntypes: it cannot read as a base datatype, and it shares the project wide namespace with\nthe structures and the scalars.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -204,7 +204,7 @@
     },
     "IdentityConversion": {
       "additionalProperties": false,
-      "description": "``physical == raw``; the default for every variable.",
+      "description": "``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.\n\nNot a default: a definition naming storage by ``datatype`` states this one where raw and\nphysical are the same number, so that the claim is written down rather than left to\nsilence.",
       "properties": {
         "kind": {
           "const": "identity",
@@ -321,7 +321,7 @@
             {
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+              "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
               "type": "string"
             },
             {
@@ -460,7 +460,7 @@
           "description": "Name of the type; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, for the reason a structure's name is.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },
@@ -536,10 +536,10 @@
           "type": "string"
         },
         "name": {
-          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it reads as a base datatype, which would be a type nothing could ever refer to:\nwhere a name is written, a base datatype wins the union.",
+          "description": "Name of the structure; every type of a project needs a distinct one.\n\nRefused if it spells a base datatype, compared without regard to case: a type called\n``uint16``, or ``UINT16``, wears the name of storage it is not, and every declaration\nnaming it would read like a typo.",
           "maxLength": 128,
           "minLength": 1,
-          "pattern": "^(?!(?:boolean|float32|float64|sint16|sint32|sint64|sint8|uint16|uint32|uint64|uint8)$)[A-Za-z_][A-Za-z0-9_]*$",
+          "pattern": "^(?!(?:[Bb][Oo][Oo][Ll][Ee][Aa][Nn]|[Ff][Ll][Oo][Aa][Tt]32|[Ff][Ll][Oo][Aa][Tt]64|[Ss][Ii][Nn][Tt]16|[Ss][Ii][Nn][Tt]32|[Ss][Ii][Nn][Tt]64|[Ss][Ii][Nn][Tt]8|[Uu][Ii][Nn][Tt]16|[Uu][Ii][Nn][Tt]32|[Uu][Ii][Nn][Tt]64|[Uu][Ii][Nn][Tt]8)$)[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Name",
           "type": "string"
         },

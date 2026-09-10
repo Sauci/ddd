@@ -25,14 +25,19 @@ the ``includes`` of a project like any other description, and ``ddd schema units
 its published contract. ``examples/vocabulary`` is a ready to run project that declares a
 vocabulary like this next to its :doc:`memory sections <sections>` and
 :doc:`constants <constants>`; it checks clean, so it is the file set to start a project of
-your own from.
+your own from:
+
+.. code-block:: text
+
+   $ ddd check examples/vocabulary/project.ddd.json
+   ok: 4 variables in 1 component are consistent
 
 With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose component states the unit 'newton_meter'
    a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'newton_meter' is not a unit this project declares
    1 error
 
@@ -46,7 +51,7 @@ A unit declared a second time, in the same file or another, is refused rather th
 
 .. code-block:: text
 
-   $ ddd check p.ddd.json
+   $ ddd check p.ddd.json  # a project whose two units files both declare 'Nm'
    two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is already declared
        note: one.ddd.json#units[0]: first declared here
    1 error

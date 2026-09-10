@@ -39,9 +39,10 @@ when somebody last wrote it down. This README is the short version.
 
 `ddd --version` prints the release, and [CHANGELOG.md](CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
-while the major version is `0`. The check identifiers, the command names and the json file
-formats are the tool's public interface; the generated a2l is ASAP2 1.6.1. Licence terms are
-in [LICENSE](LICENSE), and problems belong in the
+while the major version is `0`. The check identifiers, the command names and their options,
+the json file formats, the `ddd_generate()` and `ddd_add_component()` signatures and the names
+a c template renders from are the tool's public interface; the generated a2l is ASAP2 1.6.1.
+Licence terms are in [LICENSE](LICENSE), and problems belong in the
 [issue tracker](https://github.com/Sauci/ddd/issues).
 
 ## Installation
@@ -246,10 +247,11 @@ this repository, so cloning it is enough to see the effect.
 }
 ```
 
-`includes` lists components **or other projects**; the kind of each file is detected from
-its content.  Paths are relative to the file that contains them, `*`, `?` and `**`
-wildcards are expanded, and a file reached over two different paths is loaded once.
-Include cycles are reported instead of hanging.
+`includes` lists components **or other projects**, and the types, units, sections,
+constants and rasters files below; the kind of each file is detected from its content.
+Paths are relative to the file that contains them, `*`, `?`, `[...]` and `**` wildcards are
+expanded, and a file reached over two different paths is loaded once.  Include cycles are
+reported instead of hanging.
 
 `plugins` names the python modules the project extends itself with, and `extensions` holds
 each one's settings, keyed by plugin name; see [Plugins](#plugins) below.
@@ -314,7 +316,7 @@ unchanged, and any component may name them
 | `datatype` | one of the two | `boolean`, `uint8`, `sint8`, `uint16`, `sint16`, `uint32`, `sint32`, `uint64`, `sint64`, `float32`, `float64`.  Exactly one of `datatype` and `typename` is stated |
 | `typename` | one of the two | the name of a declared type, stated instead of `datatype`: a scalar type fixes what the value means, a structure makes this a structured variable |
 | `description` | `""` | offered to the c templates as the text of a comment, and used as the a2l long identifier |
-| `unit` | `""` | physical unit; components sharing a variable must agree on it |
+| `unit` | `""` | physical unit, as free text; components sharing a variable must agree on it, and where the project declares a [unit vocabulary](https://sauci.github.io/ddd/latest/file_formats/units.html) the spelling is checked against that too (`unknown-unit`) |
 | `conversion` | required beside `datatype` | raw to physical conversion, see below.  Stated by the declared type instead when `typename` names one |
 | `limits` | derived | physical `min`/`max`.  Omitted, they follow from the datatype and the conversion - except for an `enum`, where they are the smallest and largest enumerator |
 | `section` | none | the linker section the object is placed in, named in the project's sections file.  A storage key like `init`: the producer states it, and an object without one goes wherever the toolchain's defaults put it |
@@ -322,7 +324,7 @@ unchanged, and any component may name them
 | `init` | `null` | raw initial value; `null` means implicit zero initialisation |
 | `volatile` | required | whether the generated declaration carries the c keyword of the same name.  Stated on every kind, and with no default, because nothing in the description derives it - see below |
 | `a2l` | export | per object a2l tuning |
-| `extensions` | none | settings for a [plugin](#plugins)'s block, keyed by plugin name, stated by the producing declaration only |
+| `extensions` | `{}` | settings for a [plugin](#plugins)'s block, keyed by plugin name, stated by the producing declaration only |
 
 `init` accepts a scalar or a nested list matching the shape of the object.  A scalar given
 for an array initialises **every** element, so `"dimensions": [10], "init": 1` is enough.
@@ -330,9 +332,10 @@ for an array initialises **every** element, so `"dimensions": [10], "init": 1` i
 ### Kinds of data object
 
 Every definition states its `kind`.  A `measurement` is an online value that the software
-writes and the calibration tool only reads; everything else is calibration data, which the
-software never writes, so it is generated `const`.  (`kind` is stated rather than defaulting
-to `measurement`, so that a file bound to `ddd schema` in an editor validates without the
+writes and a calibration tool measures - and may itself write, which is one of the reasons
+to declare one `volatile`; everything else is calibration data, which the software never
+writes, so it is generated `const`.  (`kind` is stated rather than defaulting to
+`measurement`, so that a file bound to `ddd schema` in an editor validates without the
 ambiguity a defaulted discriminator leaves in the schema.)
 
 | kind | extra keys | generated c | a2l |
@@ -372,16 +375,16 @@ the same break points store them once.
 answer DDD could derive the way it derives limits from a datatype - the two answers cost
 different things and only the project knows which of them it is paying for.  A measurement
 needs it when something outside the reading component writes the variable: an interrupt, a
-second core, a peripheral.  Calibration data needs it when a calibration tool is to change
-the value in a running ecu, because with plain `const` the compiler is entitled to fold the
-initialiser into the code that reads it, and gcc does wherever it can see that initialiser -
-within one translation unit that is not an optimisation a debug build escapes but a
-substitution the front end makes while parsing, so it happens at `-O0` as much as at `-O2`,
-to an array element at a constant index as much as to a scalar, and to a value read once at
-startup as much as to one read in a loop; across translation units it is what `-flto` does.
-Where the load survives, `const` still lets the compiler serve two reads from one of them and
-move it across a call.  Either way, a program that writes a new value through such an
-object's address prints it back out of memory and then goes on computing with the old one.
+second core, a peripheral, or a calibration tool.  Calibration data needs it when a tool is
+to change the value in a running ecu, because with plain `const` the compiler is entitled
+to fold the initialiser into the code that reads it, and gcc does wherever it can see that
+initialiser - within one translation unit that is not an optimisation a debug build escapes
+but a substitution the front end makes while parsing, so it happens at `-O0` as much as at
+`-O2`, to an array element at a constant index as much as to a scalar, and to a value read
+once at startup as much as to one read in a loop; across translation units it is what `-flto`
+does.  Where the load survives, `const` still lets the compiler serve two reads from one of
+them and move it across a call.  Either way, a program that writes a new value through such
+an object's address prints it back out of memory and then goes on computing with the old one.
 
 What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
 side effect and takes the object out of the read only category, so `.rodata` becomes a plain
@@ -488,7 +491,7 @@ further to say, or because a project cannot be interpreted without the plugins i
 | error | `definition-mismatch` | components disagree on kind, datatype, unit, scaling, shape, volatility, limits or axes.  Limits are compared only where both sides state them: a consumer that leaves them out defers to the producer; `volatile` is not relaxed that way, since every declaration states it and there is no silence to interpret |
 | error | `duplicate-declaration` | a component declares the same variable twice |
 | error | `duplicate-component` | two files use the same component name |
-| error | `duplicate-type` | two files declare the same structured datatype name |
+| error | `duplicate-type` | two files declare the same type name, whichever of the three kinds it is: structure, scalar type or external type |
 | error | `duplicate-unit` | a unit is declared more than once, in one file or across files |
 | error | `duplicate-section` | a memory section is declared more than once, in one file or across files |
 | error | `duplicate-constant` | a constant is declared more than once, in one file or across files |
@@ -507,7 +510,7 @@ further to say, or because a project cannot be interpreted without the plugins i
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
-| error | `reserved-identifier` | a name collides with a c keyword or with something `<stdint.h>` declares |
+| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares, or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
@@ -566,7 +569,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether the object still lives in read only memory |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |
@@ -613,7 +616,7 @@ actually changed, so unchanged output does not trigger a rebuild:
 
 | file | from | content |
 | --- | --- | --- |
-| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
+| `ddd_types.h` | `ddd_types.h.jinja2` | `<stdint.h>`/`<stdbool.h>`, the headers declaring the external types in use, one `#define` per declared constant, one `typedef enum` per enum conversion and one `typedef struct` per declared structure |
 | `ddd_globals.h` | `ddd_globals.h.jinja2` | `extern` declaration of every variable, for `ddd_globals.c` only |
 | `ddd_globals.c` | `ddd_globals.c.jinja2` | the single definition of every global variable, grouped by owner |
 | `<Component>.h` | `{component}.h.jinja2` | the interface of one component: nothing else is visible |
@@ -660,11 +663,16 @@ opt-in.
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
 build, once the linker has decided the addresses - and `ddd generate all` produces both, and
-the artefact of every plugin the project names that provides one, in one run.  Each artefact
-takes only its own options.  Useful ones: `--dry-run`
-(reports what would be written and exits `0` either way, so it is not a staleness gate on
-its own), `--force` (generate despite errors - the files are written using the producing
-component's definition, but the command still reports every finding and still exits `1`),
+the artefact of every plugin the project names that provides one, in one run.  `all` alone
+takes `--without c` or `--without a2l`, repeatable, which leaves that built-in artefact out of
+the run and produces everything else, the plugins' artefacts included; naming `c` instead
+produces no plugin artefact at all, so a project that names a plugin and used to spell
+`ddd generate c` wants `ddd generate all --without a2l`.  Each artefact takes only its own
+options, and subtracting an artefact takes its options with it, so `--without a2l` beside an
+`--address-map` is refused rather than quietly ignored.  Useful ones: `--dry-run` (reports
+what would be written and exits `0` either way, so it is not a staleness gate on its own),
+`--force` (generate despite errors - the files are written using the producing component's
+definition, but the command still reports every finding and still exits `1`),
 `--byte-order big`, `--address-map addresses.json`.
 
 ## A2L support
@@ -806,15 +814,24 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
-the same components: their generated headers differ, so only one image may hand its
-`<image>_ddd_headers` to the components automatically - the second call has to opt out and be
-wired explicitly.
-DDD refuses the ambiguous case rather than letting an include order decide it.
+the same components: their generated headers differ, so two automatic sets would leave an
+include order to decide which set a component compiles against.  DDD refuses that rather than
+letting the order decide it - the second `ddd_generate` stops the configure step.  Such a
+project gives `NO_PROPAGATE_HEADERS` to **both** calls and links the wanted
+`<stem>_ddd_headers` into each component explicitly - the helper targets are named after the
+image without its extension, so `firmware.elf` gives `firmware_ddd_headers`.  Opting out of
+only one of the two leaves the same ambiguity in place, because the automatic set still
+reaches every registered component rather than only the ones that image links.
 
 The declared outputs are derived from the template names, and the a2l; a `{component}`
 template is left out because its outputs are named after the components, which are only known
 once the description files have been read.  That is why
 consumers depend on `firmware_ddd_headers` rather than on an individual header path.
+
+Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
+`ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object
+reaches a commit without an identity
+([documentation](https://sauci.github.io/ddd/latest/build_integration.html)).
 
 ## Compiling the generated code (docker / WSL)
 
@@ -849,7 +866,7 @@ docker compose run --rm ddd ddd list examples/demo/demo.ddd.json
    `-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual -Wstrict-prototypes`,
 4. links all objects into one binary, which is where a duplicated definition or a
    declaration without a definition would show up, and
-5. compares `nm` against `ddd list --format json` so that every variable DDD promised is
+5. compares `nm` against `ddd dump --format json` so that every variable DDD promised is
    defined exactly once and nothing else is ([docker/verify_symbols.py](docker/verify_symbols.py)).
 
 Steps 2 to 5 run twice, once plain and once with `-DFEATURE_X`, so the conditional
@@ -866,8 +883,12 @@ declarations are covered in both states:
 
 Point it at your own project with
 `docker compose run --rm compile ddd-compile path/to/project.ddd.json build/mine`, and use the
-`CDEFS`, `GENFLAGS`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change the defines,
-the `ddd generate` flags, the warning set or the compiler.
+`CDEFS`, `GENFLAGS`, `TEMPLATES`, `CFLAGS`, `CC` and `INCLUDES` environment variables to change
+the defines, the `ddd generate` flags, the c templates, the warning set, the compiler, and
+where the headers of the project's external types are looked for on top of the nearest
+`include` directory.  `TEMPLATES` defaults to the output of `ddd templates-dir`, which is what
+makes the plain invocation work at all - the generator itself has no templates to fall back
+on.
 
 The working tree is bind mounted at `/work` and `PYTHONPATH=/work/src` shadows the copy
 installed in the image, so code changes take effect without rebuilding.  The container runs

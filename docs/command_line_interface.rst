@@ -213,9 +213,12 @@ or ``ignore``, and ``--strict`` reports every warning as an error.
 The reason the policy lives on the command line rather than in the description files is that
 the same finding means different things in different places. A component checked on its own
 has no counterpart: the components producing its inputs are by definition not part of the
-file, and nobody reads its outputs yet, so the two checks about the other side of the
-interface have to be switched off - while everything DDD can decide from the file alone still
-applies.
+file, nobody reads its outputs yet, and the types, units, sections, constants and rasters it
+names are declared in files it was not handed - so the checks that need the rest of the
+project have to be held back, while everything DDD can decide from the file alone still
+applies. That is what ``ddd check --standalone`` does, in one option rather than in a list of
+``-W`` a build has to keep in step with the registry; :doc:`consistency_checks` names the
+checks it covers, and an explicit ``-W`` on the same run still wins over it.
 
 .. code-block:: text
 
@@ -229,7 +232,7 @@ applies.
    examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
    2 errors, 5 warnings
 
-   $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   $ ddd check examples/demo/components/controller.ddd.json --standalone
    ok: 12 variables in 1 component are consistent
 
 A check identifier or a severity that DDD does not know is a usage error rather than a silent

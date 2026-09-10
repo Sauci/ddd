@@ -4,9 +4,13 @@ Notable changes per release, newest first.  Versions follow
 [semantic versioning](https://semver.org): while the major version is `0`, a minor bump may
 change the file formats, and this file says how.
 
-The check identifiers, the command names and the json file formats are the tool's public
-interface; anything else - the layout of the generated c, the wording of a diagnostic - is
-not, and the templates a project provides are its own.
+The check identifiers, the command names and their options, the json file formats - the
+description files and, beside them, the address map, the dumped dictionary, the `--renames`
+file and the `ddd-build.json` - the `ddd_generate()` and `ddd_add_component()` signatures and
+the names a c template renders from are the tool's public interface, and a release that
+changes one of them says here what the migration costs.  Anything else - the layout of the
+generated c, the wording of a diagnostic - is not, and the templates a project provides are
+its own.
 
 ## Unreleased
 
@@ -175,6 +179,32 @@ not, and the templates a project provides are its own.
   defines "instance" and "leaf" and uses "storage" for the key group alone.  No behaviour
   changed.
 
+* **The published schemas refuse a base datatype's name in any case, as the loader does.**  A
+  declared type may not be called after the storage it is not, and the loader refused
+  `UINT16` as readily as `uint16`; the type name pattern published in the schemas refused
+  only the lower-case spelling, so an editor bound to a schema called a file good that
+  `ddd check` then rejected.  The pattern now spells every letter of every base datatype as a
+  two-letter character class - a json schema pattern carries no flags, and the inline
+  `(?i:...)` form is recent enough that an editor's engine may not have it - and the two
+  agree, so `UINT16` is underlined where it is typed instead of at the next build.
+  **Migration:** nothing the tool itself accepts or refuses has changed, and no description
+  file that used to load stops loading.  What changes is what an editor says while the file
+  is being written, so a project that keeps a copy of the schemas in its own tree regenerates
+  it - `ddd schema all -o <directory>`, or a configure run where `ddd_generate()` writes them
+  through `SCHEMA_DIRECTORY`.
+
+* **The sdist carries what its own tests and its documentation build read.**  The archive
+  ships the tests and the documentation on purpose - it is what an evaluator is sent - but
+  not what either of them reads outside `src/`: from an unpacked archive the documentation
+  tests stopped at collection on `.github/workflows/docs.yml`, and the documentation build,
+  which takes its logo and its favicon from `assets/logo/`, failed on the two missing images
+  under `-W`.  It now carries `assets/`, the editor extension's sources under
+  `editors/vscode/`, `.github/workflows/` and `.pre-commit-hooks.yaml`.  A test derives the
+  paths the suite and the docs build spell as `ROOT / ...`, and the images `docs/conf.py`
+  names, from the sources themselves and holds the include list to them, so the next path
+  added that way is answered in the ordinary test run rather than by whoever installs from the
+  archive.
+
 * **The language server decodes the uri VS Code sends on Windows.**  A client spells a
   Windows file as `file:///c%3A/...`, drive lower-cased and colon escaped, and the server read
   that as the relative path `/c:/...`: it analysed a file that does not exist and exited on
@@ -214,15 +244,15 @@ not, and the templates a project provides are its own.
   `PROJECT` file names - and depends on the ones that are files; the plugins' artefacts
   arrive beside the built-in ones.
 
-* **The registered components' compile usage travels with `<image>_ddd_headers`.**  In the
+* **The registered components' compile usage travels with `<stem>_ddd_headers`.**  In the
   collected mode, `ddd_generate()` used to apply the interface include directories, compile
   definitions and compile options of every registered component privately to
-  `<image>_ddd_globals`, the object library compiling the definition file.  It now carries them
-  as interface usage on `<image>_ddd_headers`, which `<image>_ddd_globals` links for them.
+  `<stem>_ddd_globals`, the object library compiling the definition file.  It now carries them
+  as interface usage on `<stem>_ddd_headers`, which `<stem>_ddd_globals` links for them.
   Only the definition file could be compiled before: `ddd_types.h` includes the headers
   declaring the external types, so the include directory alone never sufficed, and a component
   including its own generated header had to find those headers by itself.  Linking
-  `<image>_ddd_headers` is enough now.  The price is that every registered component compiles
+  `<stem>_ddd_headers` is enough now.  The price is that every registered component compiles
   under the union of those compile definitions and compile options, including ones belonging to
   components it does not link; `ddd_types.h` holds the external includes of the whole project
   and every component header includes it, so all of them have to read those headers alike, and
@@ -255,12 +285,14 @@ not, and the templates a project provides are its own.
   output does come from: the block such a plugin contributes is part of the vocabulary the
   project's own templates read, and those are rendered by the `c` artefact.
 
-* **A structure DDD only carries is no longer reported as an undeclared symbol.**  The symbol
-  check behind `ddd-compile` read `ddd list`, which reports what can be *described*: the leaves
-  of a structured variable, and none at all for an external member.  A structure whose members
-  are all external therefore had real storage, a real symbol, and no entry, so the check called
-  its definition stray and failed a correct project.  It now reads `ddd dump`, whose `objects`
-  and `instances` are exactly what the definition file defines, one symbol each.
+* **`ddd-compile` counts a structured variable as the one symbol it is.**  The symbol check
+  behind it read `ddd list --format json`, which reports what can be *described*: the leaves of
+  a structured variable, and none at all for an external member.  Those leaves carry no `name`,
+  only the path and the instance they belong to, so the check crashed on the first project that
+  declared a structure; and a structure whose members are all external had real storage, a real
+  symbol and no entry at all, so the check called its definition stray and failed a correct
+  project.  It reads `ddd dump --format json` now, whose `objects` and `instances` are exactly
+  what the definition file defines - one symbol each, however many leaves a structure has.
 
 * **`--without` subtracts an artefact's options along with the artefact.**  `--without a2l`
   beside an `--address-map` used to load and validate the map, and could abort the run over a
@@ -295,12 +327,6 @@ not, and the templates a project provides are its own.
   compile usage it collected - the cmake test that builds the example now fails if it stops.
   `ddd-compile` takes an `INCLUDES` variable for the same reason, defaulting to the project's
   own `include` directory when it has one.
-
-* **`ddd-compile` counts a structured variable as the one symbol it is.**  Its symbol check read
-  a `name` off every entry of `ddd list --format json`.  The leaves of a structured variable
-  carry no `name`, only the path and the instance they belong to, so the check crashed on the
-  first project that had one; it now takes the instance, and one structure counts as the one
-  object the linker sees however many leaves it has.
 
 * **A plugin module is registered before its body runs.**  A plugin loaded from a `.py` path
   reached `sys.modules` only once its body had finished, so a module that looks itself up

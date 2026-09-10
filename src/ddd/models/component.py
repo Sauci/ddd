@@ -20,7 +20,7 @@ class Scope(StrEnum):
     """The component reads the variable; another component has to produce it."""
 
     OUTPUT = "output"
-    """The component writes the variable; exactly one component may do so."""
+    """The component owns the variable, and for a measurement writes it; exactly one may own it."""
 
     LOCAL = "local"
     """The component owns the variable exclusively; no other component may use it."""

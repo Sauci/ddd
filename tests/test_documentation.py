@@ -8,6 +8,7 @@ README and the SPEC describing a previous version of DDD.
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import dataclasses
 import io
@@ -20,7 +21,7 @@ from typing import Any, Literal
 
 import jsonschema
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
@@ -49,6 +50,7 @@ PAGES["README.md"] = README
 PROJECT_WIDE_DOCUMENTS = {
     "SPEC.md": (SPEC, "`"),
     "README.md": (README, "`"),
+    "docs/consistency_checks.rst": (CONSISTENCY_CHECKS, "``"),
     "docs/editor_integration.rst": (EDITOR_INTEGRATION, "``"),
 }
 """The documents stating how many checks need every component, each with its own quoting.
@@ -152,6 +154,7 @@ class TestChecks:
             "cov-fail-under",
             "no-propagate-headers",
             "ddd-compile",
+            "ddd-id",
             "ddd-tool",
         }, f"README mentions unknown checks: {sorted(unknown)}"
 
@@ -511,6 +514,59 @@ class TestSpecCrossReferences:
                 )
 
 
+def paths_under_root(source: str) -> set[str]:
+    """Every ``ROOT / "a" / "b"`` a module spells out, relative to the checkout.
+
+    Only the whole chain is taken and not the directories on the way to it, and only chains
+    whose parts are all literal - one assembled out of a variable is one this cannot follow.
+    A ``glob`` or ``rglob`` read collapses to the directory it walks by itself, that
+    directory being the receiver of the call and so the chain the walk finds.
+    """
+    found: set[str] = set()
+
+    def parts(node: ast.AST) -> list[str] | None:
+        if isinstance(node, ast.Name) and node.id == "ROOT":
+            return []
+        if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Div):
+            return None
+        left = parts(node.left)
+        if left is None or not isinstance(node.right, ast.Constant):
+            return None
+        return None if not isinstance(node.right.value, str) else [*left, node.right.value]
+
+    def walk(node: ast.AST) -> None:
+        spelled = parts(node)
+        if spelled:
+            found.add("/".join(spelled))
+            return
+        for child in ast.iter_child_nodes(node):
+            walk(child)
+
+    walk(ast.parse(source))
+    return found
+
+
+def images_the_docs_build_reads() -> list[str]:
+    """The logo and the favicon ``docs/conf.py`` names, relative to the checkout.
+
+    Both are spelled relative to ``docs/``, and both are read by the build rather than by a
+    page, so no page names them and nothing else here would notice their absence.
+    """
+    tree = ast.parse((ROOT / "docs" / "conf.py").read_text(encoding="utf-8"))
+    named = [
+        node.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and any(
+            isinstance(target, ast.Name) and target.id in ("html_logo", "html_favicon")
+            for target in node.targets
+        )
+    ]
+    return [(ROOT / "docs" / name).resolve().relative_to(ROOT).as_posix() for name in named]
+
+
 class TestPackaging:
     """What a customer receives has to match what the sources say it is."""
 
@@ -653,6 +709,53 @@ class TestPackaging:
             assert (ROOT / name).is_file(), f"{name} is declared but missing from the tree"
             assert name in shipped, f"{name} is not in the sdist, which cannot then be built"
 
+    def test_everything_the_suite_and_the_docs_build_read_travels_in_the_sdist(self) -> None:
+        """The include list is the only thing deciding what an sdist carries, and nothing
+        builds one until it is too late to notice: ci runs the suite and the documentation
+        out of the checkout, where every path is there whether the list names it or not,
+        and ``publish.yml`` builds the archive after all of that has already passed. A path
+        the list leaves out is therefore found by whoever installs from the archive - the
+        evaluator the archive is sent to, or nobody at all.
+
+        Both failures this pins have happened. ``docs/conf.py`` takes its logo and its
+        favicon from ``assets/``, which did not travel, and ``-W`` turned the two missing
+        images into a failed documentation build; ``.github/workflows/docs.yml``, which the
+        tests here read at import, did not travel either, and the suite stopped at
+        collection rather than running. Reading the paths out of the sources rather than
+        out of a built archive keeps the answer in the ordinary test run, where a new
+        ``ROOT / ...`` is answered as it is written.
+        """
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        patterns = [
+            pattern.lstrip("/")
+            for pattern in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+        ]
+        for pattern in patterns:
+            assert (ROOT / pattern).exists(), (
+                f"the sdist includes {pattern}, which is not in the tree: the pattern is "
+                f"misspelled, or names something that has since moved"
+            )
+        read = {
+            name
+            for module in sorted((ROOT / "tests").glob("*.py"))
+            for name in paths_under_root(module.read_text(encoding="utf-8"))
+        }
+        read.update(images_the_docs_build_reads())
+        # Hatchling writes the build definition into every sdist whatever the list says.
+        read.discard("pyproject.toml")
+        for name in sorted(read):
+            assert (ROOT / name).exists(), f"the suite reads {name}, which is not in the tree"
+            # A directory travels either whole, under a pattern that covers it, or in the
+            # part of it a narrower pattern names - "src" is on the path of the shell
+            # transcripts, and "/src/ddd" is what puts it in the archive.
+            assert any(
+                name == pattern or name.startswith(f"{pattern}/") or pattern.startswith(f"{name}/")
+                for pattern in patterns
+            ), (
+                f"{name} is read here but no sdist pattern carries it, so the suite or the "
+                f"documentation build fails for whoever installs from the archive"
+            )
+
     def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
         """The two runtime dependencies are a deliberate claim of the README, so a third one
         appearing in requirements.txt has to be a decision rather than a drive-by addition."""
@@ -779,7 +882,9 @@ class TestPublishedSchemas:
         from ddd.models.common import FileRoot
 
         roots = FileRoot.__subclasses__()
-        assert len(roots) >= 6, f"expected every file root, found {roots}"
+        # FileRoot's own docstring states this count in prose ("seven"); this assertion is
+        # what keeps that stated count from rotting the way the count it replaced did.
+        assert len(roots) == len(FILE_KINDS), f"expected every file root, found {roots}"
         for model in roots:
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"
@@ -931,6 +1036,59 @@ class TestTheShorthandsThePagesRecommend:
 
     def test_a_unit_may_be_a_bare_spelling(self) -> None:
         self.accepted("units", {"units": ["Nm", "rpm", {"unit": "degC", "description": "x"}]})
+
+
+class TestWhatTheLoaderRefusesTheSchemaRefusesAsWell:
+    """The published schema is the first reader of a description file, so it has to agree.
+
+    A schema that accepts what ``ddd check`` then refuses is the worse of the two answers: the
+    editor says the file is fine while the build says it is not, and the author is told about
+    the mistake by whoever runs the pipeline. A declared type named after a base datatype is
+    the case that went unnoticed, because the published pattern carried the eleven spellings
+    exactly while the loader compares them without regard to case.
+    """
+
+    @staticmethod
+    def refused(kind: str, model: type[BaseModel], document: dict[str, Any]) -> None:
+        with pytest.raises(ValidationError):
+            model.model_validate(document)
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(document, published(kind))
+
+    @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16", "BOOLEAN", "Float64"])
+    def test_a_declared_type_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
+        from ddd.models import TypesFile
+
+        self.refused(
+            "types",
+            TypesFile,
+            {"types": [{"type": "scalar", "name": name, "datatype": "uint16", "conversion": {}}]},
+        )
+
+    @pytest.mark.parametrize("name", ["uint16", "UINT16", "Uint16"])
+    def test_a_typename_may_not_spell_a_base_datatype_in_any_case(self, name: str) -> None:
+        from ddd.models import ComponentFile
+
+        self.refused(
+            "component",
+            ComponentFile,
+            {
+                "component": {
+                    "name": "Sensor",
+                    "interface": [
+                        {
+                            "scope": "output",
+                            "definition": {
+                                "name": "Speed",
+                                "kind": "measurement",
+                                "typename": name,
+                                "volatile": False,
+                            },
+                        }
+                    ],
+                }
+            },
+        )
 
 
 def json_blocks(page: str) -> list[Any]:

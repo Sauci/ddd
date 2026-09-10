@@ -434,10 +434,10 @@ its own.
   ones that need every component of the project - from the ones a single file settles, and a
   build writing a per-component target had to take that list from the documentation.  A check
   that needs the whole project is marked `(project)` now, one that grades a delivery comparison
-  rather than a project `(comparison)`, beside the existing `(fixed)`; the markers of a check
-  carrying more than one share a parenthetical, `(fixed, project)`.  Every entry of `--format
-  json` carries the same two facts, as `needs_every_component` and `comparison`, beside the
-  `overridable` it already had.
+  rather than a project `(comparison)`, beside the existing `(fixed)`; no check in the registry
+  carries two today, and one that did would share a single parenthetical, `(fixed, project)`.
+  Every entry of `--format json` carries the same two facts, as `needs_every_component` and
+  `comparison`, beside the `overridable` it already had.
   **Migration:** a script parsing the text listing meets the new markers at the end of a line
   that used to end with the check's description, and `--format json` gained two keys.  Read the
   two booleans from the json form, which is the parseable one, rather than matching the markers.
@@ -450,10 +450,14 @@ its own.
   finding could not even say what differed - that comparison explains a conversion by naming it,
   so the message read `conversion: enum(Mode) != enum(Mode)`, the same text on both sides.  An
   enum is compared by its name there now: a reordering or a changed value is `enum-conflict`
-  alone, while two declarations naming different enums are the `definition-mismatch` they always
-  were, `conversion: enum(OtherMode) != enum(Mode)`.  Identity and linear conversions are still
+  alone, and `-W enum-conflict=ignore` silences it outright where it used to leave
+  `definition-mismatch` behind - the check being silenced is the one that owns the mistake -
+  while two declarations naming different enums are the `definition-mismatch` they always were,
+  `conversion: enum(OtherMode) != enum(Mode)`.  Identity and linear conversions are still
   compared in full, and the delivery comparison, which runs no `enum-conflict` of its own, still
-  compares the enumerators itself.
+  compares the enumerators itself - and still describes the difference as `enum(Mode) !=
+  enum(Mode)` under `changed-interface`, because `EnumConversion.describe` names the enum and
+  nothing else; that message is a known follow-up rather than part of this change.
 
 ## 0.8.0
 

@@ -14,10 +14,12 @@ because the same property lands in different places. ``limits`` is a field there
 directional branch here; ``a2l`` is a table field there but its own check here; ``local``
 exists only here. Those differences are decisions, and
 ``TestComparisonTables`` in ``tests/test_comparison_tables.py`` records each one, next to the
-guard that stops either table from silently falling behind its models. The one value both
-tables read identically is what a conversion *is* -
-:func:`~ddd.models.conversion.conversion_identity` - because an enumerator's description is
-documentation to both questions, and two answers to that would be a drift, not a decision.
+guard that stops either table from silently falling behind its models. Both tables read a
+conversion through :func:`~ddd.models.conversion.conversion_identity`, and an enum is the one
+place they part: :mod:`ddd.analysis` narrows it to its name, because ``enum-conflict`` already
+owns the enumerators inside a project and a second finding about them said nothing, while a
+comparison has no ``enum-conflict`` of its own and so compares them here. That is a decision
+like the others, not a drift.
 """
 
 from __future__ import annotations

@@ -142,8 +142,7 @@ The commands
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
        the plugins it names - for the dependency list of a build system. It reports its
-       findings the same way every other command does, and exits ``0`` whatever they are -
-       ``1`` only when the root file cannot be read at all.
+       findings without letting them change its exit code.
    * - ``ddd artefacts [FILE]``
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is
@@ -299,8 +298,11 @@ translated first, and a file reached over two different include paths appears on
 The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. This is what ``cmake/Ddd.cmake`` uses to make a hand written project description watch
-its own components, described in :doc:`build_integration`.
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
+reported on stderr after the listing, so a configure step hears about it from the run that
+found it rather than from whichever DDD command the build runs next. This is what
+``cmake/Ddd.cmake`` uses to make a hand written project description watch its own components,
+described in :doc:`build_integration`.
 
 With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.

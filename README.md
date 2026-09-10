@@ -481,7 +481,10 @@ can be changed with `-W check=error|warning|info|ignore`; `--strict` turns all w
 errors.  Eight of them cannot be relaxed, because a file that cannot be read has nothing
 further to say, or because a project cannot be interpreted without the plugins it names:
 `file-not-found`, `json-syntax`, `file-kind`, `schema`, `include-cycle`, `include-depth`,
-`plugin-not-found` and `plugin-invalid`.  `ddd checks` marks them `(fixed)`.
+`plugin-not-found` and `plugin-invalid`.  `ddd checks` marks them `(fixed)`, marks a check
+that needs every component of the project - the ones `--standalone` holds back - `(project)`,
+and one that grades a delivery comparison rather than a project `(comparison)`; `--format json`
+carries the same three as `overridable`, `needs_every_component` and `comparison`.
 
 | severity | check | reported when |
 | --- | --- | --- |
@@ -722,7 +725,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd artefacts [FILE]` | list the artefacts `generate` accepts: `c`, `a2l`, and each plugin of the project that provides one |
 | `ddd build-info FILE -o FILE` | record which project a build runs DDD on and with which severities, for an editor |
 | `ddd lsp` | run the language server, reporting the checks in the editor while a file is written |
-| `ddd checks` | list the checks and their default severity; `--plugin` lists a plugin's checks after the built-in ones |
+| `ddd checks` | list the checks and their default severity, marking the ones that cannot be relaxed `(fixed)`, need every component of a project `(project)` or grade a delivery comparison `(comparison)`; `--plugin` lists a plugin's checks after the built-in ones |
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 

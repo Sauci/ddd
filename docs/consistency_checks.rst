@@ -196,10 +196,11 @@ every component of a project - ``incomplete-project``, ``missing-producer``,
 ``unknown-constant``, ``unknown-extension``, ``unknown-raster``, ``unknown-reference``,
 ``unknown-section``, ``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches
 nothing else, so everything DDD can decide from the file in front of it is still reported.
-Whether a check needs the whole project is stated where the check itself is, and that is what
-keeps this set, the one the language server holds back for a file no build claims (see
-:doc:`editor_integration`) and the one the per-component target of the CMake integration
-silences (see :doc:`build_integration`) from drifting apart.
+Whether a check needs the whole project is stated where the check itself is - ``ddd checks``
+marks each one ``(project)`` - and that is what keeps this set, the one the language server
+holds back for a file no build claims (see :doc:`editor_integration`) and the one the
+per-component target of the CMake integration silences (see :doc:`build_integration`) from
+drifting apart.
 
 The flag sets the floor rather than having the last word: an explicit ``-W`` on the same run
 still wins, so a supplier who does want to hear about outputs nobody reads asks for that one
@@ -526,7 +527,9 @@ or an a2l file that does not do what the description says - or that does not com
        the datatype and the conversion when nobody states them. ``volatile`` cannot be left
        out that way: every definition of every kind has to state it, so a difference there is
        always two components saying two different things rather than one of them saying
-       nothing at all.
+       nothing at all. An enum conversion is compared here by its name alone; the enumerators
+       behind it are ``enum-conflict``'s, immediately below, so a reordered or revalued
+       enumerator is that one finding rather than two.
    * - ``enum-conflict``
      - error
      - the same enum type name is defined with different enumerators. One c enum is generated

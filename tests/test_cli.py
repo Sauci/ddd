@@ -1233,12 +1233,14 @@ class TestSchemaAndChecks:
     def test_checks_marks_the_project_wide_and_the_comparison_checks(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """``(project)`` and ``(comparison)`` are derived from the registry, not hand listed.
+        """All three markers are derived from the registry, not hand listed.
 
         The set marked ``(project)`` in the text form is exactly what ``STANDALONE_POLICY``
-        holds back, and the set marked ``(comparison)`` is exactly the checks of the delivery
-        comparison (section 4.1) - both read off the registry here too, so a check gaining or
-        losing a flag would fail this test rather than leave the text form silent about it.
+        holds back, the set marked ``(comparison)`` is exactly the checks of the delivery
+        comparison (section 4.1), and the set marked ``(fixed)`` is exactly the checks whose
+        severity cannot be relaxed - all three read off the registry here too, so a check
+        gaining or losing a flag would fail this test rather than leave the text form silent
+        about it.
 
         The markers are read out of the trailing parenthetical rather than looked for anywhere
         in the line: a check carrying two of them renders them together, ``(fixed, project)``,
@@ -1252,12 +1254,52 @@ class TestSchemaAndChecks:
 
         project_wide = {entry.removesuffix("=ignore") for entry in STANDALONE_POLICY}
         comparison = {name for name, info in CHECKS.items() if info.comparison}
+        fixed = {name for name, info in CHECKS.items() if not info.overridable}
         assert main(["checks"]) == EXIT_OK
         lines = capsys.readouterr().out.splitlines()
         marked_project = {line.split()[0] for line in lines if "project" in markers(line)}
         marked_comparison = {line.split()[0] for line in lines if "comparison" in markers(line)}
+        marked_fixed = {line.split()[0] for line in lines if "fixed" in markers(line)}
         assert marked_project == project_wide
         assert marked_comparison == comparison
+        assert marked_fixed == fixed
+
+    def test_a_check_carrying_two_markers_lists_them_in_one_parenthetical(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The rendering the registry cannot exercise, pinned from a plugin that can.
+
+        The three flags are independent, and no built-in check sets two of them today, so
+        nothing else here would notice the day one did - or the day the two markers started
+        being printed as two parentheticals. A plugin declares the pair instead, and the line
+        it produces is the one the documentation and the changelog quote.
+        """
+        module = tmp_path / "ddd_two_markers.py"
+        module.write_text(
+            """\
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import Plugin
+
+PLUGIN = Plugin(
+    name="two",
+    checks=(
+        CheckInfo(
+            "two/needs-everything",
+            Severity.ERROR,
+            "a plugin check that needs every component and cannot be relaxed",
+            overridable=False,
+            needs_every_component=True,
+        ),
+    ),
+)
+""",
+            encoding="utf-8",
+        )
+        assert main(["checks", "--plugin", str(module)]) == EXIT_OK
+        listed = [
+            line for line in capsys.readouterr().out.splitlines() if "two/needs-everything" in line
+        ]
+        assert listed and listed[0].endswith(" (fixed, project)"), listed
 
     def test_cmake_dir(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["cmake-dir"]) == EXIT_OK

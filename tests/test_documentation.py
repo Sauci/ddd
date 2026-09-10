@@ -779,7 +779,9 @@ class TestPublishedSchemas:
         from ddd.models.common import FileRoot
 
         roots = FileRoot.__subclasses__()
-        assert len(roots) >= 6, f"expected every file root, found {roots}"
+        # FileRoot's own docstring states this count in prose ("seven"); this assertion is
+        # what keeps that stated count from rotting the way the count it replaced did.
+        assert len(roots) == len(FILE_KINDS), f"expected every file root, found {roots}"
         for model in roots:
             schema = model.model_json_schema(by_alias=True)
             assert "$schema" in schema["properties"], f"{model.__name__} rejects $schema"

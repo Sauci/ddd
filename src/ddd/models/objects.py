@@ -389,12 +389,13 @@ class DataObject(_Frozen):
     knows the value.
 
     A measurement needs it when something outside the reading component's control writes the
-    variable - an interrupt, a second core, a peripheral. A calibration object needs it when
-    the calibration tool is to change the value in a running ecu: without it the compiler is
-    entitled to use the initialiser in place of a read wherever it can see it - within one
-    translation unit at every optimisation level, ``-O0`` included, and across them under link
-    time optimisation - and, where the load does survive, to serve two reads from one of them.
-    Either way the tool writes a new value the software does not pick up.
+    variable - an interrupt, a second core, a peripheral, or a calibration tool writing
+    through its address. A calibration object needs it when the calibration tool is to change
+    the value in a running ecu: without it the compiler is entitled to use the initialiser in
+    place of a read wherever it can see it - within one translation unit at every optimisation
+    level, ``-O0`` included, and across them under link time optimisation - and, where the
+    load does survive, to serve two reads from one of them. Either way the tool writes a new
+    value the software does not pick up.
 
     Interface rather than storage, because it reaches every component that reads the object:
     their header declares it ``extern volatile``, which is what tells their code not to cache

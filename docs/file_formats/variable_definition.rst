@@ -73,7 +73,7 @@ rather than ignored.
      - Whether the generated declaration carries the c qualifier of the same name, which
        forbids the compiler to assume it already knows the value. A measurement needs it when
        something outside the reading component writes the variable - an interrupt, a second
-       core, a peripheral, a calibration tool - and calibration data needs it when a tool is
+       core, a peripheral or a calibration tool - and calibration data needs it when a tool is
        to change the value in a running ecu, because without it the compiler is entitled to
        fold the initialiser into the code that reads it - within one translation unit at every
        optimisation level, ``-O0`` included, and across them under ``-flto``. The whole

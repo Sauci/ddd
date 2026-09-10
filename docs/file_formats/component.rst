@@ -353,14 +353,14 @@ both conditions and says which one won.
    saying ``false`` is two components compiled against two different meanings of the same
    address.
 
-   Six keys of the block sit outside that. Five are refused on a consumer altogether -
+   Seven keys of the block sit outside that. Five are refused on a consumer altogether -
    ``init`` and ``section`` as ``consumer-storage``, ``raster`` as ``consumer-raster``,
    ``id`` as ``consumer-identity`` and ``extensions`` as ``consumer-extension`` - because
    what an object starts as, where it lives, which event updates it, which earlier delivery
    it continues and what a plugin knows about it are decided by the component that produces
-   the variable, not by one that reads it. The sixth, ``export``, is compared by nobody,
+   the variable, not by one that reads it. Two more are compared by nobody: ``export``,
    because any component may ask for an object to reach the a2l and asking wins over
-   declining.
+   declining, and ``description``, where the producer's text is simply the one that is used.
 
 Types and constants of the component
 ------------------------------------

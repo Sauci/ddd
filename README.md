@@ -380,11 +380,10 @@ to fold the initialiser into the code that reads it, and gcc does wherever it ca
 initialiser - within one translation unit that is not an optimisation a debug build escapes
 but a substitution the front end makes while parsing, so it happens at `-O0` as much as at
 `-O2`, to an array element at a constant index as much as to a scalar, and to a value read
-once at startup as much as to one read in a loop; across translation units it is what
-`-flto` does.
-Where the load survives, `const` still lets the compiler serve two reads from one of them and
-move it across a call.  Either way, a program that writes a new value through such an
-object's address prints it back out of memory and then goes on computing with the old one.
+once at startup as much as to one read in a loop; across translation units it is what `-flto`
+does.  Where the load survives, `const` still lets the compiler serve two reads from one of
+them and move it across a call.  Either way, a program that writes a new value through such
+an object's address prints it back out of memory and then goes on computing with the old one.
 
 What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
 side effect and takes the object out of the read only category, so `.rodata` becomes a plain

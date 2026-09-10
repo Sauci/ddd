@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterable
 from enum import StrEnum
-from typing import Annotated, Any, Final, Literal, get_args
+from typing import Annotated, Any, Final, Literal, cast, get_args
 
 from pydantic import (
     BaseModel,
@@ -30,9 +30,19 @@ from ddd.models.common import (
 )
 from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
 
+type InitScalar = Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real
+"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold."""
+
+type InitElement = Annotated[InitScalar | tuple[InitElement, ...], BeforeValidator(within_64_bits)]
+"""What a list init holds: numbers, or lists of them, never text.
+
+Text is the whole init or nothing - a string object's init is its text, and no other object
+has a use for characters inside a list of numbers - so a string nested in a list is refused
+here, by the contract, exactly as it was before strings existed.
+"""
+
 type InitValue = Annotated[
-    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | str | tuple[InitValue, ...],
-    BeforeValidator(within_64_bits),
+    InitScalar | str | tuple[InitElement, ...], BeforeValidator(within_64_bits)
 ]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object.
 
@@ -50,7 +60,8 @@ any other object (``init-invalid``), because only there is the conversion known 
 declaration naming a scalar type learns its conversion from the type. pydantic picks an arm
 by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is
 now text, refused where a number was meant, where it used to be read as the number: the one
-place the quoted-spelling question left open on :data:`Number` is answered.
+place the quoted-spelling question left open on :data:`Number` is answered. Only the whole
+init may be text: a list holds numbers, see ``InitElement``.
 """
 
 type Shape = tuple[int, ...]
@@ -798,7 +809,10 @@ def broadcast(value: InitValue, shape: Shape) -> InitValue:
         return value
     if not shape:
         return value
-    return tuple(broadcast(value, shape[1:]) for _ in range(shape[0]))
+    # value is a scalar here - str and tuple both returned above - so every recursive call
+    # below walks only the scalar and nested-tuple arms of InitValue, never str, which is
+    # exactly InitElement; the cast tells mypy what the isinstance checks already guarantee.
+    return tuple(cast(InitElement, broadcast(value, shape[1:])) for _ in range(shape[0]))
 
 
 def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:

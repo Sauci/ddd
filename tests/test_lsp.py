@@ -1731,6 +1731,27 @@ class TestHover:
 
         assert resolve(navigation.workspaces([], tmp_path / "absent.ddd.json")) is None
 
+    def test_a_string_init_is_stated_as_text(self, tmp_path: Path) -> None:
+        """Quoted as the file spells it; no reading to add, nothing to draw."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Label",
+                datatype="uint8",
+                kind="value_block",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                init="V1.2.3",
+            ),
+        )
+        described = describe(dictionary, "Label")
+        assert "| conversion | `string` |" in described
+        assert described.endswith('init `"V1.2.3"`')
+        assert "```" not in described
+
     def test_the_scale_is_the_one_it_is_given(self) -> None:
         """Passed in rather than taken from the row, so that rows can be compared."""
         from ddd.lsp.hover import BARS, sparkline

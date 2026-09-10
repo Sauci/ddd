@@ -247,7 +247,20 @@
       "title": "IdentityConversion",
       "type": "object"
     },
-    "InitValue": {
+    "InitElement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/InitElement"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "InitScalar": {
       "anyOf": [
         {
           "maximum": 18446744073709551615,
@@ -259,13 +272,20 @@
         },
         {
           "type": "number"
+        }
+      ]
+    },
+    "InitValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
         },
         {
           "type": "string"
         },
         {
           "items": {
-            "$ref": "#/$defs/InitValue"
+            "$ref": "#/$defs/InitElement"
           },
           "type": "array"
         }

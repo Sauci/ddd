@@ -1396,7 +1396,9 @@ def _init_cell(entry: Comparable) -> str:
     if init is None:
         return "-"
     if isinstance(init, str):
-        return repr(init)
+        # Quoted, so that text cannot be mistaken for a number, and spelled the way json
+        # spells it, which is the way the file does; a string has no reading to add.
+        return json.dumps(init)
     if isinstance(init, tuple):
         return "[...]"
     reading = raw_reading(entry.conversion, init, entry.unit)

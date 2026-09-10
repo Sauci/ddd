@@ -19,6 +19,7 @@ knowing about it:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Final
 
@@ -63,9 +64,9 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
 
     A map is stored row wise, so the last dimension is the width of a row: that is the
     direction the x axis runs in, and drawing it that way puts the picture the same way round
-    as the calibration tool shows it.
+    as the calibration tool shows it. A string is drawn as nothing: its init is stated as text.
     """
-    if entry.init is None:
+    if entry.init is None or isinstance(entry.init, str):
         return []
     values = [
         entry.conversion.to_physical(value)
@@ -270,7 +271,10 @@ def _enumerators(entry: ResolvedObject) -> list[str]:
 
 def _drawing(entry: ResolvedObject) -> list[str]:
     """The init values, drawn if there is anything to see in them."""
-    if entry.init is not None and not isinstance(entry.init, (tuple, str)):
+    if isinstance(entry.init, str):
+        # Text, stated as the file spells it: there is no reading to add and nothing to draw.
+        return [f"init `{json.dumps(entry.init)}`"]
+    if entry.init is not None and not isinstance(entry.init, tuple):
         return [_stated_init(entry, entry.init)]
     drawn = rows(entry)
     if not drawn:

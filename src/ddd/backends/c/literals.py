@@ -41,9 +41,8 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
 def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
     """Render a (possibly nested) init value as a c initialiser."""
     if not isinstance(value, tuple):
-        # Strings in init values are only valid for string objects and are checked by the
-        # analysis layer; c_initializer is only called for non-string objects, so this cast
-        # is safe.
+        # A string init is rendered as a c string literal by a later change; until it lands, the
+        # cast only tells mypy that this branch is the numeric one.
         return c_literal(cast(bool | int | float, value), datatype)
 
     pad = _INDENT * (indent + 1)

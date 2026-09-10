@@ -46,7 +46,6 @@ from ddd.models import (
     ScalarType,
     Scope,
     Shape,
-    StringConversion,
     StructType,
     WrittenShape,
     bitfield_range,
@@ -2215,20 +2214,6 @@ class _Analysis:
             )
 
     def _check_init(self, definition: DataObject, location: Location) -> None:
-        # Check if a string init is used on a non-string object.
-        if (
-            definition.init is not None
-            and not isinstance(definition.conversion, StringConversion)
-            and self._contains_string(definition.init)
-        ):
-            self._bag.add(
-                "init-invalid",
-                f"a string init is only valid for string objects; this object's "
-                f"conversion is {definition.conversion.describe() if definition.conversion else 'not set'}",
-                location,
-            )
-            return
-
         datatype = definition.storage
         for value in definition.scalar_values():
             if datatype is Datatype.BOOLEAN:
@@ -2256,14 +2241,6 @@ class _Analysis:
                     f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
                     location,
                 )
-
-    def _contains_string(self, value: object) -> bool:
-        """Check if an init value contains any strings, recursively."""
-        if isinstance(value, str):
-            return True
-        if isinstance(value, tuple):
-            return any(self._contains_string(element) for element in value)
-        return False
 
     def _check_limits(self, definition: DataObject, location: Location) -> None:
         if definition.limits is None:

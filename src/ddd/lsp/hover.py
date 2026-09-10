@@ -65,7 +65,8 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
     A map is stored row wise, so the last dimension is the width of a row: that is the
     direction the x axis runs in, and drawing it that way puts the picture the same way round
     as the calibration tool shows it. A string init flattens to no values and so draws no
-    rows; ``_drawing`` states it as text before it ever asks.
+    rows; ``_drawing`` states it as text before it ever asks, and the one dimension every
+    string has keeps the row width positive should anything else ask.
     """
     if entry.init is None:
         return []

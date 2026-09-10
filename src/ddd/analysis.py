@@ -2020,7 +2020,7 @@ class _Analysis:
             self._drop_for_type(ref, named)
             return None
         if isinstance(entry.conversion, StringConversion) and not self._string_type_fits(
-            ref, named, declared
+            ref, named, declared, entry
         ):
             return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
@@ -2037,7 +2037,9 @@ class _Analysis:
             ),
         )
 
-    def _string_type_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:
+    def _string_type_fits(
+        self, ref: DeclarationRef, named: str, declared: LoadedType, entry: ScalarType
+    ) -> bool:
         """A declaration naming a string type is a one dimensional measurement or value block.
 
         The type fixes that the bytes are text and the declaration states how many there
@@ -2048,8 +2050,6 @@ class _Analysis:
         or on a table kind is nothing the a2l backend has a record for.
         """
         definition = ref.declaration.definition
-        entry = declared.declared
-        assert isinstance(entry, ScalarType)  # asked only once the type resolved to a scalar
         try:
             check_string_shape(definition.kind, definition.declared_shape)
             refuse_string_misuse(

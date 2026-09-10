@@ -876,6 +876,44 @@ class TestPublishedSchemas:
     long as nothing between them drops anything.
     """
 
+    def test_the_conversion_union_is_published_as_anyof_for_every_kind_it_has(self) -> None:
+        """The generator recognises the conversion union by the kinds the union itself declares.
+
+        A list written into the generator went stale the moment a fourth kind arrived: the
+        equality failed, the union was published as ``oneOf``, and ``{}`` - which the loader
+        reads as the identity - became invalid to an editor. Derived from the union, the set
+        cannot lag behind it.
+        """
+        from ddd.models import Conversion
+        from ddd.models.objects import discriminator_tags
+        from ddd.models.schema import CONVERSION_KINDS
+
+        # The set stays derived, and today's four kinds are a floor a derivation alone could
+        # not hold: read from the same union, it would not notice a kind dropping out.
+        assert discriminator_tags(Conversion) == CONVERSION_KINDS
+        assert {"identity", "linear", "enum", "string"} <= CONVERSION_KINDS
+
+        def unions(node: object) -> list[dict[str, object]]:
+            """Every discriminated union in the published schema, wherever it sits."""
+            found: list[dict[str, object]] = []
+            if isinstance(node, dict):
+                if "discriminator" in node:
+                    found.append(node)
+                found.extend(union for child in node.values() for union in unions(child))
+            elif isinstance(node, list):
+                found.extend(union for child in node for union in unions(child))
+            return found
+
+        conversions = [
+            union
+            for union in unions(published("component"))
+            if set(union["discriminator"]["mapping"]) == CONVERSION_KINDS  # type: ignore[index]
+        ]
+        assert conversions, "the component schema publishes no conversion union"
+        for union in conversions:
+            assert "anyOf" in union and "oneOf" not in union
+            assert len(union["anyOf"]) == len(CONVERSION_KINDS)  # type: ignore[arg-type]
+
     def test_the_file_roots_allow_the_editor_binding(self) -> None:
         """Every root, not a hand-kept list of them: a new file kind joins the guard by
         subclassing ``FileRoot``, instead of silently shipping without the ``$schema`` key."""
@@ -1304,43 +1342,6 @@ class TestCarryingTheDocumentationAcross:
         from ddd.models.schema import as_markdown
 
         assert as_markdown("accepts this form::\n\n    {}\n") == "accepts this form:\n\n    {}\n"
-
-    def test_the_conversion_union_is_published_as_anyof_for_every_kind_it_has(self) -> None:
-        """The generator recognises the conversion union by the kinds the union itself declares.
-
-        A list written into the generator went stale the moment a fourth kind arrived: the
-        equality failed, the union was published as ``oneOf``, and ``{}`` - which the loader
-        reads as the identity - became invalid to an editor. Derived from the union, the set
-        cannot lag behind it.
-        """
-        from ddd.cli import schema_text
-        from ddd.models import Conversion
-        from ddd.models.objects import discriminator_tags
-        from ddd.models.schema import CONVERSION_KINDS
-
-        assert discriminator_tags(Conversion) == CONVERSION_KINDS
-        assert {"identity", "linear", "enum", "string"} <= CONVERSION_KINDS
-
-        def unions(node: object) -> list[dict[str, object]]:
-            """Every discriminated union in the published schema, wherever it sits."""
-            found: list[dict[str, object]] = []
-            if isinstance(node, dict):
-                if "discriminator" in node:
-                    found.append(node)
-                found.extend(union for child in node.values() for union in unions(child))
-            elif isinstance(node, list):
-                found.extend(union for child in node for union in unions(child))
-            return found
-
-        conversions = [
-            union
-            for union in unions(json.loads(schema_text("component")))
-            if set(union["discriminator"]["mapping"]) == CONVERSION_KINDS  # type: ignore[index]
-        ]
-        assert conversions, "the component schema publishes no conversion union"
-        for union in conversions:
-            assert "anyOf" in union and "oneOf" not in union
-            assert len(union["anyOf"]) == len(CONVERSION_KINDS)  # type: ignore[arg-type]
 
     def test_a_member_with_no_docstring_is_left_out(self) -> None:
         from ddd.models.schema import value_documentation

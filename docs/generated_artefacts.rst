@@ -580,9 +580,10 @@ than the status. Here the output directory did not exist yet, which is why every
    would write build/gen/EventLogger.h (created)
    would write build/gen/DemoDevice.a2l (created)
 
-A run that does write writes every artefact or none. Each artefact is rendered in memory,
-then staged beside its target under the name ``<target>.ddd-staging``, and only once every
-artefact of the run is staged are they renamed into place, one after the other. A failure
+A run that does write writes every artefact or none. Each artefact the run has to write -
+an unchanged one is never touched, as above - is staged beside its target under the name
+``<target>.ddd-staging``, and only once every one of them is staged are they renamed into
+place, one after the other. A failure
 to write one - a disk that filled up, a directory that stopped being writable - therefore
 leaves the others as they were, except one the run had already renamed over a file that
 existed before it, which keeps its new content; the failure names the artefact and is a

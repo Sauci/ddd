@@ -215,7 +215,7 @@ in brackets, and it is part of the a2l <code class="docutils literal notranslate
 have to agree on it, because two components using the same variable in different units
 is the failure that compiles and links and is wrong by a constant factor. Free text
 does not mean unchecked: where the project declares a <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a>,
-every spelling is checked against it as well (<code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>).</p></td>
+every spelling is checked against it as well (<code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>). A string has none.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
 <td><p>required beside <code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
@@ -228,7 +228,7 @@ one.</p></td>
 <td><p>derived</p></td>
 <td><p>An object with <code class="docutils literal notranslate"><span class="pre">min</span></code> and <code class="docutils literal notranslate"><span class="pre">max</span></code>, in <strong>physical</strong> units. When it is left out, DDD
 derives the limits from the datatype and the conversion, so the a2l always carries a
-range.</p></td>
+range. A string states none; its range is the byte range of its datatype.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
 <td><p>none</p></td>
@@ -246,11 +246,13 @@ defaulting to what the component declares for everything it produces.</p></td>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">null</span></code></p></td>
 <td><p>The initial value, in <strong>raw</strong> units. <code class="docutils literal notranslate"><span class="pre">null</span></code> means no initialiser is written at all
-and the startup code zero-initialises the object.</p></td>
+and the startup code zero-initialises the object. A string object may write it as
+text; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l</span></code></p></td>
 <td><p>export</p></td>
-<td><p>Per object settings for the a2l backend, and nothing else reads them.</p></td>
+<td><p>Per object settings for the a2l backend, and nothing else reads them. A string takes
+no <code class="docutils literal notranslate"><span class="pre">format</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extensions</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
@@ -421,6 +423,9 @@ for a large array is the difference between a few bytes of image and a few kilob
 <span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueD</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
 </pre></div>
 </div>
+<p>A string object may state its <code class="docutils literal notranslate"><span class="pre">init</span></code> as text instead - printable ASCII, shorter than the
+dimension so that the terminator fits - and the c carries it as a string literal; the
+<a class="reference internal" href="conversions.html"><span class="doc">conversions page</span></a> shows one.</p>
 <p>The value is raw rather than physical because the generated c carries it verbatim, and under
 a linear conversion most physical values are the exact image of no raw count, so a physical
 spelling would either round silently or refuse ordinary values. The reading in the other

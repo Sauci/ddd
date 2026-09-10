@@ -34,7 +34,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 7,
+     "format": 8,
      "name": "DemoDevice",
      "description": "Demonstration project showing every kind of data object",
      "source": "demo.ddd.json",
@@ -177,7 +177,7 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``7`` - and changes only when that shape changes, not with every release of the
+- currently ``8`` - and changes only when that shape changes, not with every release of the
 tool.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
@@ -187,7 +187,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 8, and this DDD understands up to 7; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 9, and this DDD understands up to 8; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -229,7 +229,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 7,
+         "default": 8,
          "title": "Format",
          "type": "integer"
        },

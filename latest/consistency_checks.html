@@ -204,7 +204,7 @@ file and by position in the file, so that fixing one finding does not shuffle th
 in the next run. The run ends with a one line summary (<code class="docutils literal notranslate"><span class="pre">4</span> <span class="pre">errors,</span> <span class="pre">1</span> <span class="pre">warning</span></code>) or, when a
 project is entirely clean, with a statement of what was checked:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json
-ok: 21 variables in 4 components are consistent
+ok: 23 variables in 4 components are consistent
 </pre></div>
 </div>
 <p>All of this goes to <strong>stderr</strong> - every finding, every note and the closing summary or <code class="docutils literal notranslate"><span class="pre">ok:</span></code>
@@ -274,10 +274,10 @@ examples/demo/components/controller.ddd.json#component.interface[0]: error[missi
 examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
 examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
 ...
-2 errors, 5 warnings
+2 errors, 6 warnings
 
 $ ddd check examples/demo/components/controller.ddd.json --standalone
-ok: 12 variables in 1 component are consistent
+ok: 14 variables in 1 component are consistent
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--standalone</span></code> is that policy, and the whole of it. It holds back the ten checks that need
@@ -410,7 +410,9 @@ kinds (<code class="docutils literal notranslate"><span class="pre">project</spa
 <td><p>the document does not match the DDD contract: a missing or unknown key, a value of the
 wrong type, a datatype that does not exist, a shape or a nesting beyond what DDD
 carries. One finding per violated constraint, each pointing at the offending key. It
-also fires on an archived dictionary written by a newer DDD than the one reading it.</p></td>
+also fires on an archived dictionary written by a newer DDD than the one reading it.
+It is also what refuses a string conversion on anything but a one dimensional byte
+array, or beside a unit, limits or a display format.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">include-cycle</span></code></p></td>
 <td><p>error (fixed)</p></td>
@@ -680,7 +682,8 @@ unresolvable too, exactly as <code class="docutils literal notranslate"><span cl
 integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
 not have (for a curve or a map, the shape given by its axes), or an enumerator does not
 fit the datatype of the variable, or does not fit into a c <code class="docutils literal notranslate"><span class="pre">int</span></code>, which every
-enumerator has to (C11 6.7.2.2).</p></td>
+enumerator has to (C11 6.7.2.2), or a string init that is not printable ASCII, leaves
+no room for its terminator, or sits on an object that is not a string.</p></td>
 </tr>
 </tbody>
 </table>

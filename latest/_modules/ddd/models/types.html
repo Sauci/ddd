@@ -152,16 +152,18 @@
 <span class="p">)</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datatype</span><span class="p">,</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Number</span><span class="p">,</span> <span class="n">TypeName</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">physical_range</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">,</span> <span class="n">physical_range</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.objects</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">A2lObjectOptions</span><span class="p">,</span>
     <span class="n">Dimension</span><span class="p">,</span>
     <span class="n">Limits</span><span class="p">,</span>
     <span class="n">ObjectKind</span><span class="p">,</span>
+    <span class="n">WrittenShape</span><span class="p">,</span>
     <span class="n">check_conversion_stated</span><span class="p">,</span>
     <span class="n">check_storage_named_once</span><span class="p">,</span>
     <span class="n">refuse_enum_on_non_integer</span><span class="p">,</span>
     <span class="n">refuse_restating</span><span class="p">,</span>
+    <span class="n">refuse_string_misuse</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">BITS_PER_BYTE</span> <span class="o">=</span> <span class="mi">8</span>
@@ -187,6 +189,28 @@
 <span class="c1">#: calibratable one; a curve, a map or an axis refers to other objects, which a structure</span>
 <span class="c1">#: cannot do.</span>
 <span class="n">MEMBER_OBJECT_KINDS</span> <span class="o">=</span> <span class="p">(</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span><span class="p">,</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">PARAMETER</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_string_member_shape</span><span class="p">(</span><span class="n">member</span><span class="p">:</span> <span class="n">MemberKind</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">:</span> <span class="n">WrittenShape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse a string member that is not a ``value`` member of one dimension.</span>
+
+<span class="sd">    The member's spelling of the rule :func:`~ddd.models.objects.check_string_shape` states</span>
+<span class="sd">    for a definition, raised as ``ValueError`` for the same reason: the contract answers it</span>
+<span class="sd">    for a member stating the conversion, and the analysis for one naming a scalar type that</span>
+<span class="sd">    carries it. A bitfield holds no string, and a second dimension would be an array of</span>
+<span class="sd">    strings, which the a2l format cannot describe.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">member</span> <span class="ow">is</span> <span class="n">MemberKind</span><span class="o">.</span><span class="n">BITS</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a 'bits' member holds no string; a string is a 'value' member of one dimension"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">spelled</span> <span class="o">=</span> <span class="s2">"none"</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">dimensions</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dimensions</span><span class="p">))</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"a string member states exactly one dimension, its length in bytes, got "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">spelled</span><span class="si">}</span><span class="s2">; an array of strings is written as an array of structures with a "</span>
+            <span class="sa">f</span><span class="s2">"string member"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="Member">
@@ -260,7 +284,8 @@
 <span class="sd">    """</span>
 
     <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""How this member's raw value maps to a physical one: identity, linear or an enumeration.</span>
+<span class="w">    </span><span class="sd">"""How this member's raw value maps to a physical one: identity, linear, an enumeration,</span>
+<span class="sd">    or text read from the bytes (``string``).</span>
 
 <span class="sd">    Required on a member whose storage is a base ``datatype``, exactly as on a definition;</span>
 <span class="sd">    a member naming a scalar ``typename`` states none, the type fixing it.</span>
@@ -309,6 +334,19 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
         <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_a_string_member_is_a_one_dimensional_byte_array</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Member</span><span class="p">:</span>
+        <span class="n">refuse_string_misuse</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span>
+            <span class="n">unit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">,</span>
+            <span class="n">limits</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">,</span>
+            <span class="n">display_format</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">a2l</span><span class="o">.</span><span class="n">format</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">):</span>
+            <span class="n">check_string_member_shape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">member</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
@@ -449,7 +487,8 @@
 <span class="w">    </span><span class="sd">"""Physical unit of the value, e.g. ``"rpm"``."""</span>
 
     <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span>
-<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
+<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling, an enumeration, or</span>
+<span class="sd">    text read from the bytes (``string``).</span>
 
 <span class="sd">    Required: fixing what a value means is the one job a scalar type has, and the identity</span>
 <span class="sd">    is part of the answer rather than a silence to interpret.</span>
@@ -461,6 +500,13 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScalarType</span><span class="p">:</span>
         <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_a_string_type_is_bytes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScalarType</span><span class="p">:</span>
+        <span class="n">refuse_string_misuse</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">,</span> <span class="n">limits</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">,</span> <span class="n">display_format</span><span class="o">=</span><span class="kc">None</span>
+        <span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span></div>
 
 

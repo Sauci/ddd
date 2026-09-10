@@ -287,7 +287,8 @@
 <span class="sd">    """</span>
 
     <span class="n">init</span><span class="p">:</span> <span class="n">InitValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""Raw initial value, nested to match ``shape``; ``null`` means zero initialised."""</span>
+<span class="w">    </span><span class="sd">"""Raw initial value, nested to match ``shape``, or the text of a string object; ``null``</span>
+<span class="sd">    means zero initialised."""</span>
 
     <span class="n">section</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">"""Linker section the producing declaration placed the object in; ``null`` for the</span>
@@ -669,13 +670,16 @@
 <span class="sd">"""</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">7</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">8</span>
 <span class="sd">"""Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>
 <span class="sd">version of DDD, possibly years on. Stamping the format is what lets that later version say</span>
 <span class="sd">"this file is newer than I understand" instead of misreading it or rejecting it for a</span>
 <span class="sd">missing field. It changes only when the shape of the document changes, not with the tool.</span>
+
+<span class="sd">Format 8 added the ``string`` conversion kind and the string spelling of ``init``. A format</span>
+<span class="sd">7 dictionary carries neither, and reads back unchanged.</span>
 <span class="sd">"""</span>
 
 

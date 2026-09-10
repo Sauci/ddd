@@ -99,7 +99,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Container</span><span class="p">,</span> <span class="n">Iterable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">get_args</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">cast</span><span class="p">,</span> <span class="n">get_args</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">BaseModel</span><span class="p">,</span>
@@ -123,11 +123,21 @@
     <span class="n">hash_excluding_mappings</span><span class="p">,</span>
     <span class="n">within_64_bits</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
+
+<span class="nb">type</span> <span class="n">InitScalar</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Real</span>
+<span class="sd">"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold."""</span>
+
+<span class="nb">type</span> <span class="n">InitElement</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">InitScalar</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitElement</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">within_64_bits</span><span class="p">)]</span>
+<span class="sd">"""What a list init holds: numbers, or lists of them, never text.</span>
+
+<span class="sd">Text is the whole init or nothing - a string object's init is its text, and no other object</span>
+<span class="sd">has a use for characters inside a list of numbers - so a string nested in a list is refused</span>
+<span class="sd">here, by the contract, exactly as it was before strings existed.</span>
+<span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">InitValue</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
-    <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Real</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitValue</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-    <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">within_64_bits</span><span class="p">),</span>
+    <span class="n">InitScalar</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InitElement</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">within_64_bits</span><span class="p">)</span>
 <span class="p">]</span>
 <span class="sd">"""A scalar, or a (nested) sequence of scalars matching the shape of the object.</span>
 
@@ -139,6 +149,14 @@
 <span class="sd">json ``true``/``false`` from a ``1``/``0`` by their own type regardless of this order, so</span>
 <span class="sd">moving the integer arm first changes only which of several failing branches a wildly wrong</span>
 <span class="sd">value is reported against.</span>
+
+<span class="sd">The ``str`` arm is for a string object, whose init is its text; the analysis refuses it on</span>
+<span class="sd">any other object (``init-invalid``), because only there is the conversion known - a</span>
+<span class="sd">declaration naming a scalar type learns its conversion from the type. pydantic picks an arm</span>
+<span class="sd">by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is</span>
+<span class="sd">now text, refused where a number was meant, where it used to be read as the number: the one</span>
+<span class="sd">place the quoted-spelling question left open on :data:`Number` is answered. Only the whole</span>
+<span class="sd">init may be text: a list holds numbers, see ``InitElement``.</span>
 <span class="sd">"""</span>
 
 <span class="nb">type</span> <span class="n">Shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
@@ -317,6 +335,83 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
 
+<span class="n">STRING_DATATYPES</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="n">Datatype</span><span class="o">.</span><span class="n">UINT8</span><span class="p">,</span> <span class="n">Datatype</span><span class="o">.</span><span class="n">SINT8</span><span class="p">})</span>
+<span class="sd">"""What a string may be stored in: one byte per character, of either signedness.</span>
+
+<span class="sd">Vector's checker accepts an unsigned or a signed byte record layout for an ASCII string and</span>
+<span class="sd">nothing else, and c lets a string literal initialise an array of either character type.</span>
+<span class="sd">"""</span>
+
+<span class="n">STRING_OBJECT_KINDS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span><span class="p">,</span> <span class="n">ObjectKind</span><span class="o">.</span><span class="n">VALUE_BLOCK</span><span class="p">})</span>
+<span class="sd">"""The kinds a string may be: the two that state their own dimensions.</span>
+
+<span class="sd">A ``parameter`` has no dimensions to hold characters in, and an ``axis``, a ``curve`` and a</span>
+<span class="sd">``map`` are tables of numbers.</span>
+<span class="sd">"""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">refuse_string_misuse</span><span class="p">(</span>
+    <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">display_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse what a string cannot sit on or carry, wherever a datatype and a conversion meet.</span>
+
+<span class="sd">    Shared between a definition, a structure member and a scalar type the way</span>
+<span class="sd">    :func:`refuse_enum_on_non_integer` is, so that the verdict cannot depend on where the</span>
+<span class="sd">    same pair happens to be written. The shape rule is not here: what "one dimension" is</span>
+<span class="sd">    spelled as differs between a definition and a member, and a scalar type has no shape,</span>
+<span class="sd">    so each states it in its own words - :func:`check_string_shape` for a definition.</span>
+
+<span class="sd">    Text has no unit, no physical range and no display format, which is why all three are</span>
+<span class="sd">    refused rather than ignored: a unit would reach the a2l as the unit of a method that</span>
+<span class="sd">    cannot exist, limits would offer a calibration tool a range over character codes, and</span>
+<span class="sd">    a format would claim decimals of a string.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">datatype</span><span class="p">,</span> <span class="n">Datatype</span><span class="p">)</span> <span class="ow">and</span> <span class="n">datatype</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">STRING_DATATYPES</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a string conversion needs a byte datatype, uint8 or sint8, got '</span><span class="si">{</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">'"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unit</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a string has no unit, got '</span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">'"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">limits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">"a string has no limits; its range is the byte range of its datatype"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">display_format</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"a string has no display format, got a2l.format '</span><span class="si">{</span><span class="n">display_format</span><span class="si">}</span><span class="s2">'"</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">check_string_shape</span><span class="p">(</span><span class="n">kind</span><span class="p">:</span> <span class="n">ObjectKind</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">WrittenShape</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Refuse a string that is not a one dimensional measurement or value block.</span>
+
+<span class="sd">    A function raising ``ValueError`` rather than a validator, because the rule is answered</span>
+<span class="sd">    twice: by the contract for a definition that states the conversion itself, and by the</span>
+<span class="sd">    analysis for a declaration naming a scalar type that carries it, once the type is known.</span>
+<span class="sd">    A second dimension would be an array of strings, which the a2l format cannot describe -</span>
+<span class="sd">    Vector's generator splits one into single string objects for that reason - and an array</span>
+<span class="sd">    of structures with a string member is how DDD writes it.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">STRING_OBJECT_KINDS</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"a string is a one dimensional array of bytes, which a '</span><span class="si">{</span><span class="n">kind</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">' is not; "</span>
+            <span class="sa">f</span><span class="s2">"declare it as a 'measurement' or a 'value_block'"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">shape</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">spelled</span> <span class="o">=</span> <span class="s2">"none"</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"a string states exactly one dimension, its length in bytes, got </span><span class="si">{</span><span class="n">spelled</span><span class="si">}</span><span class="s2">; an "</span>
+            <span class="sa">f</span><span class="s2">"array of strings is written as an array of structures with a string member"</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">check_storage_named_once</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">typename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Refuse a definition that names its storage twice, or not at all.</span>
 
@@ -454,11 +549,13 @@
 
 <span class="sd">    ``null`` leaves the object zero initialised by the startup code. For an array shaped</span>
 <span class="sd">    object, either a nested list matching the shape exactly, or a single scalar, which</span>
-<span class="sd">    initialises every element with that value.</span>
+<span class="sd">    initialises every element with that value. A string object may state its init as text</span>
+<span class="sd">    instead: printable ASCII, shorter than the dimension so that the terminating zero fits.</span>
 <span class="sd">    """</span>
 
     <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling or an enumeration.</span>
+<span class="w">    </span><span class="sd">"""How a raw value maps to a physical one: identity, linear scaling, an enumeration, or</span>
+<span class="sd">    text read from the bytes (``string``).</span>
 
 <span class="sd">    Required wherever storage is named by ``datatype``, although the identity would be</span>
 <span class="sd">    derivable: raw equalling physical is an engineering claim about the data, not a</span>
@@ -466,7 +563,8 @@
 <span class="sd">    without anything looking broken. A definition naming a ``typename`` states no conversion</span>
 <span class="sd">    - the type fixes it. ``kind`` may be left out when the keys make it unambiguous:</span>
 <span class="sd">    ``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,</span>
-<span class="sd">    and ``{}`` means ``identity``.</span>
+<span class="sd">    and ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of</span>
+<span class="sd">    its own to be recognised by.</span>
 <span class="sd">    """</span>
 
     <span class="n">limits</span><span class="p">:</span> <span class="n">Limits</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -564,6 +662,19 @@
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_a_string_is_a_one_dimensional_byte_array</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
+        <span class="n">refuse_string_misuse</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span>
+            <span class="n">unit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">,</span>
+            <span class="n">limits</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">,</span>
+            <span class="n">display_format</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">a2l</span><span class="o">.</span><span class="n">format</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">):</span>
+            <span class="n">check_string_shape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kind</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">declared_shape</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_storage_is_named_exactly_once</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataObject</span><span class="p">:</span>
         <span class="n">check_storage_named_once</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">typename</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
@@ -601,7 +712,7 @@
         <span class="k">return</span> <span class="n">Limits</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="n">low</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="n">high</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">scalar_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">"""All raw init values, flattened; empty when no init is given."""</span>
+<span class="w">        </span><span class="sd">"""All raw init values, flattened; empty when no init is given, or when it is text."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">init</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">()</span>
         <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">flatten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">init</span><span class="p">))</span></div>
@@ -777,7 +888,13 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">check_shape</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Validate a nested init value against an array shape."""</span>
+<span class="w">    </span><span class="sd">"""Validate a nested init value against an array shape.</span>
+
+<span class="sd">    A string is not judged here: whether it fits is a question about the object's</span>
+<span class="sd">    conversion as much as its shape, and the analysis answers both at once.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
             <span class="k">return</span> <span class="s2">"init is a list but the object is a scalar"</span>
@@ -799,18 +916,28 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">flatten</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Every raw scalar of an init, in storage order; a string contributes none.</span>
+
+<span class="sd">    A string's bytes are its characters, which the string rules check and the c literal</span>
+<span class="sd">    spells; nothing that converts or draws raw numbers has any business with them.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[]</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
         <span class="k">return</span> <span class="p">[</span><span class="n">scalar</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">value</span> <span class="k">for</span> <span class="n">scalar</span> <span class="ow">in</span> <span class="n">flatten</span><span class="p">(</span><span class="n">element</span><span class="p">)]</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">broadcast</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">InitValue</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">Shape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InitValue</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Expand a scalar init over ``shape``; a nested value is returned unchanged."""</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Expand a scalar init over ``shape``; a nested value or a string is returned unchanged."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">value</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">value</span>
-    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">broadcast</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+    <span class="c1"># value is a scalar here - str and tuple both returned above - so every recursive call</span>
+    <span class="c1"># below walks only the scalar and nested-tuple arms of InitValue, never str, which is</span>
+    <span class="c1"># exactly InitElement; the cast tells mypy what the isinstance checks already guarantee.</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">InitElement</span><span class="p">,</span> <span class="n">broadcast</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">definition_keys</span><span class="p">(</span><span class="n">kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>

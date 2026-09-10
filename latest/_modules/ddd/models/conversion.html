@@ -95,7 +95,7 @@
   <h1>Source code for ddd.models.conversion</h1><div class="highlight"><pre>
 <span></span><span class="sd">"""Conversions between the raw (implementation) and the physical value of a data object.</span>
 
-<span class="sd">The three variants form a tagged union discriminated on ``kind``, and each one answers the</span>
+<span class="sd">The four variants form a tagged union discriminated on ``kind``, and each one answers the</span>
 <span class="sd">same three questions - the interface :class:`ConversionRule` spells out. It is a Protocol</span>
 <span class="sd">rather than a base class because the variants are pydantic models whose only shared state is</span>
 <span class="sd">their tag: inheritance would put a ``kind`` field where each variant needs its own literal.</span>
@@ -289,6 +289,32 @@
 
 
 
+<span class="k">class</span><span class="w"> </span><span class="nc">StringConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Bytes read as text: each element of the array holds one character code.</span>
+
+<span class="sd">    Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the</span>
+<span class="sd">    datatype because the same pair is written in three places. ``kind`` is required here,</span>
+<span class="sd">    unlike on the other three kinds: a string has no key of its own to be inferred from,</span>
+<span class="sd">    and ``{}`` is the identity.</span>
+
+<span class="sd">    The two mappings are the identity on one byte, so that the derived limits of a string</span>
+<span class="sd">    are the raw range of its datatype - which is what the a2l record states - and nothing</span>
+<span class="sd">    that ranges a conversion has to know that a string exists. A byte has no reading of its</span>
+<span class="sd">    own, so no reading is produced for it, as for the identity.</span>
+<span class="sd">    """</span>
+
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"string"</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_physical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">physical</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">physical</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"string"</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_infer_kind</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Allow ``kind`` to be omitted when the shape of the object is unambiguous."""</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">"kind"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
@@ -303,11 +329,12 @@
 
 
 <span class="n">Conversion</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span>
-    <span class="n">IdentityConversion</span> <span class="o">|</span> <span class="n">LinearConversion</span> <span class="o">|</span> <span class="n">EnumConversion</span><span class="p">,</span>
+    <span class="n">IdentityConversion</span> <span class="o">|</span> <span class="n">LinearConversion</span> <span class="o">|</span> <span class="n">EnumConversion</span> <span class="o">|</span> <span class="n">StringConversion</span><span class="p">,</span>
     <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"kind"</span><span class="p">),</span>
     <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">_infer_kind</span><span class="p">),</span>
 <span class="p">]</span>
-<span class="sd">"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous."""</span>
+<span class="sd">"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous, which</span>
+<span class="sd">a string never is."""</span>
 
 <span class="n">IDENTITY</span> <span class="o">=</span> <span class="n">IdentityConversion</span><span class="p">()</span>
 

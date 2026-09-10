@@ -72,6 +72,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#what-is-emitted-for-what">What is emitted for what</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conversions-and-why-coeffs-looks-inverted">Conversions, and why <code class="docutils literal notranslate"><span class="pre">COEFFS</span></code> looks inverted</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#enumerations">Enumerations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#strings">Strings</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arrays-matrix-dim-and-the-reversed-index-order">Arrays, <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code>, and the reversed index order</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-curve-a-map-and-their-shared-axes">A curve, a map and their shared axes</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#one-group-per-component">One group per component</a></li>
@@ -744,41 +745,44 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code></p></td>
-<td><p>every <code class="docutils literal notranslate"><span class="pre">measurement</span></code></p></td>
+<td><p>every <code class="docutils literal notranslate"><span class="pre">measurement</span></code>; a string one as the byte array it is, with an <code class="docutils literal notranslate"><span class="pre">ANNOTATION</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">VALUE</span></code></p></td>
 <td><p>every <code class="docutils literal notranslate"><span class="pre">parameter</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">VAL_BLK</span></code></p></td>
-<td><p>every <code class="docutils literal notranslate"><span class="pre">value_block</span></code></p></td>
+<td><p>every <code class="docutils literal notranslate"><span class="pre">value_block</span></code> that is not a string</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">CURVE</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">ASCII</span></code></p></td>
+<td><p>every <code class="docutils literal notranslate"><span class="pre">value_block</span></code> under a string conversion, with a <code class="docutils literal notranslate"><span class="pre">NUMBER</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">CURVE</span></code></p></td>
 <td><p>every <code class="docutils literal notranslate"><span class="pre">curve</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">MAP</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span> <span class="pre">...</span> <span class="pre">MAP</span></code></p></td>
 <td><p>every <code class="docutils literal notranslate"><span class="pre">map</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code></p></td>
 <td><p>every <code class="docutils literal notranslate"><span class="pre">axis</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RECORD_LAYOUT</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RECORD_LAYOUT</span></code></p></td>
 <td><p>one per datatype and storage category actually used</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code></p></td>
 <td><p>one per distinct combination of conversion, unit <strong>and</strong> display format</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">COMPU_VTAB</span></code></p></td>
 <td><p>one per enum conversion</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
 <td><p>one per component that exports at least one object</p></td>
 </tr>
 </tbody>
 </table>
 <p>The record layouts and the compu methods are shared rather than repeated per object, because
 they describe <em>how</em> a value is stored and scaled rather than <em>which</em> value it is, and two
-objects that agree on both have no reason to carry two copies. The seven calibration objects
-of the demo share five record layouts, and its twenty-one objects share eight compu methods:</p>
+objects that agree on both have no reason to carry two copies. The eight calibration objects
+of the demo share five record layouts, and its twenty-three objects share eight compu methods:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin RECORD_LAYOUT RL_AXIS_UWORD
   AXIS_PTS_X 1 UWORD INDEX_INCR DIRECT
 /end RECORD_LAYOUT
@@ -953,6 +957,21 @@ different definitions of <code class="docutils literal notranslate"><span class=
 upper limit of <code class="docutils literal notranslate"><span class="pre">StateA</span></code> is 15 rather than 255, because the limits of an enum-converted
 object default to the range its enumerators actually span, and offering the calibration
 engineer values that mean nothing is worse than offering too few.</p>
+</section>
+<section id="strings">
+<h3>Strings<a class="headerlink" href="#strings" title="Link to this heading"></a></h3>
+<p>A string conversion becomes one of two records, and which one depends on the kind rather than
+on anything about the text itself: a value block becomes a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> of type
+<code class="docutils literal notranslate"><span class="pre">ASCII</span></code>, and a measurement stays the byte array it is, with an <code class="docutils literal notranslate"><span class="pre">ANNOTATION</span></code> saying why -
+no version of ASAP2 has a string measurement. Both records, and the reasoning behind them, are
+on the <a class="reference internal" href="file_formats/conversions.html"><span class="doc">conversions page</span></a>.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/begin CHARACTERISTIC SoftwareLabel "Software label of the controller, as text"
+  ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255
+  SYMBOL_LINK "SoftwareLabel" 0
+  NUMBER 16
+/end CHARACTERISTIC
+</pre></div>
+</div>
 </section>
 <section id="arrays-matrix-dim-and-the-reversed-index-order">
 <h3>Arrays, <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code>, and the reversed index order<a class="headerlink" href="#arrays-matrix-dim-and-the-reversed-index-order" title="Link to this heading"></a></h3>

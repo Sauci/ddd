@@ -136,7 +136,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd dump examples/demo/demo.ddd.json
 {
-  "format": 7,
+  "format": 8,
   "name": "DemoDevice",
   "description": "Demonstration project showing every kind of data object",
   "source": "demo.ddd.json",
@@ -268,13 +268,13 @@ files such an object under <code class="docutils literal notranslate"><span clas
 <h2>The format field<a class="headerlink" href="#the-format-field" title="Link to this heading"></a></h2>
 <p>A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The <code class="docutils literal notranslate"><span class="pre">format</span></code> field stamps the shape of the document
-- currently <code class="docutils literal notranslate"><span class="pre">7</span></code> - and changes only when that shape changes, not with every release of the
+- currently <code class="docutils literal notranslate"><span class="pre">8</span></code> - and changes only when that shape changes, not with every release of the
 tool.</p>
 <p>It exists so that a later reader can say <em>this file is newer than I understand</em> rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
 one that is newer:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare baseline.json demo.ddd.json
-baseline.json#format: error[schema]: in the baseline: this dictionary is in format 8, and this DDD understands up to 7; use a newer DDD to read it
+baseline.json#format: error[schema]: in the baseline: this dictionary is in format 9, and this DDD understands up to 8; use a newer DDD to read it
 1 error
 </pre></div>
 </div>
@@ -312,7 +312,7 @@ elided here for space):</p>
 <span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The resolved data of one project."</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
 <span class="w">    </span><span class="p">},</span>
@@ -451,7 +451,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-011c3b0bd3484fdb0854ada6f419b33321ef634d.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-2798134cc93260210cb3d815e7812009448f70ff.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -483,13 +483,13 @@ than widening it: an object with no datatype&amp;#xA;and no limits would turn ev
 are read&amp;#xA;unconditionally in a dozen places on the strength of always being there.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:instances:e -&gt; &quot;ddd.ir.ResolvedInstance&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedLeaf&amp;#xA;&amp;#xA;One member of one structured variable, at the end of one access path.&amp;#xA;&amp;#xA;The flattening. A structure \
 reaches the a2l as an object per member rather than as an a2l&amp;#xA;structure, so this is the form that backend consumes - an ordinary \
 object in every respect&amp;#xA;but its name, which is a path rather than an identifier.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:leaves:e -&gt; &quot;ddd.ir.ResolvedLeaf&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:objects:e -&gt; &quot;ddd.ir.ResolvedObject&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
@@ -535,6 +535,15 @@ so that the claim is written down rather than left to&amp;#xA;silence.&amp;#xA;&
       tooltip=&quot;ddd.models.conversion.LinearConversion&amp;#xA;&amp;#xA;``physical = raw * factor + offset``, the scaling of a fixed point value.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.LinearConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
+   &quot;ddd.models.conversion.StringConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;StringConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['string']&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;ddd.models.conversion.StringConversion&amp;#xA;&amp;#xA;Bytes read as text: each element of the array holds one character code.&amp;#xA;&amp;#xA;\
+Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the&amp;#xA;datatype because the same pair is written \
+in three places. ``kind`` is required here,&amp;#xA;unlike on the other three kinds: a string has no key of its own to be inferred from,&amp;#\
+xA;and ``{}`` is the identity.&amp;#xA;&amp;#xA;The two mappings are the identity on one byte, so that the derived limits of a string&amp;#xA;\
+are the raw range of its datatype - which is what the a2l record states - and nothing&amp;#xA;that ranges a conversion has to know that \
+a string exists. A byte has no reading of its&amp;#xA;own, so no reading is produced for it, as for the identity.&amp;#xA;&quot;];
+   &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.StringConversion&quot;:_root:w   [arrowhead=noneteetee,
+      arrowtail=nonenone];
    &quot;ddd.ir.ResolvedLeaf&quot;:a2l:e -&gt; &quot;ddd.models.objects.A2lObjectOptions&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.objects.Limits&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Limits&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;min&lt;/td&gt;&lt;td port=&quot;min&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;max&lt;/td&gt;&lt;td port=&quot;max&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
@@ -550,6 +559,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.IdentityConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.LinearConversion&quot;:_root:w   [arrowhead=noneteetee,
+      arrowtail=nonenone];
+   &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.StringConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.ir.ResolvedObject&quot;:a2l:e -&gt; &quot;ddd.models.objects.A2lObjectOptions&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
@@ -569,7 +580,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">   </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -919,7 +930,20 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"IdentityConversion"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"InitElement"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitScalar"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitElement"</span>
+<span class="w">               </span><span class="p">},</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"InitScalar"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
@@ -931,10 +955,20 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitScalar"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitValue"</span>
+<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitElement"</span>
 <span class="w">               </span><span class="p">},</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
 <span class="w">            </span><span class="p">}</span>
@@ -1286,7 +1320,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="nt">"mapping"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"identity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/IdentityConversion"</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span>
+<span class="w">                     </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"string"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="nt">"propertyName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kind"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -1299,6 +1334,9 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Conversion"</span>
@@ -1615,7 +1653,8 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="nt">"mapping"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span><span class="p">,</span>
 <span class="w">                     </span><span class="nt">"identity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/IdentityConversion"</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span>
+<span class="w">                     </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"string"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="nt">"propertyName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kind"</span>
 <span class="w">               </span><span class="p">},</span>
@@ -1628,6 +1667,9 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">},</span>
 <span class="w">                  </span><span class="p">{</span>
 <span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Conversion"</span>
@@ -1677,7 +1719,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">                  </span><span class="p">}</span>
 <span class="w">               </span><span class="p">],</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``; ``null`` means zero initialised."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -1877,6 +1919,22 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Scope"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"StringConversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"const"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Kind"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"kind"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StringConversion"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -1908,7 +1966,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 </dl>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.format">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">7</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
 <dd><p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
@@ -2045,7 +2103,7 @@ were given, without the project file that stated them.</p>
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedObject</span></span><a class="reference internal" href="_modules/ddd/ir.html#ResolvedObject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.ir.ResolvedObject" title="Link to this definition"></a></dt>
 <dd><p>One data object, with every derived property already worked out.</p>
-<div class="graphviz"><img src="_images/graphviz-ffe34be959a3f9810055bd2a7cd7e8245e28b41f.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-f7d16582f34bf1eb628eafb5a86ed737c5ca9cb5.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -2059,7 +2117,7 @@ were given, without the project file that stated them.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedObject&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedObject&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;id&lt;/td&gt;&lt;td port=&quot;id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;extensions&lt;/td&gt;&lt;td port=&quot;extensions&quot;&gt;dict[str, dict[str, Any]]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;init&lt;/td&gt;&lt;td port=&quot;init&quot;&gt;InitValue | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;references&lt;/td&gt;&lt;td port=&quot;references&quot;&gt;dict[str, str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedObject&amp;#xA;&amp;#xA;One data object, with every derived property already worked out.&amp;#xA;&quot;];
    &quot;ddd.models.conversion.EnumConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;EnumConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['enum']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;name&lt;/td&gt;&lt;td port=&quot;name&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;enumerators&lt;/td&gt;&lt;td port=&quot;enumerators&quot;&gt;tuple[Enumerator, ...]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.conversion.EnumConversion&amp;#xA;&amp;#xA;A verbal conversion table; the raw value *is* the physical value.&amp;#xA;&amp;#xA;Accepts \
@@ -2076,6 +2134,15 @@ so that the claim is written down rather than left to&amp;#xA;silence.&amp;#xA;&
    &quot;ddd.models.conversion.LinearConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LinearConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['linear']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;factor&lt;/td&gt;&lt;td port=&quot;factor&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;offset&lt;/td&gt;&lt;td port=&quot;offset&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.conversion.LinearConversion&amp;#xA;&amp;#xA;``physical = raw * factor + offset``, the scaling of a fixed point value.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.LinearConversion&quot;:_root:w   [arrowhead=noneteetee,
+      arrowtail=nonenone];
+   &quot;ddd.models.conversion.StringConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;StringConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['string']&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;ddd.models.conversion.StringConversion&amp;#xA;&amp;#xA;Bytes read as text: each element of the array holds one character code.&amp;#xA;&amp;#xA;\
+Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the&amp;#xA;datatype because the same pair is written \
+in three places. ``kind`` is required here,&amp;#xA;unlike on the other three kinds: a string has no key of its own to be inferred from,&amp;#\
+xA;and ``{}`` is the identity.&amp;#xA;&amp;#xA;The two mappings are the identity on one byte, so that the derived limits of a string&amp;#xA;\
+are the raw range of its datatype - which is what the a2l record states - and nothing&amp;#xA;that ranges a conversion has to know that \
+a string exists. A byte has no reading of its&amp;#xA;own, so no reading is produced for it, as for the identity.&amp;#xA;&quot;];
+   &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.StringConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.objects.A2lObjectOptions&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;A2lObjectOptions&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;export&lt;/td&gt;&lt;td port=&quot;export&quot;&gt;bool | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;display_identifier&lt;/td&gt;&lt;td port=&quot;display_identifier&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.objects.A2lObjectOptions&amp;#xA;&amp;#xA;What a declaration asks of the a2l backend. Only that backend interprets it.&amp;#xA;&amp;#\
@@ -2154,7 +2221,8 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="nt">"mapping"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"identity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/IdentityConversion"</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span>
+<span class="w">               </span><span class="nt">"linear"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LinearConversion"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"string"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"propertyName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kind"</span>
 <span class="w">         </span><span class="p">},</span>
@@ -2167,6 +2235,9 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/EnumConversion"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/StringConversion"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Conversion"</span>
@@ -2216,7 +2287,7 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``; ``null`` means zero initialised."</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"section"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -2473,7 +2544,20 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"IdentityConversion"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"InitElement"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitScalar"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitElement"</span>
+<span class="w">               </span><span class="p">},</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"InitScalar"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
@@ -2485,10 +2569,20 @@ out.&amp;#xA;&quot;];
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"number"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"InitValue"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitScalar"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitValue"</span>
+<span class="w">                  </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/InitElement"</span>
 <span class="w">               </span><span class="p">},</span>
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
 <span class="w">            </span><span class="p">}</span>
@@ -2572,6 +2666,22 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="p">],</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ObjectKind"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"StringConversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"const"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Kind"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"kind"</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StringConversion"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -2591,7 +2701,7 @@ out.&amp;#xA;&quot;];
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.a2l" title="ddd.ir.ResolvedObject.a2l"><code class="xref py py-obj docutils literal notranslate"><span class="pre">a2l</span> <span class="pre">(ddd.models.objects.A2lObjectOptions)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.condition" title="ddd.ir.ResolvedObject.condition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">condition</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.consumers" title="ddd.ir.ResolvedObject.consumers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">consumers</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></a></p></li>
-<li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.conversion" title="ddd.ir.ResolvedObject.conversion"><code class="xref py py-obj docutils literal notranslate"><span class="pre">conversion</span> <span class="pre">(ddd.models.conversion.IdentityConversion</span> <span class="pre">|</span> <span class="pre">ddd.models.conversion.LinearConversion</span> <span class="pre">|</span> <span class="pre">ddd.models.conversion.EnumConversion)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.conversion" title="ddd.ir.ResolvedObject.conversion"><code class="xref py py-obj docutils literal notranslate"><span class="pre">conversion</span> <span class="pre">(ddd.models.conversion.IdentityConversion</span> <span class="pre">|</span> <span class="pre">ddd.models.conversion.LinearConversion</span> <span class="pre">|</span> <span class="pre">ddd.models.conversion.EnumConversion</span> <span class="pre">|</span> <span class="pre">ddd.models.conversion.StringConversion)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.datatype" title="ddd.ir.ResolvedObject.datatype"><code class="xref py py-obj docutils literal notranslate"><span class="pre">datatype</span> <span class="pre">(ddd.models.common.Datatype)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.description" title="ddd.ir.ResolvedObject.description"><code class="xref py py-obj docutils literal notranslate"><span class="pre">description</span> <span class="pre">(str)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedObject.dimensions" title="ddd.ir.ResolvedObject.dimensions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dimensions</span> <span class="pre">(tuple[int</span> <span class="pre">|</span> <span class="pre">str,</span> <span class="pre">...])</span></code></a></p></li>
@@ -2709,7 +2819,10 @@ no spellings.</p>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject.init">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">init</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">InitValue</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.ir.ResolvedObject.init" title="Link to this definition"></a></dt>
-<dd><p>Raw initial value, nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>; <code class="docutils literal notranslate"><span class="pre">null</span></code> means zero initialised.</p>
+<dd><p>Raw initial value, nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, or the text of a string object; <code class="docutils literal notranslate"><span class="pre">null</span></code>
+means zero initialised.</p>
+<p>Raw initial value, nested to match <code class="docutils literal notranslate"><span class="pre">shape</span></code>, or the text of a string object; <code class="docutils literal notranslate"><span class="pre">null</span></code>
+means zero initialised.</p>
 </dd></dl>
 
 <dl class="py attribute pydantic_field">

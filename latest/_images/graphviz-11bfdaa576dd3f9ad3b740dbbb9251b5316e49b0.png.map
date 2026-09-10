@@ -1,0 +1,68 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.conversion.EnumConversion
+
+A verbal conversion table; the raw value *is* the physical value.
+
+Accepts both the explicit form::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;,
+ &#160;&#160;&#160;&#160;&quot;enumerators&quot;: [{&quot;name&quot;: &quot;STATE_OFF&quot;, &quot;value&quot;: 0}]}
+
+and the mapping shorthand::
+
+ &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
+" alt="" coords="1268,29,1533,141"/>
+<area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
+
+One named value of an enum conversion, and what that value means.
+" alt="" coords="1677,114,1795,226"/>
+<area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
+
+``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
+
+Not a default: a definition naming storage by ``datatype`` states this one where raw and
+physical are the same number, so that the claim is written down rather than left to
+silence.
+" alt="" coords="1315,189,1486,245"/>
+<area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
+
+``physical = raw * factor + offset``, the scaling of a fixed point value.
+" alt="" coords="1317,293,1484,405"/>
+<area shape="rect" id="node5" title="ddd.models.conversion.StringConversion
+
+Bytes read as text: each element of the array holds one character code.
+
+Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the
+datatype because the same pair is written in three places. ``kind`` is required here,
+unlike on the other three kinds: a string has no key of its own to be inferred from,
+and ``{}`` is the identity.
+
+The two mappings are the identity on one byte, so that the derived limits of a string
+are the raw range of its datatype &#45; which is what the a2l record states &#45; and nothing
+that ranges a conversion has to know that a string exists. A byte has no reading of its
+own, so no reading is produced for it, as for the identity.
+" alt="" coords="1322,453,1479,509"/>
+<area shape="rect" id="node6" title="ddd.models.objects.A2lObjectOptions
+
+What a declaration asks of the a2l backend. Only that backend interprets it.
+
+Nothing here changes the generated c or the meaning of the object; a project that
+generates no a2l can leave the whole block out.
+" alt="" coords="1282,690,1519,802"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Limits
+
+Physical lower/upper limit of a data object.
+" alt="" coords="1316,557,1485,641"/>
+<area shape="rect" id="node8" title="ddd.models.types.Member
+
+One member of a structure, in the order the structure declares it.
+
+Order is significant: it is the order the c struct is generated in, and therefore the order
+the compiler lays out. &#160;Reordering members of a released structure moves every address after
+the change, which is why a comparison against a baseline reports it.
+" alt="" coords="383,119,1124,455"/>
+<area shape="rect" id="node9" title="ddd.models.types.StructType
+
+One structured datatype: a name and the members it lays out, in order.
+" alt="" coords="5,5,239,145"/>
+</map>

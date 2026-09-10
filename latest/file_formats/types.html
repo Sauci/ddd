@@ -289,7 +289,8 @@ type of the project.</p></td>
 <td><p>How the stored number maps to the physical one; see <a class="reference internal" href="conversions.html"><span class="doc">Conversions</span></a>. Required
 even when it is the identity, because fixing what a value means is the one job a
 scalar type has, and the identity is part of the answer rather than a silence to
-interpret.</p></td>
+interpret. A scalar type may be a string, in which case the declarations and members
+naming it state the length.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></td>
 <td><p>derived</p></td>
@@ -371,7 +372,9 @@ question of whether the answer is shared: a unit written on a member says it for
 that structure, and a <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code> says it once for everything in the project that names
 it. The <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block sits on the member rather than on the structure because that is the
 granularity the file ends up with - keeping one member out of the a2l, or giving one member a
-display format, is a decision about that member alone.</p>
+display format, is a decision about that member alone. A member under a string conversion, its
+own or its type’s, is a <code class="docutils literal notranslate"><span class="pre">value</span></code> member of exactly one dimension, and states no unit, limits
+or format, as a definition would not.</p>
 <section id="what-a-member-does-not-say">
 <h3>What a member does not say<a class="headerlink" href="#what-a-member-does-not-say" title="Link to this heading"></a></h3>
 <p>A member states no <code class="docutils literal notranslate"><span class="pre">kind</span></code>, and that is the scope of <code class="docutils literal notranslate"><span class="pre">const</span></code> rather than an oversight.

@@ -651,11 +651,13 @@ the format cannot describe storage whose layout DDD does not know; neither appea
    * - record
      - emitted for
    * - ``MEASUREMENT``
-     - every ``measurement``
+     - every ``measurement``; a string one as the byte array it is, with an ``ANNOTATION``
    * - ``CHARACTERISTIC ... VALUE``
      - every ``parameter``
    * - ``CHARACTERISTIC ... VAL_BLK``
-     - every ``value_block``
+     - every ``value_block`` that is not a string
+   * - ``CHARACTERISTIC ... ASCII``
+     - every ``value_block`` under a string conversion, with a ``NUMBER``
    * - ``CHARACTERISTIC ... CURVE``
      - every ``curve``
    * - ``CHARACTERISTIC ... MAP``
@@ -673,7 +675,7 @@ the format cannot describe storage whose layout DDD does not know; neither appea
 
 The record layouts and the compu methods are shared rather than repeated per object, because
 they describe *how* a value is stored and scaled rather than *which* value it is, and two
-objects that agree on both have no reason to carry two copies. The seven calibration objects
+objects that agree on both have no reason to carry two copies. The eight calibration objects
 of the demo share five record layouts, and its twenty-three objects share eight compu methods:
 
 .. code-block:: text
@@ -873,6 +875,23 @@ different definitions of ``StateA_t``, one table can serve every object that use
 upper limit of ``StateA`` is 15 rather than 255, because the limits of an enum-converted
 object default to the range its enumerators actually span, and offering the calibration
 engineer values that mean nothing is worse than offering too few.
+
+Strings
+~~~~~~~
+
+A string conversion becomes one of two records, and which one depends on the kind rather than
+on anything about the text itself: a value block becomes a ``CHARACTERISTIC`` of type
+``ASCII``, and a measurement stays the byte array it is, with an ``ANNOTATION`` saying why -
+no version of ASAP2 has a string measurement. Both records, and the reasoning behind them, are
+on the :doc:`conversions page <file_formats/conversions>`.
+
+.. code-block:: text
+
+       /begin CHARACTERISTIC SoftwareLabel "Software label of the controller, as text"
+         ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255
+         SYMBOL_LINK "SoftwareLabel" 0
+         NUMBER 16
+       /end CHARACTERISTIC
 
 Arrays, ``MATRIX_DIM``, and the reversed index order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

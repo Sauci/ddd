@@ -12,6 +12,23 @@ changes one of them says here what the migration costs.  Anything else - the lay
 generated c, the wording of a diagnostic - is not, and the templates a project provides are
 its own.
 
+## Unreleased
+
+* **Strings.**  A fourth conversion kind, `{"kind": "string"}`, reads a one dimensional
+  `uint8` or `sint8` array as text, on a measurement, a value block, a structure member or a
+  scalar type; its `init` may be written as a string, printable ASCII shorter than the
+  dimension, and the generated c carries it as a string literal.  A calibration string
+  reaches the a2l as a `CHARACTERISTIC` of type `ASCII` with a `NUMBER`; a string measurement
+  stays the byte array it is, with an `ANNOTATION` saying so, because no version of the
+  format has a string measurement.  A string states no unit, limits or display format, and
+  the rules are `schema` where they are broken; a wrong string init is `init-invalid`.
+  **Migration:** none for a description file - no existing file carries the kind, and `{}`
+  is the identity it always was.  The dumped dictionary is format 8, for the new kind and the
+  string `init`; a format 7 dictionary reads back unchanged, and a reader that only knows 7
+  refuses a format 8 file as it refuses any newer one.  One spelling changes meaning: a
+  quoted number as an `init`, `"12"`, used to be read as the number and is now text, refused
+  on anything but a string object as `init-invalid` - spell the number as a number.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

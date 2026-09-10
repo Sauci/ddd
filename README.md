@@ -416,11 +416,14 @@ omitted when the shape is unambiguous.
 { "kind": "identity" }
 { "kind": "linear", "factor": 0.25, "offset": -40.0 }
 { "kind": "enum", "name": "StateA_t", "enumerators": { "STATE_OFF": 0, "STATE_FAULT": 15 } }
+{ "kind": "string" }
 ```
 
 * `linear` means `physical = raw * factor + offset`
 * `enum` requires an integer datatype and may also be written as a list of
   `{"name": ..., "value": ..., "description": ...}` objects to document each enumerator
+* `string` reads a one dimensional `uint8` or `sint8` array as text; `kind` is always written
+  for it, and its `init` may be a string
 
 ### Types, units, sections, constants and rasters
 
@@ -688,6 +691,9 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 * a linear conversion becomes `RAT_FUNC` with `COEFFS 0 1 -offset 0 0 factor`, which is the
   a2l way of writing `raw = (physical - offset) / factor`
 * an identity conversion without unit uses `NO_COMPU_METHOD`
+* a value block under a string conversion becomes a `CHARACTERISTIC` of type `ASCII` with a
+  `NUMBER`; a string measurement stays the byte array it is, with an `ANNOTATION` saying so,
+  because the format has no string measurement
 * a measurement or a value block with dimensions gets a `MATRIX_DIM`, listing the fastest
   running index **first** - the reverse of the c declaration, so `uint8_t T[2][3]` becomes
   `MATRIX_DIM 3 2 1`.  A curve and a map carry none: their shape is already given by the

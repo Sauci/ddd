@@ -321,6 +321,8 @@ or an a2l file that does not do what the description says - or that does not com
        wrong type, a datatype that does not exist, a shape or a nesting beyond what DDD
        carries. One finding per violated constraint, each pointing at the offending key. It
        also fires on an archived dictionary written by a newer DDD than the one reading it.
+       It is also what refuses a string conversion on anything but a one dimensional byte
+       array, or beside a unit, limits or a display format.
    * - ``include-cycle``
      - error (fixed)
      - a project includes a file which, directly or indirectly, includes it again. A diamond -
@@ -552,7 +554,8 @@ or an a2l file that does not do what the description says - or that does not com
        integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
        not have (for a curve or a map, the shape given by its axes), or an enumerator does not
        fit the datatype of the variable, or does not fit into a c ``int``, which every
-       enumerator has to (C11 6.7.2.2).
+       enumerator has to (C11 6.7.2.2), or a string init that is not printable ASCII, leaves
+       no room for its terminator, or sits on an object that is not a string.
 
 Warnings
 ~~~~~~~~

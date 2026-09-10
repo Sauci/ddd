@@ -101,7 +101,7 @@ rather than ignored.
        have to agree on it, because two components using the same variable in different units
        is the failure that compiles and links and is wrong by a constant factor. Free text
        does not mean unchecked: where the project declares a :doc:`unit vocabulary <units>`,
-       every spelling is checked against it as well (``unknown-unit``).
+       every spelling is checked against it as well (``unknown-unit``). A string has none.
    * - ``conversion``
      - required beside ``datatype``
      - How the stored number maps to the physical one; see :doc:`conversions`. Required
@@ -112,7 +112,7 @@ rather than ignored.
      - derived
      - An object with ``min`` and ``max``, in **physical** units. When it is left out, DDD
        derives the limits from the datatype and the conversion, so the a2l always carries a
-       range.
+       range. A string states none; its range is the byte range of its datatype.
    * - ``section``
      - none
      - The linker section the object is placed in, named in the project's
@@ -127,10 +127,12 @@ rather than ignored.
    * - ``init``
      - ``null``
      - The initial value, in **raw** units. ``null`` means no initialiser is written at all
-       and the startup code zero-initialises the object.
+       and the startup code zero-initialises the object. A string object may write it as
+       text; see :doc:`conversions`.
    * - ``a2l``
      - export
-     - Per object settings for the a2l backend, and nothing else reads them.
+     - Per object settings for the a2l backend, and nothing else reads them. A string takes
+       no ``format``.
    * - ``extensions``
      - ``{}``
      - Settings for each named :doc:`plugin <../plugins>`, keyed by plugin name and validated
@@ -291,6 +293,10 @@ for a large array is the difference between a few bytes of image and a few kilob
    float ValueC;
    /** Component local measurement, kept out of the a2l */
    uint16_t ValueD[8];
+
+A string object may state its ``init`` as text instead - printable ASCII, shorter than the
+dimension so that the terminator fits - and the c carries it as a string literal; the
+:doc:`conversions page <conversions>` shows one.
 
 The value is raw rather than physical because the generated c carries it verbatim, and under
 a linear conversion most physical values are the exact image of no raw count, so a physical

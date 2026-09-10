@@ -264,7 +264,7 @@ what a value is *for*, not what it controls.
        of ``input``, ``output`` and ``local``.
    * - conversion
      - the rule that maps the raw value stored in the target to the physical value a human
-       reads: the identity, a linear factor and offset, or an enumeration.
+       reads: the identity, a linear factor and offset, an enumeration, or text.
    * - producer
      - the component that owns a data object, that is the one which declared it ``output`` or
        ``local``. Its declaration is the authoritative one when components disagree.

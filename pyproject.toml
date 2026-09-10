@@ -87,6 +87,13 @@ include = [
     "/requirements-dev.txt",
     "/requirements-docs.txt",
 ]
+# docs/superpowers/ holds the design and planning records of each feature: read by nobody the
+# sdist is sent to, skipped by the documentation tests and outside the Sphinx build, and at
+# times a megabyte of prose beside the tool. Exclusion wins over inclusion in hatch, so this
+# one line carves them out of the /docs pattern above.
+exclude = [
+    "/docs/superpowers",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

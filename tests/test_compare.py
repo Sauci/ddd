@@ -99,12 +99,20 @@ class TestBreakingChanges:
         assert checks(verdict(old, new)) == []
 
     @pytest.mark.parametrize(
-        ("was", "now"),
+        ("was", "now", "spelled"),
         [
             # A reordering moves every enumerator of the generated typedef.
-            ([("M_OFF", 0, ""), ("M_ON", 1, "")], [("M_ON", 1, ""), ("M_OFF", 0, "")]),
+            (
+                [("M_OFF", 0, ""), ("M_ON", 1, "")],
+                [("M_ON", 1, ""), ("M_OFF", 0, "")],
+                "enum(Mode_t: M_ON=1, M_OFF=0) != enum(Mode_t: M_OFF=0, M_ON=1)",
+            ),
             # A revalued enumerator falsifies every archived reading of the state.
-            ([("M_OFF", 0, "")], [("M_OFF", 1, "")]),
+            (
+                [("M_OFF", 0, "")],
+                [("M_OFF", 1, "")],
+                "enum(Mode_t: M_OFF=1) != enum(Mode_t: M_OFF=0)",
+            ),
         ],
     )
     def test_enumerator_order_and_values_still_break(
@@ -112,10 +120,15 @@ class TestBreakingChanges:
         tree: Path,
         was: list[tuple[str, int, str]],
         now: list[tuple[str, int, str]],
+        spelled: str,
     ) -> None:
+        """The finding spells the enumerators out: a delivery comparison has no
+        ``enum-conflict`` to leave them to, and ``enum(Mode_t) != enum(Mode_t)`` said nothing."""
         old = one_component(tree, "old", declare("local", "X", "uint8", conversion=self.enum(*was)))
         new = one_component(tree, "new", declare("local", "X", "uint8", conversion=self.enum(*now)))
-        assert checks(verdict(old, new)) == ["changed-interface"]
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert f"conversion: {spelled}" in messages(bag)
 
     @staticmethod
     def enum(*enumerators: tuple[str, int, str]) -> dict[str, Any]:

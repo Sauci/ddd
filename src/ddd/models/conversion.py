@@ -8,6 +8,7 @@ their tag: inheritance would put a ``kind`` field where each variant needs its o
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Annotated, Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
@@ -171,6 +172,17 @@ class EnumConversion(_Frozen):
     @property
     def values(self) -> tuple[int, ...]:
         return tuple(enumerator.value for enumerator in self.enumerators)
+
+    def spell_enumerators(self, entries: Iterable[Enumerator] | None = None) -> str:
+        """``NAME=value`` pairs in written order: every enumerator, or the ones handed in.
+
+        The one spelling of the three findings that quote enumerators - ``enum-conflict``
+        inside a project, the delivery comparison across two, and the ``init-invalid`` that
+        names the enumerators outside a datatype, which passes the subset - so that a reader
+        meets the same list wherever an enumeration is quoted.
+        """
+        listed = self.enumerators if entries is None else entries
+        return ", ".join(f"{entry.name}={entry.value}" for entry in listed)
 
     def to_physical(self, raw: float) -> float:
         return raw

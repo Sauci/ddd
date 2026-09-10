@@ -59,6 +59,7 @@ from ddd.models import (
     format_shape,
     is_reserved_identifier,
     physical_range,
+    refuse_string_misuse,
     resolve_export,
     spelled_dimensions,
 )
@@ -885,9 +886,13 @@ class _Analysis:
                 continue
             try:
                 check_string_member_shape(member.member, member.dimensions)
-                if member.a2l.format is not None:
-                    msg = f"a string has no display format, got a2l.format '{member.a2l.format}'"
-                    raise ValueError(msg)
+                refuse_string_misuse(
+                    None,
+                    declared.conversion,
+                    unit="",
+                    limits=None,
+                    display_format=member.a2l.format,
+                )
             except ValueError as error:
                 assert member.typename is not None  # it named the scalar type found above
                 location = entry.location(f"members[{index}]")
@@ -2015,7 +2020,7 @@ class _Analysis:
             self._drop_for_type(ref, named)
             return None
         if isinstance(entry.conversion, StringConversion) and not self._string_type_fits(
-            ref, named, declared
+            ref, named, declared, entry
         ):
             return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
@@ -2032,7 +2037,9 @@ class _Analysis:
             ),
         )
 
-    def _string_type_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:
+    def _string_type_fits(
+        self, ref: DeclarationRef, named: str, declared: LoadedType, entry: ScalarType
+    ) -> bool:
         """A declaration naming a string type is a one dimensional measurement or value block.
 
         The type fixes that the bytes are text and the declaration states how many there
@@ -2045,9 +2052,13 @@ class _Analysis:
         definition = ref.declaration.definition
         try:
             check_string_shape(definition.kind, definition.declared_shape)
-            if definition.a2l.format is not None:
-                msg = f"a string has no display format, got a2l.format '{definition.a2l.format}'"
-                raise ValueError(msg)
+            refuse_string_misuse(
+                None,
+                entry.conversion,
+                unit="",
+                limits=None,
+                display_format=definition.a2l.format,
+            )
         except ValueError as error:
             self._refuse(
                 "schema",
@@ -2356,8 +2367,8 @@ class _Analysis:
                 f"enum '{conversion.name}' is defined with different enumerators",
                 location,
                 notes=[
-                    (f"here: {_enum_summary(conversion)}", None),
-                    (f"first defined as: {_enum_summary(previous)}", previous_location),
+                    (f"here: {conversion.spell_enumerators()}", None),
+                    (f"first defined as: {previous.spell_enumerators()}", previous_location),
                 ],
             )
         elif _documentation_rank(conversion) > _documentation_rank(previous):
@@ -2445,7 +2456,7 @@ class _Analysis:
             first, last = except_outside
             outside = [e for e in outside if first <= e.value <= last]
         if outside:
-            spelled = ", ".join(f"{e.name}={e.value}" for e in outside)
+            spelled = conversion.spell_enumerators(outside)
             self._bag.add(
                 "init-invalid",
                 f"enumerator(s) {spelled} of enum '{conversion.name}' do not fit into {phrase}",
@@ -3219,10 +3230,6 @@ def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...
     """How well an enum is documented, as a totally ordered, order independent key."""
     descriptions = tuple(e.description for e in conversion.enumerators)
     return (sum(1 for text in descriptions if text), descriptions)
-
-
-def _enum_summary(conversion: EnumConversion) -> str:
-    return ", ".join(f"{e.name}={e.value}" for e in conversion.enumerators)
 
 
 def _derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: float) -> bool:

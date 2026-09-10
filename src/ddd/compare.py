@@ -30,7 +30,13 @@ from dataclasses import dataclass
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import Comparable, DataDictionary, ResolvedLeaf
-from ddd.models import conversion_identity, format_number, format_shape
+from ddd.models import (
+    Conversion,
+    EnumConversion,
+    conversion_identity,
+    format_number,
+    format_shape,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +87,19 @@ def _describe_references(entry: Comparable) -> str:
     return ", ".join(f"{key}={value}" for key, value in sorted(entry.references.items()))
 
 
+def _describe_conversion(conversion: Conversion) -> str:
+    """The conversion as a finding spells it: an enum with its enumerators.
+
+    ``describe()`` names an enum and nothing else, which is what the in-project table wants -
+    there ``enum-conflict`` owns the enumerators - but a delivery comparison has no such
+    finding to leave them to, and ``enum(Mode_t) != enum(Mode_t)`` told the reader nothing
+    about what had changed.
+    """
+    if isinstance(conversion, EnumConversion):
+        return f"enum({conversion.name}: {conversion.spell_enumerators()})"
+    return conversion.describe()
+
+
 def _describe_init(value: object) -> str:
     """``none`` for no init, quoted text for a string init, ``repr`` for everything else.
 
@@ -109,7 +128,7 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField(
         "conversion",
         lambda o: conversion_identity(o.conversion),
-        lambda o: o.conversion.describe(),
+        lambda o: _describe_conversion(o.conversion),
     ),
     # A dimension compares as its (spelling, value) pair: a name and its value are different
     # spellings of one size, and the spelling is what the generated code carries, so a

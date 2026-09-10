@@ -213,6 +213,45 @@ class TestBreakingChanges:
         new = one_component(tree, "new", declare("local", "X", "uint16", kind="parameter"))
         assert "changed-interface" in checks(verdict(old, new))
 
+    def test_bytes_becoming_text_is_breaking(self, tree: Path) -> None:
+        """A consumer reading numbers is handed characters: a changed conversion, as written."""
+        old = one_component(
+            tree,
+            "old",
+            declare("local", "Label", "uint8", kind="value_block", dimensions=[16], conversion={}),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare(
+                "local",
+                "Label",
+                "uint8",
+                kind="value_block",
+                dimensions=[16],
+                conversion={"kind": "string"},
+            ),
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "conversion: string != identity" in messages(bag)
+        assert bag.has_errors
+
+    def test_two_deliveries_of_one_string_compare_clean(self, tree: Path) -> None:
+        string = declare(
+            "local",
+            "Label",
+            "uint8",
+            kind="value_block",
+            dimensions=[16],
+            conversion={"kind": "string"},
+            init="V1.2",
+        )
+        assert (
+            checks(verdict(one_component(tree, "old", string), one_component(tree, "new", string)))
+            == []
+        )
+
 
 class TestGradedChanges:
     def test_an_added_object_is_only_information(self, tree: Path) -> None:

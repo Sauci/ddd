@@ -12,7 +12,7 @@ changes one of them says here what the migration costs.  Anything else - the lay
 generated c, the wording of a diagnostic - is not, and the templates a project provides are
 its own.
 
-## Unreleased
+## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one
   component that named an axis or a measurement another component declared `local` was

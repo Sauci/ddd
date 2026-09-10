@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterable
 from enum import StrEnum
-from typing import Annotated, Any, Final, Literal, get_args
+from typing import Annotated, Any, Final, Literal, cast, get_args
 
 from pydantic import (
     BaseModel,
@@ -28,11 +28,21 @@ from ddd.models.common import (
     hash_excluding_mappings,
     within_64_bits,
 )
-from ddd.models.conversion import Conversion, EnumConversion, conversion_range
+from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
+
+type InitScalar = Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real
+"""One raw number of an init: exact for whole values, and bounded to what 64 bits can hold."""
+
+type InitElement = Annotated[InitScalar | tuple[InitElement, ...], BeforeValidator(within_64_bits)]
+"""What a list init holds: numbers, or lists of them, never text.
+
+Text is the whole init or nothing - a string object's init is its text, and no other object
+has a use for characters inside a list of numbers - so a string nested in a list is refused
+here, by the contract, exactly as it was before strings existed.
+"""
 
 type InitValue = Annotated[
-    Annotated[int, Field(ge=-(2**63), le=2**64 - 1)] | bool | Real | tuple[InitValue, ...],
-    BeforeValidator(within_64_bits),
+    InitScalar | str | tuple[InitElement, ...], BeforeValidator(within_64_bits)
 ]
 """A scalar, or a (nested) sequence of scalars matching the shape of the object.
 
@@ -44,6 +54,14 @@ reported against that bound rather than as "not a valid boolean": pydantic still
 json ``true``/``false`` from a ``1``/``0`` by their own type regardless of this order, so
 moving the integer arm first changes only which of several failing branches a wildly wrong
 value is reported against.
+
+The ``str`` arm is for a string object, whose init is its text; the analysis refuses it on
+any other object (``init-invalid``), because only there is the conversion known - a
+declaration naming a scalar type learns its conversion from the type. pydantic picks an arm
+by the exact type of the value before it tries to coerce, so a quoted number ``"12"`` is
+now text, refused where a number was meant, where it used to be read as the number: the one
+place the quoted-spelling question left open on :data:`Number` is answered. Only the whole
+init may be text: a list holds numbers, see ``InitElement``.
 """
 
 type Shape = tuple[int, ...]
@@ -216,6 +234,83 @@ def refuse_enum_on_non_integer(datatype: Datatype | None, conversion: Conversion
         raise ValueError(msg)
 
 
+STRING_DATATYPES: Final = frozenset({Datatype.UINT8, Datatype.SINT8})
+"""What a string may be stored in: one byte per character, of either signedness.
+
+Vector's checker accepts an unsigned or a signed byte record layout for an ASCII string and
+nothing else, and c lets a string literal initialise an array of either character type.
+"""
+
+STRING_OBJECT_KINDS: Final = frozenset({ObjectKind.MEASUREMENT, ObjectKind.VALUE_BLOCK})
+"""The kinds a string may be: the two that state their own dimensions.
+
+A ``parameter`` has no dimensions to hold characters in, and an ``axis``, a ``curve`` and a
+``map`` are tables of numbers.
+"""
+
+
+def refuse_string_misuse(
+    datatype: Datatype | None,
+    conversion: Conversion | None,
+    *,
+    unit: str,
+    limits: Limits | None,
+    display_format: str | None,
+) -> None:
+    """Refuse what a string cannot sit on or carry, wherever a datatype and a conversion meet.
+
+    Shared between a definition, a structure member and a scalar type the way
+    :func:`refuse_enum_on_non_integer` is, so that the verdict cannot depend on where the
+    same pair happens to be written. The shape rule is not here: what "one dimension" is
+    spelled as differs between a definition and a member, and a scalar type has no shape,
+    so each states it in its own words - :func:`check_string_shape` for a definition.
+
+    Text has no unit, no physical range and no display format, which is why all three are
+    refused rather than ignored: a unit would reach the a2l as the unit of a method that
+    cannot exist, limits would offer a calibration tool a range over character codes, and
+    a format would claim decimals of a string.
+    """
+    if not isinstance(conversion, StringConversion):
+        return
+    if isinstance(datatype, Datatype) and datatype not in STRING_DATATYPES:
+        msg = f"a string conversion needs a byte datatype, uint8 or sint8, got '{datatype.value}'"
+        raise ValueError(msg)
+    if unit:
+        msg = f"a string has no unit, got '{unit}'"
+        raise ValueError(msg)
+    if limits is not None:
+        msg = "a string has no limits; its range is the byte range of its datatype"
+        raise ValueError(msg)
+    if display_format is not None:
+        msg = f"a string has no display format, got a2l.format '{display_format}'"
+        raise ValueError(msg)
+
+
+def check_string_shape(kind: ObjectKind, shape: WrittenShape | None) -> None:
+    """Refuse a string that is not a one dimensional measurement or value block.
+
+    A function raising ``ValueError`` rather than a validator, because the rule is answered
+    twice: by the contract for a definition that states the conversion itself, and by the
+    analysis for a declaration naming a scalar type that carries it, once the type is known.
+    A second dimension would be an array of strings, which the a2l format cannot describe -
+    Vector's generator splits one into single string objects for that reason - and an array
+    of structures with a string member is how DDD writes it.
+    """
+    if kind not in STRING_OBJECT_KINDS:
+        msg = (
+            f"a string is a one dimensional array of bytes, which a '{kind.value}' is not; "
+            f"declare it as a 'measurement' or a 'value_block'"
+        )
+        raise ValueError(msg)
+    if shape is None or len(shape) != 1:
+        spelled = "none" if not shape else str(len(shape))
+        msg = (
+            f"a string states exactly one dimension, its length in bytes, got {spelled}; an "
+            f"array of strings is written as an array of structures with a string member"
+        )
+        raise ValueError(msg)
+
+
 def check_storage_named_once(datatype: Datatype | None, typename: str | None) -> None:
     """Refuse a definition that names its storage twice, or not at all.
 
@@ -351,11 +446,13 @@ class DataObject(_Frozen):
 
     ``null`` leaves the object zero initialised by the startup code. For an array shaped
     object, either a nested list matching the shape exactly, or a single scalar, which
-    initialises every element with that value.
+    initialises every element with that value. A string object may state its init as text
+    instead: printable ASCII, shorter than the dimension so that the terminating zero fits.
     """
 
     conversion: Conversion | None = None
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+    """How a raw value maps to a physical one: identity, linear scaling, an enumeration, or
+    text read from the bytes (``string``).
 
     Required wherever storage is named by ``datatype``, although the identity would be
     derivable: raw equalling physical is an engineering claim about the data, not a
@@ -363,7 +460,8 @@ class DataObject(_Frozen):
     without anything looking broken. A definition naming a ``typename`` states no conversion
     - the type fixes it. ``kind`` may be left out when the keys make it unambiguous:
     ``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,
-    and ``{}`` means ``identity``.
+    and ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of
+    its own to be recognised by.
     """
 
     limits: Limits | None = None
@@ -461,6 +559,19 @@ class DataObject(_Frozen):
         return self
 
     @model_validator(mode="after")
+    def _a_string_is_a_one_dimensional_byte_array(self) -> DataObject:
+        refuse_string_misuse(
+            self.datatype,
+            self.conversion,
+            unit=self.unit,
+            limits=self.limits,
+            display_format=self.a2l.format,
+        )
+        if isinstance(self.conversion, StringConversion):
+            check_string_shape(self.kind, self.declared_shape)
+        return self
+
+    @model_validator(mode="after")
     def _storage_is_named_exactly_once(self) -> DataObject:
         check_storage_named_once(self.datatype, self.typename)
         return self
@@ -498,7 +609,7 @@ class DataObject(_Frozen):
         return Limits(min=low, max=high)
 
     def scalar_values(self) -> tuple[float | int | bool, ...]:
-        """All raw init values, flattened; empty when no init is given."""
+        """All raw init values, flattened; empty when no init is given, or when it is text."""
         if self.init is None:
             return ()
         return tuple(flatten(self.init))
@@ -655,7 +766,13 @@ def format_shape(shape: WrittenShape) -> str:
 
 
 def check_shape(value: InitValue, shape: Shape) -> str | None:
-    """Validate a nested init value against an array shape."""
+    """Validate a nested init value against an array shape.
+
+    A string is not judged here: whether it fits is a question about the object's
+    conversion as much as its shape, and the analysis answers both at once.
+    """
+    if isinstance(value, str):
+        return None
     if not shape:
         if isinstance(value, tuple):
             return "init is a list but the object is a scalar"
@@ -677,18 +794,28 @@ def check_shape(value: InitValue, shape: Shape) -> str | None:
 
 
 def flatten(value: InitValue) -> list[float | int | bool]:
+    """Every raw scalar of an init, in storage order; a string contributes none.
+
+    A string's bytes are its characters, which the string rules check and the c literal
+    spells; nothing that converts or draws raw numbers has any business with them.
+    """
+    if isinstance(value, str):
+        return []
     if isinstance(value, tuple):
         return [scalar for element in value for scalar in flatten(element)]
     return [value]
 
 
 def broadcast(value: InitValue, shape: Shape) -> InitValue:
-    """Expand a scalar init over ``shape``; a nested value is returned unchanged."""
-    if isinstance(value, tuple):
+    """Expand a scalar init over ``shape``; a nested value or a string is returned unchanged."""
+    if isinstance(value, tuple | str):
         return value
     if not shape:
         return value
-    return tuple(broadcast(value, shape[1:]) for _ in range(shape[0]))
+    # value is a scalar here - str and tuple both returned above - so every recursive call
+    # below walks only the scalar and nested-tuple arms of InitValue, never str, which is
+    # exactly InitElement; the cast tells mypy what the isinstance checks already guarantee.
+    return tuple(cast(InitElement, broadcast(value, shape[1:])) for _ in range(shape[0]))
 
 
 def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:

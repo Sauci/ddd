@@ -164,7 +164,7 @@ class PublishedSchema(GenerateJsonSchema):
         the loader accepts.
         """
         result = super().tagged_union_schema(schema)
-        if "oneOf" in result and set(schema["choices"]) == {"identity", "linear", "enum"}:
+        if "oneOf" in result and set(schema["choices"]) == {"identity", "linear", "enum", "string"}:
             result["anyOf"] = result.pop("oneOf")
         return result
 

@@ -57,16 +57,18 @@ from pydantic import (
 )
 
 from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
-from ddd.models.conversion import Conversion, physical_range
+from ddd.models.conversion import Conversion, StringConversion, physical_range
 from ddd.models.objects import (
     A2lObjectOptions,
     Dimension,
     Limits,
     ObjectKind,
+    WrittenShape,
     check_conversion_stated,
     check_storage_named_once,
     refuse_enum_on_non_integer,
     refuse_restating,
+    refuse_string_misuse,
 )
 
 BITS_PER_BYTE = 8
@@ -92,6 +94,28 @@ class MemberKind(StrEnum):
 #: calibratable one; a curve, a map or an axis refers to other objects, which a structure
 #: cannot do.
 MEMBER_OBJECT_KINDS = (ObjectKind.MEASUREMENT, ObjectKind.PARAMETER)
+
+
+def check_string_member_shape(member: MemberKind, dimensions: WrittenShape) -> None:
+    """Refuse a string member that is not a ``value`` member of one dimension.
+
+    The member's spelling of the rule :func:`~ddd.models.objects.check_string_shape` states
+    for a definition, raised as ``ValueError`` for the same reason: the contract answers it
+    for a member stating the conversion, and the analysis for one naming a scalar type that
+    carries it. A bitfield holds no string, and a second dimension would be an array of
+    strings, which the a2l format cannot describe.
+    """
+    if member is MemberKind.BITS:
+        msg = "a 'bits' member holds no string; a string is a 'value' member of one dimension"
+        raise ValueError(msg)
+    if len(dimensions) != 1:
+        spelled = "none" if not dimensions else str(len(dimensions))
+        msg = (
+            f"a string member states exactly one dimension, its length in bytes, got "
+            f"{spelled}; an array of strings is written as an array of structures with a "
+            f"string member"
+        )
+        raise ValueError(msg)
 
 
 class Member(BaseModel):
@@ -163,7 +187,8 @@ class Member(BaseModel):
     """
 
     conversion: Conversion | None = None
-    """How this member's raw value maps to a physical one: identity, linear or an enumeration.
+    """How this member's raw value maps to a physical one: identity, linear, an enumeration,
+    or text read from the bytes (``string``).
 
     Required on a member whose storage is a base ``datatype``, exactly as on a definition;
     a member naming a scalar ``typename`` states none, the type fixing it.
@@ -212,6 +237,19 @@ class Member(BaseModel):
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> Member:
         refuse_enum_on_non_integer(self.datatype, self.conversion)
+        return self
+
+    @model_validator(mode="after")
+    def _a_string_member_is_a_one_dimensional_byte_array(self) -> Member:
+        refuse_string_misuse(
+            self.datatype,
+            self.conversion,
+            unit=self.unit,
+            limits=self.limits,
+            display_format=self.a2l.format,
+        )
+        if isinstance(self.conversion, StringConversion):
+            check_string_member_shape(self.member, self.dimensions)
         return self
 
     @model_validator(mode="after")
@@ -346,7 +384,8 @@ class ScalarType(BaseModel):
     """Physical unit of the value, e.g. ``"rpm"``."""
 
     conversion: Conversion
-    """How a raw value maps to a physical one: identity, linear scaling or an enumeration.
+    """How a raw value maps to a physical one: identity, linear scaling, an enumeration, or
+    text read from the bytes (``string``).
 
     Required: fixing what a value means is the one job a scalar type has, and the identity
     is part of the answer rather than a silence to interpret.
@@ -358,6 +397,13 @@ class ScalarType(BaseModel):
     @model_validator(mode="after")
     def _enum_requires_integer(self) -> ScalarType:
         refuse_enum_on_non_integer(self.datatype, self.conversion)
+        return self
+
+    @model_validator(mode="after")
+    def _a_string_type_is_bytes(self) -> ScalarType:
+        refuse_string_misuse(
+            self.datatype, self.conversion, unit=self.unit, limits=self.limits, display_format=None
+        )
         return self
 
 

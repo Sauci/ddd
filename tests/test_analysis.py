@@ -1435,3 +1435,233 @@ class TestLocalReferences:
         rendered = messages(bag)
         assert "b.ddd.json#component.interface[0].definition.x_axis" in rendered
         assert "definition.y_axis" not in rendered
+
+
+class TestStringInit:
+    """A string init is the text of a string object, printable, with room for the terminator."""
+
+    def string_object(self, **extra: object) -> dict[str, object]:
+        return declare(
+            "local",
+            "Label",
+            "uint8",
+            kind="value_block",
+            conversion={"kind": "string"},
+            dimensions=[8],
+            **extra,
+        )
+
+    def one(self, tree: Path, declaration: dict[str, object]) -> tuple[object, list[str], str]:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declaration),
+            },
+        )
+        return dictionary, checks(bag), messages(bag)
+
+    def test_a_string_init_that_fits_is_no_finding(self, tree: Path) -> None:
+        dictionary, found, _ = self.one(tree, self.string_object(init="V1.2.3"))
+        assert found == []
+        assert dictionary is not None
+        assert dictionary.by_name["Label"].init == "V1.2.3"
+
+    def test_the_empty_string_is_an_initialiser(self, tree: Path) -> None:
+        _, found, _ = self.one(tree, self.string_object(init=""))
+        assert found == []
+
+    def test_a_string_init_leaves_room_for_the_terminator(self, tree: Path) -> None:
+        _, found, text = self.one(tree, self.string_object(init="12345678"))
+        assert found == ["init-invalid"]
+        assert "8 characters long, but the string holds 8 bytes" in text
+        assert "at most 7 fit" in text
+
+    def test_a_string_init_is_printable_ascii(self, tree: Path) -> None:
+        _, found, text = self.one(tree, self.string_object(init="V1\t2é"))
+        assert found == ["init-invalid"]
+        assert "U+0009, U+00E9" in text
+
+    def test_a_string_init_on_a_number_is_refused(self, tree: Path) -> None:
+        _, found, text = self.one(
+            tree,
+            declare("local", "Speed", "uint16", unit="Hz", conversion={"factor": 0.25}, init="12"),
+        )
+        assert found == ["init-invalid"]
+        assert "initialised with text, but its conversion is linear(factor=0.25, offset=0)" in text
+
+    def test_bytes_and_text_disagree(self, tree: Path) -> None:
+        """A byte array in one component and a string in another is a mismatch, as written."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[
+                    declare(
+                        "output",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        dimensions=[8],
+                        conversion={"kind": "string"},
+                    )
+                ],
+                b=[
+                    declare(
+                        "input",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        dimensions=[8],
+                        conversion={"kind": "identity"},
+                    )
+                ],
+            ),
+        )
+        assert checks(bag) == ["definition-mismatch"]
+        assert "conversion: identity != string" in messages(bag)
+
+
+STRING_TYPE: dict[str, object] = {
+    "type": "scalar",
+    "name": "Label_t",
+    "datatype": "uint8",
+    "conversion": {"kind": "string"},
+}
+
+
+class TestStringTypes:
+    """A scalar type fixes that bytes are text; what names it states how many."""
+
+    def typed(
+        self,
+        tree: Path,
+        *declarations: dict[str, object],
+        types: list[dict[str, object]] | None = None,
+    ) -> tuple[object, list[str], str]:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {"types": [STRING_TYPE, *(types or [])]},
+                "a.ddd.json": component("A", *declarations),
+            },
+        )
+        return dictionary, checks(bag), messages(bag)
+
+    def test_a_declaration_naming_a_string_type_states_its_length(self, tree: Path) -> None:
+        dictionary, found, _ = self.typed(
+            tree,
+            declare(
+                "local",
+                "Label",
+                typename="Label_t",
+                kind="value_block",
+                dimensions=[16],
+                init="V1.2",
+            ),
+        )
+        assert found == []
+        assert dictionary is not None
+        entry = dictionary.by_name["Label"]
+        assert entry.conversion.describe() == "string"
+        assert entry.datatype.value == "uint8"
+        assert entry.shape == (16,)
+        assert entry.limits.as_tuple() == (0, 255)
+        assert entry.init == "V1.2"
+
+    @pytest.mark.parametrize(
+        ("definition", "expected"),
+        [
+            ({"kind": "parameter"}, "one dimensional array of bytes"),
+            ({"kind": "measurement"}, "exactly one dimension"),
+            ({"kind": "value_block", "dimensions": [2, 8]}, "exactly one dimension"),
+            (
+                {"kind": "value_block", "dimensions": [8], "a2l": {"format": "%8.3"}},
+                "has no display format",
+            ),
+        ],
+    )
+    def test_a_declaration_naming_a_string_type_is_held_to_the_string_rules(
+        self, tree: Path, definition: dict[str, object], expected: str
+    ) -> None:
+        dictionary, found, text = self.typed(
+            tree, declare("local", "Label", typename="Label_t", **definition)
+        )
+        assert found == ["schema"]
+        assert expected in text
+        assert "declared here" in text
+        assert dictionary is not None
+        assert "Label" not in dictionary.by_name
+
+    def structure(self, member: dict[str, object]) -> dict[str, object]:
+        return {"type": "struct", "name": "Info_t", "members": [member]}
+
+    def test_a_member_naming_a_string_type_states_its_length(self, tree: Path) -> None:
+        dictionary, found, _ = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="parameter"),
+            types=[
+                self.structure(
+                    {"name": "label", "member": "value", "typename": "Label_t", "dimensions": [16]}
+                )
+            ],
+        )
+        assert found == []
+        assert dictionary is not None
+        leaf = dictionary.comparable["Info.label"]
+        assert leaf.conversion.describe() == "string"
+        assert leaf.shape == (16,)
+
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            ({"name": "label", "member": "value", "typename": "Label_t"}, "exactly one dimension"),
+            (
+                {
+                    "name": "label",
+                    "member": "value",
+                    "typename": "Label_t",
+                    "dimensions": [16],
+                    "a2l": {"format": "%8.3"},
+                },
+                "has no display format",
+            ),
+        ],
+    )
+    def test_a_member_naming_a_string_type_without_a_length_poisons_the_structure(
+        self, tree: Path, member: dict[str, object], expected: str
+    ) -> None:
+        dictionary, found, text = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="parameter"),
+            types=[self.structure(member)],
+        )
+        assert found == ["schema"]
+        assert expected in text
+        assert "declared here" in text
+        assert dictionary is not None
+        assert "Info.label" not in dictionary.comparable
+        assert not dictionary.instances
+
+    def test_a_string_member_of_a_measurement_instance_and_of_an_array_of_structures(
+        self, tree: Path
+    ) -> None:
+        """Every element of an array of structures contributes its own string leaf, and a
+        leaf takes the storage class of the instance: these are measurement leaves."""
+        dictionary, found, _ = self.typed(
+            tree,
+            declare("local", "Info", typename="Info_t", kind="measurement", dimensions=[2]),
+            types=[
+                self.structure(
+                    {"name": "label", "member": "value", "typename": "Label_t", "dimensions": [16]}
+                )
+            ],
+        )
+        assert found == []
+        assert dictionary is not None
+        for path in ("Info[0].label", "Info[1].label"):
+            leaf = dictionary.comparable[path]
+            assert leaf.kind.value == "measurement"
+            assert leaf.conversion.describe() == "string"
+            assert leaf.shape == (16,)
+            assert leaf.limits.as_tuple() == (0, 255)

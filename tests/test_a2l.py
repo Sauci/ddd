@@ -271,6 +271,23 @@ class TestMeasurementRasters:
         assert content.count("/begin DAQ_EVENT VARIABLE") == 2
         assert content.count("/begin") == content.count("/end")
 
+    def test_a_string_measurement_keeps_its_event(self, tree: Path) -> None:
+        content = self.a2l_with_rasters(
+            tree,
+            declare(
+                "local",
+                "StateName",
+                "uint8",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                raster="10ms",
+            ),
+        )
+        assert 'ANNOTATION_LABEL "string"' in content
+        assert "/begin IF_DATA XCP" in content
+        assert "EVENT 1" in content
+        assert content.count("/begin") == content.count("/end")
+
 
 class TestSharedCompuMethods:
     def test_objects_of_different_datatype_classes_do_not_share_a_display_format(
@@ -321,3 +338,148 @@ class TestForcedOutput:
         rendered = render_files(dictionary, tree / "gen")
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "CHARACTERISTIC Cv" not in content
+
+
+class TestStrings:
+    """A calibration string is an ASCII characteristic; the format has nothing else for text."""
+
+    def block(self, datatype: str = "uint8", size: int = 16, **extra: Any) -> dict[str, Any]:
+        return declare(
+            "local",
+            "Label",
+            datatype,
+            kind="value_block",
+            conversion={"kind": "string"},
+            dimensions=[size],
+            description="Software label",
+            **extra,
+        )
+
+    def test_a_string_parameter_is_an_ascii_characteristic(self, tree: Path) -> None:
+        content = a2l(tree, self.block())
+        assert '/begin CHARACTERISTIC Label "Software label"' in content
+        assert "ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255" in content
+        assert "NUMBER 16" in content
+        assert "MATRIX_DIM" not in content
+        assert "FORMAT" not in content
+        assert "/begin COMPU_METHOD" not in content
+        assert "FNC_VALUES 1 UBYTE ROW_DIR DIRECT" in content
+
+    def test_a_signed_string_deposits_as_sbyte(self, tree: Path) -> None:
+        content = a2l(tree, self.block(datatype="sint8", size=8))
+        assert "ASCII 0x00000000 RL_VALUES_SBYTE 0 NO_COMPU_METHOD -128 127" in content
+        assert "NUMBER 8" in content
+
+    def test_a_string_member_of_a_parameter_is_an_ascii_characteristic_at_its_path(
+        self, tree: Path
+    ) -> None:
+        files = {
+            "project.ddd.json": project("Device", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "type": "struct",
+                        "name": "Info_t",
+                        "members": [
+                            {
+                                "name": "label",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "string"},
+                                "dimensions": [16],
+                            },
+                            {
+                                "name": "revision",
+                                "member": "value",
+                                "datatype": "uint16",
+                                "conversion": {},
+                            },
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Info", typename="Info_t", kind="parameter"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert '/begin CHARACTERISTIC Info.label "Info.label"' in content
+        assert "ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255" in content
+        assert "NUMBER 16" in content
+        assert '/begin CHARACTERISTIC Info.revision "Info.revision"' in content
+        assert "VALUE 0x00000000 RL_VALUES_UWORD 0 NO_COMPU_METHOD 0 65535" in content
+
+    def test_a_string_measurement_is_a_byte_array_with_a_note(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare(
+                "local",
+                "StateName",
+                "uint8",
+                conversion={"kind": "string"},
+                dimensions=[16],
+                description="Name of the current state",
+            ),
+        )
+        assert '/begin MEASUREMENT StateName "Name of the current state"' in content
+        assert "UBYTE NO_COMPU_METHOD 0 0 0 255" in content
+        assert "MATRIX_DIM 16 1 1" in content
+        assert 'ANNOTATION_LABEL "string"' in content
+        assert (
+            '"16 bytes of text; ASAP2 1.6.1 has no string measurement, so the tool shows the bytes"'
+            in content
+        )
+        assert content.count("/begin ANNOTATION") == 2  # the block and its ANNOTATION_TEXT
+        assert content.count("/begin") == content.count("/end")
+        assert "/begin COMPU_METHOD" not in content
+
+    def test_a_numeric_measurement_carries_no_annotation(self, tree: Path) -> None:
+        assert "ANNOTATION" not in a2l(tree, declare("local", "X", dimensions=[16]))
+
+    def test_a_string_member_of_a_measurement_carries_the_note_at_every_element(
+        self, tree: Path
+    ) -> None:
+        """A measurement-kind instance, as an array of structures: one annotated byte array
+        per element, which is how an array of strings is written."""
+        files = {
+            "project.ddd.json": project("Device", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "type": "struct",
+                        "name": "Status_t",
+                        "members": [
+                            {
+                                "name": "text",
+                                "member": "value",
+                                "datatype": "uint8",
+                                "conversion": {"kind": "string"},
+                                "dimensions": [8],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Status", typename="Status_t", kind="measurement", dimensions=[2]),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        for element in ("Status[0].text", "Status[1].text"):
+            assert f'/begin MEASUREMENT {element} "{element}"' in content
+        assert content.count("UBYTE NO_COMPU_METHOD 0 0 0 255") == 2
+        assert content.count("MATRIX_DIM 8 1 1") == 2
+        assert content.count('ANNOTATION_LABEL "string"') == 2
+        assert content.count("8 bytes of text; ASAP2 1.6.1 has no string measurement") == 2
+        assert "/begin CHARACTERISTIC" not in content
+        assert content.count("/begin") == content.count("/end")

@@ -247,7 +247,20 @@
       "title": "IdentityConversion",
       "type": "object"
     },
-    "InitValue": {
+    "InitElement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/InitElement"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "InitScalar": {
       "anyOf": [
         {
           "maximum": 18446744073709551615,
@@ -259,10 +272,20 @@
         },
         {
           "type": "number"
+        }
+      ]
+    },
+    "InitValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
+        },
+        {
+          "type": "string"
         },
         {
           "items": {
-            "$ref": "#/$defs/InitValue"
+            "$ref": "#/$defs/InitElement"
           },
           "type": "array"
         }
@@ -626,6 +649,9 @@
             },
             {
               "$ref": "#/$defs/EnumConversion"
+            },
+            {
+              "$ref": "#/$defs/StringConversion"
             }
           ],
           "description": "Always present: the member's conversion, or the identity when none was given.",
@@ -633,7 +659,8 @@
             "mapping": {
               "enum": "#/$defs/EnumConversion",
               "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
+              "linear": "#/$defs/LinearConversion",
+              "string": "#/$defs/StringConversion"
             },
             "propertyName": "kind"
           },
@@ -955,6 +982,9 @@
             },
             {
               "$ref": "#/$defs/EnumConversion"
+            },
+            {
+              "$ref": "#/$defs/StringConversion"
             }
           ],
           "description": "Always present: the declared conversion, or the identity when none was given.",
@@ -962,7 +992,8 @@
             "mapping": {
               "enum": "#/$defs/EnumConversion",
               "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
+              "linear": "#/$defs/LinearConversion",
+              "string": "#/$defs/StringConversion"
             },
             "propertyName": "kind"
           },
@@ -1013,7 +1044,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, nested to match ``shape``; ``null`` means zero initialised."
+          "description": "Raw initial value, nested to match ``shape``, or the text of a string object; ``null``\nmeans zero initialised."
         },
         "section": {
           "anyOf": [
@@ -1218,13 +1249,29 @@
       ],
       "title": "Scope",
       "type": "string"
+    },
+    "StringConversion": {
+      "additionalProperties": false,
+      "description": "Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity.",
+      "properties": {
+        "kind": {
+          "const": "string",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "StringConversion",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 7,
+      "default": 8,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.",
       "title": "Format",
       "type": "integer"

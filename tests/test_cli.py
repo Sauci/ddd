@@ -1051,6 +1051,32 @@ class TestList:
         assert "[...]" in out  # a nested init is abbreviated, not spelled out
         assert "1000 (= 1 V)" in out  # the reading round-trips through format_number
 
+    def test_a_string_init_is_quoted_and_has_no_reading(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        conversion={"kind": "string"},
+                        dimensions=[8],
+                        init="V1.2",
+                    ),
+                ),
+            },
+        )
+        assert main(["list", str(tmp_path / "project.ddd.json")]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert '"V1.2"' in out
+        assert "(=" not in out
+
     def test_the_reading_carries_no_float_artifacts(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

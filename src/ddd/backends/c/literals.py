@@ -37,8 +37,24 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
     return f"{number}{suffix}"
 
 
+def c_string_literal(text: str) -> str:
+    """Render a string init as a c string literal.
+
+    Only ``"`` and ``\\`` need escaping in printable ASCII, and ``?`` gets it too: two of
+    them before any of the nine characters that close a trigraph form a trigraph under a
+    pedantic pre-C23 dialect, and ``\\?`` is the escape c provides for exactly that. The
+    analysis has refused anything outside 0x20 to 0x7E, so no other escape is ever needed,
+    and it has left room for the terminator, which c writes along with the zeros that fill
+    the rest of the array.
+    """
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("?", "\\?")
+    return f'"{escaped}"'
+
+
 def c_initializer(value: InitValue, datatype: Datatype, indent: int = 0) -> str:
     """Render a (possibly nested) init value as a c initialiser."""
+    if isinstance(value, str):
+        return c_string_literal(value)
     if not isinstance(value, tuple):
         return c_literal(value, datatype)
 

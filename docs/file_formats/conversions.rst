@@ -14,6 +14,7 @@ the definition:
    { "kind": "identity" }
    { "kind": "linear", "factor": 0.25, "offset": -40.0 }
    { "kind": "enum", "name": "StateA_t", "enumerators": { "STATE_OFF": 0, "STATE_FAULT": 15 } }
+   { "kind": "string" }
 
 The conversion is the rule that maps the **raw** value - the number in the storage the target
 allocates - to the **physical** value, the quantity the number stands for. It is what makes
@@ -25,12 +26,14 @@ failure that compiles, links, runs, and reports every value wrong by a constant 
 ``enumerators`` or a ``name`` is an enum, one with a ``factor`` or an ``offset`` is linear, and
 one with neither is the identity. That is why ``{"factor": 0.001}`` is a complete conversion,
 and it is the form most of ``examples/demo/`` uses. Spelling ``kind`` out is never wrong and
-is worth doing wherever the file is read more often than it is written.
+is worth doing wherever the file is read more often than it is written. A string is the one
+kind that is always spelled out: a conversion with no key of its own is the identity.
 
-All three kinds are at work in that demo, and ``ddd list`` shows what each of them comes to: an
+All four kinds are at work in that demo, and ``ddd list`` shows what each of them comes to: an
 initial value is printed raw, with the reading its conversion gives it beside it - nothing for
 the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, and the name
-``STATE_OFF`` for the enum of ``StateA``.
+``STATE_OFF`` for the enum of ``StateA`` - and, for the string ``SoftwareLabel``, the quoted
+text itself, which is the raw value spelled as the file spells it, with no reading to add.
 
 .. code-block:: text
 
@@ -40,6 +43,7 @@ the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, a
    FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
    ...
    ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   SoftwareLabel     value_block  uint8     -     [16]    "V1.2.3"           Controller (local)     -
    StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
    ...
 
@@ -318,6 +322,92 @@ And two enumerators sharing a value is a warning rather than an error, because i
 and occasionally intended - an alias for a state that has been renamed - but it makes the a2l
 table ambiguous, since the calibration tool has two names to choose from for the same reading.
 
+string
+------
+
+Some byte arrays are not numbers at all: a software label, a vehicle identification number, a
+part number in calibration memory, the name of the current state written into RAM for a
+display. A string conversion says so. The storage stays what it is - a ``uint8`` or ``sint8``
+array of one dimension, its length in bytes - and the conversion says the bytes are read as
+text, one character per byte, which is what a consumer has to agree with to read them at all.
+
+.. code-block:: json
+
+   {
+     "name": "SoftwareLabel",
+     "kind": "value_block",
+     "description": "Software label of the controller, as text",
+     "datatype": "uint8",
+     "conversion": { "kind": "string" },
+     "dimensions": [16],
+     "init": "V1.2.3",
+     "volatile": false
+   }
+
+``kind`` is always written for a string, since the conversion has no key of its own to be
+recognised by, and ``{}`` is the identity. Four rules hold wherever a string is stated - on a
+definition, on a :doc:`structure member <types>` or on a scalar type - and a file breaking one
+is refused when it is read:
+
+* the datatype is ``uint8`` or ``sint8``, one byte per character;
+* the shape is exactly one dimension, so the kind is ``measurement`` or ``value_block``, and
+  a member is a ``value`` member with one dimension; an array of strings is written as an
+  array of structures with a string member, because the a2l format has no string arrays;
+* no ``unit``, no ``limits`` and, where the ``a2l`` block exists, no ``a2l.format``: text has
+  none of them, and the limits of a string are the byte range of its datatype;
+* a scalar type may be a string, and the declarations and members naming it state the
+  length.
+
+The ``init`` of a string may be written as text: printable ASCII, and shorter than the
+dimension so that the terminating zero fits - a string that exactly fills its array is legal
+c and refused by C++, and nobody reading the generated file can tell that the terminator is
+missing. The integer and list spellings stay available, the list being how a fixed width field
+without a terminator is written. In c the text becomes a string literal and the compiler fills
+the rest of the array with zero:
+
+.. code-block:: c
+
+   /** Software label of the controller, as text (calibration value block) */
+   const uint8_t SoftwareLabel[16] = "V1.2.3";
+
+In the a2l a calibration string is a ``CHARACTERISTIC`` of type ``ASCII``, the form Vector's
+own files use, over the ordinary record layout of its datatype, with no compu method and the
+length as a ``NUMBER``:
+
+.. code-block:: text
+
+   /begin CHARACTERISTIC SoftwareLabel "Software label of the controller, as text"
+     ASCII 0x00000000 RL_VALUES_UBYTE 0 NO_COMPU_METHOD 0 255
+     SYMBOL_LINK "SoftwareLabel" 0
+     NUMBER 16
+   /end CHARACTERISTIC
+
+A string *measurement* is a different matter, and the difference is the format's: no version
+of ASAP2 has a string measurement, its datatypes being numbers only. DDD therefore describes
+one as the byte array it is, with a ``MATRIX_DIM``, and adds an ``ANNOTATION`` - the
+documented place for a note to the calibration engineer, which tools show in the object's
+properties - so that nobody wonders why the tool shows numbers:
+
+.. code-block:: text
+
+   /begin MEASUREMENT StateName "Name of the current state, as text"
+     UBYTE NO_COMPU_METHOD 0 0 0 255
+     ECU_ADDRESS 0x00000000
+     SYMBOL_LINK "StateName" 0
+     MATRIX_DIM 16 1 1
+     /begin ANNOTATION
+       ANNOTATION_LABEL "string"
+       /begin ANNOTATION_TEXT
+         "16 bytes of text; ASAP2 1.6.1 has no string measurement, so the tool shows the bytes"
+       /end ANNOTATION_TEXT
+     /end ANNOTATION
+   /end MEASUREMENT
+
+No finding is raised for it: the author cannot change what the format lacks. Everything else
+reads the string as text - the dictionary carries it, the generated c initialises it, and a
+component that reads the bytes as numbers while another writes text is ``definition-mismatch``,
+exactly as any other disagreement about a conversion.
+
 Limits, and where they come from when nobody writes them
 --------------------------------------------------------
 
@@ -332,6 +422,7 @@ storage, run through the conversion:
 * **enum** - the smallest and the largest enumerator value. The values in between do not have
   to be contiguous, and the range is about what the tool may display, not about what the
   storage could hold.
+* **string** - the byte range of the datatype, 0 .. 255 for a ``uint8``; nobody may state others.
 
 A **negative factor swaps the two ends**, and DDD swaps them back: the conversion of the
 smallest raw value is then the largest physical value, and limits with ``min`` above ``max``
@@ -400,3 +491,4 @@ otherwise, and it is the third part of the key: an integer and a float object sc
 way in the same unit derive different formats and get a method each, with the same
 coefficients and a numbered suffix. A single object can override the format with its own
 ``a2l.format``, which is described with the :doc:`variable definition <variable_definition>`.
+A string gets no method at all: it has no unit, and no method reads a byte as a character.

@@ -1,6 +1,6 @@
 """Conversions between the raw (implementation) and the physical value of a data object.
 
-The three variants form a tagged union discriminated on ``kind``, and each one answers the
+The four variants form a tagged union discriminated on ``kind``, and each one answers the
 same three questions - the interface :class:`ConversionRule` spells out. It is a Protocol
 rather than a base class because the variants are pydantic models whose only shared state is
 their tag: inheritance would put a ``kind`` field where each variant needs its own literal.
@@ -182,6 +182,32 @@ class EnumConversion(_Frozen):
         return f"enum({self.name})"
 
 
+class StringConversion(_Frozen):
+    """Bytes read as text: each element of the array holds one character code.
+
+    Stated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the
+    datatype because the same pair is written in three places. ``kind`` is required here,
+    unlike on the other three kinds: a string has no key of its own to be inferred from,
+    and ``{}`` is the identity.
+
+    The two mappings are the identity on one byte, so that the derived limits of a string
+    are the raw range of its datatype - which is what the a2l record states - and nothing
+    that ranges a conversion has to know that a string exists. A byte has no reading of its
+    own, so no reading is produced for it, as for the identity.
+    """
+
+    kind: Literal["string"]
+
+    def to_physical(self, raw: float) -> float:
+        return raw
+
+    def to_raw(self, physical: float) -> float:
+        return physical
+
+    def describe(self) -> str:
+        return "string"
+
+
 def _infer_kind(data: Any) -> Any:
     """Allow ``kind`` to be omitted when the shape of the object is unambiguous."""
     if isinstance(data, dict) and "kind" not in data:
@@ -196,11 +222,12 @@ def _infer_kind(data: Any) -> Any:
 
 
 Conversion = Annotated[
-    IdentityConversion | LinearConversion | EnumConversion,
+    IdentityConversion | LinearConversion | EnumConversion | StringConversion,
     Field(discriminator="kind"),
     BeforeValidator(_infer_kind),
 ]
-"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous."""
+"""Raw to physical conversion; ``kind`` may be omitted when the shape is unambiguous, which
+a string never is."""
 
 IDENTITY = IdentityConversion()
 

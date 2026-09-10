@@ -65,7 +65,7 @@ page - ``examples/demo/demo.ddd.json`` exercises every kind of data object DDD k
 .. code-block:: text
 
    $ ddd check examples/demo/demo.ddd.json
-   ok: 21 variables in 4 components are consistent
+   ok: 23 variables in 4 components are consistent
 
 Your first project
 ------------------

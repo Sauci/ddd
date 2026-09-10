@@ -413,3 +413,66 @@ class TestBitfieldRange:
     ) -> None:
         """Both ends clamp to the storage, so the widest field states what the type states."""
         assert bitfield_range(datatype, width) == expected
+
+
+class TestStringMembersAndTypes:
+    """The same rules as on a definition, where a datatype and a conversion meet in a type."""
+
+    def string(self, **extra: Any) -> dict[str, Any]:
+        payload = {"datatype": "uint8", "conversion": {"kind": "string"}, "dimensions": [16]}
+        return value("label", **{**payload, **extra})
+
+    def test_a_string_member_is_a_value_member_of_one_dimension(self) -> None:
+        member = Member.model_validate(self.string())
+        assert member.conversion is not None
+        assert member.conversion.describe() == "string"
+
+    def test_a_bitfield_holds_no_string(self) -> None:
+        with pytest.raises(ValidationError, match="holds no string"):
+            Member.model_validate(bits("flag", datatype="uint8", conversion={"kind": "string"}))
+
+    @pytest.mark.parametrize("dimensions", [[], [2, 8]])
+    def test_a_string_member_states_exactly_one_dimension(self, dimensions: list[int]) -> None:
+        with pytest.raises(ValidationError, match="exactly one dimension"):
+            Member.model_validate(self.string(dimensions=dimensions))
+
+    def test_a_string_member_needs_a_byte_datatype(self) -> None:
+        with pytest.raises(ValidationError, match="needs a byte datatype"):
+            Member.model_validate(self.string(datatype="uint16"))
+
+    @pytest.mark.parametrize(
+        ("key", "stated", "expected"),
+        [
+            ("unit", "s", "has no unit"),
+            ("limits", {"min": 0, "max": 9}, "has no limits"),
+            ("a2l", {"format": "%8.3"}, "has no display format"),
+        ],
+    )
+    def test_a_string_member_states_nothing_text_lacks(
+        self, key: str, stated: Any, expected: str
+    ) -> None:
+        with pytest.raises(ValidationError, match=expected):
+            Member.model_validate(self.string(**{key: stated}))
+
+    def test_a_scalar_type_may_be_a_string(self) -> None:
+        parsed = ScalarType.model_validate(
+            scalar("Label_t", datatype="uint8", conversion={"kind": "string"})
+        )
+        assert parsed.conversion.describe() == "string"
+
+    def test_a_string_type_is_held_to_the_same_rules(self) -> None:
+        with pytest.raises(ValidationError, match="needs a byte datatype"):
+            ScalarType.model_validate(scalar("Label_t", conversion={"kind": "string"}))
+        with pytest.raises(ValidationError, match="has no unit"):
+            ScalarType.model_validate(
+                scalar("Label_t", datatype="uint8", unit="s", conversion={"kind": "string"})
+            )
+        with pytest.raises(ValidationError, match="has no limits"):
+            ScalarType.model_validate(
+                scalar(
+                    "Label_t",
+                    datatype="uint8",
+                    limits={"min": 0, "max": 9},
+                    conversion={"kind": "string"},
+                )
+            )

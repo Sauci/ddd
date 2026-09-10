@@ -213,6 +213,45 @@ class TestBreakingChanges:
         new = one_component(tree, "new", declare("local", "X", "uint16", kind="parameter"))
         assert "changed-interface" in checks(verdict(old, new))
 
+    def test_bytes_becoming_text_is_breaking(self, tree: Path) -> None:
+        """A consumer reading numbers is handed characters: a changed conversion, as written."""
+        old = one_component(
+            tree,
+            "old",
+            declare("local", "Label", "uint8", kind="value_block", dimensions=[16], conversion={}),
+        )
+        new = one_component(
+            tree,
+            "new",
+            declare(
+                "local",
+                "Label",
+                "uint8",
+                kind="value_block",
+                dimensions=[16],
+                conversion={"kind": "string"},
+            ),
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"]
+        assert "conversion: string != identity" in messages(bag)
+        assert bag.has_errors
+
+    def test_two_deliveries_of_one_string_compare_clean(self, tree: Path) -> None:
+        string = declare(
+            "local",
+            "Label",
+            "uint8",
+            kind="value_block",
+            dimensions=[16],
+            conversion={"kind": "string"},
+            init="V1.2",
+        )
+        assert (
+            checks(verdict(one_component(tree, "old", string), one_component(tree, "new", string)))
+            == []
+        )
+
 
 class TestGradedChanges:
     def test_an_added_object_is_only_information(self, tree: Path) -> None:
@@ -242,6 +281,27 @@ class TestGradedChanges:
         bag = verdict(old, new)
         assert checks(bag) == ["changed-storage"]
         assert "init: 2 != 1" in messages(bag)
+
+    def test_gaining_an_initial_value_is_a_warning(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "X"))
+        new = one_component(tree, "new", declare("local", "X", init=1))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "init: 1 != none" in messages(bag)
+
+    def test_a_changed_string_initial_value_is_a_warning(self, tree: Path) -> None:
+        """A string init is spelled the way the file spells it, not as ``repr`` would."""
+        string_block = {
+            "datatype": "uint8",
+            "kind": "value_block",
+            "dimensions": [16],
+            "conversion": {"kind": "string"},
+        }
+        old = one_component(tree, "old", declare("local", "X", init="V1.2", **string_block))
+        new = one_component(tree, "new", declare("local", "X", init="V1.3", **string_block))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert 'init: "V1.3" != "V1.2"' in messages(bag)
 
     def test_a_changed_raster_is_a_warning(self, tree: Path) -> None:
         """A signal moving from the 10 ms to the 1 ms event changes the a2l a calibration
@@ -1093,7 +1153,7 @@ def test_a_dumped_baseline_survives_a_rename_end_to_end(tree, capsys):
     baseline = tree / "baseline.json"
     assert main(["dump", str(tree / "before.ddd.json")]) == EXIT_OK
     baseline.write_text(capsys.readouterr().out, encoding="utf-8")
-    assert json.loads(baseline.read_text(encoding="utf-8"))["format"] == 7
+    assert json.loads(baseline.read_text(encoding="utf-8"))["format"] == 8
 
     write_tree(
         tree,

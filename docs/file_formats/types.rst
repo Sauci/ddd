@@ -183,7 +183,8 @@ Scalar types
      - How the stored number maps to the physical one; see :doc:`conversions`. Required
        even when it is the identity, because fixing what a value means is the one job a
        scalar type has, and the identity is part of the answer rather than a silence to
-       interpret.
+       interpret. A scalar type may be a string, in which case the declarations and members
+       naming it state the length.
    * - ``limits``
      - derived
      - ``min`` and ``max`` in physical units, derived from the datatype and the conversion when
@@ -262,7 +263,9 @@ question of whether the answer is shared: a unit written on a member says it for
 that structure, and a ``Temperature_t`` says it once for everything in the project that names
 it. The ``a2l`` block sits on the member rather than on the structure because that is the
 granularity the file ends up with - keeping one member out of the a2l, or giving one member a
-display format, is a decision about that member alone.
+display format, is a decision about that member alone. A member under a string conversion, its
+own or its type's, is a ``value`` member of exactly one dimension, and states no unit, limits
+or format, as a definition would not.
 
 What a member does not say
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

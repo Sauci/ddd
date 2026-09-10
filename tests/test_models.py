@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from conftest import checks, component, declare, messages, project, run_analysis
+from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.models import (
     ComponentFile,
     ConversionRule,
+    DataObject,
     Datatype,
     EnumConversion,
     IdentityConversion,
@@ -30,6 +33,12 @@ def definition(**kwargs: object) -> Measurement:
     return Measurement.model_validate(
         {"name": "X", "kind": "measurement", "volatile": False, **storage, **kwargs}
     )
+
+
+def declared(**definition: Any) -> DataObject:
+    """A definition of any kind, validated the way a component file validates it."""
+    parsed = ComponentFile.model_validate(component("A", declare("output", "X", **definition)))
+    return parsed.component.interface[0].definition
 
 
 class TestDatatype:
@@ -134,6 +143,31 @@ class TestConversions:
         conversion = LinearConversion(factor=0.25, offset=-40.0)
         assert conversion.to_physical(4) == -39.0
         assert conversion.to_raw(-39.0) == 4
+
+    def test_a_string_conversion_is_spelled_with_its_kind(self) -> None:
+        """A string has no key of its own to be inferred from, so ``{}`` stays the identity."""
+        from ddd.models import StringConversion
+
+        parsed = definition(conversion={"kind": "string"}, dimensions=[8])
+        assert isinstance(parsed.conversion, StringConversion)
+        assert isinstance(parsed.conversion, ConversionRule)
+        assert parsed.conversion.describe() == "string"
+        assert isinstance(definition(conversion={}).conversion, IdentityConversion)
+
+    def test_a_string_conversion_takes_no_other_key(self) -> None:
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            definition(conversion={"kind": "string", "factor": 2}, dimensions=[8])
+
+    def test_a_string_is_the_identity_on_one_byte(self) -> None:
+        """Compared as written, ranged as its datatype, and one byte reads as nothing."""
+        from ddd.models import StringConversion, conversion_identity, physical_range, raw_reading
+
+        conversion = StringConversion(kind="string")
+        assert conversion.to_physical(86) == 86
+        assert conversion.to_raw(86) == 86
+        assert conversion_identity(conversion) == {"kind": "string"}
+        assert physical_range(conversion, 0, 255) == (0, 255)
+        assert raw_reading(conversion, 86) is None
 
 
 class TestLimits:
@@ -735,3 +769,104 @@ class TestSixtyFourBitBound:
 
         with pytest.raises(ValidationError, match="less than or equal"):
             ConstantsFile.model_validate({"constants": [{"name": "N", "value": self.HUGE}]})
+
+
+class TestStringRules:
+    """A string is a one dimensional byte array read as text, and states nothing text lacks."""
+
+    def test_a_string_is_a_measurement_or_a_value_block_of_one_dimension(self) -> None:
+        for kind in ("measurement", "value_block"):
+            parsed = declared(kind=kind, conversion={"kind": "string"}, dimensions=[16])
+            assert parsed.conversion is not None
+            assert parsed.conversion.describe() == "string"
+
+    def test_sint8_is_a_byte_too(self) -> None:
+        declared(datatype="sint8", conversion={"kind": "string"}, dimensions=[16])
+
+    @pytest.mark.parametrize("datatype", ["uint16", "boolean", "float32"])
+    def test_a_string_needs_a_byte_datatype(self, datatype: str) -> None:
+        with pytest.raises(ValidationError, match="needs a byte datatype"):
+            declared(datatype=datatype, conversion={"kind": "string"}, dimensions=[16])
+
+    @pytest.mark.parametrize(
+        ("kind", "extra"),
+        [
+            ("parameter", {}),
+            ("axis", {"size": 4}),
+            ("curve", {"axis": "A"}),
+            ("map", {"x_axis": "A", "y_axis": "B"}),
+        ],
+    )
+    def test_a_string_is_no_table_and_no_scalar(self, kind: str, extra: dict[str, Any]) -> None:
+        with pytest.raises(ValidationError, match="one dimensional array of bytes"):
+            declared(kind=kind, conversion={"kind": "string"}, **extra)
+
+    @pytest.mark.parametrize("dimensions", [[], [4, 4]])
+    def test_a_string_states_exactly_one_dimension(self, dimensions: list[int]) -> None:
+        with pytest.raises(ValidationError, match="exactly one dimension"):
+            declared(conversion={"kind": "string"}, dimensions=dimensions)
+
+    @pytest.mark.parametrize(
+        ("key", "value", "expected"),
+        [
+            ("unit", "s", "has no unit"),
+            ("limits", {"min": 0, "max": 9}, "has no limits"),
+            ("a2l", {"format": "%8.3"}, "has no display format"),
+        ],
+    )
+    def test_a_string_states_nothing_text_lacks(self, key: str, value: Any, expected: str) -> None:
+        with pytest.raises(ValidationError, match=expected):
+            declared(conversion={"kind": "string"}, dimensions=[16], **{key: value})
+
+
+class TestStringInit:
+    """The third spelling of ``init``: the text of a string object."""
+
+    def test_a_string_init_is_kept_as_text(self) -> None:
+        parsed = definition(conversion={"kind": "string"}, dimensions=[8], init="V1.2")
+        assert parsed.init == "V1.2"
+        assert parsed.scalar_values() == ()
+
+    def test_a_quoted_number_is_text_rather_than_the_number(self) -> None:
+        """The arm is picked by the exact type of the value, so a quoted init no longer reads
+        as a number; the analysis refuses it on anything but a string object."""
+        assert definition(init="12").init == "12"
+
+    def test_a_string_is_neither_broadcast_nor_flattened(self) -> None:
+        from ddd.models.objects import check_shape, flatten
+
+        assert broadcast("abc", (8,)) == "abc"
+        assert flatten("abc") == []
+        assert check_shape("abc", (8,)) is None
+
+
+class TestDictionaryFormat:
+    def test_a_string_object_round_trips_through_the_dump(self, tree: Path) -> None:
+        """The fourth kind and the string init are new shapes of the document: format 8."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        "Label",
+                        "uint8",
+                        kind="value_block",
+                        conversion={"kind": "string"},
+                        dimensions=[8],
+                        init="V1.2",
+                    ),
+                ),
+            },
+        )
+        assert dictionary is not None, messages(bag)
+        payload = dictionary.model_dump(mode="json")
+        assert payload["format"] == DICTIONARY_FORMAT == 8
+        entry = next(o for o in payload["objects"] if o["name"] == "Label")
+        assert entry["conversion"] == {"kind": "string"}
+        assert entry["init"] == "V1.2"
+        read_back = DataDictionary.model_validate(payload).by_name["Label"]
+        assert read_back.conversion.describe() == "string"
+        assert read_back.init == "V1.2"

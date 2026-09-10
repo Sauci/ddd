@@ -46,10 +46,13 @@ from ddd.models import (
     ScalarType,
     Scope,
     Shape,
+    StringConversion,
     StructType,
     WrittenShape,
     bitfield_range,
     check_shape,
+    check_string_member_shape,
+    check_string_shape,
     conversion_identity,
     conversion_range,
     format_number,
@@ -863,6 +866,43 @@ class _Analysis:
             low, high = conversion_range(conversion, datatype)
             self._check_limits_fit(declared.limits, low, high, datatype, entry.location("limits"))
 
+    def _check_string_members(self, entry: LoadedType) -> None:
+        """A member naming a string type is a ``value`` member of one dimension.
+
+        The rule a member stating the conversion itself answers in the contract, answered
+        here for the member that names the type, and the structure is poisoned the way one
+        of unknown size is: a string member with no length has no size, so no variable can
+        resolve as the structure.
+        """
+        structure = entry.structure
+        if structure is None:
+            return
+        for index, member in enumerate(structure.members):
+            declared = self._declared_of(member)
+            if not isinstance(declared, ScalarType) or not isinstance(
+                declared.conversion, StringConversion
+            ):
+                continue
+            try:
+                check_string_member_shape(member.member, member.dimensions)
+                if member.a2l.format is not None:
+                    msg = f"a string has no display format, got a2l.format '{member.a2l.format}'"
+                    raise ValueError(msg)
+            except ValueError as error:
+                assert member.typename is not None  # it named the scalar type found above
+                location = entry.location(f"members[{index}]")
+                reported = (
+                    self._bag.add(
+                        "schema",
+                        f"member '{member.name}' of structure '{entry.name}' names "
+                        f"'{member.typename}', which is a string: {error}",
+                        location,
+                        notes=[("declared here", self._types[member.typename].location())],
+                    )
+                    is not None
+                )
+                self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
+
     def _is_structure(self, named: str) -> bool:
         """Whether that type name is a structure; false for a scalar and for one nobody declared."""
         declared = self._types.get(named)
@@ -1168,6 +1208,7 @@ class _Analysis:
             self._register_member_enums(entry)
             self._check_member_limits(entry)
             self._check_scalar_type(entry)
+            self._check_string_members(entry)
             for index, member, nested in _nested_types(entry):
                 target = declared.get(nested)
                 if target is None:
@@ -1973,6 +2014,10 @@ class _Analysis:
             # to resolve, so it goes the same way a structured one does.
             self._drop_for_type(ref, named)
             return None
+        if isinstance(entry.conversion, StringConversion) and not self._string_type_fits(
+            ref, named, declared
+        ):
+            return None
         # A scalar type fixes what the value means and nothing about the variable, so only the
         # four it fixes are filled in. The definition already refused to restate any of them.
         return replace(
@@ -1986,6 +2031,33 @@ class _Analysis:
                 }
             ),
         )
+
+    def _string_type_fits(self, ref: DeclarationRef, named: str, declared: LoadedType) -> bool:
+        """A declaration naming a string type is a one dimensional measurement or value block.
+
+        The type fixes that the bytes are text and the declaration states how many there
+        are, so the shape rule a definition stating the conversion itself answers in the
+        contract - :func:`check_string_shape` - is answered here, where the declaration is,
+        with the type it names beside it; a display format is refused for the same reason
+        the contract refuses one. Refused rather than resolved: a string with no dimension
+        or on a table kind is nothing the a2l backend has a record for.
+        """
+        definition = ref.declaration.definition
+        try:
+            check_string_shape(definition.kind, definition.declared_shape)
+            if definition.a2l.format is not None:
+                msg = f"a string has no display format, got a2l.format '{definition.a2l.format}'"
+                raise ValueError(msg)
+        except ValueError as error:
+            self._refuse(
+                "schema",
+                f"'{ref.name}' is declared as '{named}', which is a string: {error}",
+                ref.location("definition"),
+                ref,
+                notes=[("declared here", declared.location())],
+            )
+            return False
+        return True
 
     def _drop_for_type(self, ref: DeclarationRef, named: str) -> None:
         """Drop a declaration of a poisoned type, and say so when nothing else did.
@@ -2975,13 +3047,16 @@ class _Analysis:
         shape: a curve whose axis nobody declares is not here to be asked.
         """
         init = ref.definition.init
-        if not isinstance(init, tuple):
+        if not isinstance(init, tuple | str):
             # A scalar init fills every element of whatever the shape is; nothing to check.
             return
         declared = ref.definition.declared_shape
         # The declaration's own shape, resolved to numbers: an init is counted against the
         # value of a dimension, however that dimension happens to be spelled.
         shape = self._numeric_shape(declared) if declared is not None else resolved
+        if isinstance(init, str):
+            self._check_string_init(ref, init, shape)
+            return
         problem = check_shape(init, shape)
         if problem is None:
             return
@@ -2993,6 +3068,49 @@ class _Analysis:
             f"'{ref.name}'{described}: {problem}",
             ref.location("definition.init"),
         )
+
+    def _check_string_init(self, ref: DeclarationRef, init: str, shape: Shape) -> None:
+        """A string init is the text of a string object, printable, with room for its zero.
+
+        Three ways to be wrong, one identifier - ``init-invalid``, as every wrong init is.
+        The conversion is asked here rather than in the contract because a declaration
+        naming a scalar type only learns it from the type; the length is counted against the
+        resolved dimension, so a length spelled as a constant name is resolved first. The
+        content is printable ASCII, 0x20 to 0x7E, because neither the c literal nor the a2l
+        could carry anything else unambiguously; and the text is shorter than the array so
+        that the terminating zero fits - a string that exactly fills its array is legal c,
+        refused by C++, and indistinguishable in the generated file from one that was meant
+        to be terminated.
+        """
+        conversion = ref.definition.conversion
+        assert conversion is not None  # a structured declaration refuses an init before this
+        location = ref.location("definition.init")
+        if not isinstance(conversion, StringConversion):
+            self._bag.add(
+                "init-invalid",
+                f"'{ref.name}' is initialised with text, but its conversion is "
+                f"{conversion.describe()}; only a string object takes a string init",
+                location,
+            )
+            return
+        unprintable = sorted({character for character in init if not " " <= character <= "~"})
+        if unprintable:
+            spelled = ", ".join(f"U+{ord(character):04X}" for character in unprintable)
+            self._bag.add(
+                "init-invalid",
+                f"the init of '{ref.name}' contains {spelled}, which is not printable ASCII; "
+                f"a string init is written in the characters 0x20 to 0x7E",
+                location,
+            )
+        # One dimension is what the string rules guarantee by the time an object resolves.
+        if len(init) >= shape[0]:
+            self._bag.add(
+                "init-invalid",
+                f"the init of '{ref.name}' is {len(init)} characters long, but the string "
+                f"holds {shape[0]} bytes and needs one for the terminator; at most "
+                f"{shape[0] - 1} fit",
+                location,
+            )
 
     def _compare(self, reference: DeclarationRef, other: DeclarationRef) -> None:
         """Compare two declarations of the same data object."""

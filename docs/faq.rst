@@ -75,12 +75,13 @@ a file that is not there. Holding those back is what makes the result meaningful
    examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
    examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
    examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-   examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
-   2 errors, 5 warnings
+   examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'StateName' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[6]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+   examples/demo/components/controller.ddd.json#component.interface[10]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+   2 errors, 6 warnings
 
    $ ddd check examples/demo/components/controller.ddd.json --standalone
-   ok: 12 variables in 1 component are consistent
+   ok: 14 variables in 1 component are consistent
 
 What remains is everything a component can get wrong on its own: reserved and colliding
 identifiers, initial values that do not fit their datatype, limits outside the range the
@@ -507,7 +508,7 @@ from the linker output by whatever already parses it in your build:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o gen -t examples/templates --address-map addresses.json
-   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 11 others; they reach the a2l at address 0
+   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 13 others; they reach the a2l at address 0
    1 warning
    ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l

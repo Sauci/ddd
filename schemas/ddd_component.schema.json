@@ -164,7 +164,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -178,13 +178,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -194,7 +198,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {
@@ -516,7 +520,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -530,13 +534,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -546,7 +554,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {
@@ -827,7 +835,20 @@
       "title": "IdentityConversion",
       "type": "object"
     },
-    "InitValue": {
+    "InitElement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/InitElement"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "InitScalar": {
       "anyOf": [
         {
           "maximum": 18446744073709551615,
@@ -839,10 +860,20 @@
         },
         {
           "type": "number"
+        }
+      ]
+    },
+    "InitValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InitScalar"
+        },
+        {
+          "type": "string"
         },
         {
           "items": {
-            "$ref": "#/$defs/InitValue"
+            "$ref": "#/$defs/InitElement"
           },
           "type": "array"
         }
@@ -1026,7 +1057,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -1040,13 +1071,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -1056,7 +1091,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {
@@ -1230,7 +1265,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -1244,13 +1279,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -1260,7 +1299,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {
@@ -1428,13 +1467,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -1444,7 +1487,7 @@
             }
           ],
           "default": null,
-          "description": "How this member's raw value maps to a physical one: identity, linear or an enumeration.\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
+          "description": "How this member's raw value maps to a physical one: identity, linear, an enumeration,\nor text read from the bytes (``string``).\n\nRequired on a member whose storage is a base ``datatype``, exactly as on a definition;\na member naming a scalar ``typename`` states none, the type fixing it.",
           "title": "Conversion"
         },
         "limits": {
@@ -1601,7 +1644,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -1615,13 +1658,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -1631,7 +1678,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {
@@ -1719,14 +1766,18 @@
             },
             {
               "$ref": "#/$defs/EnumConversion"
+            },
+            {
+              "$ref": "#/$defs/StringConversion"
             }
           ],
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired: fixing what a value means is the one job a scalar type has, and the identity\nis part of the answer rather than a silence to interpret.",
           "discriminator": {
             "mapping": {
               "enum": "#/$defs/EnumConversion",
               "identity": "#/$defs/IdentityConversion",
-              "linear": "#/$defs/LinearConversion"
+              "linear": "#/$defs/LinearConversion",
+              "string": "#/$defs/StringConversion"
             },
             "propertyName": "kind"
           },
@@ -1768,6 +1819,22 @@
       ],
       "title": "Scope",
       "type": "string"
+    },
+    "StringConversion": {
+      "additionalProperties": false,
+      "description": "Bytes read as text: each element of the array holds one character code.\n\nStated on a ``uint8`` or ``sint8`` array of one dimension; the rules sit beside the\ndatatype because the same pair is written in three places. ``kind`` is required here,\nunlike on the other three kinds: a string has no key of its own to be inferred from,\nand ``{}`` is the identity.\n\nThe two mappings are the identity on one byte, so that the derived limits of a string\nare the raw range of its datatype - which is what the a2l record states - and nothing\nthat ranges a conversion has to know that a string exists. A byte has no reading of its\nown, so no reading is produced for it, as for the identity.",
+      "properties": {
+        "kind": {
+          "const": "string",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "StringConversion",
+      "type": "object"
     },
     "StructType": {
       "additionalProperties": false,
@@ -1923,7 +1990,7 @@
             }
           ],
           "default": null,
-          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value."
+          "description": "Raw initial value, in the stored domain rather than the physical one.\n\n``null`` leaves the object zero initialised by the startup code. For an array shaped\nobject, either a nested list matching the shape exactly, or a single scalar, which\ninitialises every element with that value. A string object may state its init as text\ninstead: printable ASCII, shorter than the dimension so that the terminating zero fits."
         },
         "conversion": {
           "anyOf": [
@@ -1937,13 +2004,17 @@
                 },
                 {
                   "$ref": "#/$defs/EnumConversion"
+                },
+                {
+                  "$ref": "#/$defs/StringConversion"
                 }
               ],
               "discriminator": {
                 "mapping": {
                   "enum": "#/$defs/EnumConversion",
                   "identity": "#/$defs/IdentityConversion",
-                  "linear": "#/$defs/LinearConversion"
+                  "linear": "#/$defs/LinearConversion",
+                  "string": "#/$defs/StringConversion"
                 },
                 "propertyName": "kind"
               }
@@ -1953,7 +2024,7 @@
             }
           ],
           "default": null,
-          "description": "How a raw value maps to a physical one: identity, linear scaling or an enumeration.\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``.",
+          "description": "How a raw value maps to a physical one: identity, linear scaling, an enumeration, or\ntext read from the bytes (``string``).\n\nRequired wherever storage is named by ``datatype``, although the identity would be\nderivable: raw equalling physical is an engineering claim about the data, not a\nformatting accident, and a forgotten scaling on a fixed point value displays raw counts\nwithout anything looking broken. A definition naming a ``typename`` states no conversion\n- the type fixes it. ``kind`` may be left out when the keys make it unambiguous:\n``factor`` or ``offset`` means ``linear``, ``enumerators`` or ``name`` means ``enum``,\nand ``{}`` means ``identity``. A ``string`` always states its ``kind``, having no key of\nits own to be recognised by.",
           "title": "Conversion"
         },
         "limits": {

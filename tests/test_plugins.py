@@ -922,10 +922,10 @@ class TestTheDictionary:
         assert dictionary.instances[0].extensions == {"tag": {"tag": "s"}}
         assert not hasattr(dictionary.leaves[0], "extensions")
 
-    def test_the_format_is_seven(self, tree: Path) -> None:
+    def test_the_format_is_eight(self, tree: Path) -> None:
         dictionary, _ = analysed(tree, declare("local", "X"))
-        assert DICTIONARY_FORMAT == 7
-        assert dictionary.format == 7
+        assert DICTIONARY_FORMAT == 8
+        assert dictionary.format == 8
 
     def test_an_older_dump_reads_back_with_empty_blocks(self, tree: Path) -> None:
         dictionary, _ = analysed(tree, declare("local", "X"))

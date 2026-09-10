@@ -27,6 +27,22 @@ one with neither is the identity. That is why ``{"factor": 0.001}`` is a complet
 and it is the form most of ``examples/demo/`` uses. Spelling ``kind`` out is never wrong and
 is worth doing wherever the file is read more often than it is written.
 
+All three kinds are at work in that demo, and ``ddd list`` shows what each of them comes to: an
+initial value is printed raw, with the reading its conversion gives it beside it - nothing for
+the identity of ``FlagA``, 800 Hz for the linear conversion of ``ParameterA``, and the name
+``STATE_OFF`` for the enum of ``StateA``.
+
+.. code-block:: text
+
+   $ ddd list examples/demo/demo.ddd.json
+   VARIABLE          KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+   ...
+   FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
+   ...
+   ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+   StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+   ...
+
 identity
 --------
 
@@ -98,7 +114,7 @@ real project. ``factor`` defaults to ``1.0`` and ``offset`` to ``0.0``, so
 
 .. code-block:: text
 
-   $ ddd check zerofactor.ddd.json
+   $ ddd check zerofactor.ddd.json  # a component whose conversion states a factor of zero
    zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
    1 error
 
@@ -145,7 +161,7 @@ machine cannot be in state 2.5 and no calibration tool would know what to displa
 
 .. code-block:: text
 
-   $ ddd check enumfloat.ddd.json
+   $ ddd check enumfloat.ddd.json  # an enum conversion on a float32 object
    enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
    1 error
 
@@ -268,7 +284,7 @@ that the difference does not have to be hunted for:
 
 .. code-block:: text
 
-   $ ddd check project.ddd.json
+   $ ddd check project.ddd.json  # two components defining 'State_t' differently
    b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
        note: here: STATE_OFF=0, STATE_ON=2
        note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
@@ -293,7 +309,7 @@ which is an error, since the constant would otherwise be truncated silently:
 
 .. code-block:: text
 
-   $ ddd check dupenum.ddd.json
+   $ ddd check dupenum.ddd.json  # an enumerator too large for its datatype, and two sharing a value
    dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into sint8
    dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
    1 error, 1 warning

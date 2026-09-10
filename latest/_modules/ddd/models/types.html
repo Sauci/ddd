@@ -384,8 +384,9 @@
     <span class="n">name</span><span class="p">:</span> <span class="n">TypeName</span>
 <span class="w">    </span><span class="sd">"""Name of the structure; every type of a project needs a distinct one.</span>
 
-<span class="sd">    Refused if it reads as a base datatype, which would be a type nothing could ever refer to:</span>
-<span class="sd">    where a name is written, a base datatype wins the union.</span>
+<span class="sd">    Refused if it spells a base datatype, compared without regard to case: a type called</span>
+<span class="sd">    ``uint16``, or ``UINT16``, wears the name of storage it is not, and every declaration</span>
+<span class="sd">    naming it would read like a typo.</span>
 <span class="sd">    """</span>
 
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
@@ -406,6 +407,8 @@
 
 
 
+<div class="viewcode-block" id="ScalarType">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ScalarType">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ScalarType</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""A name for what a number means, so components agree by naming rather than by copying.</span>
 
@@ -458,7 +461,8 @@
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_enum_requires_integer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ScalarType</span><span class="p">:</span>
         <span class="n">refuse_enum_on_non_integer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">conversion</span><span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_valid_include_spelling</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -507,6 +511,8 @@
 <span class="sd">"""</span>
 
 
+<div class="viewcode-block" id="ExternalType">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ExternalType">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ExternalType</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""A name for a c type that DDD does not declare: a hand written header defines it.</span>
 
@@ -539,7 +545,8 @@
 
 <span class="sd">    ``my_driver.h`` for the quoted form, ``&lt;os_types.h&gt;`` for the angle form; a subdirectory</span>
 <span class="sd">    path such as ``drivers/status.h`` is allowed in either.</span>
-<span class="sd">    """</span>
+<span class="sd">    """</span></div>
+
 
 
 <span class="n">AnyType</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span> <span class="o">|</span> <span class="n">ExternalType</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"type"</span><span class="p">)]</span>

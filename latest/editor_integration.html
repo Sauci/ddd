@@ -122,7 +122,7 @@ writes, so the editor and the build apply the same severities.
 
 options:
   -h, --help            show this help message and exit
-  -b, --build-directory DIR
+  ...
                         directory holding a build of this project; repeatable.
                         Without it the usual build directory names next to the
                         workspace are searched
@@ -191,9 +191,12 @@ three stages:</p>
 <ul class="simple">
 <li><p><strong>Build records.</strong> The directories named with <code class="docutils literal notranslate"><span class="pre">-b</span></code> are searched recursively for
 <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>; unconfigured, the conventional directories <code class="docutils literal notranslate"><span class="pre">build</span></code>, <code class="docutils literal notranslate"><span class="pre">out</span></code> and
-<code class="docutils literal notranslate"><span class="pre">cmake-build-*</span></code> under the workspace are. A file claimed by several builds is checked
-under each of them and the findings are published together - a component linked into two
-images is in two projects, and the answer to which one the reader cares about is both.
+<code class="docutils literal notranslate"><span class="pre">cmake-build-*</span></code> under the workspace are. A <code class="docutils literal notranslate"><span class="pre">-b</span></code> path is taken as written, so a relative
+one is relative to the directory the server was started in - the workspace folder, where
+the VS Code extension starts it, which is what makes a bare <code class="docutils literal notranslate"><span class="pre">build</span></code> mean the one beside
+the sources. A file claimed by several builds is checked under each of them and the
+findings are published together - a component linked into two images is in two projects,
+and the answer to which one the reader cares about is both.
 The records a search discovers are announced as log messages, and a record that cannot be
 read is skipped.</p></li>
 <li><p><strong>A containing project.</strong> A file no build record claims is looked for in a containing
@@ -250,8 +253,9 @@ environment.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd.buildDirectories</span></code></p></td>
 <td><p>the directories handed to the server as <code class="docutils literal notranslate"><span class="pre">-b</span></code>, each searched for a
-<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>. Left empty, the conventional build directory names next to the
-workspace are searched.</p></td>
+<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>; a relative entry is relative to the workspace folder, which is
+where the extension starts the server. Left empty, the conventional build directory
+names next to the workspace are searched.</p></td>
 </tr>
 </tbody>
 </table>

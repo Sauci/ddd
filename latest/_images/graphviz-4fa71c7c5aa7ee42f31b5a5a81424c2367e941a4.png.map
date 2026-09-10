@@ -1,0 +1,13 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.types.ExternalType
+
+A name for a c type that DDD does not declare: a hand written header defines it.
+
+DDD generates no typedef for it and knows neither its layout nor its meaning &#45; which is
+the point: a driver&#39;s status word or an operating system&#39;s handle already has one
+authoritative definition, and a copy of it in the description would drift. &#160;Only a
+structure member may name one, as opaque storage that reaches the generated structure
+verbatim; such a member states no unit, conversion or limits, because DDD does not check
+meaning it cannot see.
+" alt="" coords="5,5,228,145"/>
+</map>

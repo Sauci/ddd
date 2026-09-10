@@ -125,7 +125,7 @@ which the project can change, per run, with ``-W`` (long form ``--severity``), r
 .. code-block:: bash
 
    ddd check project.ddd.json -W unused-output=info
-   ddd check project.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   ddd check project.ddd.json -W missing-id=error -W empty-component=ignore
    ddd check project.ddd.json --strict
 
 The four levels are:
@@ -171,22 +171,55 @@ plugin check is accepted provisionally at that point and verified once the proje
 one naming a check no loaded plugin registered is then the same usage error an unknown
 built-in check is.
 
-.. note::
-   Checking a single component before it is integrated is the one case where a relaxed policy
-   is the normal thing to do, because the components producing its inputs and consuming its
-   outputs are by definition not part of the file:
+Checking a component on its own
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: text
+Checking a single component before it is integrated is the one case where a relaxed policy is
+the normal thing to do, because the components producing its inputs and consuming its outputs -
+and the files declaring the types, units, sections, constants and rasters it names - are by
+definition not part of the file:
 
-      $ ddd check examples/demo/components/controller.ddd.json
-      examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
-      examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
-      examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-      ...
-      2 errors, 5 warnings
+.. code-block:: text
 
-      $ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore -W unused-output=ignore
-      ok: 12 variables in 1 component are consistent
+   $ ddd check examples/demo/components/controller.ddd.json
+   examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
+   examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+   ...
+   2 errors, 5 warnings
+
+   $ ddd check examples/demo/components/controller.ddd.json --standalone
+   ok: 12 variables in 1 component are consistent
+
+``--standalone`` is that policy, and the whole of it. It holds back the ten checks that need
+every component of a project - ``incomplete-project``, ``missing-producer``,
+``unknown-constant``, ``unknown-extension``, ``unknown-raster``, ``unknown-reference``,
+``unknown-section``, ``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches
+nothing else, so everything DDD can decide from the file in front of it is still reported.
+Whether a check needs the whole project is stated where the check itself is, and that is what
+keeps this set, the one the language server holds back for a file no build claims (see
+:doc:`editor_integration`) and the one the per-component target of the CMake integration
+silences (see :doc:`build_integration`) from drifting apart.
+
+The flag sets the floor rather than having the last word: an explicit ``-W`` on the same run
+still wins, so a supplier who does want to hear about outputs nobody reads asks for that one
+back with ``--standalone -W unused-output=warning``.
+
+Naming the overrides by hand instead is the mistake the flag exists to end. Two of the ten are
+about the other side of the interface; the other eight are about names the component uses and
+the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a
+plugin's ``extensions`` block, an axis or an input quantity another component declares, and the
+declaration DDD then has to drop. A component using the vocabulary of its project meets the
+second group at once:
+
+.. code-block:: text
+
+   $ ddd check examples/vocabulary/pump.ddd.json -W missing-producer=ignore -W unused-output=ignore
+   ...
+   6 errors
+
+   $ ddd check examples/vocabulary/pump.ddd.json --standalone
+   ok: 3 variables in 1 component are consistent
 
 The eight checks whose severity is fixed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -205,11 +238,16 @@ the finding is reported as, so relaxing it would hide the absence rather than al
 other two report that a project names a plugin that cannot be found, or that is not well
 formed - a project cannot be interpreted without the plugins it names, for the same reason.
 
-The same reasoning explains why the two other load time checks *are* relaxable.
-``file-extension`` and ``include-empty`` complain about a file tree DDD can read perfectly
-well, it just does not like the shape of it: a description named ``foo.json`` instead of
-``foo.ddd.json`` is fully understood, and an include pattern that is legitimately empty in one
-variant of a project is a normal thing to allow.
+The same reasoning explains why the nine other checks reported while the files are read *are*
+relaxable. ``file-extension``, ``include-empty``, ``duplicate-component``, ``duplicate-type``,
+``duplicate-unit``, ``duplicate-section``, ``duplicate-constant``, ``duplicate-raster`` and
+``unknown-extension`` all complain about a file tree DDD read perfectly well, it just does not
+like the shape of what it found: a description named ``foo.json`` instead of ``foo.ddd.json``
+is fully understood; an include pattern that is legitimately empty in one variant of a project
+is a normal thing to allow; a second declaration of a component, a type or a unit is read and
+dropped, the first one standing; and a block for a plugin the project does not load is kept as
+written. (``duplicate-declaration``, ``duplicate-id`` and ``duplicate-event`` are named alike
+but belong to the interface checks below, which need the assembled project.)
 
 Trying to change a fixed check is a usage error rather than a silently ignored request, as is
 naming a check or a severity that does not exist - the value of stable identifiers would be
@@ -229,12 +267,15 @@ lost if a typo in a build script quietly disabled a rule:
    ddd: unknown severity 'fatal' for check 'unused-output', expected one of error, warning, info, ignore
 
 .. note::
-   As long as a load time check reports an error, the interface checks do not run at all: the
-   project has not been assembled, so there is nothing to compare. On a project that is broken
-   in both ways the findings therefore arrive in two waves - repair the file tree, and the
-   interface findings appear on the next run. Where the offending check is one of the two
-   relaxable ones, ``-W file-extension=warning`` is enough to let the second wave through
-   immediately.
+   As long as anything reported while the files are read stands as an error - one of the eight
+   above, or one of the nine relaxable ones beside them - the interface checks do not run at
+   all: the project has not been assembled, so there is nothing to compare. On a project that
+   is broken in both ways the findings therefore arrive in two waves - repair the file tree,
+   and the interface findings appear on the next run. Relaxing whichever check fired is the
+   other way through: ``-W file-extension=warning`` or ``-W duplicate-unit=warning`` lets the
+   second wave arrive immediately, while a fixed check leaves repairing the tree as the only
+   way. This is why ``consumer-extension``, which speaks about a plugin's block on a
+   declaration, is never seen while ``unknown-extension`` is an error on the same block.
 
 The checks
 ----------

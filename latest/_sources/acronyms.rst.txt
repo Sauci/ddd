@@ -106,8 +106,10 @@ that the table can be read as a description of one file.
        ``--byte-order`` selects and which appears as ``MSB_LAST`` for little endian targets
        and ``MSB_FIRST`` for big endian ones.
    * - ``MEASUREMENT``
-     - One quantity the calibration tool may only read, because the software writes it. Every
-       object of kind ``measurement`` becomes one, scalar or array.
+     - One quantity the software writes and the calibration tool measures. Every object of
+       kind ``measurement`` becomes one, scalar or array. DDD writes no ``READ_WRITE``, the
+       keyword that would declare the record writable, so a tool that also writes a
+       measurement does it through the address rather than through the a2l.
    * - ``CHARACTERISTIC``
      - One quantity the calibration tool may write, because the software never does.
        Parameters, value blocks, curves and maps all become one, distinguished by their type

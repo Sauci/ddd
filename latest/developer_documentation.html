@@ -289,17 +289,21 @@ error rather than into an empty string - are the same as everywhere else.</p></l
 turns into the <code class="docutils literal notranslate"><span class="pre">generate</span></code> subcommands, a <code class="docutils literal notranslate"><span class="pre">render_&lt;format&gt;</span></code> flag set by
 <code class="docutils literal notranslate"><span class="pre">_add_generate_arguments</span></code> together with the options that configure it, and the branch
 of <code class="docutils literal notranslate"><span class="pre">_command_generate</span></code> that appends the backend when the flag is set. Add the name to
-<code class="docutils literal notranslate"><span class="pre">BUILT_IN_ARTEFACTS</span></code> in <code class="docutils literal notranslate"><span class="pre">src/ddd/plugins.py</span></code> as well: any other lowercase name is
+<code class="docutils literal notranslate"><span class="pre">BUILT_IN_GENERATED</span></code> in <code class="docutils literal notranslate"><span class="pre">src/ddd/plugins.py</span></code> as well: any other lowercase name is
 taken for a plugin’s artefact before the parser is built, and a name that is both is a
-conflicting subparser.</p></li>
+conflicting subparser. That tuple is the one to edit rather than <code class="docutils literal notranslate"><span class="pre">BUILT_IN_ARTEFACTS</span></code>,
+which derives from it by adding <code class="docutils literal notranslate"><span class="pre">all</span></code>; the choices of <code class="docutils literal notranslate"><span class="pre">--without</span></code> and what
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span></code> reports as built-in are read from it too, so both follow on their own.</p></li>
 <li><p>Add it to the protocol assertion in <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code>, and to the lists of
 artefacts <code class="docutils literal notranslate"><span class="pre">tests/test_cli.py</span></code> and <code class="docutils literal notranslate"><span class="pre">tests/test_plugins.py</span></code> enumerate. The import graph
 tests pick the new package up on their own, so the first thing the suite will tell you is
 whether the new backend reached into the front end.</p></li>
 </ol>
-<p>The front end changes in those two places and nowhere else, neither of the existing backends
-is touched, and <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> keeps generating <code class="docutils literal notranslate"><span class="pre">all</span></code> or <code class="docutils literal notranslate"><span class="pre">c</span></code> until the build
-integration is taught the new artefact.</p>
+<p>The front end changes in those two places and nowhere else, and neither of the existing
+backends is touched. <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> asks for <code class="docutils literal notranslate"><span class="pre">all</span></code> on every build, so the new artefact
+reaches every cmake project from the moment it exists; a build that does not want it needs a
+new option on <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> appending <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">&lt;format&gt;</span></code>, the way <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> appends
+<code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code>.</p>
 </section>
 </section>
 <section id="diagnostics-never-raise">
@@ -366,7 +370,7 @@ the analysis and contract types; the fix was deleting them, not writing tests fo
 the paths that only a coverage run reaches - unreadable files, malformed json, relaxed
 severities, odd float literals - are collected in <code class="docutils literal notranslate"><span class="pre">tests/test_edge_cases.py</span></code> rather than
 being scattered through the suite that describes behaviour.</p>
-<p>Four suites guard things a type checker cannot. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> walks the import
+<p>Five suites guard things a type checker cannot. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> walks the import
 graph, as described above. <code class="docutils literal notranslate"><span class="pre">tests/test_cmake.py</span></code> configures and builds the cmake module -
 over the shipped example, over a collected project naming a plugin and over a hand written
 one - with the <code class="docutils literal notranslate"><span class="pre">cmake</span></code> the development requirements install, so that the module is held to
@@ -376,7 +380,14 @@ not compile, a legal name rejected, a description file that ended the run with a
 traceback - grouped by what was at stake rather than by module. <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code>
 asserts that every check identifier, every command, every object kind and every datatype is
 named in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and in <code class="docutils literal notranslate"><span class="pre">SPEC.md</span></code>, that the README invents no check that is not
-registered, and that no link in either points at a file that no longer exists.</p>
+registered, and that no link in either points at a file that no longer exists. And
+<code class="docutils literal notranslate"><span class="pre">tests/test_transcripts.py</span></code> re-runs the documentation: every <code class="docutils literal notranslate"><span class="pre">$</span> <span class="pre">ddd</span></code> command a page runs
+over the shipped examples, and the whole tutorial through <code class="docutils literal notranslate"><span class="pre">bash</span></code>, has to print the lines the
+page shows beneath it. A page that shows commands and runs none of them fails as well, unless
+each of those commands ends in a comment marking it as an illustration, so that no page can
+quietly leave the harness by naming files the examples do not ship. It is the stronger of the
+two documentation guards - a claim about what the tool prints is checked against what it
+prints - so a reworded diagnostic fails there first.</p>
 </section>
 <section id="running-the-checks">
 <h2>Running the checks<a class="headerlink" href="#running-the-checks" title="Link to this heading"></a></h2>
@@ -411,7 +422,7 @@ project, writes one translation unit per generated header that includes it twice
 proves that every header is self contained and that its include guard works - compiles
 everything with <code class="docutils literal notranslate"><span class="pre">-std=c11</span> <span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span> <span class="pre">-Wshadow</span>
 <span class="pre">-Wcast-qual</span> <span class="pre">-Wstrict-prototypes</span></code>, links all objects into one binary, and finally compares
-<code class="docutils literal notranslate"><span class="pre">nm</span></code> against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--format</span> <span class="pre">json</span></code> so that every variable DDD promised is defined
+<code class="docutils literal notranslate"><span class="pre">nm</span></code> against <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">--format</span> <span class="pre">json</span></code> so that every variable DDD promised is defined
 exactly once and nothing else is. The last four steps run twice, once plain and once with
 the conditional declarations enabled, so both states of a <code class="docutils literal notranslate"><span class="pre">#if</span></code> guarded variable are
 covered. It renders the example templates, which is what makes them evidence rather than a
@@ -578,6 +589,21 @@ happens on a published GitHub release tagged <code class="docutils literal notra
 unless that tag is exactly <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. The prefix is
 checked rather than stripped, because the documentation site publishes a release under a
 directory named after its tag and lists only the ones beginning with <code class="docutils literal notranslate"><span class="pre">v</span></code>.</p>
+<p><strong>The version is spelled in nine files, and a test holds only three of them together.</strong>
+<code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code> is where it lives: <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> imports <code class="docutils literal notranslate"><span class="pre">__version__</span></code> rather than
+restating it, and the banner of every generated file carries it from there. <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>,
+which the release tag is checked against, and <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>, which the
+extension is packaged with, repeat it, and a test each asserts that they agree with
+<code class="docutils literal notranslate"><span class="pre">__version__</span></code>. <code class="docutils literal notranslate"><span class="pre">editors/vscode/package-lock.json</span></code> records it twice more - in its own header
+and in the entry for the root package - and nothing asserts that either agrees; <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>
+refuses a lock file out of step with its manifest, so a bump that edits only the manifest fails
+the extension job rather than a test. The other five files spell it out as text and nothing
+derives it for them: the wheel file name in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, the two
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> transcripts of that page - only the first of which the transcript test re-runs,
+since the second carries a trailing comment and is shown rather than run - and the banner of a
+generated file quoted in <a class="reference internal" href="getting_started.html"><span class="doc">Getting started</span></a>, <a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a>,
+<a class="reference internal" href="faq.html"><span class="doc">FAQ</span></a> and <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>. Bumping the version means walking all nine in the release
+commit.</p>
 <p>The publishing jobs name a deployment environment - <code class="docutils literal notranslate"><span class="pre">pypi</span></code>, <code class="docutils literal notranslate"><span class="pre">testpypi</span></code> - and GitHub
 creates an environment with its deployments restricted to the default branch, which is the
 whole of what a release is not: the run is triggered by a tag. An environment whose

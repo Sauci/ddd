@@ -545,9 +545,11 @@ unchanged   build/gen/DemoDevice.a2l
 the tool, and their location is printed by the tool itself rather than guessed, because a
 project may be built against several installations:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd templates-dir
-/home/you/.venv/lib/python3.13/site-packages/ddd/templates
+/home/you/ddd/examples/templates
 </pre></div>
 </div>
+<p>That is what a source checkout answers; an installed wheel answers with the copy inside the
+package - <code class="docutils literal notranslate"><span class="pre">/home/you/.venv/lib/python3.13/site-packages/ddd/templates</span></code>.</p>
 <p>Copy that directory into the project, next to the description files or wherever the coding
 standard says generated-code templates live, and check it in - it is source code of the
 project now:</p>

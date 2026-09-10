@@ -140,7 +140,11 @@ to the interface it dimensions, and a size no single component owns stays here.
 <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project showing both: its pump declares
 <code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> inside its own description, the shared <code class="docutils literal notranslate"><span class="pre">TREND_SAMPLES</span></code> lives in a
 standalone file next to the <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a> and the
-<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and the project checks clean.</p>
+<a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a>, and the project checks clean:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/vocabulary/project.ddd.json
+ok: 4 variables in 1 component are consistent
+</pre></div>
+</div>
 <p>A shape then names a constant where it would state a number: an entry of <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, or
 the <code class="docutils literal notranslate"><span class="pre">size</span></code> of an axis, is either an integer or the name of a declared constant, and a list
 mixes the two freely - <code class="docutils literal notranslate"><span class="pre">[3,</span> <span class="pre">4]</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;PRESSURE_CELLS&quot;,</span> <span class="pre">4]</span></code> are both shapes, on a
@@ -162,7 +166,7 @@ declaration and on a structure member alike:</p>
 <p>Like a section, a constant is a reference rather than a spelling: naming one that no file
 declares is refused whether or not any constants file exists, with the nearest declared name
 suggested, and the finding lands on the dimension entry that names it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose component misspells PRESSURE_CELLS
 a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
 1 error
 </pre></div>
@@ -170,7 +174,7 @@ a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-consta
 <p>A constant declared a second time, in the same file or another, is refused rather than merged - a
 size that depends on which file loads first is exactly what the vocabulary exists to
 prevent:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose two constants files both declare PRESSURE_CELLS
 two.ddd.json#constants[0]: error[duplicate-constant]: constant 'PRESSURE_CELLS' is already declared
     note: one.ddd.json#constants[0]: first declared here
 1 error

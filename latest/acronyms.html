@@ -229,8 +229,10 @@ the version is not selectable.</p></td>
 and <code class="docutils literal notranslate"><span class="pre">MSB_FIRST</span></code> for big endian ones.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code></p></td>
-<td><p>One quantity the calibration tool may only read, because the software writes it. Every
-object of kind <code class="docutils literal notranslate"><span class="pre">measurement</span></code> becomes one, scalar or array.</p></td>
+<td><p>One quantity the software writes and the calibration tool measures. Every object of
+kind <code class="docutils literal notranslate"><span class="pre">measurement</span></code> becomes one, scalar or array. DDD writes no <code class="docutils literal notranslate"><span class="pre">READ_WRITE</span></code>, the
+keyword that would declare the record writable, so a tool that also writes a
+measurement does it through the address rather than through the a2l.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code></p></td>
 <td><p>One quantity the calibration tool may write, because the software never does.

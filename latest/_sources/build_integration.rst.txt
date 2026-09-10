@@ -48,6 +48,27 @@ target of a component. The files must be named ``*.ddd.json`` and, unless they l
 build tree and are generated later, must exist at configure time; a violation of either is a
 fatal error, because the alternative is an image whose data dictionary is quietly incomplete.
 
+A :doc:`vocabulary file <file_formats/units>` registers the same way - a units, sections,
+constants, rasters or types file is a ``*.ddd.json`` like any other, and the call takes it
+without asking what is inside. Which target it belongs on is the question a project meets on
+its first shared units file, and the answer follows from the collection: only what an image
+links reaches it. A vocabulary the whole device shares therefore goes on a target *every*
+image links - an interface library the components link for nothing else, or the image target
+itself, whose own registrations are collected along with the closure's:
+
+.. code-block:: cmake
+
+   add_library(device_vocabulary INTERFACE)
+   ddd_add_component(device_vocabulary JSON units.ddd.json sections.ddd.json)
+
+   add_library(sensor_hub STATIC sensor_hub.c)
+   target_link_libraries(sensor_hub PRIVATE device_vocabulary)
+   ddd_add_component(sensor_hub JSON sensor_hub.ddd.json)
+
+Hanging it off whichever component happened to need it first works only for as long as every
+image links that component - a condition nobody writes down, and one the first image that
+does not link it discovers as an ``unknown-unit`` error.
+
 Registering a component also creates the on-demand target ``<target>.ddd``, which checks that
 component on its own - useful long before it is integrated, and useful to a supplier who does
 not have the rest of the project at all. That check runs ``ddd check --standalone``, which
@@ -58,6 +79,11 @@ declared in the registry - ``ddd checks`` lists them, and :doc:`editor_integrati
 ten the editor holds back for the same reason - and everything else, from datatypes and
 conversions to initial values and bitfields, is verified as usual.
 
+A registered vocabulary file is left out of that target: it declares no interface, so handing
+one to ``ddd check`` is a ``file-kind`` error the target could never pass. Such a file is
+checked in context instead, through the project of every image that collects it, and a target
+that registers nothing else keeps a ``<target>.ddd`` that does nothing.
+
 Generating an image
 ~~~~~~~~~~~~~~~~~~~
 
@@ -66,10 +92,11 @@ of the image, writes the project description tying them together, runs the gener
 generate all``, so the artefact of every plugin named with ``PLUGINS`` arrives beside the
 built-in files - and links the result back into the image. A plugin's file names are its own
 and are not declared as outputs, so a target that consumes one depends on
-``<image>_ddd_generation``. It has to be called in the ``CMakeLists.txt`` that
-defines the image, and after the components have been added, because it hands
-``<image>_ddd_headers`` to the components registered up to that point - which settles both
-which components get the generated headers and whose compile usage travels with them.
+``<stem>_ddd_generation`` - the helper targets are named after the image without its
+extension, so ``firmware.elf`` gives ``firmware_ddd_generation``. It has to be called in the
+``CMakeLists.txt`` that defines the image, and after the components have been added, because
+it hands ``<stem>_ddd_headers`` to the components registered up to that point - which settles
+both which components get the generated headers and whose compile usage travels with them.
 
 Besides the image it needs one thing: ``TEMPLATE_DIRECTORY``, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
@@ -322,10 +349,13 @@ including the ones this image happens not to link.
 
    * - target
      - what it is
-   * - ``<image>_ddd_generation``
-     - custom target running the generator. Depends on the collected description files, so it
-       re-runs when a component changes its declarations and not otherwise.
-   * - ``<image>_ddd_headers``
+   * - ``<stem>_ddd_generation``
+     - custom target running the generator. It depends on the project description and the
+       files collected into it, on the templates, on a ``.py`` plugin the call names, on the
+       address map, on whatever ``DEPENDS`` adds and on the tool itself, so any of those
+       changing regenerates - and the c code the image is otherwise built from does not enter
+       into it.
+   * - ``<stem>_ddd_headers``
      - interface library carrying the include directory of the generated headers, and
        depending on the generation. Every registered component links it, so a component
        includes its interface header without knowing where the image put it. In the collected
@@ -341,13 +371,13 @@ including the ones this image happens not to link.
        components it does not link itself. ``ddd_types.h`` holds the external includes of the
        whole project and every component header includes it, so they all have to read those
        headers alike.
-   * - ``<image>_ddd_globals``
+   * - ``<stem>_ddd_globals``
      - object library compiling every generated ``.c`` file, linked into the image. It is an
        object library on purpose: a static library would drop the members whose symbols
        nobody references, and a measurement that only the calibration tool ever reads has no
-       referencing code at all. It links ``<image>_ddd_headers`` publicly, which is where the
+       referencing code at all. It links ``<stem>_ddd_headers`` publicly, which is where the
        compile usage it needs to read the external type headers comes from.
-   * - ``<image>_ddd_check``
+   * - ``<stem>_ddd_check``
      - runs ``ddd check`` on the collected project on its own, for a ci job that wants the
        verdict without producing artefacts. Checking is part of generating anyway - the
        generator refuses to write anything when the interfaces disagree.
@@ -357,7 +387,7 @@ including the ones this image happens not to link.
 The outputs declared for the generator are the files the template names already give away, plus
 the a2l. The per-component headers are written next to them, but their names come from inside
 the description files and are therefore unknown at configure time - which is precisely why a
-consumer depends on ``<image>_ddd_headers`` rather than on an individual header path.
+consumer depends on ``<stem>_ddd_headers`` rather than on an individual header path.
 
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
@@ -406,13 +436,13 @@ Options
        - the ``PLUGINS`` given here, or the ones a ``PROJECT`` file names - so an editor
        validates a plugin's block as it is typed.
    * - ``ADDRESS_MAP <file>``
-     - the symbol to address map filling the addresses into the a2l. A map inside the build
-       tree that does not exist at configure time is seeded with an empty map (``{}``), so
-       the first build of the two-run flow succeeds with every address 0 and the second,
-       once the extractor has written the real map, fills the addresses in; a missing map in
-       the source tree stays an error. An empty map is a first run rather than a map with
-       holes, so it raises no ``address-missing`` and ``STRICT`` does not fail it; a map
-       that names some objects and not others does, once.
+     - the symbol to address map filling the addresses into the a2l, written by a step of the
+       project's own (below). A map inside the build tree that does not exist at configure
+       time is seeded with an empty map (``{}``), so the first build of the two-run flow
+       succeeds with every address 0 and the second, once that step has written the real map,
+       fills the addresses in; a missing map in the source tree stays an error. An empty map
+       is a first run rather than a map with holes, so it raises no ``address-missing`` and
+       ``STRICT`` does not fail it; a map that names some objects and not others does, once.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``
@@ -420,7 +450,7 @@ Options
        generation and the check target.
    * - ``LINK_LIBRARIES <target>...``
      - usage requirements for compiling the generated definition file, stated by hand. The
-       manual fallback: in the collected mode ``<image>_ddd_headers`` already carries the
+       manual fallback: in the collected mode ``<stem>_ddd_headers`` already carries the
        interface compile usage of every registered component - include directories, compile
        definitions and compile options, resolved through each component's public link
        closure - and the definition file links it, so this remains for the hand written
@@ -439,19 +469,84 @@ Options
    * - ``STRICT``
      - treat DDD warnings as errors.
    * - ``NO_PROPAGATE_HEADERS``
-     - do not hand ``<image>_ddd_headers``, and the compile usage it carries, to the
+     - do not hand ``<stem>_ddd_headers``, and the compile usage it carries, to the
        registered components.
 
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include
 directory reached it first would silently decide which set it compiles against - and, since
-``<image>_ddd_headers`` carries the components' compile usage too, under which flags. Rather
+``<stem>_ddd_headers`` carries the components' compile usage too, under which flags. Rather
 than letting an include order settle that, the second ``ddd_generate()`` stops the configure
 step with a fatal error. Such a project gives ``NO_PROPAGATE_HEADERS`` to **both** calls and links
-the wanted ``<image>_ddd_headers`` into each component explicitly - opting out of only one of
+the wanted ``<stem>_ddd_headers`` into each component explicitly - opting out of only one of
 the two would leave the same ambiguity in place, because the automatic set still reaches every
 registered component rather than only the ones that image links.
+
+Where the address map comes from
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ADDRESS_MAP`` names a file; writing it is the project's step. DDD ships no extractor and
+runs no toolchain tool of its own - it reads no build output at all - which is what lets the
+generator run before anything has been compiled, and what leaves this half of the two-run flow
+to the build. What it needs is the json :doc:`generated_artefacts` describes, one flat object
+of symbol to address; where that comes from is the project's business, so a toolchain without
+``nm`` costs nothing but the recipe below.
+
+The step belongs after the link, so it is a ``POST_BUILD`` command on the image, writing into
+the very path ``ADDRESS_MAP`` names:
+
+.. code-block:: cmake
+
+   set(address_map "${CMAKE_CURRENT_BINARY_DIR}/ddd/firmware.elf/addresses.json")
+
+   ddd_generate(firmware.elf
+                TEMPLATE_DIRECTORY "${templates}"
+                ADDRESS_MAP "${address_map}")
+
+   add_custom_command(TARGET firmware.elf POST_BUILD
+                      COMMAND "${CMAKE_COMMAND}"
+                              -D "NM=${CMAKE_NM}"
+                              -D "IMAGE=$<TARGET_FILE:firmware.elf>"
+                              -D "OUTPUT=${address_map}"
+                              -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddressMap.cmake"
+                      COMMENT "Extracting the address map of firmware.elf"
+                      VERBATIM)
+
+The script it runs is where the toolchain shows through, and it is an **example to adapt**
+rather than a file to copy: this one reads the ``nm`` of binutils, and a toolchain whose
+symbol lister prints something else needs its own reader of that output.
+
+.. code-block:: cmake
+
+   # cmake/AddressMap.cmake - NM, IMAGE and OUTPUT come from the -D arguments above.
+   execute_process(COMMAND "${NM}" --defined-only --format=posix "${IMAGE}"
+                   OUTPUT_VARIABLE listing
+                   COMMAND_ERROR_IS_FATAL ANY)
+   string(REGEX REPLACE "\r?\n" ";" lines "${listing}")
+   set(entries "")
+   foreach(line IN LISTS lines)
+       # "<name> <type> <address> <size>", the type letter saying which section it landed in.
+       if(line MATCHES "^([A-Za-z_][A-Za-z0-9_]*) [BbDdGgRrSs] ([0-9A-Fa-f]+)")
+           list(APPEND entries "  \"${CMAKE_MATCH_1}\": \"0x${CMAKE_MATCH_2}\"")
+       endif()
+   endforeach()
+   list(JOIN entries ",\n" body)
+   file(WRITE "${OUTPUT}" "{\n${body}\n}\n")
+
+The first build then links with every address 0, this step writes the map, and the next build
+regenerates - the map is one of the generation's dependencies - and re-renders the a2l with
+the addresses in it. The c sources of that second run are byte identical, so nothing is
+recompiled, nothing is relinked, and the flow settles after one extra round rather than
+chasing its own tail.
+
+Two things such a script has to get right. A symbol the project does not declare is ignored,
+so listing the whole image does no harm - but an address outside ``0 .. 0xFFFFFFFF`` is
+refused whether or not DDD knows the symbol, which is what a host build of an embedded
+project runs into first. And a structured object's members are addressed under their access
+path, ``Inlet.latest`` rather than ``Inlet``, which a symbol lister does not print: a project
+with structured objects adds the member offsets itself, from the type description or from the
+debug information.
 
 docker
 ------
@@ -462,10 +557,11 @@ image whose whole purpose is to generate, compile, link and inspect the result o
 toolchain, and a compose file that gives every routine job a name.
 
 The image (``docker/Dockerfile``) is ``python:3.12-slim-bookworm`` with gcc and libc6-dev to
-compile the generated sources, binutils for the ``nm`` that inspects them afterwards, and
-ninja plus a cmake from pypi to build the cmake example - debian bookworm still ships cmake
-3.25, which is older than the 3.30 the module needs. DDD itself is installed with its
-development extra, and ``docker/compile.sh`` is installed as the command ``ddd-compile``.
+compile the generated sources, and binutils for the ``nm`` that inspects them afterwards. DDD
+itself is installed with its development extra, which is also where the cmake and the ninja
+that build the cmake example come from: both are wheels from pypi rather than debian packages,
+because debian bookworm still ships cmake 3.25 and the module needs 3.30. ``docker/compile.sh``
+is installed as the command ``ddd-compile``.
 
 .. note::
    The image is a linux image, so on a Windows host run docker from a WSL shell, where docker
@@ -504,8 +600,8 @@ What the compile service proves
 build:
 
 #. it generates the demo project into ``build/gen`` with the templates named by ``TEMPLATES``,
-   the examples shipped with the tool unless the caller says otherwise, and writes the variable
-   list next to it with ``ddd list --format json``;
+   the examples shipped with the tool unless the caller says otherwise, and writes the resolved
+   dictionary next to it with ``ddd dump --format json``;
 #. it writes one translation unit per generated header which includes that header **twice**,
    which proves both that every header is self contained - it compiles with nothing included
    before it - and that its include guard works;
@@ -516,7 +612,7 @@ build:
 #. it links all the objects into one binary and runs it, which is where a duplicated
    definition or a declaration without a definition behind it would show up - the link step is
    what actually tests the promise that every variable is defined exactly once;
-#. it compares the output of ``nm`` on the generated definition file against the variable list
+#. it compares the output of ``nm`` on the generated definition file against the dictionary
    from step 1 (``docker/verify_symbols.py``): every declared variable must be defined exactly
    once, nothing that DDD never declared may be defined, and a variable behind a preprocessor
    condition is allowed to be absent and is reported as such.
@@ -524,6 +620,11 @@ build:
 Steps 2 to 5 run twice, once plain and once with the extra defines from the ``CDEFS``
 environment variable - ``-DFEATURE_X`` in the shipped compose file - so that conditional
 declarations are covered in both of their states.
+
+The dictionary rather than ``ddd list`` in step 1, because the two count different things: the
+definition file defines one symbol per plain object and one per structured *instance*, while
+the list reports what can be described, which for a structured object is its leaves - and a
+structure whose members are all external types has storage the linker sees and no leaf at all.
 
 The script takes the project and the output directory as arguments, so it also runs on a real
 project rather than only on the demo, and the environment variables ``CDEFS``, ``GENFLAGS``,

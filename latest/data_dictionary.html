@@ -138,7 +138,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 {
   "format": 7,
   "name": "DemoDevice",
-  "description": "Demonstration project showing every DDD feature",
+  "description": "Demonstration project showing every kind of data object",
   "source": "demo.ddd.json",
   "components": [
     {
@@ -451,7 +451,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-0e5364e905ecb9e74105fd8107b9701655f52843.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-011c3b0bd3484fdb0854ada6f419b33321ef634d.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -526,7 +526,9 @@ out.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.EnumConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.conversion.IdentityConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;IdentityConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['identity']&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.conversion.IdentityConversion&amp;#xA;&amp;#xA;``physical == raw``; the default for every variable.&amp;#xA;&quot;];
+      tooltip=&quot;ddd.models.conversion.IdentityConversion&amp;#xA;&amp;#xA;``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.&amp;#\
+xA;&amp;#xA;Not a default: a definition naming storage by ``datatype`` states this one where raw and&amp;#xA;physical are the same number, \
+so that the claim is written down rather than left to&amp;#xA;silence.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.IdentityConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.conversion.LinearConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LinearConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['linear']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;factor&lt;/td&gt;&lt;td port=&quot;factor&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;offset&lt;/td&gt;&lt;td port=&quot;offset&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
@@ -883,7 +885,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
@@ -905,7 +907,7 @@ that is the form the a2l consumes and&amp;#xA;there is no second place a reader 
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"IdentityConversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"``physical == raw``; the default for every variable."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.\n\nNot a default: a definition naming storage by ``datatype`` states this one where raw and\nphysical are the same number, so that the claim is written down rather than left to\nsilence."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"const"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="p">,</span>
@@ -1955,7 +1957,7 @@ it. It does not follow the version of the tool.</p>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.constants">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">constants</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">ConstantDeclaration</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.constants" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">constants</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="data_contracts.html#ddd.models.ConstantDeclaration" title="ddd.models.ConstantDeclaration"><span class="pre">ConstantDeclaration</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.constants" title="Link to this definition"></a></dt>
 <dd><p>The named constants the project declares, sorted by name.</p>
 <p>Recorded whole - name, value and description - so that a generator consuming the
 dictionary can emit them the way the shipped templates do, and so that a dimension
@@ -2043,7 +2045,7 @@ were given, without the project file that stated them.</p>
 <dt class="sig sig-object py" id="ddd.ir.ResolvedObject">
 <span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedObject</span></span><a class="reference internal" href="_modules/ddd/ir.html#ResolvedObject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.ir.ResolvedObject" title="Link to this definition"></a></dt>
 <dd><p>One data object, with every derived property already worked out.</p>
-<div class="graphviz"><img src="_images/graphviz-3d7778de2b2b49276b1b7bec9ace9045d58486ce.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-ffe34be959a3f9810055bd2a7cd7e8245e28b41f.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -2066,7 +2068,9 @@ both the explicit form::&amp;#xA;&amp;#xA;    {\&quot;kind\&quot;: \&quot;enum\&
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.EnumConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.conversion.IdentityConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;IdentityConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['identity']&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.conversion.IdentityConversion&amp;#xA;&amp;#xA;``physical == raw``; the default for every variable.&amp;#xA;&quot;];
+      tooltip=&quot;ddd.models.conversion.IdentityConversion&amp;#xA;&amp;#xA;``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.&amp;#\
+xA;&amp;#xA;Not a default: a definition naming storage by ``datatype`` states this one where raw and&amp;#xA;physical are the same number, \
+so that the claim is written down rather than left to&amp;#xA;silence.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedObject&quot;:conversion:e -&gt; &quot;ddd.models.conversion.IdentityConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.conversion.LinearConversion&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LinearConversion&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;Literal['linear']&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;factor&lt;/td&gt;&lt;td port=&quot;factor&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;offset&lt;/td&gt;&lt;td port=&quot;offset&quot;&gt;float&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
@@ -2435,7 +2439,7 @@ out.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; every enumerator of one enum needs a value of its own.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The raw value; two enumerators of one enum sharing one is reported as a warning.\n\n``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and\noccasionally meant as an alias - but the a2l table then offers a calibration tool two\nnames for one reading.\n\nBounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no\nstorage could ever represent is refused here rather than overflowing a comparison once\nit is checked against the c ``int`` every enumerator has to fit, or against the\ndatatype carrying it."</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"maximum"</span><span class="p">:</span><span class="w"> </span><span class="mi">18446744073709551615</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">-9223372036854775808</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Value"</span><span class="p">,</span>
@@ -2457,7 +2461,7 @@ out.&amp;#xA;&quot;];
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"IdentityConversion"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"``physical == raw``; the default for every variable."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.\n\nNot a default: a definition naming storage by ``datatype`` states this one where raw and\nphysical are the same number, so that the claim is written down rather than left to\nsilence."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">               </span><span class="nt">"const"</span><span class="p">:</span><span class="w"> </span><span class="s2">"identity"</span><span class="p">,</span>

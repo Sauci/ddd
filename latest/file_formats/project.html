@@ -118,7 +118,7 @@ on the generated a2l. <code class="docutils literal notranslate"><span class="pr
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DemoDevice"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Demonstration project showing every DDD feature"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Demonstration project showing every kind of data object"</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"includes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"components/*.ddd.json"</span><span class="p">,</span>
 <span class="w">      </span><span class="s2">"subsystems/logging/logging.ddd.json"</span>
@@ -127,7 +127,7 @@ on the generated a2l. <code class="docutils literal notranslate"><span class="pr
 <span class="p">}</span>
 </pre></div>
 </div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check demo.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json
 ok: 21 variables in 4 components are consistent
 </pre></div>
 </div>
@@ -199,9 +199,10 @@ where a component genuinely lives outside the project tree.</p>
 <section id="wildcards">
 <h3>Wildcards<a class="headerlink" href="#wildcards" title="Link to this heading"></a></h3>
 <p>Shell style wildcards are expanded: <code class="docutils literal notranslate"><span class="pre">*</span></code> for any part of a name, <code class="docutils literal notranslate"><span class="pre">?</span></code> for a single
-character, and <code class="docutils literal notranslate"><span class="pre">**</span></code> for any number of directory levels. With <code class="docutils literal notranslate"><span class="pre">components/*.ddd.json</span></code>,
-adding a component to the project is a matter of adding its file - nobody has to remember to
-edit the project as well, and nobody can forget to.</p>
+character, <code class="docutils literal notranslate"><span class="pre">[...]</span></code> for a character class, and <code class="docutils literal notranslate"><span class="pre">**</span></code> for any number of directory levels.
+An entry holding one of <code class="docutils literal notranslate"><span class="pre">*</span></code>, <code class="docutils literal notranslate"><span class="pre">?</span></code> or <code class="docutils literal notranslate"><span class="pre">[</span></code> is a pattern; anything else is a literal path.
+With <code class="docutils literal notranslate"><span class="pre">components/*.ddd.json</span></code>, adding a component to the project is a matter of adding its
+file - nobody has to remember to edit the project as well, and nobody can forget to.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"project"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Wildcards"</span><span class="p">,</span>
@@ -229,6 +230,16 @@ empty.ddd.json#project.includes[0]: error[include-empty]: pattern 'variants/*.dd
 <p><code class="docutils literal notranslate"><span class="pre">include-empty</span></code> is an error by default but can be relaxed, because a pattern that is
 legitimately empty in one variant of a project is a normal thing to allow - a project built
 for several targets may have an <code class="docutils literal notranslate"><span class="pre">optional/*.ddd.json</span></code> that only some of them fill.</p>
+<p>An entry without a wildcard character is a literal path naming exactly one file, and a
+missing one - or a path that turns out to name a directory - is <code class="docutils literal notranslate"><span class="pre">file-not-found</span></code>, which
+cannot be relaxed at all: a pattern may legitimately match nothing, a named file may not be
+absent.</p>
+<p>The matches of one pattern are processed in sorted order of their resolved paths, so that
+which component loads first is a property of the names rather than of how a file system
+happens to enumerate a directory. That order is what “the first declaration in load order”
+means wherever a rule falls back to it: the declaration that stands in for the producer in a
+project relaxing <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, and the limits an object takes when its producer
+states none.</p>
 </section>
 <section id="components-and-sub-projects-in-the-same-list">
 <h3>Components and sub-projects in the same list<a class="headerlink" href="#components-and-sub-projects-in-the-same-list" title="Link to this heading"></a></h3>
@@ -318,7 +329,7 @@ reported as, so relaxing it would hide the absence rather than allow it.</p>
 needs all of them to know when the generated artefacts are out of date. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> prints
 them, one absolute path per line, sorted and without duplicates - the root file, every
 sub-project and every component:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources demo.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/demo/demo.ddd.json
 /home/you/ddd/examples/demo/components/controller.ddd.json
 /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
 /home/you/ddd/examples/demo/components/user_interface.ddd.json

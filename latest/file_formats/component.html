@@ -300,15 +300,15 @@ a second curve over the same break points. For data that only parametrises the c
 owns it, <code class="docutils literal notranslate"><span class="pre">local</span></code> is the normal choice, and it is the one that keeps the interface small.</p>
 <p>The three scopes are what <code class="docutils literal notranslate"><span class="pre">examples/inconsistent/</span></code> exists to demonstrate; every declaration
 rule above appears in one run:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
-component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
-    note: component_a.ddd.json#component.interface[0]: also written here
-component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
-    note: component_a.ddd.json#component.interface[0].definition: reference declaration
-component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
-component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
-    note: component_a.ddd.json#component.interface[2]: declared local here
-component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/inconsistent/project.ddd.json
+examples/inconsistent/component_b.ddd.json#component.interface[0]: error[multiple-producers]: 'SharedValue' is written by component 'ComponentB' and by component 'ComponentA'; exactly one writer is allowed
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0]: also written here
+examples/inconsistent/component_c.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'SharedValue' is declared differently by component 'ComponentC' than by 'ComponentA' (datatype: uint16 != sint16, conversion: identity != linear(factor=0.5, offset=0))
+    note: examples/inconsistent/component_a.ddd.json#component.interface[0].definition: reference declaration
+examples/inconsistent/component_c.ddd.json#component.interface[1]: error[missing-producer]: 'MissingValue' is read by component 'ComponentC' but no component declares it as output
+examples/inconsistent/component_c.ddd.json#component.interface[2]: error[local-conflict]: 'Scratch' is local to component 'ComponentA' but is also declared as input by component 'ComponentC'
+    note: examples/inconsistent/component_a.ddd.json#component.interface[2]: declared local here
+examples/inconsistent/component_a.ddd.json#component.interface[1]: warning[unused-output]: 'UnusedSignal' is written by component 'ComponentA' but read by nobody
 4 errors, 1 warning
 </pre></div>
 </div>
@@ -456,10 +456,14 @@ interface and not storage: it reaches every consumer’s own header as
 not to keep the value it read the first time. A producer saying <code class="docutils literal notranslate"><span class="pre">true</span></code> and a consumer
 saying <code class="docutils literal notranslate"><span class="pre">false</span></code> is two components compiled against two different meanings of the same
 address.</p>
-<p>Two keys of the block sit outside that. <code class="docutils literal notranslate"><span class="pre">init</span></code> is refused on a consumer altogether, as
-<code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>: a component that only reads a variable has no say in what it starts
-as. <code class="docutils literal notranslate"><span class="pre">export</span></code> is compared by nobody, because any component may ask for an object to reach
-the a2l and asking wins over declining.</p>
+<p>Seven keys of the block sit outside that. Five are refused on a consumer altogether -
+<code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> as <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, <code class="docutils literal notranslate"><span class="pre">raster</span></code> as <code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code>,
+<code class="docutils literal notranslate"><span class="pre">id</span></code> as <code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code> and <code class="docutils literal notranslate"><span class="pre">extensions</span></code> as <code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code> - because
+what an object starts as, where it lives, which event updates it, which earlier delivery
+it continues and what a plugin knows about it are decided by the component that produces
+the variable, not by one that reads it. Two more are compared by nobody: <code class="docutils literal notranslate"><span class="pre">export</span></code>,
+because any component may ask for an object to reach the a2l and asking wins over
+declining, and <code class="docutils literal notranslate"><span class="pre">description</span></code>, where the producer’s text is simply the one that is used.</p>
 </div>
 </section>
 </section>
@@ -535,12 +539,12 @@ shared.ddd.json#types[0]: error[duplicate-type]: type 'Torque_t' is already decl
 check its own description before integrating it into a project. The inputs of that component
 have no producer in such a run, by definition, so silence the check that would otherwise
 dominate the output:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check controller.ddd.json -W missing-producer=ignore
-controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
-controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
-controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
-controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
-controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json -W missing-producer=ignore
+examples/demo/components/controller.ddd.json#component.interface[2]: warning[unused-output]: 'ValueE' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[3]: warning[unused-output]: 'ValueF' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[4]: warning[unused-output]: 'StateA' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[5]: warning[unused-output]: 'ValueG' is written by component 'Controller' but read by nobody
+examples/demo/components/controller.ddd.json#component.interface[8]: warning[unused-output]: 'AxisA' is written by component 'Controller' but read by nobody
 5 warnings
 </pre></div>
 </div>
@@ -554,17 +558,17 @@ practical payoff of the co-location: a self-contained library file answers <code
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> on its own, and only the references that genuinely live elsewhere stay open.
 The pump of <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> names its own <code class="docutils literal notranslate"><span class="pre">Torque_t</span></code> and <code class="docutils literal notranslate"><span class="pre">PRESSURE_CELLS</span></code> and
 leans on the project only for its sections, its rasters and one shared size:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check pump.ddd.json
-pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
-pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
-pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
-pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
-pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
-pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/vocabulary/pump.ddd.json
+examples/vocabulary/pump.ddd.json#component.interface[0].definition.raster: error[unknown-raster]: 'PumpSpeed' is measured in '1ms', which is not a raster any file of this project declares
+examples/vocabulary/pump.ddd.json#component.interface[0].definition.section: error[unknown-section]: 'PumpSpeed' is placed in '.fast_ram', which is not a section any file of this project declares
+examples/vocabulary/pump.ddd.json#component.interface[1].definition.section: error[unknown-section]: 'ManifoldPressure' is placed in '.fast_ram', which is not a section any file of this project declares
+examples/vocabulary/pump.ddd.json#component.interface[2].definition.dimensions[0]: error[unknown-constant]: 'PressureTrend' is dimensioned by 'TREND_SAMPLES', which is not a constant any file of this project declares
+examples/vocabulary/pump.ddd.json#component.interface[3].definition.section: error[unknown-section]: 'TorqueLimit' is placed in '.calib', which is not a section any file of this project declares
+examples/vocabulary/pump.ddd.json#component.raster: error[unknown-raster]: component 'Pump' measures in '10ms', which is not a raster any file of this project declares
 6 errors
 
-$ ddd check pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
-pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: the declaration of 'PressureTrend' by component 'Pump' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
+$ ddd check examples/vocabulary/pump.ddd.json -W unknown-section=ignore -W unknown-constant=ignore -W unknown-raster=ignore
+examples/vocabulary/pump.ddd.json#component.interface[2].definition.dimensions[0]: info[incomplete-project]: the declaration of 'PressureTrend' by component 'Pump' is not in the data dictionary: the unknown-constant that says why is not reported, so nothing reading the dictionary - the listing, the dump, every backend - carries it either
 1 info
 </pre></div>
 </div>

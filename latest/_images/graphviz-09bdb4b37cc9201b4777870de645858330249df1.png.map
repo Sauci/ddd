@@ -54,7 +54,10 @@ A two dimensional calibratable table, stored as ``[y][x]``.
 " alt="" coords="1728,1355,2325,1859"/>
 <area shape="rect" id="node11" title="ddd.models.objects.Measurement
 
-An online value: written by the software, only measured by the calibration tool.
+An online value: the software writes it, a calibration tool measures it and may write it.
+
+A tool writing one through its address is one of the reasons to declare a measurement
+``volatile``, alongside an interrupt, a second core and a peripheral.
 " alt="" coords="1727,1907,2327,2383"/>
 <area shape="rect" id="node12" title="ddd.models.objects.Parameter
 
@@ -79,7 +82,11 @@ and the mapping shorthand::
 " alt="" coords="2471,1668,2736,1780"/>
 <area shape="rect" id="node16" title="ddd.models.conversion.IdentityConversion
 
-``physical == raw``; the default for every variable.
+``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
+
+Not a default: a definition naming storage by ``datatype`` states this one where raw and
+physical are the same number, so that the claim is written down rather than left to
+silence.
 " alt="" coords="2518,1831,2689,1887"/>
 <area shape="rect" id="node17" title="ddd.models.conversion.LinearConversion
 

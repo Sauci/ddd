@@ -128,6 +128,20 @@ failure that compiles, links, runs, and reports every value wrong by a constant 
 one with neither is the identity. That is why <code class="docutils literal notranslate"><span class="pre">{&quot;factor&quot;:</span> <span class="pre">0.001}</span></code> is a complete conversion,
 and it is the form most of <code class="docutils literal notranslate"><span class="pre">examples/demo/</span></code> uses. Spelling <code class="docutils literal notranslate"><span class="pre">kind</span></code> out is never wrong and
 is worth doing wherever the file is read more often than it is written.</p>
+<p>All three kinds are at work in that demo, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> shows what each of them comes to: an
+initial value is printed raw, with the reading its conversion gives it beside it - nothing for
+the identity of <code class="docutils literal notranslate"><span class="pre">FlagA</span></code>, 800 Hz for the linear conversion of <code class="docutils literal notranslate"><span class="pre">ParameterA</span></code>, and the name
+<code class="docutils literal notranslate"><span class="pre">STATE_OFF</span></code> for the enum of <code class="docutils literal notranslate"><span class="pre">StateA</span></code>.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd list examples/demo/demo.ddd.json
+VARIABLE          KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+...
+FlagA             measurement  boolean   -     -       0                  SensorHub              EventLogger
+...
+ParameterA        parameter    uint16    Hz    -       3200 (= 800 Hz)    Controller (local)     -
+StateA            measurement  uint8     -     -       0 (= STATE_OFF)    Controller             UserInterface
+...
+</pre></div>
+</div>
 <section id="identity">
 <h2>identity<a class="headerlink" href="#identity" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">==</span> <span class="pre">raw</span></code>: the stored number <em>is</em> the quantity. It is stated like every other
@@ -197,7 +211,7 @@ negative; may not be zero.</p></td>
 </tbody>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">factor</span></code> must not be zero, and a file that says otherwise is refused when it is read:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check zerofactor.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check zerofactor.ddd.json  # a component whose conversion states a factor of zero
 zerofactor.ddd.json#component.interface[0].definition.conversion: error[schema]: Value error, factor must not be zero (got: {'kind': 'linear', 'factor': 0})
 1 error
 </pre></div>
@@ -238,7 +252,7 @@ requires.</p>
 enum conversion is a verbal conversion table - the raw value <em>is</em> the physical value, and what
 the conversion adds is a name for each of them. It requires an integer datatype, since a state
 machine cannot be in state 2.5 and no calibration tool would know what to display for it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumfloat.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumfloat.ddd.json  # an enum conversion on a float32 object
 enumfloat.ddd.json#component.interface[0].definition: error[schema]: Value error, enum conversion 'E_t' requires an integer datatype, got 'float32' (got: {'name': 'EnumOnFloat', 'datatype': 'float32', 'conversio...)
 1 error
 </pre></div>
@@ -358,7 +372,7 @@ switch statements.</p>
 <p>Because the enum name becomes a c type name shared by the whole project, two components using
 that name for two different sets of values is an error, and the finding prints both sets so
 that the difference does not have to be hunted for:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check project.ddd.json  # two components defining 'State_t' differently
 b.ddd.json#component.interface[0].definition.conversion: error[enum-conflict]: enum 'State_t' is defined with different enumerators
     note: here: STATE_OFF=0, STATE_ON=2
     note: a.ddd.json#component.interface[0].definition.conversion: first defined as: STATE_OFF=0, STATE_ON=1
@@ -379,7 +393,7 @@ short form loses nothing:</p>
 </div>
 <p>Two further things are checked. Every enumerator has to fit into the datatype of the object,
 which is an error, since the constant would otherwise be truncated silently:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check dupenum.ddd.json  # an enumerator too large for its datatype, and two sharing a value
 dupenum.ddd.json#component.interface[1].definition: error[init-invalid]: enumerator(s) N_A=200 of enum 'N_t' do not fit into sint8
 dupenum.ddd.json#component.interface[0].definition.conversion: warning[enum-duplicate-value]: enum 'M_t': M_A, M_B all have the value 1
 1 error, 1 warning

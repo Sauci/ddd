@@ -185,9 +185,9 @@ one, because DDD knows neither its layout nor its meaning.</p></td>
 <td><p>Whether the generated declaration carries the c qualifier of the same name, which
 forbids the compiler to assume it already knows the value. A measurement needs it when
 something outside the reading component writes the variable - an interrupt, a second
-core, a peripheral - and calibration data needs it when a calibration tool is to change
-the value in a running ecu, because without it the compiler is entitled to fold the
-initialiser into the code that reads it - within one translation unit at every
+core, a peripheral or a calibration tool - and calibration data needs it when a tool is
+to change the value in a running ecu, because without it the compiler is entitled to
+fold the initialiser into the code that reads it - within one translation unit at every
 optimisation level, <code class="docutils literal notranslate"><span class="pre">-O0</span></code> included, and across them under <code class="docutils literal notranslate"><span class="pre">-flto</span></code>. The whole
 account, with the compiler output it was measured from, is in
 <a class="reference internal" href="../generated_artefacts.html"><span class="doc">Generated artefacts</span></a>. There is no default because there is no answer DDD could derive, and
@@ -213,7 +213,9 @@ which is legal and useless.</p></td>
 <td><p>The physical unit, as free text: <code class="docutils literal notranslate"><span class="pre">Hz</span></code>, <code class="docutils literal notranslate"><span class="pre">degC</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>. It is shown in the c comment
 in brackets, and it is part of the a2l <code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code>. Components sharing a variable
 have to agree on it, because two components using the same variable in different units
-is the failure that compiles and links and is wrong by a constant factor.</p></td>
+is the failure that compiles and links and is wrong by a constant factor. Free text
+does not mean unchecked: where the project declares a <a class="reference internal" href="units.html"><span class="doc">unit vocabulary</span></a>,
+every spelling is checked against it as well (<code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
 <td><p>required beside <code class="docutils literal notranslate"><span class="pre">datatype</span></code></p></td>
@@ -270,6 +272,16 @@ inconsistency but the only arrangement that works. Limits are what a calibration
 types into a tool, so they are physical; the initial value is what the compiler writes into
 the image, so it is raw. With a factor of 0.1 a variable whose limits are <code class="docutils literal notranslate"><span class="pre">-40</span></code> and
 <code class="docutils literal notranslate"><span class="pre">150</span></code> degC is initialised with <code class="docutils literal notranslate"><span class="pre">-400</span></code>, which is -40.0 degC.</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> prints a resolved project as those attributes, one line per variable, the initial
+value raw with its physical reading beside it. <code class="docutils literal notranslate"><span class="pre">ValueF</span></code> of the shipped demo is exactly the
+case the note describes:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd list examples/demo/demo.ddd.json
+VARIABLE          KIND         DATATYPE  UNIT  SHAPE   INIT               PRODUCER               CONSUMERS
+...
+ValueF            measurement  sint16    degC  -       -400 (= -40 degC)  Controller             UserInterface
+...
+</pre></div>
 </div>
 <section id="datatypes">
 <h3>Datatypes<a class="headerlink" href="#datatypes" title="Link to this heading"></a></h3>
@@ -373,7 +385,7 @@ written with the suffix the type asks for, so the generated code survives <code 
 code that does not compile, and DDD checks for that rather than letting the compiler explain
 it in a generated file nobody wants to read. A name that is a c keyword, or that
 <code class="docutils literal notranslate"><span class="pre">&lt;stdint.h&gt;</span></code> or <code class="docutils literal notranslate"><span class="pre">&lt;stdbool.h&gt;</span></code> already declare, is refused:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check reserved.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check reserved.ddd.json  # a component naming objects 'signed' and 'uint8_t'
 reserved.ddd.json#component.interface[0].definition.name: error[reserved-identifier]: variable name 'signed' is reserved by the c language
 reserved.ddd.json#component.interface[1].definition.name: error[reserved-identifier]: variable name 'uint8_t' is reserved by the c language
 2 errors
@@ -381,7 +393,7 @@ reserved.ddd.json#component.interface[1].definition.name: error[reserved-identif
 </div>
 <p>So is a name that collides with something else DDD itself generates - an enumerator of an enum
 conversion lives in the same c namespace as a variable:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumcoll.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check enumcoll.ddd.json  # a variable named after an enumerator of the same project
 enumcoll.ddd.json#component.interface[0].definition.name: error[name-collision]: 'STATE_OFF' is declared as a variable and is also an enumerator of enum 'S_t'; both become the same c identifier
     note: enumcoll.ddd.json#component.interface[1].definition.conversion: enumerator declared here
 1 error
@@ -390,7 +402,7 @@ enumcoll.ddd.json#component.interface[0].definition.name: error[name-collision]:
 <p>Two names differing only in case compile perfectly well and are merely a warning, because they
 are legal and occasionally intended - but they are also the classic way for a value to be read
 from the wrong variable for a year:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check similar.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check similar.ddd.json  # a component declaring both 'ValueA' and 'valuea'
 similar.ddd.json#component.interface[1].definition.name: warning[name-similar]: 'valuea' and 'ValueA' differ only in upper/lower case
     note: similar.ddd.json#component.interface[0].definition: other variable
 1 warning
@@ -425,7 +437,7 @@ uses it for <code class="docutils literal notranslate"><span class="pre">CurveB<
 <p>Everything about an initial value is checked against the object it belongs to. A value outside
 the raw range of the datatype, a fractional value in an integer object, and a nested list of
 the wrong shape are all errors, each naming what it actually is:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check ranges.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check ranges.ddd.json  # a component whose init values and limits do not fit
 ranges.ddd.json#component.interface[0].definition.init: error[init-invalid]: init value 300 does not fit into uint8 (0 .. 255)
 ranges.ddd.json#component.interface[2].definition.init: error[init-invalid]: init value 1.5 is written as a fractional number, but 'Fractional' has the integer datatype uint8
 ranges.ddd.json#component.interface[1].definition.limits: warning[limits-out-of-range]: limits [0, 200] exceed the range [0, 127.5] that uint8 can represent with this conversion
@@ -438,7 +450,7 @@ rather than an error because limits are a statement of intent about the data and
 the compiler - but it is the finding that stops a calibration engineer from entering a value
 the software will silently wrap. Limits are also checked for being the right way round:
 <code class="docutils literal notranslate"><span class="pre">min</span></code> greater than <code class="docutils literal notranslate"><span class="pre">max</span></code> is refused when the file is read.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check misc.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check misc.ddd.json  # a component whose limits are the wrong way round
 misc.ddd.json#component.interface[0].definition.limits: error[schema]: Value error, min (10) is greater than max (5) (got: {'min': 10, 'max': 5})
 1 error
 </pre></div>
@@ -533,7 +545,7 @@ therefore always exported.</p>
 </div>
 <p>The <code class="docutils literal notranslate"><span class="pre">format</span></code> string is constrained rather than passed through, and a value that does not
 match is refused when the file is read:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badfmt.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badfmt.ddd.json  # an a2l format string of '%8'
 badfmt.ddd.json#component.interface[0].definition.a2l.format: error[schema]: String should match pattern '^%\d*\.\d+$' (got: '%8')
 1 error
 </pre></div>
@@ -547,9 +559,11 @@ would cost a whole delivery for one typo in one description.</p>
 <h2>Kinds of data object<a class="headerlink" href="#kinds-of-data-object" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">kind</span></code> decides what the object <em>is</em>, and with it how it is stored and what the a2l calls it.
 The division that matters is between the one kind the software writes and the five it does
-not: a <code class="docutils literal notranslate"><span class="pre">measurement</span></code> is an online value that the software produces and the calibration tool
-only observes, while everything else is calibration data - the software never writes it, so it
-is generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and a calibration tool changes it through its address.</p>
+not: a <code class="docutils literal notranslate"><span class="pre">measurement</span></code> is an online value that the software produces and a calibration tool
+measures, while everything else is calibration data - the software never writes it, so it is
+generated <code class="docutils literal notranslate"><span class="pre">const</span></code>, and a calibration tool changes it through its address. A tool can write
+a measurement through its address as well, and a measurement it is meant to poke is one of
+the cases <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is for; what the division is about is which kind the <em>software</em> writes.</p>
 <p>Whether it also ends up in read only memory is the other question, and the one <code class="docutils literal notranslate"><span class="pre">volatile</span></code>
 answers. <code class="docutils literal notranslate"><span class="pre">const</span></code> says who writes the object from inside the software, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> says
 whether anything writes it from outside, and the two are independent: a parameter that a tool
@@ -834,7 +848,7 @@ opens the file.</p>
 to be wrong, and a table with one more entry than its axis is the kind of mistake that reads
 correctly and interpolates rubbish. Since the shape is derived, the init data is checked
 against it:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badshape.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check badshape.ddd.json  # a curve whose init has one element fewer than its axis
 badshape.ddd.json#component.interface[1].definition.init: error[init-invalid]: 'CurveS' has the shape [3] given by its axes: init has 2 elements, expected 3
 1 error
 </pre></div>
@@ -915,13 +929,13 @@ object, which is <code class="docutils literal notranslate"><span class="pre">lo
 dictionary along with what refers to it, whatever severity the finding is given, and
 <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> says so when the finding is silenced - see
 <a class="reference internal" href="../consistency_checks.html"><span class="doc">consistency checks</span></a>.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check refs.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check refs.ddd.json  # curves naming a missing axis and a parameter as their axis
 refs.ddd.json#component.interface[1].definition.axis: error[unknown-reference]: curve 'CurveMissing' refers to 'NoSuchAxis' as its axis, but no component declares 'NoSuchAxis'
 refs.ddd.json#component.interface[2].definition.axis: error[reference-kind]: the axis of curve 'CurveWrong' must be of kind 'axis', but 'NotAnAxis' is of kind 'parameter'
 2 errors
 </pre></div>
 </div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check axinput.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check axinput.ddd.json  # axes naming a parameter and a missing object as their input
 axinput.ddd.json#component.interface[1].definition.input: error[reference-kind]: the input of axis 'Ax1' must be of kind 'measurement', but 'NotAMeas' is of kind 'parameter'
 axinput.ddd.json#component.interface[2].definition.input: error[unknown-reference]: axis 'Ax2' refers to 'Nowhere' as its input, but no component declares 'Nowhere'
 2 errors

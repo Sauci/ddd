@@ -140,7 +140,11 @@
 <span class="w">    </span><span class="sd">"""C identifier of the enumerator; enumerators of all enums share one c namespace."""</span>
 
     <span class="n">value</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
-<span class="w">    </span><span class="sd">"""The raw value; every enumerator of one enum needs a value of its own.</span>
+<span class="w">    </span><span class="sd">"""The raw value; two enumerators of one enum sharing one is reported as a warning.</span>
+
+<span class="sd">    ``enum-duplicate-value``, a warning rather than a refusal, because it is legal c and</span>
+<span class="sd">    occasionally meant as an alias - but the a2l table then offers a calibration tool two</span>
+<span class="sd">    names for one reading.</span>
 
 <span class="sd">    Bounded to what 64 bits can hold - no datatype DDD offers stores more - so a value no</span>
 <span class="sd">    storage could ever represent is refused here rather than overflowing a comparison once</span>
@@ -156,7 +160,12 @@
 <div class="viewcode-block" id="IdentityConversion">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.IdentityConversion">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">IdentityConversion</span><span class="p">(</span><span class="n">_Frozen</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""``physical == raw``; the default for every variable."""</span>
+<span class="w">    </span><span class="sd">"""``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.</span>
+
+<span class="sd">    Not a default: a definition naming storage by ``datatype`` states this one where raw and</span>
+<span class="sd">    physical are the same number, so that the claim is written down rather than left to</span>
+<span class="sd">    silence.</span>
+<span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"identity"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"identity"</span>
 

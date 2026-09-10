@@ -163,7 +163,7 @@
 <span class="w">    </span><span class="sd">"""What sort of data object a definition describes."""</span>
 
     <span class="n">MEASUREMENT</span> <span class="o">=</span> <span class="s2">"measurement"</span>
-<span class="w">    </span><span class="sd">"""An online value the software writes and the calibration tool only reads."""</span>
+<span class="w">    </span><span class="sd">"""An online value the software writes; a calibration tool measures it and may write it."""</span>
 
     <span class="n">PARAMETER</span> <span class="o">=</span> <span class="s2">"parameter"</span>
 <span class="w">    </span><span class="sd">"""A single calibratable constant."""</span>
@@ -422,8 +422,9 @@
     <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
 <span class="w">    </span><span class="sd">"""Physical unit, e.g. ``"Hz"``.</span>
 
-<span class="sd">    Free text, so DDD does not know that ``rpm`` and ``1/min`` are the same thing; it only</span>
-<span class="sd">    checks that every component declaring this object spells the unit the same way.</span>
+<span class="sd">    Free text, so DDD does not know by itself that ``rpm`` and ``1/min`` are the same thing:</span>
+<span class="sd">    every component declaring this object has to spell it the same way, and where the project</span>
+<span class="sd">    declares a unit vocabulary the spelling is checked against that too (``unknown-unit``).</span>
 <span class="sd">    """</span>
 
     <span class="n">section</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="n">SECTION_NAME_PATTERN</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -491,12 +492,13 @@
 <span class="sd">    knows the value.</span>
 
 <span class="sd">    A measurement needs it when something outside the reading component's control writes the</span>
-<span class="sd">    variable - an interrupt, a second core, a peripheral. A calibration object needs it when</span>
-<span class="sd">    the calibration tool is to change the value in a running ecu: without it the compiler is</span>
-<span class="sd">    entitled to use the initialiser in place of a read wherever it can see it - within one</span>
-<span class="sd">    translation unit at every optimisation level, ``-O0`` included, and across them under link</span>
-<span class="sd">    time optimisation - and, where the load does survive, to serve two reads from one of them.</span>
-<span class="sd">    Either way the tool writes a new value the software does not pick up.</span>
+<span class="sd">    variable - an interrupt, a second core, a peripheral, or a calibration tool writing</span>
+<span class="sd">    through its address. A calibration object needs it when the calibration tool is to change</span>
+<span class="sd">    the value in a running ecu: without it the compiler is entitled to use the initialiser in</span>
+<span class="sd">    place of a read wherever it can see it - within one translation unit at every optimisation</span>
+<span class="sd">    level, ``-O0`` included, and across them under link time optimisation - and, where the</span>
+<span class="sd">    load does survive, to serve two reads from one of them. Either way the tool writes a new</span>
+<span class="sd">    value the software does not pick up.</span>
 
 <span class="sd">    Interface rather than storage, because it reaches every component that reads the object:</span>
 <span class="sd">    their header declares it ``extern volatile``, which is what tells their code not to cache</span>
@@ -609,7 +611,11 @@
 <div class="viewcode-block" id="Measurement">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.Measurement">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Measurement</span><span class="p">(</span><span class="n">DataObject</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""An online value: written by the software, only measured by the calibration tool."""</span>
+<span class="w">    </span><span class="sd">"""An online value: the software writes it, a calibration tool measures it and may write it.</span>
+
+<span class="sd">    A tool writing one through its address is one of the reasons to declare a measurement</span>
+<span class="sd">    ``volatile``, alongside an interrupt, a second core and a peripheral.</span>
+<span class="sd">    """</span>
 
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="n">ObjectKind</span><span class="o">.</span><span class="n">MEASUREMENT</span><span class="p">]</span>
     <span class="n">dimensions</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Dimension</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>

@@ -128,10 +128,14 @@ the <code class="docutils literal notranslate"><span class="pre">includes</span>
 its published contract. <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code> is a ready to run project that declares a
 vocabulary like this next to its <a class="reference internal" href="sections.html"><span class="doc">memory sections</span></a> and
 <a class="reference internal" href="constants.html"><span class="doc">constants</span></a>; it checks clean, so it is the file set to start a project of
-your own from.</p>
+your own from:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/vocabulary/project.ddd.json
+ok: 4 variables in 1 component are consistent
+</pre></div>
+</div>
 <p>With a vocabulary declared, every stated unit - on a declaration, on a structure member, on
 a scalar type - is checked where it is written:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose component states the unit 'newton_meter'
 a.ddd.json#component.interface[0].definition.unit: error[unknown-unit]: 'newton_meter' is not a unit this project declares
 1 error
 </pre></div>
@@ -142,7 +146,7 @@ spelling of one. A project without a units file keeps its units free; introducin
 vocabulary into a grown project can start with <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">unknown-unit=warning</span></code> until the
 spellings are settled.</p>
 <p>A unit declared a second time, in the same file or another, is refused rather than merged:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose two units files both declare 'Nm'
 two.ddd.json#units[0]: error[duplicate-unit]: unit 'Nm' is already declared
     note: one.ddd.json#units[0]: first declared here
 1 error

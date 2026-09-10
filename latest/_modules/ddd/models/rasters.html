@@ -1,0 +1,290 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddd.models.rasters &mdash; DDD documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=0cdf4ff8" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/ddd-favicon.svg"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=486e5634"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/js/versions.js?v=a915def3"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDD
+              <img src="../../../_static/ddd-logo-dark.svg" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Using DDD</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concept.html">Concept</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../file_formats/index.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../consistency_checks.html">Consistency checks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../comparing_deliveries.html">Comparing deliveries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../plugins.html">Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated_artefacts.html">Generated artefacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../templates.html">Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../command_line_interface.html">Command line interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../build_integration.html">Build integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../editor_integration.html">Editor integration</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_contracts.html">Data contracts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data_dictionary.html">Data dictionary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_documentation.html">Developer documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">FAQ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../acronyms.html">Acronyms</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDD</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddd.models.rasters</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddd.models.rasters</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Contract for the measurement raster vocabulary file.</span>
+
+<span class="sd">A ``rasters`` file declares the DAQ events the target offers.  An event channel number is a</span>
+<span class="sd">property of the ecu's XCP configuration - one number, one event - so a definition names a</span>
+<span class="sd">raster the way it names a memory section: a reference to something declared once, project</span>
+<span class="sd">wide, rather than a number every component restates and none of them decides.</span>
+
+<span class="sd">A declaration carries what an ``EVENT`` needs and nothing about the transport that reaches</span>
+<span class="sd">it.  DDD describes the data; how a calibration tool connects to the target stays the business</span>
+<span class="sd">of whatever configures the XCP stack.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span>
+
+<span class="n">EVENT_NAME_LENGTH</span> <span class="o">=</span> <span class="mi">8</span>
+<span class="sd">"""Longest raster name: the width of the short name an a2l ``EVENT`` carries.</span>
+
+<span class="sd">Not a protocol limit. The protocol layer length-prefixes an event channel name with a byte and</span>
+<span class="sd">forbids a terminator, so it carries far more than eight. The eight is from the a2l, whose</span>
+<span class="sd">``EVENT`` block declares ``EVENT_CHANNEL_SHORT_NAME`` as ``char[9]`` - eight characters and a</span>
+<span class="sd">terminator - beside the ``char[101]`` long name that ``description`` supplies. That is where a</span>
+<span class="sd">raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and</span>
+<span class="sd">the limit is enforced anyway, so that a rasters file which loads today still loads then - the</span>
+<span class="sd">reason the cycle rule below is enforced ahead of its use as well.</span>
+<span class="sd">"""</span>
+
+<span class="n">EVENT_MAX</span> <span class="o">=</span> <span class="mh">0xFFFF</span>
+<span class="sd">"""Widest event channel number XCP addresses."""</span>
+
+<span class="n">CYCLE_COUNT_MAX</span> <span class="o">=</span> <span class="mi">255</span>
+<span class="sd">"""Widest cycle count an event carries: it is an unsigned 8 bit value."""</span>
+
+<span class="n">CYCLE_DECADES</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="sd">"""Time units an event offers: the decades from 1 ns to 1 s."""</span>
+
+<span class="n">_CYCLE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"^([0-9]+)(ns|us|ms|s)$"</span><span class="p">)</span>
+
+<span class="n">_NANOSECONDS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"ns"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"us"</span><span class="p">:</span> <span class="mi">1_000</span><span class="p">,</span> <span class="s2">"ms"</span><span class="p">:</span> <span class="mi">1_000_000</span><span class="p">,</span> <span class="s2">"s"</span><span class="p">:</span> <span class="mi">1_000_000_000</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_nanoseconds</span><span class="p">(</span><span class="n">cycle</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The period in nanoseconds, or nothing when it is not a count and a unit at all."""</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">_CYCLE</span><span class="o">.</span><span class="n">fullmatch</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">match</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">*</span> <span class="n">_NANOSECONDS</span><span class="p">[</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">)]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_is_an_event_period</span><span class="p">(</span><span class="n">nanoseconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether XCP can carry the period: a count of 1 to 255 times a decade from 1 ns to 1 s.</span>
+
+<span class="sd">    Checked although this version writes no period, so that a rasters file which loads today</span>
+<span class="sd">    still loads once the module level ``DAQ`` block is written: a rule added later would turn</span>
+<span class="sd">    a file that was accepted into one that is refused, which is the migration nobody wants.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">nanoseconds</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">nanoseconds</span> <span class="o">%</span> <span class="n">decade</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">nanoseconds</span> <span class="o">//</span> <span class="n">decade</span> <span class="o">&lt;=</span> <span class="n">CYCLE_COUNT_MAX</span>
+        <span class="k">for</span> <span class="n">decade</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">10</span><span class="o">**</span><span class="n">exponent</span> <span class="k">for</span> <span class="n">exponent</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">CYCLE_DECADES</span><span class="p">))</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="RasterDeclaration">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.RasterDeclaration">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RasterDeclaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One DAQ event the target offers, named so that a definition can refer to it."""</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">raster</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="n">EVENT_NAME_LENGTH</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="sa">r</span><span class="s2">"^\S+$"</span><span class="p">)</span>
+    <span class="p">]</span>
+<span class="w">    </span><span class="sd">"""The name a definition refers to, which is also the short name of the XCP event.</span>
+
+<span class="sd">    The a2l writes that short name into a field eight characters wide, so a longer name is</span>
+<span class="sd">    refused rather than shortened: two names shortened to the same eight would collide in a</span>
+<span class="sd">    calibration tool rather than here, where the author could still do something about it.</span>
+<span class="sd">    """</span>
+
+    <span class="n">event</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="n">EVENT_MAX</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""The XCP event channel number, distinct across the project.</span>
+
+<span class="sd">    The one field of a declaration the generated a2l carries today; the rest wait for the</span>
+<span class="sd">    module level ``DAQ`` block that defines the events themselves.</span>
+<span class="sd">    """</span>
+
+    <span class="n">cycle</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The period, written as an integer and a unit: ``100us``, ``10ms``, ``1s``.</span>
+
+<span class="sd">    No space and no fractional part - write ``1500us`` rather than ``1.5ms``. Left out, the</span>
+<span class="sd">    event is not cyclic: crank synchronous, on change, on demand. That is a real kind of</span>
+<span class="sd">    raster rather than an omission, which is why the key has no derived default.</span>
+<span class="sd">    """</span>
+
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
+<span class="w">    </span><span class="sd">"""Free text saying what the event is, e.g. ``the 10 ms control task``."""</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cycle_ns</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The period in nanoseconds, or nothing when the event is not cyclic."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cycle</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">nanoseconds</span> <span class="o">=</span> <span class="n">_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cycle</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">nanoseconds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>  <span class="c1"># the validator refused every other spelling</span>
+        <span class="k">return</span> <span class="n">nanoseconds</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cycle_is_a_period_xcp_carries</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RasterDeclaration</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cycle</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span>
+        <span class="n">nanoseconds</span> <span class="o">=</span> <span class="n">_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cycle</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">nanoseconds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">cycle</span><span class="si">}</span><span class="s2">' is not a period: write a whole number and a unit, one of "</span>
+                <span class="sa">f</span><span class="s2">"'ns', 'us', 'ms' or 's', for example '10ms'"</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_an_event_period</span><span class="p">(</span><span class="n">nanoseconds</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">cycle</span><span class="si">}</span><span class="s2">' is no xcp event period: one is a count of 1 to "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">CYCLE_COUNT_MAX</span><span class="si">}</span><span class="s2"> times a decade from 1ns to 1s, so '1500us' is one and "</span>
+                <span class="sa">f</span><span class="s2">"'1234ms' is not"</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<div class="viewcode-block" id="RastersFile">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.RastersFile">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RastersFile</span><span class="p">(</span><span class="n">FileRoot</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Root object of a ``*.ddd.json`` measurement raster description.</span>
+
+<span class="sd">    ``rasters`` is the top level key that makes this a rasters file; DDD decides what a file</span>
+<span class="sd">    is from that key alone.  The file is listed in the ``includes`` of a project like any</span>
+<span class="sd">    other description.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"DDD measurement rasters"</span><span class="p">)</span>
+
+    <span class="n">rasters</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">RasterDeclaration</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""The DAQ events the target offers; an empty list is no file at all."""</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Killian Daly.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="Versions"
+     data-root="../../../../" hidden>
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book">&nbsp;DDD</span>
+    v: <span data-ddd-current></span>
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Versions</dt>
+      <dd data-ddd-versions></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

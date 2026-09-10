@@ -11,32 +11,36 @@ Accepts both the explicit form::
 and the mapping shorthand::
 
  &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
-" alt="" coords="749,51,1015,163"/>
+" alt="" coords="747,51,1012,163"/>
 <area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
-" alt="" coords="1159,137,1276,249"/>
+" alt="" coords="1156,136,1273,248"/>
 <area shape="rect" id="node3" title="ddd.models.conversion.IdentityConversion
 
-``physical == raw``; the default for every variable.
-" alt="" coords="797,211,967,267"/>
+``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
+
+Not a default: a definition naming storage by ``datatype`` states this one where raw and
+physical are the same number, so that the claim is written down rather than left to
+silence.
+" alt="" coords="794,211,965,267"/>
 <area shape="rect" id="node4" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="799,315,965,427"/>
+" alt="" coords="796,315,963,427"/>
 <area shape="rect" id="node5" title="ddd.models.objects.A2lObjectOptions
 
 What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="763,609,1001,721"/>
+" alt="" coords="761,608,998,720"/>
 <area shape="rect" id="node6" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
-" alt="" coords="797,476,967,560"/>
-<area shape="rect" id="node7" title="ddd.models.objects.Measurement
+" alt="" coords="795,475,964,559"/>
+<area shape="rect" id="node7" title="ddd.models.objects.Parameter
 
-An online value: written by the software, only measured by the calibration tool.
-" alt="" coords="5,5,605,481"/>
+A single calibratable constant.
+" alt="" coords="5,5,603,453"/>
 </map>

@@ -63,15 +63,23 @@ is where the problem gets reported: a missing datatype noticed while a jinja tem
 rendering says something about the template, whereas the same problem noticed at the
 boundary says which file, which declaration and which field.
 
+A contract that is kept is not reported at all - the run says only what it checked. Here is one
+of the shipped demo components, checked on its own:
+
+.. code-block:: text
+
+   $ ddd check examples/demo/components/sensor_hub.ddd.json --standalone
+   ok: 6 variables in 1 component are consistent
+
 A violated contract is a *finding*, not a crash. The loader turns every pydantic validation
 error into a diagnostic of the ``schema`` check, located at the json path that carries the
 offending value, and carries on reading whatever else it can:
 
 .. code-block:: text
 
-   $ ddd check sensor_hub.ddd.json
-   sensor_hub.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
-   sensor_hub.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
+   $ ddd check misnamed.ddd.json  # a component whose first two objects are misnamed
+   misnamed.ddd.json#component.interface[0].definition.name: error[schema]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]*$' (got: '2Value')
+   misnamed.ddd.json#component.interface[1].definition.name: error[schema]: String should have at most 128 characters (got: 'ValueXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX...)
    2 errors
 
 Both problems are in one file and both are reported by one run, because an author who has to
@@ -89,8 +97,8 @@ scalar, and neither the generated code nor the a2l would ever hint at why.
 
 .. code-block:: text
 
-   $ ddd check controller.ddd.json
-   controller.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
+   $ ddd check mistyped.ddd.json  # a declaration spelling 'dimension' for 'dimensions'
+   mistyped.ddd.json#component.interface[0].definition.dimension: error[schema]: Extra inputs are not permitted (got: [4])
    1 error
 
 The same rule applies at the top level of a file: a document naming none of the seven
@@ -131,8 +139,8 @@ sees the document:
 
 .. code-block:: text
 
-   $ ddd check event_logger.ddd.json
-   event_logger.ddd.json: error[json-syntax]: 'Infinity' is not valid json; DDD has no representation for it
+   $ ddd check infinity.ddd.json  # a file whose json holds Infinity
+   infinity.ddd.json: error[json-syntax]: 'Infinity' is not valid json; DDD has no representation for it
    1 error
 
 Whole numbers are kept whole for a related reason: a number is read as an ``int`` first and
@@ -190,11 +198,13 @@ the same ``Limits`` and ``A2lObjectOptions`` hang off every one of them. Where a
 an alias, the alias is the key that belongs in the json file - ``$schema``, not
 ``schema_reference``.
 
-.. Models carrying an identifier field switch the rendered constraint list off. The
-   constraint would be written into the page as ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``,
-   which docutils reads as two references to targets that do not exist ('A-Za-z_' is a
-   valid reference name followed by an underscore), and the documentation is built with
-   warnings as errors. The same information is in the json schema shown below each model.
+.. Models whose pattern docutils would read as a reference switch the rendered constraint
+   list off. The constraint would be written into the page as
+   ``pattern = ^[A-Za-z_][A-Za-z0-9_]*$``, which docutils reads as two references to targets
+   that do not exist ('A-Za-z_' is a valid reference name followed by an underscore), and the
+   documentation is built with warnings as errors. A linker section name does the same
+   through its own character class; a pattern with no such token - a raster name's ``^\S+$``
+   - renders as it is. The same information is in the json schema shown below each model.
 
 Project description
 ~~~~~~~~~~~~~~~~~~~
@@ -217,9 +227,11 @@ Software component description
 Structured datatype description
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :doc:`types file <file_formats/types>`. A member states which shape it has and carries only
-the keys that shape needs; what it never carries is a bit position or an offset, because c leaves
-both to the compiler.
+The :doc:`types file <file_formats/types>`, whose entries are told apart by a stated ``type``:
+a structure, a scalar type naming what a number means, and an external type naming a c type a
+hand written header defines and DDD only carries. A member states which shape it has and
+carries only the keys that shape needs; what it never carries is a bit position or an offset,
+because c leaves both to the compiler.
 
 .. autopydantic_model:: ddd.models.TypesFile
 
@@ -227,6 +239,12 @@ both to the compiler.
    :field-show-constraints: False
 
 .. autopydantic_model:: ddd.models.Member
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.ScalarType
+   :field-show-constraints: False
+
+.. autopydantic_model:: ddd.models.ExternalType
    :field-show-constraints: False
 
 Data objects
@@ -286,3 +304,45 @@ would otherwise match two variants at once.
 
 .. autopydantic_model:: ddd.models.Enumerator
    :field-show-constraints: False
+
+Unit vocabulary
+~~~~~~~~~~~~~~~
+
+The :doc:`units file <file_formats/units>`. Declaring the vocabulary is opt-in, and a project
+that declares it has every stated unit checked against it.
+
+.. autopydantic_model:: ddd.models.UnitsFile
+
+.. autopydantic_model:: ddd.models.UnitDeclaration
+
+Memory sections
+~~~~~~~~~~~~~~~
+
+The :doc:`sections file <file_formats/sections>`. What a section declares is what the checks
+need to weigh a placement: who may write it, and how strictly it aligns.
+
+.. autopydantic_model:: ddd.models.SectionsFile
+
+.. autopydantic_model:: ddd.models.SectionDeclaration
+   :field-show-constraints: False
+
+Constant vocabulary
+~~~~~~~~~~~~~~~~~~~
+
+The :doc:`constants file <file_formats/constants>`. A shape names one of these where it would
+state a number, so the size lives in one place.
+
+.. autopydantic_model:: ddd.models.ConstantsFile
+
+.. autopydantic_model:: ddd.models.ConstantDeclaration
+   :field-show-constraints: False
+
+Measurement rasters
+~~~~~~~~~~~~~~~~~~~
+
+The :doc:`rasters file <file_formats/rasters>`. A raster is a DAQ event the target offers,
+named so that a definition can refer to it.
+
+.. autopydantic_model:: ddd.models.RastersFile
+
+.. autopydantic_model:: ddd.models.RasterDeclaration

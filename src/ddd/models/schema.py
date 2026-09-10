@@ -34,10 +34,21 @@ import re
 import textwrap
 from enum import Enum
 from functools import cache
-from typing import Any
+from typing import Any, Final
 
 from pydantic.json_schema import GenerateJsonSchema, JsonSchemaMode, JsonSchemaValue
 from pydantic_core import core_schema
+
+from ddd.models.conversion import Conversion
+from ddd.models.objects import discriminator_tags
+
+CONVERSION_KINDS: Final = discriminator_tags(Conversion)
+"""The kinds of the one union that is published as ``anyOf``, read off the union itself.
+
+Derived rather than listed, because a list here went stale the moment a fourth kind
+arrived: the equality below failed, the union was published as ``oneOf``, and ``{}`` -
+which the loader reads as the identity - became invalid to an editor validating a file.
+"""
 
 _ROLE = re.compile(r":[a-z]+(?::[a-z]+)*:`([^`]*)`")
 """A reStructuredText interpreted role, e.g. ``:class:`Foo``` or ``:py:data:`BAR```."""
@@ -164,7 +175,7 @@ class PublishedSchema(GenerateJsonSchema):
         the loader accepts.
         """
         result = super().tagged_union_schema(schema)
-        if "oneOf" in result and set(schema["choices"]) == {"identity", "linear", "enum", "string"}:
+        if "oneOf" in result and set(schema["choices"]) == CONVERSION_KINDS:
             result["anyOf"] = result.pop("oneOf")
         return result
 

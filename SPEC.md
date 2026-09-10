@@ -1695,7 +1695,10 @@ member that is itself a structure contributes its members beneath its own name. 
 is at once the A2L name, the `SYMBOL_LINK` symbol and the key of the address map
 ([section 6](#6-address-information)). A member of a measurement-kind object becomes a
 `MEASUREMENT`, and a member of a parameter-kind object becomes a `CHARACTERISTIC`, as
-`VALUE` when scalar and as `VAL_BLK` with `MATRIX_DIM` when an array. An array of
+`VALUE` when scalar and as `VAL_BLK` with `MATRIX_DIM` when an array. A member under
+a `string` conversion follows the string records of the first bullet of this section
+instead: a parameter-kind member is the `ASCII` characteristic with its `NUMBER`, and
+a measurement-kind member the byte array with its `ANNOTATION`. An array of
 structures is expanded element by element instead, one set of members per `[index]`,
 `Inlet[2].raw` for the third element. Members use the ordinary per-datatype
 `RECORD_LAYOUT`, the structure itself getting no record of its own, and the component's

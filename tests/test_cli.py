@@ -2155,6 +2155,21 @@ class TestDumpToAFile:
         assert f"cannot write '{target.as_posix()}'" in err
         assert err.index("info[missing-id]") < err.index("cannot write")
 
+    def test_in_json_a_target_that_cannot_be_written_leaves_stdout_empty(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The findings reported ahead of the usage error go to stderr, as every report of
+        ``dump`` does: stdout belongs to the dictionary, and there is none to print."""
+        write_tree(tree, self.CLEAN)
+        target = tree / "dictionary.json"
+        target.mkdir()
+        arguments = ["dump", str(tree / "project.ddd.json"), "-o", str(target), "--format", "json"]
+        assert main(arguments) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        boundary = captured.err.index("ddd: cannot write")
+        assert json.loads(captured.err[:boundary])["summary"]["info"] == 1
+
     def test_in_json_the_written_file_is_reported_with_the_findings_on_stderr(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

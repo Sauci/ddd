@@ -1910,7 +1910,7 @@ links, and the module itself refuses a CMake older than its stated floor with a 
 naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
 into an identifier - every character outside `[A-Za-z0-9_]` replaced by `_`, a leading digit
 prefixed with `N` - and that name becomes the A2L project, module and file name
-([section 5.2](#52-a2l)); its includes keep the link graph's traversal order - the order
+([section 5.2](#52-a2l)) and names the dictionary written beside it; its includes keep the link graph's traversal order - the order
 CMake evaluates the transitive `DDD_JSON` property in, a depth-first walk of
 `target_link_libraries` in declaration order - first occurrence kept, which orders the
 components and with them the `GROUP`s, while the objects themselves sort by name regardless

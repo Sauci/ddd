@@ -235,8 +235,8 @@ another build system, because it deliberately lists more than the image links, o
 carries project-level ``extensions``, the one key the generated description does not - passes
 it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
 is enough) nor ``ddd_add_component``, and the
-a2l is then named after the project name inside the description, so a ``NAME`` given as well
-is ignored with a status message.
+a2l and the dictionary are then named after the project name inside the description, so a
+``NAME`` given as well is ignored with a status message.
 
 A hand written project pulls its components in through ``includes``, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
@@ -432,9 +432,10 @@ Options
        the schemas are closed over them, and a path among them is a dependency of the
        generation. Refused together with ``PROJECT``, whose file names its own.
    * - ``NAME <name>``
-     - project name, and therefore the name of the a2l file. Defaults to the image name
-       without its extension, with anything that is not a c identifier replaced, because the
-       name ends up as the a2l project and module name. Ignored together with ``PROJECT``.
+     - project name, and therefore the name of the a2l file and of the dictionary beside it.
+       Defaults to the image name without its extension, with anything that is not a c
+       identifier replaced, because the name ends up as the a2l project and module name.
+       Ignored together with ``PROJECT``.
    * - ``OUTPUT_DIRECTORY <dir>``
      - where the generated files go; defaults to ``${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>``.
    * - ``TEMPLATE_DIRECTORY <dir>``

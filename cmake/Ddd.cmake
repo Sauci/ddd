@@ -321,7 +321,7 @@ endfunction()
 #
 # ddd_generate(<image>
 #              [PROJECT <file>]              # use this project description instead of collecting the link closure
-#              [NAME <name>]                 # project name in the a2l, defaults to the image name
+#              [NAME <name>]                 # project name in the a2l and the dictionary, defaults to the image name
 #              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
 #              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
 #              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
@@ -423,8 +423,8 @@ function(ddd_generate image)
     # artifact (firmware.elf), and firmware_ddd_headers is what a consumer naturally writes.
     cmake_path(GET image STEM LAST_ONLY image_stem)
     if(arg_NAME AND arg_PROJECT)
-        message(STATUS "ddd_generate: NAME is ignored with PROJECT - the a2l is named after the project name inside "
-                       "\"${arg_PROJECT}\".")
+        message(STATUS "ddd_generate: NAME is ignored with PROJECT - the a2l and the dictionary are named after the "
+                       "project name inside \"${arg_PROJECT}\".")
     endif()
     if(NOT arg_NAME)
         # The project name ends up as the a2l project and module name, which DDD requires to be a c identifier.
@@ -440,7 +440,8 @@ function(ddd_generate image)
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
         _ddd_project_sources(descriptions "${project_file}")
         _ddd_project_plugins(plugin_specs "${project_file}")
-        # The tool names the a2l after the project name in the description; NAME does not rename it.
+        # The tool names the a2l after the project name in the description, and the dictionary is named alike; NAME
+        # renames neither.
         _ddd_description_name(arg_NAME "${project_file}")
     else()
         # The component descriptions travel through the link graph as a transitive property (see

@@ -410,11 +410,11 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         assert printed is not None, configured.stdout
         assert Path(printed.group(1).strip()) == generated / "StoreDevice.dictionary.json"
         build(tmp_path / "build")
-        # From the build directory, as the generation step runs: nothing it writes may depend
-        # on where the tool was started, and this proves it does not.
+        # From outside the build directory the step runs in: the dictionary may not depend on
+        # where the tool was started, so a dump from anywhere is the one the build wrote.
         dumped = subprocess.run(
             [str(DDD), "dump", str(generated / "StoreDevice.ddd.json")],
-            cwd=tmp_path / "build",
+            cwd=tmp_path,
             env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONUTF8": "1"},
             capture_output=True,
             encoding="utf-8",

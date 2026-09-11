@@ -40,13 +40,13 @@ its own.
   them.
 
 * **`ddd dump -o FILE` writes the dictionary into a file.**  Archiving the dictionary meant
-  redirecting stdout, which leaves the bytes to the shell - Windows PowerShell re-encodes
-  them, with a byte order mark and crlf - and empties the target before the tool has even
-  started.  `-o` writes the text stdout would have carried the way `generate` writes an
-  artefact: utf-8 with lf on every platform, staged, and left untouched when its content
-  would not change, while a project that does not resolve leaves the file as it was.  The
-  exit code and the findings on stderr stay what they were, and the json report there names
-  the file written, as `generate`'s does.
+  redirecting stdout, which leaves the bytes to the shell - the `>` of Windows PowerShell 5.1
+  re-encodes them as UTF-16, which `ddd compare` refuses to read back - and empties the
+  target before the tool has even started.  `-o` writes the text stdout would have carried
+  the way `generate` writes an artefact: utf-8 with lf on every platform, staged, and left
+  untouched when its content would not change, while a project that does not resolve leaves
+  the file as it was.  The exit code and the findings on stderr stay what they were, and the
+  json report there names the file written, as `generate`'s does.
   **Migration:** none.
 
 * **The cmake build writes the dictionary beside the artefacts.**  `ddd_generate()` now

@@ -321,8 +321,8 @@ another build system, because it deliberately lists more than the image links, o
 carries project-level <code class="docutils literal notranslate"><span class="pre">extensions</span></code>, the one key the generated description does not - passes
 it with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
 is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
-a2l is then named after the project name inside the description, so a <code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well
-is ignored with a status message.</p>
+a2l and the dictionary are then named after the project name inside the description, so a
+<code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well is ignored with a status message.</p>
 <p>A hand written project pulls its components in through <code class="docutils literal notranslate"><span class="pre">includes</span></code>, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> (see
@@ -469,15 +469,25 @@ generator refuses to write anything when the interfaces disagree.</p></td>
 </tbody>
 </table>
 <p>The outputs declared for the generator are the files the template names already give away, plus
-the a2l. The per-component headers are written next to them, but their names come from inside
-the description files and are therefore unknown at configure time - which is precisely why a
-consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> rather than on an individual header path.</p>
+the a2l and the dictionary. The per-component headers are written next to them, but their names
+come from inside the description files and are therefore unknown at configure time - which is
+precisely why a consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> rather than on an individual header
+path.</p>
 <p>The path of the generated a2l is published as the <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">get_target_property</span><span class="p">(</span><span class="s">a2l</span><span class="w"> </span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">DDD_A2L</span><span class="p">)</span>
 <span class="nb">install</span><span class="p">(</span><span class="s">FILES</span><span class="w"> </span><span class="s2">"${a2l}"</span><span class="w"> </span><span class="s">DESTINATION</span><span class="w"> </span><span class="s">delivery</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>Beside the artefacts the generation step writes <code class="docutils literal notranslate"><span class="pre">&lt;NAME&gt;.dictionary.json</span></code>, the resolved
+<a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> they were all generated from: what a template author
+reads to see what the templates receive, and what a delivery archives for a later
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> (see <a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a>). The generation writes it itself, with
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--dictionary</span></code>, in the same write as the artefacts: one analysis and one report
+of the findings, and a run that fails its checks writes none of them, so the last dictionary
+keeps describing the artefacts still beside it; a regeneration that changes nothing in it
+leaves the file untouched. Its path is the <code class="docutils literal notranslate"><span class="pre">DDD_DICTIONARY</span></code> property of the image, read the
+same way, and <code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code> leaves the file and the property out.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Multi-config generators are refused with a fatal error: the project description and the
@@ -509,9 +519,10 @@ the schemas are closed over them, and a path among them is a dependency of the
 generation. Refused together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, whose file names its own.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NAME</span> <span class="pre">&lt;name&gt;</span></code></p></td>
-<td><p>project name, and therefore the name of the a2l file. Defaults to the image name
-without its extension, with anything that is not a c identifier replaced, because the
-name ends up as the a2l project and module name. Ignored together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>.</p></td>
+<td><p>project name, and therefore the name of the a2l file and of the dictionary beside it.
+Defaults to the image name without its extension, with anything that is not a c
+identifier replaced, because the name ends up as the a2l project and module name.
+Ignored together with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span> <span class="pre">&lt;dir&gt;</span></code></p></td>
 <td><p>where the generated files go; defaults to <code class="docutils literal notranslate"><span class="pre">${CMAKE_CURRENT_BINARY_DIR}/ddd/&lt;image&gt;</span></code>.</p></td>
@@ -566,10 +577,14 @@ produces everything else the project has, the artefacts of the plugins named wit
 <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> included: the a2l is subtracted from the run rather than the run being
 narrowed to the c sources.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code></p></td>
+<td><p>do not write the resolved data dictionary beside the artefacts; no <code class="docutils literal notranslate"><span class="pre">DDD_DICTIONARY</span></code>
+property is set then.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
 <td><p>treat DDD warnings as errors.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
 <td><p>do not hand <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code>, and the compile usage it carries, to the
 registered components.</p></td>
 </tr>

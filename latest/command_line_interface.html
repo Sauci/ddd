@@ -154,7 +154,10 @@ report:</p>
 </pre></div>
 </div>
 <p>The one exception is <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code>, whose standard output is itself the payload: there the json
-diagnostics go to standard error, so that both formats leave the dictionary alone.</p>
+diagnostics go to standard error, so that both formats leave the dictionary alone. Given
+<code class="docutils literal notranslate"><span class="pre">-o</span></code>, the dictionary goes into that file instead and standard output stays empty; the
+diagnostics stay where they were, and in json they name the file written, with its status,
+as <code class="docutils literal notranslate"><span class="pre">generate</span></code> names its own.</p>
 <p>The exit code is the same everywhere, which lets a build system treat DDD like a compiler:</p>
 <table class="docutils align-default">
 <colgroup>
@@ -183,10 +186,11 @@ overridden, or a missing <code class="docutils literal notranslate"><span class=
 before any analysis, so the project was never examined and nothing but the error
 is printed. A usage error raised by a step that follows the analysis instead - a
 plugin hook that raises, an override naming a plugin check no loaded plugin
-registers, a <code class="docutils literal notranslate"><span class="pre">--renames</span></code> file or an artefact that cannot be written, an address
-map that cannot be read, <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> refused beside a description, or a run that
-would write nothing - reports the findings of the run first, in the requested
-format, before the error follows; the exit code is still <code class="docutils literal notranslate"><span class="pre">2</span></code>.</p></td>
+registers, a <code class="docutils literal notranslate"><span class="pre">--renames</span></code> file, a dumped dictionary or an artefact that cannot be
+written, an address map that cannot be read, <code class="docutils literal notranslate"><span class="pre">--plugin</span></code> refused beside a
+description, or a run that would write nothing - reports the findings of the run
+first, in the requested format, before the error follows; the exit code is still
+<code class="docutils literal notranslate"><span class="pre">2</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -233,16 +237,23 @@ Subtracting an artefact takes its options with it, so <code class="docutils lite
 <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> is refused rather than quietly ignored, and a run that has subtracted
 the c neither wants nor accepts <code class="docutils literal notranslate"><span class="pre">-t</span></code>.
 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> reports what would be written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code>
-generates in spite of errors.</p></td>
+generates in spite of errors. Every artefact also takes <code class="docutils literal notranslate"><span class="pre">--dictionary</span> <span class="pre">FILE</span></code>, which
+writes the resolved data dictionary - the text <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> prints - in the same write as
+the artefacts, so that all of them are written or none is; a path an artefact of the
+run is written to is refused. That is how a build keeps the dictionary beside what it
+generated, in one analysis and one report of its findings.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">FILE</span></code></p></td>
 <td><p>print the table of variables with their kind, datatype, unit, shape, initial value
 with its physical reading, producer and consumers - the quickest answer to “who
 writes this?”.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">FILE</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">FILE</span> <span class="pre">[-o</span> <span class="pre">FILE]</span></code></p></td>
 <td><p>print the resolved data dictionary, the contract every backend consumes. This is what
-gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later.</p></td>
+gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later. <code class="docutils literal notranslate"><span class="pre">-o</span></code> writes it
+into a file instead, the way <code class="docutils literal notranslate"><span class="pre">generate</span></code> writes an artefact: the same bytes on every
+platform, and a file whose content would not change is left untouched, which is what a
+build depending on it needs and what a redirection cannot promise.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span> <span class="pre">FILE...</span></code></p></td>
 <td><p>write an <code class="docutils literal notranslate"><span class="pre">id</span></code> into every producing declaration of the given description files that
@@ -661,6 +672,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-dump">
 <h4>ddd dump<a class="headerlink" href="#ddd-dump" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd dump [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                [-o OUTPUT]</span>
 <span class="go">                project</span>
 </pre></div>
 </div>
@@ -691,7 +703,13 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-dump-format">
 <span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-dump-format" title="Link to this definition"></a></dt>
-<dd><p>format of the diagnostics, which go to stderr on this command; the dictionary on stdout is json either way</p>
+<dd><p>format of the diagnostics, which go to stderr on this command; the dictionary is json either way</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-o">
+<span id="cmdoption-ddd-dump-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-dump-o" title="Link to this definition"></a></dt>
+<dd><p>write the dictionary to this file instead of stdout, leaving the file untouched when its content would not change</p>
 </dd></dl>
 
 </section>
@@ -713,7 +731,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate a2l [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR</span>
 <span class="go">                        [--byte-order {little,big}]</span>
-<span class="go">                        [--address-map ADDRESS_MAP] [--dry-run] [--force]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--dictionary FILE]</span>
+<span class="go">                        [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -766,6 +785,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-dictionary">
+<span class="sig-name descname"><span class="pre">--dictionary</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-dictionary" title="Link to this definition"></a></dt>
+<dd><p>also write the resolved data dictionary, the text ddd dump prints, to this file, in the same write as the artefacts: all of them or none</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-dry-run">
 <span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-dry-run" title="Link to this definition"></a></dt>
 <dd><p>report what would be written, write nothing</p>
@@ -784,7 +809,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR [-t TEMPLATE_DIR]</span>
 <span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
 <span class="go">                        [--address-map ADDRESS_MAP] [--without {c,a2l}]</span>
-<span class="go">                        [--dry-run] [--force]</span>
+<span class="go">                        [--dictionary FILE] [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -855,6 +880,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-dictionary">
+<span class="sig-name descname"><span class="pre">--dictionary</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-dictionary" title="Link to this definition"></a></dt>
+<dd><p>also write the resolved data dictionary, the text ddd dump prints, to this file, in the same write as the artefacts: all of them or none</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-dry-run">
 <span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-dry-run" title="Link to this definition"></a></dt>
 <dd><p>report what would be written, write nothing</p>
@@ -871,7 +902,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h4>ddd generate c<a class="headerlink" href="#ddd-generate-c" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate c [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                      [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
-<span class="go">                      [--const-inputs] [--dry-run] [--force]</span>
+<span class="go">                      [--const-inputs] [--dictionary FILE] [--dry-run]</span>
+<span class="go">                      [--force]</span>
 <span class="go">                      project</span>
 </pre></div>
 </div>
@@ -921,6 +953,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-c-const-inputs">
 <span class="sig-name descname"><span class="pre">--const-inputs</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-const-inputs" title="Link to this definition"></a></dt>
 <dd><p>declare input variables const in the consumer headers</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-dictionary">
+<span class="sig-name descname"><span class="pre">--dictionary</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-dictionary" title="Link to this definition"></a></dt>
+<dd><p>also write the resolved data dictionary, the text ddd dump prints, to this file, in the same write as the artefacts: all of them or none</p>
 </dd></dl>
 
 <dl class="std option">

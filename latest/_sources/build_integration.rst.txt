@@ -235,8 +235,8 @@ another build system, because it deliberately lists more than the image links, o
 carries project-level ``extensions``, the one key the generated description does not - passes
 it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
 is enough) nor ``ddd_add_component``, and the
-a2l is then named after the project name inside the description, so a ``NAME`` given as well
-is ignored with a status message.
+a2l and the dictionary are then named after the project name inside the description, so a
+``NAME`` given as well is ignored with a status message.
 
 A hand written project pulls its components in through ``includes``, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
@@ -386,9 +386,10 @@ including the ones this image happens not to link.
      - one per registered component, checking that component alone (see above).
 
 The outputs declared for the generator are the files the template names already give away, plus
-the a2l. The per-component headers are written next to them, but their names come from inside
-the description files and are therefore unknown at configure time - which is precisely why a
-consumer depends on ``<stem>_ddd_headers`` rather than on an individual header path.
+the a2l and the dictionary. The per-component headers are written next to them, but their names
+come from inside the description files and are therefore unknown at configure time - which is
+precisely why a consumer depends on ``<stem>_ddd_headers`` rather than on an individual header
+path.
 
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
@@ -397,6 +398,16 @@ post-build step can pick it up without rebuilding the path by hand:
 
    get_target_property(a2l firmware.elf DDD_A2L)
    install(FILES "${a2l}" DESTINATION delivery)
+
+Beside the artefacts the generation step writes ``<NAME>.dictionary.json``, the resolved
+:doc:`data dictionary <data_dictionary>` they were all generated from: what a template author
+reads to see what the templates receive, and what a delivery archives for a later
+``ddd compare`` (see :doc:`comparing_deliveries`). The generation writes it itself, with
+``ddd generate --dictionary``, in the same write as the artefacts: one analysis and one report
+of the findings, and a run that fails its checks writes none of them, so the last dictionary
+keeps describing the artefacts still beside it; a regeneration that changes nothing in it
+leaves the file untouched. Its path is the ``DDD_DICTIONARY`` property of the image, read the
+same way, and ``NO_DICTIONARY`` leaves the file and the property out.
 
 .. note::
    Multi-config generators are refused with a fatal error: the project description and the
@@ -421,9 +432,10 @@ Options
        the schemas are closed over them, and a path among them is a dependency of the
        generation. Refused together with ``PROJECT``, whose file names its own.
    * - ``NAME <name>``
-     - project name, and therefore the name of the a2l file. Defaults to the image name
-       without its extension, with anything that is not a c identifier replaced, because the
-       name ends up as the a2l project and module name. Ignored together with ``PROJECT``.
+     - project name, and therefore the name of the a2l file and of the dictionary beside it.
+       Defaults to the image name without its extension, with anything that is not a c
+       identifier replaced, because the name ends up as the a2l project and module name.
+       Ignored together with ``PROJECT``.
    * - ``OUTPUT_DIRECTORY <dir>``
      - where the generated files go; defaults to ``${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>``.
    * - ``TEMPLATE_DIRECTORY <dir>``
@@ -467,6 +479,9 @@ Options
        produces everything else the project has, the artefacts of the plugins named with
        ``PLUGINS`` included: the a2l is subtracted from the run rather than the run being
        narrowed to the c sources.
+   * - ``NO_DICTIONARY``
+     - do not write the resolved data dictionary beside the artefacts; no ``DDD_DICTIONARY``
+       property is set then.
    * - ``STRICT``
      - treat DDD warnings as errors.
    * - ``NO_PROPAGATE_HEADERS``

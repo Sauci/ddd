@@ -155,7 +155,13 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> is the one command whose standard output <em>is</em> the payload, so its findings go
-to standard error and the redirection above works whether or not the project has any. The
+to standard error and the redirection above works whether or not the project has any. A
+script writes the file with <code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">dictionary.json</span></code> instead: the same text, as the same bytes
+on every platform, and a file whose content would not change is left untouched, so that what
+reads it does not run again for nothing - a redirection leaves the bytes to the shell, and
+empties the file before the tool has even started. A run that generates anyway writes it
+beside the artefacts with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--dictionary</span></code>, in the same write as them, which is
+what the <a class="reference internal" href="build_integration.html"><span class="doc">cmake integration</span></a> does. The
 same file is what <a class="reference internal" href="comparing_deliveries.html"><span class="doc">comparing two deliveries</span></a> needs: archive the
 dictionary of a delivery next to its binary, and a later <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> can answer whether
 the next delivery may replace it, long after the sources of the first one have moved on.</p>

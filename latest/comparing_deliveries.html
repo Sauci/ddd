@@ -203,7 +203,11 @@ archived today stays readable by a later release of the tool and by tools DDD do
 <p class="admonition-title">Note</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes the dictionary to stdout and its diagnostics to stderr, in both output
 formats. That is what makes <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">&gt;</span> <span class="pre">baseline.json</span></code> safe: a second
-json document can never end up in the archived file.</p>
+json document can never end up in the archived file. What a redirection cannot promise is
+the bytes, which the shell writes: the <code class="docutils literal notranslate"><span class="pre">&gt;</span></code> of Windows PowerShell 5.1 re-encodes the
+dictionary as UTF-16, which <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> refuses to read back.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">project.ddd.json</span> <span class="pre">-o</span> <span class="pre">baseline.json</span></code> writes the file itself, as utf-8 on every
+platform, and is the spelling for a script that may run there.</p>
 </div>
 </section>
 <section id="the-workflow">

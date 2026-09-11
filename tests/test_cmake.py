@@ -424,9 +424,15 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         written = (generated / "StoreDevice.dictionary.json").read_text(encoding="utf-8")
         assert written == dumped.stdout
 
-    def test_no_dictionary_leaves_out_the_step_the_file_and_the_property(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_finding_is_reported_once(self, tmp_path: Path) -> None:
+        """The dictionary comes out of the generation's own run, so the build log carries each
+        finding once, rather than once for every command that analysed the project."""
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        output = build(tmp_path / "build")
+        assert output.count("warning[unused-output]") == 1, output
+
+    def test_no_dictionary_leaves_out_the_file_and_the_property(self, tmp_path: Path) -> None:
         self.write(tmp_path, options="\n             NO_DICTIONARY")
         configured = configure(tmp_path, tmp_path / "build")
         assert "DDD_DICTIONARY=dictionary-NOTFOUND" in configured.stdout
@@ -436,11 +442,11 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         assert not (generated / "StoreDevice.dictionary.json").exists()
 
     def test_a_run_that_fails_its_checks_keeps_the_last_dictionary(self, tmp_path: Path) -> None:
-        """The dump follows the generation, so it only runs once the c and the a2l are written:
-        a failing run leaves the dictionary describing the artefacts that are still beside it.
+        """The dictionary is written with the artefacts or not at all: a failing run leaves it
+        describing the artefacts that are still beside it.
 
-        Dumped first, it would have written the broken project's dictionary - a finding of the
-        analysis stops no dump - and only then failed the step, next to yesterday's c.
+        A dump of its own beside the generation would not guarantee that - a finding of the
+        analysis stops no dump - so this holds because the generation writes it.
         """
         description = self.write(tmp_path)
         configure(tmp_path, tmp_path / "build")
@@ -453,10 +459,11 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         assert "missing-producer" in run.stdout + run.stderr
         assert dictionary.read_bytes() == before
 
-    def test_the_dump_applies_the_severities_the_generation_does(self, tmp_path: Path) -> None:
-        """An error relaxed with ``SEVERITY`` is relaxed for the dump as well: were it not, the
-        step right after a successful generation would fail on the very finding it was told to
-        let through."""
+    def test_severity_reaches_the_dictionary_as_it_reaches_the_artefacts(
+        self, tmp_path: Path
+    ) -> None:
+        """An error relaxed with ``SEVERITY`` lets the generation through, dictionary included:
+        whatever writes the dictionary has to apply the policy the build was given."""
         description = self.write(
             tmp_path, options='\n             SEVERITY "missing-producer=warning"'
         )

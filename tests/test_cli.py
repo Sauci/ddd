@@ -2063,7 +2063,7 @@ def test_the_dump_states_a_null_id_for_an_object_that_carries_none(tree, capsys)
 
 
 class TestDumpToAFile:
-    """``-o`` changes where the dictionary goes, and nothing else.
+    """``-o`` changes where the dictionary goes; the text, the exit code and the findings stay.
 
     A build wants the dictionary in a file, and a redirection leaves the bytes to the shell:
     Windows PowerShell writes a byte order mark and crlf, and every shell empties the target
@@ -2184,6 +2184,102 @@ class TestDumpToAFile:
         payload = json.loads(captured.err)
         assert payload["summary"] == {"error": 0, "warning": 0, "info": 1}
         assert payload["generated"] == [{"path": target.as_posix(), "status": "created"}]
+
+
+class TestGenerateTheDictionary:
+    """``--dictionary`` writes the dictionary a run generates from, beside what it generates.
+
+    In the same run - one analysis, one report of its findings - and in the same write as the
+    artefacts, so that all of them are written or none is, and a build never keeps a dictionary
+    that does not describe the files beside it.
+    """
+
+    def a2l(
+        self, output: Path, dictionary: Path | str, *extra: str, project: Path = DEMO
+    ) -> list[str]:
+        """``generate a2l``, the artefact that needs no templates, with the dictionary asked for."""
+        arguments = ["generate", "a2l", str(project), "-o", str(output)]
+        return [*arguments, "--dictionary", str(dictionary), *extra]
+
+    @pytest.mark.parametrize("artefact", ["c", "a2l", "all"])
+    def test_every_artefact_writes_what_dump_prints(
+        self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dump", str(DEMO)]) == EXIT_OK
+        printed = capsys.readouterr().out
+        target = tmp_path / "gen" / "DemoDevice.dictionary.json"
+        templates = [] if artefact == "a2l" else ["-t", str(TEMPLATES)]
+        arguments = ["generate", artefact, str(DEMO), "-o", str(tmp_path / "gen"), *templates]
+        assert main([*arguments, "--dictionary", str(target)]) == EXIT_OK
+        assert target.read_bytes() == printed.encode("utf-8")
+
+    def test_it_is_reported_with_the_artefacts(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "gen" / "DemoDevice.dictionary.json"
+        assert main([*self.a2l(tmp_path / "gen", target), "--format", "json"]) == EXIT_OK
+        generated = json.loads(capsys.readouterr().out)["generated"]
+        assert {"path": target.as_posix(), "status": "created"} in generated
+
+    def test_a_run_whose_checks_fail_writes_no_dictionary(self, tmp_path: Path) -> None:
+        """The gate the artefacts go through: nothing is written from a project with errors."""
+        target = tmp_path / "dictionary.json"
+        assert main(self.a2l(tmp_path / "gen", target, project=INCONSISTENT)) == EXIT_FINDINGS
+        assert not target.exists()
+
+    def test_a_dry_run_reports_it_and_writes_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        target = tmp_path / "gen" / "DemoDevice.dictionary.json"
+        assert main(self.a2l(tmp_path / "gen", target, "--dry-run")) == EXIT_OK
+        shown = re.escape(target.as_posix())
+        assert re.search(rf"^would write\s+{shown} \(created\)$", capsys.readouterr().err, re.M)
+        assert not target.exists()
+
+    @pytest.mark.parametrize("blocked", ["dictionary", "a2l"])
+    def test_it_is_written_with_the_artefacts_or_none_of_them_is(
+        self, blocked: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One write for all of them: whichever file cannot be written, the other one the run
+        created is taken back - a dictionary never outlives the artefacts it describes, and an
+        artefact never appears without the dictionary asked for beside it."""
+        output = tmp_path / "gen"
+        files = {
+            "dictionary": output / "DemoDevice.dictionary.json",
+            "a2l": output / "DemoDevice.a2l",
+        }
+        files[blocked].mkdir(parents=True)
+        assert main(self.a2l(output, files["dictionary"])) == EXIT_USAGE
+        assert f"cannot write '{files[blocked].as_posix()}'" in capsys.readouterr().err
+        assert not any(path.exists() for name, path in files.items() if name != blocked)
+
+    def test_a_path_an_artefact_is_written_to_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two writes to one file would keep whichever came last; the run refuses before either."""
+        output = tmp_path / "gen"
+        assert main(self.a2l(output, output / "DemoDevice.a2l")) == EXIT_USAGE
+        assert "would both write 'DemoDevice.a2l'" in capsys.readouterr().err
+        assert not output.exists()
+
+    def test_a_run_left_with_the_dictionary_alone_still_writes_it(self, tmp_path: Path) -> None:
+        """``--without`` may take every built-in artefact away; the dictionary is still a file
+        this run writes, so the run is not refused as one that would write nothing."""
+        target = tmp_path / "dictionary.json"
+        arguments = ["generate", "all", str(DEMO), "-o", str(tmp_path / "gen")]
+        arguments += ["--without", "c", "--without", "a2l", "--dictionary", str(target)]
+        assert main(arguments) == EXIT_OK
+        assert target.is_file()
+
+    def test_a_relative_path_is_taken_from_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Like every other path on the command line, and unlike a file a backend names: the
+        output directory does not prefix it."""
+        monkeypatch.chdir(tmp_path)
+        assert main(self.a2l(Path("gen"), "dictionary.json")) == EXIT_OK
+        assert (tmp_path / "dictionary.json").is_file()
+        assert not (tmp_path / "gen" / "dictionary.json").exists()
 
 
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):

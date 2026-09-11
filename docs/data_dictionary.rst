@@ -53,10 +53,12 @@ implementation:
 
 ``ddd dump`` is the one command whose standard output *is* the payload, so its findings go
 to standard error and the redirection above works whether or not the project has any. A
-build writes the file with ``-o dictionary.json`` instead: the same text, as the same bytes on
-every platform, and a file whose content would not change is left untouched, so that what
+script writes the file with ``-o dictionary.json`` instead: the same text, as the same bytes
+on every platform, and a file whose content would not change is left untouched, so that what
 reads it does not run again for nothing - a redirection leaves the bytes to the shell, and
-empties the file before the tool has even started. The
+empties the file before the tool has even started. A run that generates anyway writes it
+beside the artefacts with ``ddd generate --dictionary``, in the same write as them, which is
+what the :doc:`cmake integration <build_integration>` does. The
 same file is what :doc:`comparing two deliveries <comparing_deliveries>` needs: archive the
 dictionary of a delivery next to its binary, and a later ``ddd compare`` can answer whether
 the next delivery may replace it, long after the sources of the first one have moved on.

@@ -49,14 +49,15 @@ its own.
   json report there names the file written, as `generate`'s does.
   **Migration:** none.
 
-* **The cmake build writes the dictionary beside the artefacts.**  `ddd_generate()` now
-  writes `<NAME>.dictionary.json` into its output directory - the resolved dictionary the c
-  and the a2l were generated from, which is what a template author reads and what a delivery
-  archives for a later `ddd compare` - with `ddd dump -o`, under the same severities and
-  after the generation, so that a run failing its checks leaves the last one in place.  Its
-  path is the image's `DDD_DICTIONARY` property.
-  **Migration:** a build gains one file in its output directory and one more run of the tool
-  whenever the generation re-runs; `NO_DICTIONARY` leaves both out.
+* **`ddd generate --dictionary FILE` writes the dictionary beside the artefacts, and the
+  cmake build does.**  Every artefact takes it: the resolved dictionary, the text `ddd dump`
+  prints, goes into the same write as the artefacts - all of them or none, a file whose
+  content would not change left untouched - and a path an artefact of the run is written to
+  is refused.  `ddd_generate()` passes it, so a build now writes `<NAME>.dictionary.json`
+  into its output directory, which is what a template author reads and what a delivery
+  archives for a later `ddd compare`; its path is the image's `DDD_DICTIONARY` property.
+  **Migration:** a cmake build gains one file in its output directory; `NO_DICTIONARY` leaves
+  it out.
 
 ## 0.9.0
 

@@ -114,8 +114,8 @@ endfunction()
 # components belong together is a property of this build and nothing in the source tree names it at all.
 #
 # The same bargain as SCHEMA_DIRECTORY above: nothing in the build consumes this file, it exists so that a tool
-# outside the build can see what the build sees. "options" is the very list handed to "check", "generate" and "dump", so
-# none of them can drift into applying different severities.
+# outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so the
+# three cannot drift into applying different severities.
 #
 # Configure time, and the project description is named rather than read - without PROJECT it is produced by
 # file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
@@ -459,8 +459,8 @@ function(ddd_generate image)
         _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}" "${plugin_specs}")
     endif()
 
-    # The severity policy applies to every subcommand run here - "generate", "dump" and "check"; everything else only
-    # makes sense for "generate", and the other two would reject an unknown option.
+    # The severity policy applies to both subcommands; everything else only makes sense for "generate", and
+    # "check" would reject an unknown option.
     set(common_options "")
     if(arg_STRICT)
         list(APPEND common_options --strict)
@@ -536,19 +536,15 @@ function(ddd_generate image)
     endif()
 
     # The dictionary every artefact above is generated from, written beside them: what a template author reads to see
-    # what the templates receive, and what a delivery archives for a later "ddd compare". It is a second command of the
-    # same step, after "generate", because a command that fails ends the step: a run failing its checks then leaves the
-    # dictionary describing the artefacts still beside it, where dumping first would have written the broken project's
-    # dictionary next to yesterday's c. It takes the same severity policy, so that a finding the generation was told to
-    # let through does not fail the dump right after it, and it is named like the a2l, after NAME or, with PROJECT, after
-    # the name inside that file. "dump" leaves a dictionary whose content did not change untouched, as "generate" does
-    # its files, so nothing depending on it runs again for nothing.
-    set(dump_command "")
+    # what the templates receive, and what a delivery archives for a later "ddd compare". "generate" writes it itself,
+    # in the same write as the artefacts: one analysis and one report of its findings, and a run failing its checks
+    # writes none of them, which leaves the last dictionary describing the artefacts still beside it. A file whose
+    # content did not change is left untouched, as the artefacts are, so nothing depending on it runs again for nothing.
+    # It is named like the a2l, after NAME or, with PROJECT, after the name inside that file.
     if(NOT arg_NO_DICTIONARY)
         set(dictionary_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.dictionary.json")
         list(APPEND generated_outputs "${dictionary_file}")
-        set(dump_command COMMAND ${DDD_EXECUTABLE} dump "${project_file}" --output "${dictionary_file}"
-                                 ${common_options})
+        list(APPEND generate_options --dictionary "${dictionary_file}")
         set_property(TARGET ${image} PROPERTY DDD_DICTIONARY "${dictionary_file}")
     endif()
 
@@ -556,7 +552,6 @@ function(ddd_generate image)
                        COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                                --output-dir "${arg_OUTPUT_DIRECTORY}"
                                --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
-                       ${dump_command}
                        DEPENDS "${project_file}" ${descriptions} ${plugin_files}
                                ${address_map_dependency} ${arg_DEPENDS}
                                ${template_files} "${DDD_EXECUTABLE}"

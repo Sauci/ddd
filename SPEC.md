@@ -1782,7 +1782,10 @@ options of what it produces - a plugin's artefact takes the output directory, `-
 artefact out of the run while still producing the plugins'. What it subtracts it subtracts
 entirely: the options of an artefact left out are refused rather than accepted and ignored,
 the one it needs is asked for only if it stayed, and a run left with nothing to write is
-refused rather than reporting success;
+refused rather than reporting success. Every artefact also takes `--dictionary FILE`, a path
+relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
+prints - in the same write as the artefacts, all of them or none; it counts as something to
+write, and a path an artefact of the run is written to is refused;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
@@ -1950,12 +1953,12 @@ over; a project that wants it in the editor's schema names it in the root file a
 Beside the generation step, the call defines a
 `<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
 CI job can check without generating. The path of the A2L, where the run writes one, is
-published as the image's `DDD_A2L` property. The generation step then writes the resolved
-dictionary beside the artefacts as `<NAME>.dictionary.json`, with `ddd dump -o` under the
-same severity policy and only once the generation has succeeded, so that a run failing its
-checks leaves the last dictionary beside the artefacts it describes; its path is published
-as the image's `DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the step, the file and
-the property out. The tool itself is found by `find_program`
+published as the image's `DDD_A2L` property. The generation also writes the resolved
+dictionary beside the artefacts as `<NAME>.dictionary.json`, by passing `--dictionary` to
+its one `ddd generate`, so that the dictionary is part of the same write as the artefacts and
+a run failing its checks writes none of them; its path is published as the image's
+`DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the file and the property out. The tool
+itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
 the generated files have one path that every configuration would write to.

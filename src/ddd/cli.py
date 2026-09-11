@@ -505,6 +505,15 @@ def _add_generate_arguments(
             ),
         )
     parser.add_argument(
+        "--dictionary",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "also write the resolved data dictionary, the text ddd dump prints, to this file, in "
+            "the same write as the artefacts: all of them or none"
+        ),
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="report what would be written, write nothing"
     )
     parser.add_argument(
@@ -771,6 +780,37 @@ def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
     return f"{prefix:<11} {shown} ({status.value})"
 
 
+def _dictionary_text(dictionary: DataDictionary) -> str:
+    """The dictionary as ``dump`` publishes it, final newline included.
+
+    One text wherever it goes - printed by ``dump``, written by ``dump -o``, or written beside
+    the artefacts by ``generate --dictionary`` - so that no two of them can differ.
+    """
+    return dictionary.model_dump_json(indent=2) + "\n"
+
+
+def _dictionary_file(
+    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile]
+) -> GeneratedFile:
+    """``generate --dictionary``: the dictionary as one more file of the run's single write.
+
+    Written with the artefacts rather than after them, so that all of them are written or none
+    is: a run that fails leaves the last dictionary describing the artefacts still beside it,
+    and a failure on the dictionary takes back the artefacts the run had created. The path is
+    the one typed, relative to the working directory like every path on the command line
+    rather than a file a backend names inside the output directory, so it is resolved before
+    it is weighed against the files the backends claim; a clash is refused before anything is
+    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file.
+    """
+    if path.resolve() in {artefact.path for artefact in artefacts}:
+        msg = (
+            f"the dictionary and an artefact of this run would both write '{path.name}'; "
+            "give --dictionary another file"
+        )
+        raise ValueError(msg)
+    return GeneratedFile(path, _dictionary_text(dictionary))
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     _selected(args)
 
@@ -793,6 +833,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             or args.render_a2l
             or produces_plugin_artefact
             or getattr(args, "plugin_artefact", None) is not None
+            or args.dictionary is not None
         ):
             msg = (
                 "this run would write nothing: what --without left of it is the plugins' "
@@ -848,6 +889,8 @@ def _command_generate(args: argparse.Namespace) -> int:
                 raise ValueError(msg)
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
+        if args.dictionary is not None:
+            files.append(_dictionary_file(dictionary, args.dictionary, files))
         try:
             results = write(files, dry_run=args.dry_run)
         except OSError as error:
@@ -912,14 +955,15 @@ def _command_dump(args: argparse.Namespace) -> int:
     is the documented way to archive a delivery, so a second json document must not appear
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
     stderr - where they also stay out of the way of a pipe. ``-o`` moves the dictionary into a
-    file and changes nothing else; see :func:`_write_dictionary`.
+    file, the findings and the exit code staying what they were; see
+    :func:`_write_dictionary`.
     """
     resolved, bag = _analyze(args, stream=sys.stderr)
     if resolved is None:
         _report(bag, args.format, stream=sys.stderr)
         return EXIT_FINDINGS
     if args.output is None:
-        print(resolved.dictionary.model_dump_json(indent=2))
+        print(_dictionary_text(resolved.dictionary), end="")
         _report(bag, args.format, stream=sys.stderr)
     else:
         _write_dictionary(resolved.dictionary, args.output, bag, args.format)
@@ -931,17 +975,18 @@ def _write_dictionary(
 ) -> None:
     """``dump -o``: the dictionary into ``path``, reported the way ``generate`` reports a file.
 
-    The text is exactly what stdout would have carried, and the exit code, the findings and
-    the stream they go to stay what they were: only where the dictionary goes differs, and
-    stdout is left empty. The file goes through the writer ``generate`` uses - staged, the same
-    bytes on every platform, and left untouched when its content would not change, so that a
-    build step reading it does not run again for nothing. A redirection offers none of that:
-    the shell empties the target before the tool has even started, and Windows PowerShell
-    re-encodes whatever it is handed. The write sits in a block of its own, so a target that
-    cannot be written is reported after the findings of the run, as ``generate`` reports one.
+    The text is exactly what stdout would have carried, and the findings, the stream they go to
+    and the exit code of the analysis stay what they were; stdout is left empty, the file
+    written is reported beside the findings, and a target that cannot be written is a usage
+    error. The file goes through the writer ``generate`` uses - staged, the same bytes on every
+    platform, and left untouched when its content would not change, so that a build step
+    reading it does not run again for nothing. A redirection offers none of that: the shell
+    empties the target before the tool has even started, and Windows PowerShell re-encodes
+    whatever it is handed. The write sits in a block of its own, so a target that cannot be
+    written is reported after the findings of the run, as ``generate`` reports one.
     """
     with _reported_on_failure(bag, output_format, sys.stderr):
-        text = dictionary.model_dump_json(indent=2) + "\n"
+        text = _dictionary_text(dictionary)
         try:
             (result,) = write([GeneratedFile(path, text)])
         except OSError as error:

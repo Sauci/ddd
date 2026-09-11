@@ -722,7 +722,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
-| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
 | `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
@@ -802,9 +802,8 @@ needs no 3.30 and no `ddd_add_component`.
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
-`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts
-with `ddd dump -o`, after them and under the same severities - as its `DDD_DICTIONARY`
-property.
+`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts,
+in the same write as them (`ddd generate --dictionary`) - as its `DDD_DICTIONARY` property.
 
 In the collected mode `firmware_ddd_headers` carries more than the include directory: the
 interface include directories, compile definitions and compile options of every registered

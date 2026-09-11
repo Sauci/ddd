@@ -204,7 +204,9 @@ drifting apart.
 
 The flag sets the floor rather than having the last word: an explicit ``-W`` on the same run
 still wins, so a supplier who does want to hear about outputs nobody reads asks for that one
-back with ``--standalone -W unused-output=warning``.
+back with ``--standalone -W unused-output=warning``. ``ddd list`` and ``ddd dump`` take the
+flag as well: a component that names its project's vocabulary, or carries the block of a
+plugin only its project loads, is listed or dumped on its own under the same policy.
 
 Naming the overrides by hand instead is the mistake the flag exists to end. Two of the ten are
 about the other side of the interface; the other eight are about names the component uses and

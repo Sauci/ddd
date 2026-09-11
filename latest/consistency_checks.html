@@ -292,7 +292,9 @@ per-component target of the CMake integration silences (see <a class="reference 
 drifting apart.</p>
 <p>The flag sets the floor rather than having the last word: an explicit <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the same run
 still wins, so a supplier who does want to hear about outputs nobody reads asks for that one
-back with <code class="docutils literal notranslate"><span class="pre">--standalone</span> <span class="pre">-W</span> <span class="pre">unused-output=warning</span></code>.</p>
+back with <code class="docutils literal notranslate"><span class="pre">--standalone</span> <span class="pre">-W</span> <span class="pre">unused-output=warning</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> take the
+flag as well: a component that names its project’s vocabulary, or carries the block of a
+plugin only its project loads, is listed or dumped on its own under the same policy.</p>
 <p>Naming the overrides by hand instead is the mistake the flag exists to end. Two of the ten are
 about the other side of the interface; the other eight are about names the component uses and
 the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a

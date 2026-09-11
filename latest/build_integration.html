@@ -373,7 +373,7 @@ where it would land.</p>
 <h3>The targets it creates<a class="headerlink" href="#the-targets-it-creates" title="Link to this heading"></a></h3>
 <p>The helper targets are named after the image without its file extension, because an image is
 usually named like its artefact: <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> yields <code class="docutils literal notranslate"><span class="pre">firmware_ddd_headers</span></code>.</p>
-<p>The example above builds the graph below. The check targets are left out of it; everything
+<p>The example above builds the graph below. The check and list targets are left out of it; everything
 else a build sees is there, and so is every edge between them:</p>
 <p class="plantuml">
 <img src="_images/plantuml-73af9b8a9f39f1fb39b70a82455958a9cd814310.svg" alt="top to bottom direction
@@ -463,7 +463,13 @@ compile usage it needs to read the external type headers comes from.</p></td>
 verdict without producing artefacts. Checking is part of generating anyway - the
 generator refuses to write anything when the interfaces disagree.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_list</span></code></p></td>
+<td><p>runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> on the image’s project under the same severity policy and prints the
+table straight to the console: the project names the plugins its components’ blocks
+belong to and knows every producer and consumer, which a component listed on its own
+with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--standalone</span></code> cannot.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
 <td><p>one per registered component, checking that component alone (see above).</p></td>
 </tr>
 </tbody>

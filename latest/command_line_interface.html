@@ -246,14 +246,16 @@ generated, in one analysis and one report of its findings.</p></td>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">FILE</span></code></p></td>
 <td><p>print the table of variables with their kind, datatype, unit, shape, initial value
 with its physical reading, producer and consumers - the quickest answer to “who
-writes this?”.</p></td>
+writes this?”. With <code class="docutils literal notranslate"><span class="pre">--standalone</span></code> a component is listed on its own, the checks
+that need the rest of its project held back as <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--standalone</span></code> holds them.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">FILE</span> <span class="pre">[-o</span> <span class="pre">FILE]</span></code></p></td>
 <td><p>print the resolved data dictionary, the contract every backend consumes. This is what
 gets archived next to a delivery and handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> later. <code class="docutils literal notranslate"><span class="pre">-o</span></code> writes it
 into a file instead, the way <code class="docutils literal notranslate"><span class="pre">generate</span></code> writes an artefact: the same bytes on every
 platform, and a file whose content would not change is left untouched, which is what a
-build depending on it needs and what a redirection cannot promise.</p></td>
+build depending on it needs and what a redirection cannot promise. <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>
+dumps a component on its own, as it does for <code class="docutils literal notranslate"><span class="pre">list</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span> <span class="pre">FILE...</span></code></p></td>
 <td><p>write an <code class="docutils literal notranslate"><span class="pre">id</span></code> into every producing declaration of the given description files that
@@ -349,9 +351,10 @@ has no counterpart: the components producing its inputs are by definition not pa
 file, nobody reads its outputs yet, and the types, units, sections, constants and rasters it
 names are declared in files it was not handed - so the checks that need the rest of the
 project have to be held back, while everything DDD can decide from the file alone still
-applies. That is what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> does, in one option rather than in a list of
-<code class="docutils literal notranslate"><span class="pre">-W</span></code> a build has to keep in step with the registry; <a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a> names the
-checks it covers, and an explicit <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the same run still wins over it.</p>
+applies. That is what <code class="docutils literal notranslate"><span class="pre">--standalone</span></code> does on <code class="docutils literal notranslate"><span class="pre">check</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">dump</span></code>, in one option
+rather than in a list of <code class="docutils literal notranslate"><span class="pre">-W</span></code> a build has to keep in step with the registry;
+<a class="reference internal" href="consistency_checks.html"><span class="doc">Consistency checks</span></a> names the checks it covers, and an explicit <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the same run
+still wins over it.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/components/controller.ddd.json
 examples/demo/components/controller.ddd.json#component.interface[0]: error[missing-producer]: 'ValueA' is read by component 'Controller' but no component declares it as output
 examples/demo/components/controller.ddd.json#component.interface[1]: error[missing-producer]: 'ValueB' is read by component 'Controller' but no component declares it as output
@@ -672,7 +675,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-dump">
 <h4>ddd dump<a class="headerlink" href="#ddd-dump" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd dump [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
-<span class="go">                [-o OUTPUT]</span>
+<span class="go">                [-o OUTPUT] [--standalone]</span>
 <span class="go">                project</span>
 </pre></div>
 </div>
@@ -710,6 +713,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-dump-o">
 <span id="cmdoption-ddd-dump-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-dump-o" title="Link to this definition"></a></dt>
 <dd><p>write the dictionary to this file instead of stdout, leaving the file untouched when its content would not change</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-dump-standalone">
+<span class="sig-name descname"><span class="pre">--standalone</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-dump-standalone" title="Link to this definition"></a></dt>
+<dd><p>dump a component on its own: hold back the checks that need every component of a project, as the editor does for a file no build claims; -W still applies</p>
 </dd></dl>
 
 </section>
@@ -1002,6 +1011,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-list">
 <h4>ddd list<a class="headerlink" href="#ddd-list" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd list [-h] [-W CHECK=SEVERITY] [--strict] [--format {text,json}]</span>
+<span class="go">                [--standalone]</span>
 <span class="go">                project</span>
 </pre></div>
 </div>
@@ -1033,6 +1043,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-list-format">
 <span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-list-format" title="Link to this definition"></a></dt>
 <dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-list-standalone">
+<span class="sig-name descname"><span class="pre">--standalone</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-list-standalone" title="Link to this definition"></a></dt>
+<dd><p>list a component on its own: hold back the checks that need every component of a project, as the editor does for a file no build claims; -W still applies</p>
 </dd></dl>
 
 </section>

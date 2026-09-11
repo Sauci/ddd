@@ -59,6 +59,18 @@ its own.
   **Migration:** a cmake build gains one file in its output directory; `NO_DICTIONARY` leaves
   it out.
 
+* **A component lists and dumps on its own.**  `ddd list` and `ddd dump` take the
+  `--standalone` of `ddd check`, holding back the checks that need every component of a
+  project, `-W` still applying on top.  Without it a component carrying a plugin's
+  `extensions` block was refused by both with `unknown-extension`, because only a project
+  names its plugins.
+  **Migration:** none.
+
+* **An image lists from the build.**  `ddd_generate()` adds a `<stem>_ddd_list` target
+  printing the table of the image's variables - `ddd list` on the image's project, under the
+  build's severities, with its plugins loaded and every producer and consumer resolved.
+  **Migration:** none.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

@@ -297,7 +297,7 @@ The targets it creates
 The helper targets are named after the image without its file extension, because an image is
 usually named like its artefact: ``firmware.elf`` yields ``firmware_ddd_headers``.
 
-The example above builds the graph below. The check targets are left out of it; everything
+The example above builds the graph below. The check and list targets are left out of it; everything
 else a build sees is there, and so is every edge between them:
 
 .. uml::
@@ -382,6 +382,11 @@ including the ones this image happens not to link.
      - runs ``ddd check`` on the collected project on its own, for a ci job that wants the
        verdict without producing artefacts. Checking is part of generating anyway - the
        generator refuses to write anything when the interfaces disagree.
+   * - ``<stem>_ddd_list``
+     - runs ``ddd list`` on the image's project under the same severity policy and prints the
+       table straight to the console: the project names the plugins its components' blocks
+       belong to and knows every producer and consumer, which a component listed on its own
+       with ``ddd list --standalone`` cannot.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 

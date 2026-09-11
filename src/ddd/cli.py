@@ -162,14 +162,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         type=Path,
         help="also verify that the project can still replace this published dictionary",
     )
-    check.add_argument(
-        "--standalone",
-        action="store_true",
-        help=(
-            "check a component on its own: hold back the checks that need every component "
-            "of a project, as the editor does for a file no build claims; -W still applies"
-        ),
-    )
+    _add_standalone_argument(check, "check")
     check.set_defaults(handler=_command_check)
 
     compare_parser = subparsers.add_parser(
@@ -240,6 +233,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
 
     listing = subparsers.add_parser("list", help="list the global variables of a project")
     _add_common_arguments(listing)
+    _add_standalone_argument(listing, "list")
     listing.set_defaults(handler=_command_list)
 
     dump = subparsers.add_parser(
@@ -261,6 +255,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "when its content would not change"
         ),
     )
+    _add_standalone_argument(dump, "dump")
     dump.set_defaults(handler=_command_dump)
 
     identity = subparsers.add_parser(
@@ -540,6 +535,18 @@ def _add_policy_arguments(
     )
     parser.add_argument("--strict", action="store_true", help="report warnings as errors")
     parser.add_argument("--format", choices=["text", "json"], default="text", help=format_help)
+
+
+def _add_standalone_argument(parser: argparse.ArgumentParser, verb: str) -> None:
+    """``--standalone``, spelled once for every command a component may be handed to alone."""
+    parser.add_argument(
+        "--standalone",
+        action="store_true",
+        help=(
+            f"{verb} a component on its own: hold back the checks that need every component "
+            "of a project, as the editor does for a file no build claims; -W still applies"
+        ),
+    )
 
 
 def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:

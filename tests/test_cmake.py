@@ -189,6 +189,15 @@ ddd_generate(img
         after = header.read_text(encoding="utf-8")
         assert after != before and "by key, edited" in after.splitlines()[0]
 
+    def test_the_list_target_lists_the_image_with_its_plugins_loaded(self, tmp_path: Path) -> None:
+        """The image's project names the plugin the blocks belong to, so the table comes out
+        with every block placed - and nothing has to be generated or compiled first."""
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        output = build(tmp_path / "build", "img_ddd_list")
+        assert "EngineHours" in output
+        assert "unknown-extension" not in output
+
 
 VENDOR_HEADER = """#ifndef VENDOR_TYPES_H
 #define VENDOR_TYPES_H

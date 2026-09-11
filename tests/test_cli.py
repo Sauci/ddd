@@ -36,6 +36,8 @@ class TestStandalone:
     """
 
     PUMP = EXAMPLES / "vocabulary" / "pump.ddd.json"
+    STORAGE = EXAMPLES / "layout" / "storage.ddd.json"
+    """A component carrying plugin blocks: only a project names the plugin that reads them."""
 
     def test_a_component_naming_shared_vocabulary_checks_clean_alone(
         self, capsys: pytest.CaptureFixture[str]
@@ -66,6 +68,18 @@ class TestStandalone:
         captured = capsys.readouterr().err
         assert code == EXIT_OK
         assert "warning[unknown-section]" in captured
+
+    @pytest.mark.parametrize("command", ["list", "dump"])
+    def test_list_and_dump_read_a_component_on_its_own_like_check(
+        self, command: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A component's plugin blocks name a plugin only its project loads, so read alone they
+        are ``unknown-extension``: the flag holds that back for these two as it does for
+        ``check``, and the component is listed or dumped rather than refused."""
+        assert main([command, str(self.STORAGE)]) == EXIT_FINDINGS
+        assert "unknown-extension" in capsys.readouterr().err
+        assert main([command, str(self.STORAGE), "--standalone"]) == EXIT_OK
+        assert "EngineHours" in capsys.readouterr().out
 
 
 LAYOUT = EXAMPLES / "layout" / "project.ddd.json"

@@ -22,6 +22,7 @@ from ddd.backends import (
     ByteOrder,
     CBackend,
     COptions,
+    GeneratedFile,
     WriteStatus,
     addressed_symbols,
     example_template_directory,
@@ -248,7 +249,16 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         dump,
         format_help=(
             "format of the diagnostics, which go to stderr on this command; the dictionary "
-            "on stdout is json either way"
+            "is json either way"
+        ),
+    )
+    dump.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help=(
+            "write the dictionary to this file instead of stdout, leaving the file untouched "
+            "when its content would not change"
         ),
     )
     dump.set_defaults(handler=_command_dump)
@@ -750,6 +760,17 @@ def _displayed_path(path: Path, output_dir: Path) -> str:
     return path.as_posix()
 
 
+def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
+    """One line of the text report of a written file, as ``generate`` and ``dump -o`` print it.
+
+    ``prefix`` is what the run did to a file it did not leave alone - ``would write`` on a dry
+    run - padded so that the paths line up under ``unchanged``.
+    """
+    if status is WriteStatus.UNCHANGED:
+        return f"unchanged   {shown}"
+    return f"{prefix:<11} {shown} ({status.value})"
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     _selected(args)
 
@@ -853,10 +874,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         prefix = "would write" if args.dry_run else "wrote"
         for result in results:
             shown = _displayed_path(result.path, args.output_dir)
-            if result.status is WriteStatus.UNCHANGED:
-                print(f"unchanged   {shown}", file=sys.stderr)
-            else:
-                print(f"{prefix:<11} {shown} ({result.status.value})", file=sys.stderr)
+            print(_written(result.status, shown, prefix), file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -893,15 +911,50 @@ def _command_dump(args: argparse.Namespace) -> int:
     stdout carries the dictionary and nothing else, in both formats: ``ddd dump > baseline.json``
     is the documented way to archive a delivery, so a second json document must not appear
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
-    stderr - where they also stay out of the way of a pipe.
+    stderr - where they also stay out of the way of a pipe. ``-o`` moves the dictionary into a
+    file and changes nothing else; see :func:`_write_dictionary`.
     """
     resolved, bag = _analyze(args, stream=sys.stderr)
-    if resolved is not None:
-        print(resolved.dictionary.model_dump_json(indent=2))
-    _report(bag, args.format, stream=sys.stderr)
     if resolved is None:
+        _report(bag, args.format, stream=sys.stderr)
         return EXIT_FINDINGS
+    if args.output is None:
+        print(resolved.dictionary.model_dump_json(indent=2))
+        _report(bag, args.format, stream=sys.stderr)
+    else:
+        _write_dictionary(resolved.dictionary, args.output, bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+
+
+def _write_dictionary(
+    dictionary: DataDictionary, path: Path, bag: DiagnosticBag, output_format: str
+) -> None:
+    """``dump -o``: the dictionary into ``path``, reported the way ``generate`` reports a file.
+
+    The text is exactly what stdout would have carried, and the exit code, the findings and
+    the stream they go to stay what they were: only where the dictionary goes differs, and
+    stdout is left empty. The file goes through the writer ``generate`` uses - staged, the same
+    bytes on every platform, and left untouched when its content would not change, so that a
+    build step reading it does not run again for nothing. A redirection offers none of that:
+    the shell empties the target before the tool has even started, and Windows PowerShell
+    re-encodes whatever it is handed. The write sits in a block of its own, so a target that
+    cannot be written is reported after the findings of the run, as ``generate`` reports one.
+    """
+    with _reported_on_failure(bag, output_format, sys.stderr):
+        text = dictionary.model_dump_json(indent=2) + "\n"
+        try:
+            (result,) = write([GeneratedFile(path, text)])
+        except OSError as error:
+            msg = f"cannot write '{path.as_posix()}': {error.strerror or error}"
+            raise OSError(msg) from None
+    shown = path.as_posix()
+    if output_format == "json":
+        payload = _diagnostics_payload(bag)
+        payload["generated"] = [{"path": shown, "status": result.status.value}]
+        print(json.dumps(payload, indent=2), file=sys.stderr)
+        return
+    _report(bag, output_format)
+    print(_written(result.status, shown), file=sys.stderr)
 
 
 def _command_id(args: argparse.Namespace) -> int:
@@ -1365,13 +1418,13 @@ def _reported_on_failure(
     to ``_report`` unchanged, so a caller whose successful report does not go to stdout - only
     ``dump``, today - keeps that promise on the failing path too.
 
-    ``check``, ``compare`` and ``generate`` - the commands that produce something after the
-    analysis - each wrap the whole of it in one such block, not the particular calls someone
-    thought could fail: a usage error can come from any statement in between, including one
-    nobody expected to raise, and the one that surprises us is exactly the one this has to
-    cover. ``list``, ``dump``, ``artefacts`` and ``sources`` have nothing fallible after their
-    analysis today and so establish no block; a step added to one of them later belongs inside
-    a block of its own.
+    ``check``, ``compare``, ``generate`` and ``dump -o`` - the commands that produce something
+    after the analysis - each wrap the whole of it in one such block, not the particular calls
+    someone thought could fail: a usage error can come from any statement in between,
+    including one nobody expected to raise, and the one that surprises us is exactly the one
+    this has to cover. ``list``, ``artefacts``, ``sources`` and a ``dump`` to stdout have
+    nothing fallible after their analysis today and so establish no block; a step added to one
+    of them later belongs inside a block of its own.
     """
     try:
         yield

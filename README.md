@@ -724,7 +724,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
 | `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
-| `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
+| `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
@@ -747,7 +747,8 @@ a single path, and `ddd id --assign` reports which files it could not read and o
 ids written across all of them, not a list of findings. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
-in either format.
+in either format, and `ddd dump project.ddd.json -o baseline.json` writes the same text
+without the shell in between - the same bytes on every platform, stdout left empty.
 
 Exit codes: `0` clean, `1` findings, `2` wrong usage.  `1` means at least one finding was
 reported **as an error**: a run with only warnings exits `0`, which is what `--strict` is

@@ -7,7 +7,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -2060,6 +2060,115 @@ def test_the_dump_states_a_null_id_for_an_object_that_carries_none(tree, capsys)
     assert main(["dump", str(tree / "project.ddd.json")]) == EXIT_OK
     dumped = json.loads(capsys.readouterr().out)
     assert dumped["objects"][0]["id"] is None
+
+
+class TestDumpToAFile:
+    """``-o`` changes where the dictionary goes, and nothing else.
+
+    A build wants the dictionary in a file, and a redirection leaves the bytes to the shell:
+    Windows PowerShell writes a byte order mark and crlf, and every shell empties the target
+    before the tool has even started. The file is therefore written the way ``generate``
+    writes an artefact, while everything a reader of stdout relied on - the text, the exit
+    code, the findings on stderr - stays what it was.
+    """
+
+    CLEAN: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X", description="Température")),
+    }
+    """Resolves without an error, and carries text beyond ascii, which a codepage would show."""
+
+    WITH_ERRORS: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": component("A", declare("local", "X"), declare("input", "Unproduced")),
+    }
+    """Resolves, and reports an error: an input no component produces."""
+
+    @pytest.mark.parametrize(
+        ("files", "code"),
+        [(CLEAN, EXIT_OK), (WITH_ERRORS, EXIT_FINDINGS)],
+        ids=["clean", "with-errors"],
+    )
+    def test_the_file_holds_what_stdout_would_have_carried(
+        self,
+        files: dict[str, Any],
+        code: int,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Byte for byte - utf-8, no byte order mark, lf - and with the same exit code: a
+        project whose errors still let it resolve is written, exactly as it is printed."""
+        write_tree(tree, files)
+        source = str(tree / "project.ddd.json")
+        assert main(["dump", source]) == code
+        printed = capsys.readouterr().out
+        target = tree / "dictionary.json"
+        assert main(["dump", source, "-o", str(target)]) == code
+        assert capsys.readouterr().out == ""
+        assert target.read_bytes() == printed.encode("utf-8")
+
+    def test_a_file_that_would_not_change_is_left_alone(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Its timestamp is what a build compares; a rewrite would re-run whatever reads it."""
+        write_tree(tree, self.CLEAN)
+        target = tree / "dictionary.json"
+        shown = re.escape(target.as_posix())
+        arguments = ["dump", str(tree / "project.ddd.json"), "-o", str(target)]
+        assert main(arguments) == EXIT_OK
+        assert re.search(rf"^wrote\s+{shown} \(created\)$", capsys.readouterr().err, re.M)
+        os.utime(target, (1_000_000_000, 1_000_000_000))
+        assert main(arguments) == EXIT_OK
+        assert re.search(rf"^unchanged\s+{shown}$", capsys.readouterr().err, re.M)
+        assert target.stat().st_mtime == 1_000_000_000
+
+    def test_it_creates_the_directory_it_writes_into(self, tree: Path) -> None:
+        """A release step names where the dictionary goes before anything has made that place."""
+        write_tree(tree, self.CLEAN)
+        target = tree / "release" / "1.4.0" / "dictionary.json"
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(target)]) == EXIT_OK
+        assert target.is_file()
+
+    def test_a_project_that_does_not_resolve_leaves_the_file_as_it_was(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """There is no dictionary to write, so the last one stays; a redirection would have
+        emptied it before the run even started."""
+        target = tree / "dictionary.json"
+        target.write_bytes(b"the previous dictionary\n")
+        arguments = ["dump", str(tree / "missing.ddd.json"), "-o", str(target)]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "file-not-found" in capsys.readouterr().err
+        assert target.read_bytes() == b"the previous dictionary\n"
+
+    def test_a_target_that_cannot_be_written_is_a_usage_error_after_the_findings(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A directory standing where the file goes is the caller's mistake: one line and
+        exit 2, after the findings of the run - which is the run whose findings are needed."""
+        write_tree(tree, self.CLEAN)
+        target = tree / "dictionary.json"
+        target.mkdir()
+        assert main(["dump", str(tree / "project.ddd.json"), "-o", str(target)]) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "info[missing-id]" in err
+        assert f"cannot write '{target.as_posix()}'" in err
+        assert err.index("info[missing-id]") < err.index("cannot write")
+
+    def test_in_json_the_written_file_is_reported_with_the_findings_on_stderr(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In the document ``dump`` already sends to stderr, the way ``generate`` reports a
+        file in its own; stdout stays empty in both formats."""
+        write_tree(tree, self.CLEAN)
+        target = tree / "dictionary.json"
+        arguments = ["dump", str(tree / "project.ddd.json"), "-o", str(target), "--format", "json"]
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        payload = json.loads(captured.err)
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 1}
+        assert payload["generated"] == [{"path": target.as_posix(), "status": "created"}]
 
 
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):

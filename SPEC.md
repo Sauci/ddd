@@ -1794,7 +1794,10 @@ given `--plugin` instead of a project it answers for those plugins beside the tw
 artefacts, and given neither it lists the built-in artefacts alone; what each artefact
 writes is not among them, since a plugin's file names follow from the resolved dictionary
 and a dry run of `ddd generate all` reports them);
-writing out the data dictionary itself (`ddd dump`); writing an identity into every
+writing out the data dictionary itself (`ddd dump`, to stdout or, with `-o`, into a file
+written the way `generate` writes an artefact: the same bytes on every platform, left
+untouched when its content would not change, and left as it was when the project does not
+resolve); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
@@ -1846,11 +1849,14 @@ candidate file can replace the baseline file ([section 4.1](#41-comparing-two-de
 `generate` adds the files it wrote with their status (`created`, `updated` or `unchanged`),
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
-alone in both formats. The exit code distinguishes clean runs (0), findings (1) and usage
+alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
+written with its status, as `generate`'s does. The exit code distinguishes clean runs (0),
+findings (1) and usage
 errors (2). A usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which
 is held until the project is read ([section 3.11](#311-plugins)), an address map that
-cannot be read, a `--renames` file or an artefact that cannot be written, a `--plugin`
+cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
+written, a `--plugin`
 refused beside a description, or a run that would write nothing - is printed after the
 findings gathered so far - a comparison's own findings and a baseline's carried errors
 included - are reported in the requested format first, because a failed run is exactly

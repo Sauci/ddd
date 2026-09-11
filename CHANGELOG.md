@@ -39,6 +39,16 @@ its own.
   each feature were shipped beside the documentation, and nothing an sdist is sent to reads
   them.
 
+* **`ddd dump -o FILE` writes the dictionary into a file.**  Archiving the dictionary meant
+  redirecting stdout, which leaves the bytes to the shell - Windows PowerShell re-encodes
+  them, with a byte order mark and crlf - and empties the target before the tool has even
+  started.  `-o` writes the text stdout would have carried the way `generate` writes an
+  artefact: utf-8 with lf on every platform, staged, and left untouched when its content
+  would not change, while a project that does not resolve leaves the file as it was.  The
+  exit code and the findings on stderr stay what they were, and the json report there names
+  the file written, as `generate`'s does.
+  **Migration:** none.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

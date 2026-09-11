@@ -131,13 +131,15 @@ The commands
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
-       writes this?".
+       writes this?". With ``--standalone`` a component is listed on its own, the checks
+       that need the rest of its project held back as ``check --standalone`` holds them.
    * - ``ddd dump FILE [-o FILE]``
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later. ``-o`` writes it
        into a file instead, the way ``generate`` writes an artefact: the same bytes on every
        platform, and a file whose content would not change is left untouched, which is what a
-       build depending on it needs and what a redirection cannot promise.
+       build depending on it needs and what a redirection cannot promise. ``--standalone``
+       dumps a component on its own, as it does for ``list``.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
        has none, editing them in place; a declaration that has one is left alone, so a second
@@ -230,9 +232,10 @@ has no counterpart: the components producing its inputs are by definition not pa
 file, nobody reads its outputs yet, and the types, units, sections, constants and rasters it
 names are declared in files it was not handed - so the checks that need the rest of the
 project have to be held back, while everything DDD can decide from the file alone still
-applies. That is what ``ddd check --standalone`` does, in one option rather than in a list of
-``-W`` a build has to keep in step with the registry; :doc:`consistency_checks` names the
-checks it covers, and an explicit ``-W`` on the same run still wins over it.
+applies. That is what ``--standalone`` does on ``check``, ``list`` and ``dump``, in one option
+rather than in a list of ``-W`` a build has to keep in step with the registry;
+:doc:`consistency_checks` names the checks it covers, and an explicit ``-W`` on the same run
+still wins over it.
 
 .. code-block:: text
 

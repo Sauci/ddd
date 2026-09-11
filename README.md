@@ -723,8 +723,8 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
 | `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts |
-| `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
-| `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change |
+| `ddd list FILE` | table (or `--format json`) of variables, producers and consumers; `--standalone` lists a component alone |
+| `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change; `--standalone` dumps a component alone |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
@@ -735,9 +735,9 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | `ddd cmake-dir` | print the directory holding the cmake integration module |
 | `ddd templates-dir` | print the directory holding the example c templates, to copy into a project |
 
-`FILE` may be a project or a single component file, which makes it possible to check a
-component on its own before integrating it - add `--standalone` in that case, which holds
-back the checks that need the components the file does not contain.
+`FILE` may be a project or a single component file, which makes it possible to check, list
+or dump a component on its own before integrating it - add `--standalone` in that case, which
+holds back the checks that need the components the file does not contain.
 
 `--format json` prints machine readable diagnostics for a ci job. It is available on every
 command that produces findings - `check`, `compare`, `generate`, `list`, `dump`, `sources`,

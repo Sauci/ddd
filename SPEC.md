@@ -1148,10 +1148,10 @@ error rather than a finding, as is naming an unknown check or severity.
 Ten checks need every component of a project to mean anything: `unknown-type`,
 `unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `unknown-extension`,
 `missing-producer`, `unknown-reference`, `unused-output` and
-`incomplete-project`. Exactly these are the checks held back by `ddd check --standalone`
-and by the CMake module's per-component target, which runs it
-([section 7](#7-tool-interface)), and by the language server for a file belonging to no
-project ([section 7.2](#72-editor-integration)).
+`incomplete-project`. Exactly these are the checks held back by `--standalone` - on
+`ddd check`, `ddd list` and `ddd dump` - by the CMake module's per-component target, which
+runs `ddd check --standalone` ([section 7](#7-tool-interface)), and by the language server
+for a file belonging to no project ([section 7.2](#72-editor-integration)).
 
 A declaration dropped as unresolvable still counts for the ownership checks: a consumer of
 an object whose producing declaration was dropped is not `missing-producer`, an output
@@ -1832,8 +1832,9 @@ live (`ddd cmake-dir`, `ddd templates-dir`; a piece not installed is a usage err
 printing its own version (`ddd --version`). Beside the command line, the package publishes
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
 The root handed to a command is a project or a single component file; a component alone is
-checked with every check unless `ddd check --standalone` is given, which holds back the ten
-checks that need every component of a project ([section 4](#4-consistency-checks)), the
+checked, listed and dumped with every check unless `--standalone` is given to `ddd check`,
+`ddd list` or `ddd dump`, which holds back the ten checks that need every component of a
+project ([section 4](#4-consistency-checks)), the
 same set the editor holds back ([section 7.2](#72-editor-integration)); an explicit `-W` on
 the same run still wins. Given a project root, `--standalone` holds the same checks back
 project-wide, which is rarely wanted.

@@ -799,7 +799,8 @@ needs no 3.30 and no `ddd_add_component`.
 | `firmware_ddd_headers` | interface library carrying the include directory, and the compile usage of the registered components; linked into every registered component |
 | `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image; links `firmware_ddd_headers` for that compile usage |
 
-plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
+plus `firmware_ddd_check` to run the consistency check on its own in ci, `firmware_ddd_list`
+to print the table of the image's variables, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
 `<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts,

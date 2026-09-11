@@ -348,6 +348,8 @@ endfunction()
 #                          <stem>_ddd_headers, which is where its compile usage comes from
 # * <stem>_ddd_check       custom target running the consistency check alone, for a ci job that wants the verdict
 #                          without the artefacts
+# * <stem>_ddd_list        custom target printing the table of the image's variables - producer, consumers,
+#                          datatype, unit - for a developer asking who writes what, without generating anything
 #
 # <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
 # path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
@@ -657,6 +659,18 @@ function(ddd_generate image)
                       COMMAND ${DDD_EXECUTABLE} check "${project_file}" ${common_options}
                       DEPENDS "${project_file}" ${descriptions}
                       COMMENT "Checking the data dictionary of ${image}"
+                      COMMAND_EXPAND_LISTS
+                      VERBATIM)
+
+    # The table of the image's variables, out of the same project description and under the same severity policy as the
+    # generation: the project names the plugins its components' blocks belong to and knows every producer and consumer,
+    # which a component listed on its own cannot. USES_TERMINAL puts the table straight on the console rather than
+    # through the build tool's buffered output.
+    add_custom_target(${image_stem}_ddd_list
+                      COMMAND ${DDD_EXECUTABLE} list "${project_file}" ${common_options}
+                      DEPENDS "${project_file}" ${descriptions}
+                      COMMENT "Listing the data dictionary of ${image}"
+                      USES_TERMINAL
                       COMMAND_EXPAND_LISTS
                       VERBATIM)
 endfunction()

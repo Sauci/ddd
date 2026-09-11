@@ -66,6 +66,11 @@ its own.
   names its plugins.
   **Migration:** none.
 
+* **An image lists from the build.**  `ddd_generate()` adds a `<stem>_ddd_list` target
+  printing the table of the image's variables - `ddd list` on the image's project, under the
+  build's severities, with its plugins loaded and every producer and consumer resolved.
+  **Migration:** none.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

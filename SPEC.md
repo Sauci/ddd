@@ -1953,7 +1953,9 @@ not a sub-project's - so that an editor validates a plugin's block as it is type
 over; a project that wants it in the editor's schema names it in the root file as well.
 Beside the generation step, the call defines a
 `<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
-CI job can check without generating. The path of the A2L, where the run writes one, is
+CI job can check without generating, and a `<stem>_ddd_list` target that runs `ddd list`
+on the same project under the same policy, printing the table on the console. The path of
+the A2L, where the run writes one, is
 published as the image's `DDD_A2L` property. The generation also writes the resolved
 dictionary beside the artefacts as `<NAME>.dictionary.json`, by passing `--dictionary` to
 its one `ddd generate`, so that the dictionary is part of the same write as the artefacts and

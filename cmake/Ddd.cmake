@@ -5,8 +5,8 @@
 # * ddd_add_component(<target> JSON <file>...): registers the DDD description(s) of a component on its target, and
 #   creates the on-demand <target>.ddd target checking that component on its own.
 # * ddd_generate(<image> ...): collects the descriptions of all components in the link closure of the given image,
-#   generates the global definition file, the per-component interface headers and the a2l, and links the result into
-#   the image.
+#   generates the global definition file, the per-component interface headers and the a2l, writes the resolved data
+#   dictionary beside them, and links the result into the image.
 #
 # The collection relies on the custom transitive property DDD_JSON, introduced with the TRANSITIVE_LINK_PROPERTIES
 # feature of CMake 3.30: the description files travel through the link graph like usage requirements, so an image
@@ -114,8 +114,8 @@ endfunction()
 # components belong together is a property of this build and nothing in the source tree names it at all.
 #
 # The same bargain as SCHEMA_DIRECTORY above: nothing in the build consumes this file, it exists so that a tool
-# outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so the
-# three cannot drift into applying different severities.
+# outside the build can see what the build sees. "options" is the very list handed to "check", "generate" and "dump", so
+# none of them can drift into applying different severities.
 #
 # Configure time, and the project description is named rather than read - without PROJECT it is produced by
 # file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
@@ -333,6 +333,7 @@ endfunction()
 #              [DEPENDS <file>...]           # additional dependencies retriggering the generation
 #              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
+#              [NO_DICTIONARY]               # do not write the resolved data dictionary
 #              [STRICT]                      # treat DDD warnings as errors
 #              [NO_PROPAGATE_HEADERS])       # do not hand <stem>_ddd_headers to the registered components
 #
@@ -349,14 +350,16 @@ endfunction()
 #                          without the artefacts
 #
 # <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
-# path of the generated a2l is available as the DDD_A2L property of the image.
+# path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
+# it as its DDD_DICTIONARY property.
 #
-# Only the three shared files are declared as outputs of the generator; the per-component headers are written next to
-# them, but their names come from inside the description files and are therefore unknown at configure time. That is
-# what <stem>_ddd_headers is for: a consumer depends on the generation step, not on an individual header path.
+# Only the shared files - the ones the template names give away, the a2l and the dictionary - are declared as outputs of
+# the generator; the per-component headers are written next to them, but their names come from inside the description
+# files and are therefore unknown at configure time. That is what <stem>_ddd_headers is for: a consumer depends on the
+# generation step, not on an individual header path.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
-                          "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
+                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS"
                           "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
@@ -455,8 +458,8 @@ function(ddd_generate image)
         _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}" "${plugin_specs}")
     endif()
 
-    # The severity policy applies to both subcommands; everything else only makes sense for "generate", and
-    # "check" would reject an unknown option.
+    # The severity policy applies to every subcommand run here - "generate", "dump" and "check"; everything else only
+    # makes sense for "generate", and the other two would reject an unknown option.
     set(common_options "")
     if(arg_STRICT)
         list(APPEND common_options --strict)
@@ -531,10 +534,28 @@ function(ddd_generate image)
         set_property(TARGET ${image} PROPERTY DDD_A2L "${a2l_file}")
     endif()
 
+    # The dictionary every artefact above is generated from, written beside them: what a template author reads to see
+    # what the templates receive, and what a delivery archives for a later "ddd compare". It is a second command of the
+    # same step, after "generate", because a command that fails ends the step: a run failing its checks then leaves the
+    # dictionary describing the artefacts still beside it, where dumping first would have written the broken project's
+    # dictionary next to yesterday's c. It takes the same severity policy, so that a finding the generation was told to
+    # let through does not fail the dump right after it, and it is named like the a2l, after NAME or, with PROJECT, after
+    # the name inside that file. "dump" leaves a dictionary whose content did not change untouched, as "generate" does
+    # its files, so nothing depending on it runs again for nothing.
+    set(dump_command "")
+    if(NOT arg_NO_DICTIONARY)
+        set(dictionary_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.dictionary.json")
+        list(APPEND generated_outputs "${dictionary_file}")
+        set(dump_command COMMAND ${DDD_EXECUTABLE} dump "${project_file}" --output "${dictionary_file}"
+                                 ${common_options})
+        set_property(TARGET ${image} PROPERTY DDD_DICTIONARY "${dictionary_file}")
+    endif()
+
     add_custom_command(OUTPUT ${generated_outputs}
                        COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                                --output-dir "${arg_OUTPUT_DIRECTORY}"
                                --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
+                       ${dump_command}
                        DEPENDS "${project_file}" ${descriptions} ${plugin_files}
                                ${address_map_dependency} ${arg_DEPENDS}
                                ${template_files} "${DDD_EXECUTABLE}"

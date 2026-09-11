@@ -1950,7 +1950,12 @@ over; a project that wants it in the editor's schema names it in the root file a
 Beside the generation step, the call defines a
 `<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
 CI job can check without generating. The path of the A2L, where the run writes one, is
-published as the image's `DDD_A2L` property. The tool itself is found by `find_program`
+published as the image's `DDD_A2L` property. The generation step then writes the resolved
+dictionary beside the artefacts as `<NAME>.dictionary.json`, with `ddd dump -o` under the
+same severity policy and only once the generation has succeeded, so that a run failing its
+checks leaves the last dictionary beside the artefacts it describes; its path is published
+as the image's `DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the step, the file and
+the property out. The tool itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
 the generated files have one path that every configuration would write to.

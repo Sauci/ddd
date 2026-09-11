@@ -801,7 +801,10 @@ needs no 3.30 and no `ddd_add_component`.
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
-path of the generated a2l is available as the `DDD_A2L` property of the image.
+path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
+`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts
+with `ddd dump -o`, after them and under the same severities - as its `DDD_DICTIONARY`
+property.
 
 In the collected mode `firmware_ddd_headers` carries more than the include directory: the
 interface include directories, compile definitions and compile options of every registered
@@ -822,7 +825,7 @@ reports.
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
 the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
-`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
+`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
 include order to decide which set a component compiles against.  DDD refuses that rather than

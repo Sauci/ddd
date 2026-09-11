@@ -279,8 +279,8 @@ key is what tells the two records apart.
 The second is **the severity policy**, from ``STRICT`` and ``SEVERITY``. A tool that ignores it
 reports a different set of findings than the build does, which is worse than reporting none:
 the same working tree would be clean in one place and failing in the other. The options handed
-to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd generate``, so the
-three cannot drift apart.
+to ``ddd build-info`` are the very list handed to ``ddd check``, ``ddd generate`` and
+``ddd dump``, so none of them can drift apart.
 
 The project description is named rather than read, because in the collected mode it does not
 exist yet at that point - ``file(GENERATE)`` produces it at the end of the configure run, after
@@ -386,9 +386,10 @@ including the ones this image happens not to link.
      - one per registered component, checking that component alone (see above).
 
 The outputs declared for the generator are the files the template names already give away, plus
-the a2l. The per-component headers are written next to them, but their names come from inside
-the description files and are therefore unknown at configure time - which is precisely why a
-consumer depends on ``<stem>_ddd_headers`` rather than on an individual header path.
+the a2l and the dictionary. The per-component headers are written next to them, but their names
+come from inside the description files and are therefore unknown at configure time - which is
+precisely why a consumer depends on ``<stem>_ddd_headers`` rather than on an individual header
+path.
 
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:
@@ -397,6 +398,16 @@ post-build step can pick it up without rebuilding the path by hand:
 
    get_target_property(a2l firmware.elf DDD_A2L)
    install(FILES "${a2l}" DESTINATION delivery)
+
+Beside the artefacts the generation step writes ``<NAME>.dictionary.json``, the resolved
+:doc:`data dictionary <data_dictionary>` they were all generated from: what a template author
+reads to see what the templates receive, and what a delivery archives for a later
+``ddd compare`` (see :doc:`comparing_deliveries`). It is written by ``ddd dump -o`` under the
+severity policy the generation applies, and only once the generation has succeeded, so a run
+that fails its checks leaves it describing the artefacts that are still beside it; a
+regeneration that changes nothing in it leaves the file untouched. Its path is the
+``DDD_DICTIONARY`` property of the image, read the same way, and ``NO_DICTIONARY`` leaves the
+step, the file and the property out.
 
 .. note::
    Multi-config generators are refused with a fatal error: the project description and the
@@ -467,6 +478,9 @@ Options
        produces everything else the project has, the artefacts of the plugins named with
        ``PLUGINS`` included: the a2l is subtracted from the run rather than the run being
        narrowed to the c sources.
+   * - ``NO_DICTIONARY``
+     - do not write the resolved data dictionary beside the artefacts; no ``DDD_DICTIONARY``
+       property is set then.
    * - ``STRICT``
      - treat DDD warnings as errors.
    * - ``NO_PROPAGATE_HEADERS``

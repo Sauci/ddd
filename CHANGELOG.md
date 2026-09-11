@@ -49,6 +49,15 @@ its own.
   the file written, as `generate`'s does.
   **Migration:** none.
 
+* **The cmake build writes the dictionary beside the artefacts.**  `ddd_generate()` now
+  writes `<NAME>.dictionary.json` into its output directory - the resolved dictionary the c
+  and the a2l were generated from, which is what a template author reads and what a delivery
+  archives for a later `ddd compare` - with `ddd dump -o`, under the same severities and
+  after the generation, so that a run failing its checks leaves the last one in place.  Its
+  path is the image's `DDD_DICTIONARY` property.
+  **Migration:** a build gains one file in its output directory and one more run of the tool
+  whenever the generation re-runs; `NO_DICTIONARY` leaves both out.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

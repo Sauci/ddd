@@ -39,6 +39,26 @@ its own.
   each feature were shipped beside the documentation, and nothing an sdist is sent to reads
   them.
 
+* **`ddd dump -o FILE` writes the dictionary into a file.**  Archiving the dictionary meant
+  redirecting stdout, which leaves the bytes to the shell - the `>` of Windows PowerShell 5.1
+  re-encodes them as UTF-16, which `ddd compare` refuses to read back - and empties the
+  target before the tool has even started.  `-o` writes the text stdout would have carried
+  the way `generate` writes an artefact: utf-8 with lf on every platform, staged, and left
+  untouched when its content would not change, while a project that does not resolve leaves
+  the file as it was.  The exit code and the findings on stderr stay what they were, and the
+  json report there names the file written, as `generate`'s does.
+  **Migration:** none.
+
+* **`ddd generate --dictionary FILE` writes the dictionary beside the artefacts, and the
+  cmake build does.**  Every artefact takes it: the resolved dictionary, the text `ddd dump`
+  prints, goes into the same write as the artefacts - all of them or none, a file whose
+  content would not change left untouched - and a path an artefact of the run is written to
+  is refused.  `ddd_generate()` passes it, so a build now writes `<NAME>.dictionary.json`
+  into its output directory, which is what a template author reads and what a delivery
+  archives for a later `ddd compare`; its path is the image's `DDD_DICTIONARY` property.
+  **Migration:** a cmake build gains one file in its output directory; `NO_DICTIONARY` leaves
+  it out.
+
 ## 0.9.0
 
 * **A reference into another component's local object is a use.**  A curve, map or axis of one

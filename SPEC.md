@@ -1782,7 +1782,10 @@ options of what it produces - a plugin's artefact takes the output directory, `-
 artefact out of the run while still producing the plugins'. What it subtracts it subtracts
 entirely: the options of an artefact left out are refused rather than accepted and ignored,
 the one it needs is asked for only if it stayed, and a run left with nothing to write is
-refused rather than reporting success;
+refused rather than reporting success. Every artefact also takes `--dictionary FILE`, a path
+relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
+prints - in the same write as the artefacts, all of them or none; it counts as something to
+write, and a path an artefact of the run is written to is refused;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
@@ -1794,7 +1797,10 @@ given `--plugin` instead of a project it answers for those plugins beside the tw
 artefacts, and given neither it lists the built-in artefacts alone; what each artefact
 writes is not among them, since a plugin's file names follow from the resolved dictionary
 and a dry run of `ddd generate all` reports them);
-writing out the data dictionary itself (`ddd dump`); writing an identity into every
+writing out the data dictionary itself (`ddd dump`, to stdout or, with `-o`, into a file
+written the way `generate` writes an artefact: the same bytes on every platform, left
+untouched when its content would not change, and left as it was when the project does not
+resolve); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
@@ -1846,11 +1852,14 @@ candidate file can replace the baseline file ([section 4.1](#41-comparing-two-de
 `generate` adds the files it wrote with their status (`created`, `updated` or `unchanged`),
 and `dump` keeps its stdout for the dictionary, reporting findings on stderr - with
 `--format json` the findings document goes there too, so stdout carries the dictionary
-alone in both formats. The exit code distinguishes clean runs (0), findings (1) and usage
+alone in both formats; given `-o`, stdout stays empty and the report on stderr adds the file
+written with its status, as `generate`'s does. The exit code distinguishes clean runs (0),
+findings (1) and usage
 errors (2). A usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which
 is held until the project is read ([section 3.11](#311-plugins)), an address map that
-cannot be read, a `--renames` file or an artefact that cannot be written, a `--plugin`
+cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
+written, a `--plugin`
 refused beside a description, or a run that would write nothing - is printed after the
 findings gathered so far - a comparison's own findings and a baseline's carried errors
 included - are reported in the requested format first, because a failed run is exactly
@@ -1904,7 +1913,7 @@ links, and the module itself refuses a CMake older than its stated floor with a 
 naming it. The assembled project is named by `NAME`, defaulting to the image's name sanitised
 into an identifier - every character outside `[A-Za-z0-9_]` replaced by `_`, a leading digit
 prefixed with `N` - and that name becomes the A2L project, module and file name
-([section 5.2](#52-a2l)); its includes keep the link graph's traversal order - the order
+([section 5.2](#52-a2l)) and names the dictionary written beside it; its includes keep the link graph's traversal order - the order
 CMake evaluates the transitive `DDD_JSON` property in, a depth-first walk of
 `target_link_libraries` in declaration order - first occurrence kept, which orders the
 components and with them the `GROUP`s, while the objects themselves sort by name regardless
@@ -1944,7 +1953,12 @@ over; a project that wants it in the editor's schema names it in the root file a
 Beside the generation step, the call defines a
 `<stem>_ddd_check` target that runs `ddd check` under the same severity policy, so that a
 CI job can check without generating. The path of the A2L, where the run writes one, is
-published as the image's `DDD_A2L` property. The tool itself is found by `find_program`
+published as the image's `DDD_A2L` property. The generation also writes the resolved
+dictionary beside the artefacts as `<NAME>.dictionary.json`, by passing `--dictionary` to
+its one `ddd generate`, so that the dictionary is part of the same write as the artefacts and
+a run failing its checks writes none of them; its path is published as the image's
+`DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the file and the property out. The tool
+itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
 the generated files have one path that every configuration would write to.

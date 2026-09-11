@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sysconfig
@@ -27,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import EXAMPLES
+from conftest import EXAMPLES, declare
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -98,6 +99,14 @@ def edit_plugin(plugin: Path) -> None:
     plugin.write_text(source.replace(phrase, phrase + ", edited"), encoding="utf-8")
 
 
+def add_an_unproduced_input(description: Path) -> None:
+    """An input no component produces: ``missing-producer``, an error of the analysis rather
+    than of the reading, so the project still resolves to a dictionary that could be dumped."""
+    written = json.loads(description.read_text(encoding="utf-8"))
+    written["component"]["interface"].append(declare("input", "Unproduced"))
+    description.write_text(json.dumps(written, indent=2), encoding="utf-8")
+
+
 class TestTheShippedExample:
     def test_it_configures_builds_and_checks_each_component_alone(self, tmp_path: Path) -> None:
         """The example the build integration page shows is the example the suite builds."""
@@ -107,6 +116,7 @@ class TestTheShippedExample:
         assert (generated / "ddd_globals.c").is_file()
         assert (generated / "DemoDevice.a2l").is_file()
         assert (generated / "DemoDevice.ddd.json").is_file(), "the collected project description"
+        assert (generated / "DemoDevice.dictionary.json").is_file(), "the dictionary it resolves to"
         # The per-component target runs the standalone check, which a lone component passes.
         build(tmp_path / "build", "sensor_hub.ddd")
 
@@ -320,6 +330,9 @@ ddd_generate(img
         build(tmp_path / "build")
         assert (tmp_path / "build" / "ddd" / "img" / "ddd_layout.h").is_file()
         assert closed_over_layout(tmp_path / "build" / "schemas" / "ddd_component.schema.json")
+        # Named, like the a2l, after the project inside the file rather than after the image.
+        dictionary = tmp_path / "build" / "ddd" / "img" / "LayoutDevice.dictionary.json"
+        assert json.loads(dictionary.read_text(encoding="utf-8"))["plugins"] == ["layout"]
 
     def test_an_edited_plugin_regenerates_through_the_sources(self, tmp_path: Path) -> None:
         """``ddd sources`` names the plugin, which is how the module learns to depend on it."""
@@ -356,6 +369,110 @@ ddd_generate(img
         )
         assert run.returncode != 0
         assert "PLUGINS cannot be given together with PROJECT" in run.stderr
+
+
+class TestTheDictionary:
+    """The build writes the resolved dictionary beside what it generated out of it."""
+
+    def write(self, tmp_path: Path, options: str = "") -> Path:
+        """One component collected into an image, which prints where its dictionary goes."""
+        description = tmp_path / "store.ddd.json"
+        described = {"component": {"name": "Store", "interface": [declare("output", "Level")]}}
+        description.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Dictionary LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{description.as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME StoreDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"{options})
+get_target_property(dictionary img DDD_DICTIONARY)
+message(STATUS "DDD_DICTIONARY=${{dictionary}}")
+""",
+            encoding="utf-8",
+        )
+        return description
+
+    def test_it_is_what_the_collected_project_dumps_where_the_property_says(
+        self, tmp_path: Path
+    ) -> None:
+        self.write(tmp_path)
+        configured = configure(tmp_path, tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "img"
+        printed = re.search(r"DDD_DICTIONARY=(.*)", configured.stdout)
+        assert printed is not None, configured.stdout
+        assert Path(printed.group(1).strip()) == generated / "StoreDevice.dictionary.json"
+        build(tmp_path / "build")
+        # From outside the build directory the step runs in: the dictionary may not depend on
+        # where the tool was started, so a dump from anywhere is the one the build wrote.
+        dumped = subprocess.run(
+            [str(DDD), "dump", str(generated / "StoreDevice.ddd.json")],
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONUTF8": "1"},
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+        assert dumped.returncode == 0, dumped.stderr
+        written = (generated / "StoreDevice.dictionary.json").read_text(encoding="utf-8")
+        assert written == dumped.stdout
+
+    def test_a_finding_is_reported_once(self, tmp_path: Path) -> None:
+        """The dictionary comes out of the generation's own run, so the build log carries each
+        finding once, rather than once for every command that analysed the project."""
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        output = build(tmp_path / "build")
+        assert output.count("warning[unused-output]") == 1, output
+
+    def test_no_dictionary_leaves_out_the_file_and_the_property(self, tmp_path: Path) -> None:
+        self.write(tmp_path, options="\n             NO_DICTIONARY")
+        configured = configure(tmp_path, tmp_path / "build")
+        assert "DDD_DICTIONARY=dictionary-NOTFOUND" in configured.stdout
+        build(tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "img"
+        assert (generated / "ddd_globals.c").is_file()
+        assert not (generated / "StoreDevice.dictionary.json").exists()
+
+    def test_a_run_that_fails_its_checks_keeps_the_last_dictionary(self, tmp_path: Path) -> None:
+        """The dictionary is written with the artefacts or not at all: a failing run leaves it
+        describing the artefacts that are still beside it.
+
+        A dump of its own beside the generation would not guarantee that - a finding of the
+        analysis stops no dump - so this holds because the generation writes it.
+        """
+        description = self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        dictionary = tmp_path / "build" / "ddd" / "img" / "StoreDevice.dictionary.json"
+        before = dictionary.read_bytes()
+        add_an_unproduced_input(description)
+        run = cmake("--build", str(tmp_path / "build"), cwd=tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert "missing-producer" in run.stdout + run.stderr
+        assert dictionary.read_bytes() == before
+
+    def test_severity_reaches_the_dictionary_as_it_reaches_the_artefacts(
+        self, tmp_path: Path
+    ) -> None:
+        """An error relaxed with ``SEVERITY`` lets the generation through, dictionary included:
+        whatever writes the dictionary has to apply the policy the build was given."""
+        description = self.write(
+            tmp_path, options='\n             SEVERITY "missing-producer=warning"'
+        )
+        add_an_unproduced_input(description)
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        dictionary = tmp_path / "build" / "ddd" / "img" / "StoreDevice.dictionary.json"
+        objects = json.loads(dictionary.read_text(encoding="utf-8"))["objects"]
+        assert "Unproduced" in {entry["name"] for entry in objects}
 
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])

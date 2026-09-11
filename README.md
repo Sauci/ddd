@@ -722,9 +722,9 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
-| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers |
-| `ddd dump FILE` | print the resolved dictionary, the contract the backends consume |
+| `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
 | `ddd schema component\|constants\|dictionary\|project\|rasters\|sections\|types\|units\|all` | json schema of the file formats and of the contract; `all` writes them into a directory; `--plugin` closes the extension blocks over the named plugins' models |
 | `ddd sources FILE` | list every file the project is built out of - the descriptions and the plugin modules - for a build system |
@@ -747,7 +747,8 @@ a single path, and `ddd id --assign` reports which files it could not read and o
 ids written across all of them, not a list of findings. `ddd dump` is the
 one command whose stdout is *itself* the payload, so there the diagnostics go to stderr and
 `--format` chooses how they are written; `ddd dump project.ddd.json > baseline.json` works
-in either format.
+in either format, and `ddd dump project.ddd.json -o baseline.json` writes the same text
+without the shell in between - the same bytes on every platform, stdout left empty.
 
 Exit codes: `0` clean, `1` findings, `2` wrong usage.  `1` means at least one finding was
 reported **as an error**: a run with only warnings exits `0`, which is what `--strict` is
@@ -800,7 +801,9 @@ needs no 3.30 and no `ddd_add_component`.
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
-path of the generated a2l is available as the `DDD_A2L` property of the image.
+path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
+`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts,
+in the same write as them (`ddd generate --dictionary`) - as its `DDD_DICTIONARY` property.
 
 In the collected mode `firmware_ddd_headers` carries more than the include directory: the
 interface include directories, compile definitions and compile options of every registered
@@ -821,7 +824,7 @@ reports.
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
 the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
-`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `STRICT` and
+`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
 include order to decide which set a component compiles against.  DDD refuses that rather than

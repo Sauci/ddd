@@ -5,8 +5,8 @@
 # * ddd_add_component(<target> JSON <file>...): registers the DDD description(s) of a component on its target, and
 #   creates the on-demand <target>.ddd target checking that component on its own.
 # * ddd_generate(<image> ...): collects the descriptions of all components in the link closure of the given image,
-#   generates the global definition file, the per-component interface headers and the a2l, and links the result into
-#   the image.
+#   generates the global definition file, the per-component interface headers and the a2l, writes the resolved data
+#   dictionary beside them, and links the result into the image.
 #
 # The collection relies on the custom transitive property DDD_JSON, introduced with the TRANSITIVE_LINK_PROPERTIES
 # feature of CMake 3.30: the description files travel through the link graph like usage requirements, so an image
@@ -321,7 +321,7 @@ endfunction()
 #
 # ddd_generate(<image>
 #              [PROJECT <file>]              # use this project description instead of collecting the link closure
-#              [NAME <name>]                 # project name in the a2l, defaults to the image name
+#              [NAME <name>]                 # project name in the a2l and the dictionary, defaults to the image name
 #              [OUTPUT_DIRECTORY <dir>]      # defaults to ${CMAKE_CURRENT_BINARY_DIR}/ddd/<image>
 #              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
 #              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
@@ -333,6 +333,7 @@ endfunction()
 #              [DEPENDS <file>...]           # additional dependencies retriggering the generation
 #              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
+#              [NO_DICTIONARY]               # do not write the resolved data dictionary
 #              [STRICT]                      # treat DDD warnings as errors
 #              [NO_PROPAGATE_HEADERS])       # do not hand <stem>_ddd_headers to the registered components
 #
@@ -349,14 +350,16 @@ endfunction()
 #                          without the artefacts
 #
 # <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
-# path of the generated a2l is available as the DDD_A2L property of the image.
+# path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
+# it as its DDD_DICTIONARY property.
 #
-# Only the three shared files are declared as outputs of the generator; the per-component headers are written next to
-# them, but their names come from inside the description files and are therefore unknown at configure time. That is
-# what <stem>_ddd_headers is for: a consumer depends on the generation step, not on an individual header path.
+# Only the shared files - the ones the template names give away, the a2l and the dictionary - are declared as outputs of
+# the generator; the per-component headers are written next to them, but their names come from inside the description
+# files and are therefore unknown at configure time. That is what <stem>_ddd_headers is for: a consumer depends on the
+# generation step, not on an individual header path.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
-                          "CONST_INPUTS;NO_A2L;STRICT;NO_PROPAGATE_HEADERS"
+                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS"
                           "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
@@ -420,8 +423,8 @@ function(ddd_generate image)
     # artifact (firmware.elf), and firmware_ddd_headers is what a consumer naturally writes.
     cmake_path(GET image STEM LAST_ONLY image_stem)
     if(arg_NAME AND arg_PROJECT)
-        message(STATUS "ddd_generate: NAME is ignored with PROJECT - the a2l is named after the project name inside "
-                       "\"${arg_PROJECT}\".")
+        message(STATUS "ddd_generate: NAME is ignored with PROJECT - the a2l and the dictionary are named after the "
+                       "project name inside \"${arg_PROJECT}\".")
     endif()
     if(NOT arg_NAME)
         # The project name ends up as the a2l project and module name, which DDD requires to be a c identifier.
@@ -437,7 +440,8 @@ function(ddd_generate image)
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
         _ddd_project_sources(descriptions "${project_file}")
         _ddd_project_plugins(plugin_specs "${project_file}")
-        # The tool names the a2l after the project name in the description; NAME does not rename it.
+        # The tool names the a2l after the project name in the description, and the dictionary is named alike; NAME
+        # renames neither.
         _ddd_description_name(arg_NAME "${project_file}")
     else()
         # The component descriptions travel through the link graph as a transitive property (see
@@ -529,6 +533,19 @@ function(ddd_generate image)
         set(a2l_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.a2l")
         list(APPEND generated_outputs "${a2l_file}")
         set_property(TARGET ${image} PROPERTY DDD_A2L "${a2l_file}")
+    endif()
+
+    # The dictionary every artefact above is generated from, written beside them: what a template author reads to see
+    # what the templates receive, and what a delivery archives for a later "ddd compare". "generate" writes it itself,
+    # in the same write as the artefacts: one analysis and one report of its findings, and a run failing its checks
+    # writes none of them, which leaves the last dictionary describing the artefacts still beside it. A file whose
+    # content did not change is left untouched, as the artefacts are, so nothing depending on it runs again for nothing.
+    # It is named like the a2l, after NAME or, with PROJECT, after the name inside that file.
+    if(NOT arg_NO_DICTIONARY)
+        set(dictionary_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.dictionary.json")
+        list(APPEND generated_outputs "${dictionary_file}")
+        list(APPEND generate_options --dictionary "${dictionary_file}")
+        set_property(TARGET ${image} PROPERTY DDD_DICTIONARY "${dictionary_file}")
     endif()
 
     add_custom_command(OUTPUT ${generated_outputs}

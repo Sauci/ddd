@@ -53,7 +53,10 @@ report:
    }
 
 The one exception is ``ddd dump``, whose standard output is itself the payload: there the json
-diagnostics go to standard error, so that both formats leave the dictionary alone.
+diagnostics go to standard error, so that both formats leave the dictionary alone. Given
+``-o``, the dictionary goes into that file instead and standard output stays empty; the
+diagnostics stay where they were, and in json they name the file written, with its status,
+as ``generate`` names its own.
 
 The exit code is the same everywhere, which lets a build system treat DDD like a compiler:
 
@@ -77,10 +80,11 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        before any analysis, so the project was never examined and nothing but the error
        is printed. A usage error raised by a step that follows the analysis instead - a
        plugin hook that raises, an override naming a plugin check no loaded plugin
-       registers, a ``--renames`` file or an artefact that cannot be written, an address
-       map that cannot be read, ``--plugin`` refused beside a description, or a run that
-       would write nothing - reports the findings of the run first, in the requested
-       format, before the error follows; the exit code is still ``2``.
+       registers, a ``--renames`` file, a dumped dictionary or an artefact that cannot be
+       written, an address map that cannot be read, ``--plugin`` refused beside a
+       description, or a run that would write nothing - reports the findings of the run
+       first, in the requested format, before the error follows; the exit code is still
+       ``2``.
 
 The commands
 ------------
@@ -119,14 +123,21 @@ The commands
        ``--address-map`` is refused rather than quietly ignored, and a run that has subtracted
        the c neither wants nor accepts ``-t``.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
-       generates in spite of errors.
+       generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which
+       writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
+       the artefacts, so that all of them are written or none is; a path an artefact of the
+       run is written to is refused. That is how a build keeps the dictionary beside what it
+       generated, in one analysis and one report of its findings.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
        writes this?".
-   * - ``ddd dump FILE``
+   * - ``ddd dump FILE [-o FILE]``
      - print the resolved data dictionary, the contract every backend consumes. This is what
-       gets archived next to a delivery and handed to ``ddd compare`` later.
+       gets archived next to a delivery and handed to ``ddd compare`` later. ``-o`` writes it
+       into a file instead, the way ``generate`` writes an artefact: the same bytes on every
+       platform, and a file whose content would not change is left untouched, which is what a
+       build depending on it needs and what a redirection cannot promise.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
        has none, editing them in place; a declaration that has one is left alone, so a second

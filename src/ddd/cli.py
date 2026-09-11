@@ -22,6 +22,7 @@ from ddd.backends import (
     ByteOrder,
     CBackend,
     COptions,
+    GeneratedFile,
     WriteStatus,
     addressed_symbols,
     example_template_directory,
@@ -248,7 +249,16 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         dump,
         format_help=(
             "format of the diagnostics, which go to stderr on this command; the dictionary "
-            "on stdout is json either way"
+            "is json either way"
+        ),
+    )
+    dump.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help=(
+            "write the dictionary to this file instead of stdout, leaving the file untouched "
+            "when its content would not change"
         ),
     )
     dump.set_defaults(handler=_command_dump)
@@ -494,6 +504,15 @@ def _add_generate_arguments(
                 "everything else"
             ),
         )
+    parser.add_argument(
+        "--dictionary",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "also write the resolved data dictionary, the text ddd dump prints, to this file, in "
+            "the same write as the artefacts: all of them or none"
+        ),
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="report what would be written, write nothing"
     )
@@ -750,6 +769,48 @@ def _displayed_path(path: Path, output_dir: Path) -> str:
     return path.as_posix()
 
 
+def _written(status: WriteStatus, shown: str, prefix: str = "wrote") -> str:
+    """One line of the text report of a written file, as ``generate`` and ``dump -o`` print it.
+
+    ``prefix`` is what the run did to a file it did not leave alone - ``would write`` on a dry
+    run - padded so that the paths line up under ``unchanged``.
+    """
+    if status is WriteStatus.UNCHANGED:
+        return f"unchanged   {shown}"
+    return f"{prefix:<11} {shown} ({status.value})"
+
+
+def _dictionary_text(dictionary: DataDictionary) -> str:
+    """The dictionary as ``dump`` publishes it, final newline included.
+
+    One text wherever it goes - printed by ``dump``, written by ``dump -o``, or written beside
+    the artefacts by ``generate --dictionary`` - so that no two of them can differ.
+    """
+    return dictionary.model_dump_json(indent=2) + "\n"
+
+
+def _dictionary_file(
+    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile]
+) -> GeneratedFile:
+    """``generate --dictionary``: the dictionary as one more file of the run's single write.
+
+    Written with the artefacts rather than after them, so that all of them are written or none
+    is: a run that fails leaves the last dictionary describing the artefacts still beside it,
+    and a failure on the dictionary takes back the artefacts the run had created. The path is
+    the one typed, relative to the working directory like every path on the command line
+    rather than a file a backend names inside the output directory, so it is resolved before
+    it is weighed against the files the backends claim; a clash is refused before anything is
+    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file.
+    """
+    if path.resolve() in {artefact.path for artefact in artefacts}:
+        msg = (
+            f"the dictionary and an artefact of this run would both write '{path.name}'; "
+            "give --dictionary another file"
+        )
+        raise ValueError(msg)
+    return GeneratedFile(path, _dictionary_text(dictionary))
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     _selected(args)
 
@@ -772,6 +833,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             or args.render_a2l
             or produces_plugin_artefact
             or getattr(args, "plugin_artefact", None) is not None
+            or args.dictionary is not None
         ):
             msg = (
                 "this run would write nothing: what --without left of it is the plugins' "
@@ -827,6 +889,8 @@ def _command_generate(args: argparse.Namespace) -> int:
                 raise ValueError(msg)
             backends.append(backend_of(plugin, dictionary, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
+        if args.dictionary is not None:
+            files.append(_dictionary_file(dictionary, args.dictionary, files))
         try:
             results = write(files, dry_run=args.dry_run)
         except OSError as error:
@@ -853,10 +917,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         prefix = "would write" if args.dry_run else "wrote"
         for result in results:
             shown = _displayed_path(result.path, args.output_dir)
-            if result.status is WriteStatus.UNCHANGED:
-                print(f"unchanged   {shown}", file=sys.stderr)
-            else:
-                print(f"{prefix:<11} {shown} ({result.status.value})", file=sys.stderr)
+            print(_written(result.status, shown, prefix), file=sys.stderr)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
 
 
@@ -893,15 +954,52 @@ def _command_dump(args: argparse.Namespace) -> int:
     stdout carries the dictionary and nothing else, in both formats: ``ddd dump > baseline.json``
     is the documented way to archive a delivery, so a second json document must not appear
     there. ``--format json`` therefore selects the format of the *diagnostics*, which go to
-    stderr - where they also stay out of the way of a pipe.
+    stderr - where they also stay out of the way of a pipe. ``-o`` moves the dictionary into a
+    file, the findings and the exit code staying what they were; see
+    :func:`_write_dictionary`.
     """
     resolved, bag = _analyze(args, stream=sys.stderr)
-    if resolved is not None:
-        print(resolved.dictionary.model_dump_json(indent=2))
-    _report(bag, args.format, stream=sys.stderr)
     if resolved is None:
+        _report(bag, args.format, stream=sys.stderr)
         return EXIT_FINDINGS
+    if args.output is None:
+        print(_dictionary_text(resolved.dictionary), end="")
+        _report(bag, args.format, stream=sys.stderr)
+    else:
+        _write_dictionary(resolved.dictionary, args.output, bag, args.format)
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+
+
+def _write_dictionary(
+    dictionary: DataDictionary, path: Path, bag: DiagnosticBag, output_format: str
+) -> None:
+    """``dump -o``: the dictionary into ``path``, reported the way ``generate`` reports a file.
+
+    The text is exactly what stdout would have carried, and the findings, the stream they go to
+    and the exit code of the analysis stay what they were; stdout is left empty, the file
+    written is reported beside the findings, and a target that cannot be written is a usage
+    error. The file goes through the writer ``generate`` uses - staged, the same bytes on every
+    platform, and left untouched when its content would not change, so that a build step
+    reading it does not run again for nothing. A redirection offers none of that: the shell
+    empties the target before the tool has even started, and Windows PowerShell re-encodes
+    whatever it is handed. The write sits in a block of its own, so a target that cannot be
+    written is reported after the findings of the run, as ``generate`` reports one.
+    """
+    with _reported_on_failure(bag, output_format, sys.stderr):
+        text = _dictionary_text(dictionary)
+        try:
+            (result,) = write([GeneratedFile(path, text)])
+        except OSError as error:
+            msg = f"cannot write '{path.as_posix()}': {error.strerror or error}"
+            raise OSError(msg) from None
+    shown = path.as_posix()
+    if output_format == "json":
+        payload = _diagnostics_payload(bag)
+        payload["generated"] = [{"path": shown, "status": result.status.value}]
+        print(json.dumps(payload, indent=2), file=sys.stderr)
+        return
+    _report(bag, output_format)
+    print(_written(result.status, shown), file=sys.stderr)
 
 
 def _command_id(args: argparse.Namespace) -> int:
@@ -1365,13 +1463,13 @@ def _reported_on_failure(
     to ``_report`` unchanged, so a caller whose successful report does not go to stdout - only
     ``dump``, today - keeps that promise on the failing path too.
 
-    ``check``, ``compare`` and ``generate`` - the commands that produce something after the
-    analysis - each wrap the whole of it in one such block, not the particular calls someone
-    thought could fail: a usage error can come from any statement in between, including one
-    nobody expected to raise, and the one that surprises us is exactly the one this has to
-    cover. ``list``, ``dump``, ``artefacts`` and ``sources`` have nothing fallible after their
-    analysis today and so establish no block; a step added to one of them later belongs inside
-    a block of its own.
+    ``check``, ``compare``, ``generate`` and ``dump -o`` - the commands that produce something
+    after the analysis - each wrap the whole of it in one such block, not the particular calls
+    someone thought could fail: a usage error can come from any statement in between,
+    including one nobody expected to raise, and the one that surprises us is exactly the one
+    this has to cover. ``list``, ``artefacts``, ``sources`` and a ``dump`` to stdout have
+    nothing fallible after their analysis today and so establish no block; a step added to one
+    of them later belongs inside a block of its own.
     """
     try:
         yield

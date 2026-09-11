@@ -94,7 +94,11 @@ archived today stays readable by a later release of the tool and by tools DDD do
 .. note::
    ``ddd dump`` writes the dictionary to stdout and its diagnostics to stderr, in both output
    formats. That is what makes ``ddd dump project.ddd.json > baseline.json`` safe: a second
-   json document can never end up in the archived file.
+   json document can never end up in the archived file. What a redirection cannot promise is
+   the bytes, which the shell writes: the ``>`` of Windows PowerShell 5.1 re-encodes the
+   dictionary as UTF-16, which ``ddd compare`` refuses to read back.
+   ``ddd dump project.ddd.json -o baseline.json`` writes the file itself, as utf-8 on every
+   platform, and is the spelling for a script that may run there.
 
 The workflow
 ------------

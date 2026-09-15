@@ -79,6 +79,26 @@ structure descend one call per level, so a chain a few hundred deep ends the run
 generated header anyway.
 """
 
+_LENGTH_RULE = "a dimension is a whole number of at least 1"
+"""What a constant has to be to dimension anything, said the same way at every site.
+
+A constant is a named number and the vocabulary constrains it no further, because most of
+what a project names - a gain, an offset, a count that happens to be none - is emitted and
+never dimensions anything. So the size rule lives here, at the only use that needs it, and
+is applied where the shape names the constant rather than where it is declared.
+"""
+
+
+def _is_length(value: int | float) -> bool:
+    """Whether a constant's value is a length an array can have.
+
+    The same rule :data:`~ddd.models.objects.Dimension` applies to a dimension written as a
+    literal, asked of one written as a name: whole, because storage is counted in elements,
+    and at least 1, because an array of no elements is no array.
+    """
+    return isinstance(value, int) and value >= 1
+
+
 _MAX_ELEMENTS = 10_000_000
 """How many elements one array holds.
 
@@ -1528,21 +1548,26 @@ class _Analysis:
             return
         for position, member in enumerate(structure.members):
             for index, dimension in enumerate(member.dimensions):
-                if isinstance(dimension, str) and dimension not in self._constants:
-                    location = entry.location(f"members[{position}].dimensions[{index}]")
-                    reported = (
-                        self._bag.add(
-                            "unknown-constant",
-                            f"member '{member.name}' of structure '{entry.name}' is dimensioned "
-                            f"by '{dimension}', which is not a constant any file of this "
-                            f"project declares{self._nearest_constant(dimension)}",
-                            location,
-                        )
-                        is not None
+                if not isinstance(dimension, str):
+                    continue
+                named = f"member '{member.name}' of structure '{entry.name}' is dimensioned"
+                if dimension not in self._constants:
+                    check = "unknown-constant"
+                    message = (
+                        f"{named} by '{dimension}', which is not a constant any file of this "
+                        f"project declares{self._nearest_constant(dimension)}"
                     )
-                    self._poisoned_types.setdefault(
-                        entry.name, _Cause("unknown-constant", reported, location)
+                elif not _is_length(self._constants[dimension].value):
+                    check = "dimension-value"
+                    message = (
+                        f"{named} by '{dimension}', whose value is "
+                        f"{self._constants[dimension].value}; {_LENGTH_RULE}"
                     )
+                else:
+                    continue
+                location = entry.location(f"members[{position}].dimensions[{index}]")
+                reported = self._bag.add(check, message, location) is not None
+                self._poisoned_types.setdefault(entry.name, _Cause(check, reported, location))
 
     def _check_opaque_members(self, entry: LoadedType) -> None:
         """A member naming an external type is opaque storage, so its ``a2l`` block is refused.
@@ -1838,12 +1863,22 @@ class _Analysis:
         """
         resolves = True
         for named, key in spelled_dimensions(ref.definition):
+            location = ref.location(f"definition.{key}")
             if named not in self._constants:
                 self._refuse(
                     "unknown-constant",
                     f"'{ref.name}' is dimensioned by '{named}', which is not a constant any "
                     f"file of this project declares{self._nearest_constant(named)}",
-                    ref.location(f"definition.{key}"),
+                    location,
+                    ref,
+                )
+                resolves = False
+            elif not _is_length(self._constants[named].value):
+                self._refuse(
+                    "dimension-value",
+                    f"'{ref.name}' is dimensioned by '{named}', whose value is "
+                    f"{self._constants[named].value}; {_LENGTH_RULE}",
+                    location,
                     ref,
                 )
                 resolves = False
@@ -1956,11 +1991,14 @@ class _Analysis:
         """The number a dimension resolves to; a name looks its constant up.
 
         Only ever asked once the spelling has resolved: a declaration or a type whose shape
-        names an unknown constant was reported and dropped before anything got this far.
+        names an unknown constant, or one whose value is no length, was reported and dropped
+        before anything got this far.
         """
         if isinstance(dimension, int):
             return dimension
-        return self._constants[dimension].value
+        value = self._constants[dimension].value
+        assert isinstance(value, int)  # _is_length held where the shape named it
+        return value
 
     def _numeric_shape(self, shape: WrittenShape) -> Shape:
         """The shape with every named dimension resolved to its number."""

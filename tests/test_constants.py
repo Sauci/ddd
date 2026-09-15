@@ -50,8 +50,8 @@ def value_member(name: str, datatype: str = "uint16", **extra: Any) -> dict[str,
     return {"name": name, "member": "value", "datatype": datatype, "conversion": {}, **extra}
 
 
-def constant(name: str, value: int, description: str = "") -> dict[str, Any]:
-    declared = {"name": name, "value": value}
+def constant(name: str, value: int | float, description: str = "") -> dict[str, Any]:
+    declared: dict[str, Any] = {"name": name, "value": value}
     if description:
         declared["description"] = description
     return declared
@@ -67,10 +67,38 @@ class TestTheFile:
         assert declared.value == 8
         assert declared.description == "cells of the manifold"
 
-    def test_a_value_below_one_is_refused(self) -> None:
-        """The value is an array dimension, and an array of no elements is no array."""
+    @pytest.mark.parametrize("value", [0, -40, 2**64 - 1, -(2**63)])
+    def test_a_whole_number_of_any_sign_is_carried(self, value: int) -> None:
+        """A constant is a named number, not only a size: zero and negative values reach
+        the outputs like any other, and the dimension rule is checked where a shape names
+        the constant rather than where it is declared."""
+        model = ConstantsFile.model_validate(constants(constant("N", value)))
+        declared = model.constants[0].value
+        assert declared == value
+        assert isinstance(declared, int)
+
+    @pytest.mark.parametrize("value", [1.5, -0.25, 0.0, 2.0])
+    def test_a_fractional_value_is_carried_as_written(self, value: float) -> None:
+        """A gain or an offset is as much a named number as a count; written with a point it
+        stays a float, so the literal a template emits keeps the type its author meant."""
+        model = ConstantsFile.model_validate(constants(constant("N", value)))
+        declared = model.constants[0].value
+        assert declared == value
+        assert isinstance(declared, float)
+
+    @pytest.mark.parametrize("value", [2**64, -(2**63) - 1])
+    def test_a_whole_number_beyond_what_a_target_holds_is_refused(self, value: int) -> None:
+        """The bound is what a 64 bit target can express, signed or unsigned; past it the
+        value is a literal no generated code could hold."""
         with pytest.raises(ValidationError):
-            ConstantsFile.model_validate(constants(constant("N", 0)))
+            ConstantsFile.model_validate(constants(constant("N", value)))
+
+    @pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+    def test_a_value_that_is_not_finite_is_refused(self, value: float) -> None:
+        """``inf`` and ``nan`` are not numbers a description can state: they would reach a
+        template as those words and land in the generated code as identifiers."""
+        with pytest.raises(ValidationError):
+            ConstantsFile.model_validate(constants(constant("N", value)))
 
     def test_a_quoted_value_is_refused(self) -> None:
         """A value is written as a number; ``"8"`` is neither a number nor a name."""
@@ -278,6 +306,118 @@ class TestTheCheck:
         rendered = messages(bag)
         assert "types.ddd.json#types[0].members[0].dimensions[0]" in rendered
         assert "member 'raw' of structure 'S_t'" in rendered
+
+    def test_a_constant_no_shape_names_may_be_any_number(self, tree: Path) -> None:
+        """The dimension rule is a rule about dimensions.  A constant declared to be emitted
+        - a gain, an offset, a count that happens to be none - dimensions nothing, so nothing
+        about it has to be a size."""
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "X", dimensions=["PRESSURE_CELLS"]),
+                vocabulary=[
+                    constant("PRESSURE_CELLS", 8),
+                    constant("SPARE_CELLS", 0),
+                    constant("ZERO_OFFSET", -40),
+                    constant("CELL_GAIN", 1.5),
+                ],
+            ),
+        )
+        assert checks(bag) == []
+
+    @pytest.mark.parametrize("value", [0, -8, 1.5])
+    def test_a_constant_that_is_no_size_cannot_dimension_a_declaration(
+        self, tree: Path, value: int | float
+    ) -> None:
+        """Reported where the name is written, the way an undeclared one is: the value is a
+        number, but not one an array can be that long."""
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "X", dimensions=[2, "SPARE_CELLS"]),
+                vocabulary=[constant("SPARE_CELLS", value)],
+            ),
+        )
+        assert checks(bag) == ["dimension-value"]
+        rendered = messages(bag)
+        assert "a.ddd.json#component.interface[0].definition.dimensions[1]" in rendered
+        assert f"'X' is dimensioned by 'SPARE_CELLS', whose value is {value}" in rendered
+        assert "a dimension is a whole number of at least 1" in rendered
+
+    def test_an_axis_sized_by_such_a_constant_is_reported_at_the_size(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "Ax", kind="axis", size="SPARE_CELLS", datatype="uint16"),
+                vocabulary=[constant("SPARE_CELLS", 0)],
+            ),
+        )
+        assert checks(bag) == ["dimension-value"]
+        assert "a.ddd.json#component.interface[0].definition.size" in messages(bag)
+
+    def test_the_declaration_is_dropped_like_one_naming_no_constant(self, tree: Path) -> None:
+        """A dimension of zero is an array of no known length as surely as a dimension of
+        nothing is, so the declaration goes the same way and takes what references it along."""
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "Ax", kind="axis", size="SPARE_CELLS", datatype="uint16"),
+                declare("local", "C", kind="curve", axis="Ax", datatype="uint16"),
+                vocabulary=[constant("SPARE_CELLS", 0)],
+            ),
+        )
+        assert checks(bag) == ["dimension-value"]
+        assert dictionary is not None
+        assert dictionary.objects == ()
+
+    def test_a_member_dimensioned_by_such_a_constant_poisons_the_type(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "constants.ddd.json": constants(constant("CELL_GAIN", 1.5)),
+                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"])),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+        )
+        assert checks(bag) == ["dimension-value"]
+        rendered = messages(bag)
+        assert "types.ddd.json#types[0].members[0].dimensions[0]" in rendered
+        assert "member 'raw' of structure 'S_t' is dimensioned by 'CELL_GAIN'" in rendered
+
+    def test_silencing_it_says_what_the_silence_costs(self, tree: Path) -> None:
+        """Relaxed like every shape finding, and the dropped declaration is reported anyway -
+        a dictionary quietly one variable short is the one way this tool can be wrong without
+        anybody being told."""
+        dictionary, bag = run_analysis(
+            tree,
+            self.files(
+                declare("local", "X", dimensions=["SPARE_CELLS"]),
+                vocabulary=[constant("SPARE_CELLS", 0)],
+            ),
+            severities=["dimension-value=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        assert dictionary is not None and dictionary.objects == ()
+
+    def test_a_component_read_alone_still_reports_it(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Unlike ``unknown-constant`` this check concludes nothing from what is absent: the
+        constant is declared and its value is in front of it. So a component carrying its own
+        constants is held to it under ``--standalone``, and so by the language server."""
+        from ddd.cli import EXIT_FINDINGS, main
+
+        solo = component("Solo", declare("local", "X", dimensions=["SPARE_CELLS"]))
+        solo["component"]["constants"] = [constant("SPARE_CELLS", 0)]
+        write_tree(tree, {"solo.ddd.json": solo})
+        code = main(
+            ["check", str(tree / "solo.ddd.json"), "--standalone", "-W", "missing-id=ignore"]
+        )
+        assert code == EXIT_FINDINGS
+        assert "error[dimension-value]" in capsys.readouterr().err
 
     def test_the_check_is_relaxable(self, tree: Path) -> None:
         _, bag = run_analysis(
@@ -594,6 +734,29 @@ class TestGeneratedC:
         assert "#define PRESSURE_CELLS 8 /**< cells of the manifold */" in header
         assert "#define TAPS 2\n" in header  # no description, no comment
 
+    def test_a_constant_no_shape_names_is_emitted_as_written(self, tree: Path) -> None:
+        """What the vocabulary is for beyond sizes: the value reaches the header as the
+        author wrote it, so a fractional constant stays a double literal and a negative one
+        keeps its sign."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "a.ddd.json"),
+                "constants.ddd.json": constants(
+                    constant("CELL_GAIN", 1.5, "counts per bar"),
+                    constant("SPARE_CELLS", 0),
+                    constant("ZERO_OFFSET", -40),
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None, [d.render() for d in bag]
+        files = {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
+        header = files["ddd_types.h"]
+        assert "#define CELL_GAIN 1.5 /**< counts per bar */" in header
+        assert "#define SPARE_CELLS 0\n" in header
+        assert "#define ZERO_OFFSET -40\n" in header
+
     def test_without_constants_no_block_is_emitted(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
             tree,
@@ -643,6 +806,24 @@ class TestA2l:
         # The MOD_PAR follows the MOD_COMMON, and every record keeps resolved numbers.
         assert a2l.index("/end MOD_COMMON") < a2l.index("/begin MOD_PAR")
         assert "MATRIX_DIM 8 1 1" in a2l
+
+    def test_a_constant_of_any_value_becomes_a_system_constant(self, tree: Path) -> None:
+        """The a2l writes the value as a quoted string, so it carries whatever was written."""
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "a.ddd.json"),
+                "constants.ddd.json": constants(
+                    constant("CELL_GAIN", 1.5), constant("ZERO_OFFSET", -40)
+                ),
+                "a.ddd.json": component("A", declare("local", "X", unit="")),
+            },
+        )
+        assert dictionary is not None
+        files = {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
+        a2l = files["P.a2l"]
+        assert 'SYSTEM_CONSTANT "CELL_GAIN" "1.5"' in a2l
+        assert 'SYSTEM_CONSTANT "ZERO_OFFSET" "-40"' in a2l
 
     def test_without_constants_no_mod_par_is_written(self, tree: Path) -> None:
         dictionary, _ = run_analysis(

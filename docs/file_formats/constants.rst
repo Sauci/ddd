@@ -1,8 +1,10 @@
 Constant vocabulary
 ===================
 
-A ``constants`` file declares named integer constants, so that a size lives in one place and
-is shared by name. An array dimension is commonly a named constant of the c project - stated
+A ``constants`` file declares named numbers, so that a number the project depends on lives
+in one place and is shared by name. Every declared constant reaches the outputs - the c
+templates are handed the whole vocabulary, and the a2l writes one ``SYSTEM_CONSTANT`` each -
+so a gain, an offset or a count of zero belongs here as much as a size does. An array dimension is commonly a named constant of the c project - stated
 once, and used by every loop that walks the array - and a bare number in a description
 restates that constant and drifts from it silently. With the vocabulary declared, a shape
 names the constant where it would state the number, the generated c declares the array by
@@ -21,11 +23,14 @@ that name, and the a2l records the constant for the calibration tool.
 
 ``name`` is a c identifier: it reaches the generated code as an identifier of its own, so
 the length cap, ``reserved-identifier`` and ``name-collision`` apply to it like to any other
-name. ``value`` is an integer of at least 1, written as a number and as a literal only: an
-expression would put a parser and an evaluation order into a description format, and a
-constant cannot name another constant - what cannot be written cannot cycle. ``description``
-is where the meaning of a size is written down once, instead of being implied by every
-object that happens to be dimensioned by it. The file is listed in the ``includes`` of a
+name. ``value`` is a number: a whole number of either sign that a 64 bit target can hold,
+signed or unsigned, or a finite number written with a fraction. How it is written decides
+which it is - ``2`` is a whole number and ``2.0`` is not - and the outputs carry the literal
+as written, so ``{"name": "CELL_GAIN", "value": 2.0}`` reaches a c header as the double
+literal ``2.0``. The value is a literal only: an expression would put a parser and an
+evaluation order into a description format, and a constant cannot name another constant -
+what cannot be written cannot cycle. ``description`` is where the meaning of a number is
+written down once, instead of being implied by every object that happens to use it. The file is listed in the ``includes`` of a
 project like any other description, and ``ddd schema constants`` prints its published
 contract.
 
@@ -73,6 +78,18 @@ suggested, and the finding lands on the dimension entry that names it:
 
    $ ddd check p.ddd.json  # a project whose component misspells PRESSURE_CELLS
    a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
+   1 error
+
+A constant a shape names has to be a whole number of at least 1 - the rule a dimension
+written as a literal obeys. The rule belongs to the use rather than to the declaration,
+because only a shape needs a length: ``SPARE_CELLS`` may be ``0`` for as long as it is only
+emitted, and naming it as a dimension is reported where the name is written, with the
+declaration dropped as it is for an unknown constant:
+
+.. code-block:: text
+
+   $ ddd check p.ddd.json  # a project whose component is dimensioned by SPARE_CELLS, which is 0
+   a.ddd.json#component.interface[0].definition.dimensions[0]: error[dimension-value]: 'CellPressure' is dimensioned by 'SPARE_CELLS', whose value is 0; a dimension is a whole number of at least 1
    1 error
 
 A constant declared a second time, in the same file or another, is refused rather than merged - a

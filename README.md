@@ -508,6 +508,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `unknown-unit` | a unit is not in the vocabulary the project declares |
 | error | `unknown-section` | a definition names a memory section no file declares |
 | error | `unknown-constant` | a shape names a constant no file declares |
+| error | `dimension-value` | a shape names a constant whose value is no array length |
 | error | `unknown-raster` | a definition or a component names a measurement raster no file declares |
 | error | `section-access` | a measurement is placed in a section the software cannot write |
 | error | `type-kind` | a declared type is used where its shape does not fit |

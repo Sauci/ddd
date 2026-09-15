@@ -29,7 +29,9 @@ The passes, in order:
 9. Code review of the core, part B: `analysis.py`, `ir.py`, `compare.py`.
 10. Code review of the periphery: `cli.py`, `plugins.py`, the backends, `build_info.py`, the
     cmake module.
-11. The test suite: what it pins, what it leaves open, and how it would fail.
+11. The test suite: what it pins, what it leaves open, and how it would fail; run as two
+    halves, 11a for the fixtures and the core and format tests, 11b for the command line,
+    server, plugin, backend, build and documentation-guard tests.
 
 After the passes, every Critical, Important and Minor finding was handed to a verifier that
 had not written it, with the verdict CONFIRMED (trigger and outcome reproduced or read off
@@ -3740,3 +3742,452 @@ items in the command line - an unflushed table, a Python message for `-o .`, wid
 an override refused after it was applied. Two questions belong to the maintainer: whether the
 a2l should carry the A2ML its `IF_DATA` blocks presuppose, and whether templates, which run as
 freely as plugins, should be said to.
+
+## Pass 11a: the test suite, part A (fixtures, models, loading, analysis, structures, comparison)
+
+### Scope covered
+
+Read in full, with line numbers: `tests/conftest.py`, `tests/test_models.py`,
+`tests/test_loading.py`, `tests/test_edge_cases.py`, `tests/test_hardening.py`,
+`tests/test_analysis.py`, `tests/test_structures.py`, `tests/test_constants.py`,
+`tests/test_types.py`, `tests/test_units.py`, `tests/test_sections.py`, `tests/test_rasters.py`,
+`tests/test_calibration.py`, `tests/test_embedded.py`, `tests/test_compare.py`,
+`tests/test_comparison_tables.py` (894 collected tests, 39 % of the 2285); `pyproject.toml:98-116`
+(pytest and coverage); `docs/developer_documentation.rst:60-320`. To judge what the tests pin,
+the code they exercise: `src/ddd/analysis.py` in full, `src/ddd/compare.py` in full,
+`src/ddd/diagnostics.py` in full, `src/ddd/loading.py:88-120, 497-660, 985-1200`,
+`src/ddd/models/{objects,conversion,common}.py` in full, the validator sites of
+`models/{types,rasters,sections,constants,component}.py`, the field lists of `src/ddd/ir.py`.
+The "Test gaps" sections of `reports/pass-1.md` to `pass-10.md`, the previous review's test
+reviews at `previous-review.md:1674-1686` and `1822-1834`, and the tests named by the ten fix
+plans under `docs/superpowers/plans/2026-09-08-*.md` and `2026-09-09-*.md`.
+
+Ran (outputs under `scratchpad/pass-11a/`):
+
+- `python -m pytest --no-cov -q --durations=30 -p no:cacheprovider` over the whole suite
+  (`full-suite-durations.txt`): 2284 passed, the one known symlink failure; the summary line is
+  absent because `-q` doubled the `-q` of `addopts` into `-qq`, so the wall time is the
+  baseline's 2 min 22 s. `python -m pytest --co -q -o addopts=` (`collection.txt`): 2285 items
+  in 0.49 s.
+- Every file of my half alone, twice (`alone-*.txt`, `alone-timing.txt`): all pass; 12.5-13.3 s
+  for the half. The half in reverse collection order through a one-line plugin
+  (`reverse_plugin.py`, `pytest_collection_modifyitems(items).reverse()`): 894 passed. The
+  classes touching process state (`test_edge_cases.py::TestCommandLineEdges`,
+  `test_hardening.py::TestTheRestOfTheEdges`, `test_constants.py::TestTheEditor`) alone, and
+  the two entry-point tests in both orders: all pass.
+- `--durations=15` over the half (`half-durations.txt`); the half alone under
+  `--cov=ddd --cov-branch --cov-report=term-missing` (`half-coverage-core.txt`) to see which
+  core lines only the other half reaches.
+- Four experiments through `conftest` helpers and the public API (`exp-inf/`, `exp-bits/`,
+  `exp-gaps/`), quoted where a finding rests on them. Nothing in the repository was edited.
+
+### Strengths
+
+- The half is order independent: no file needs another to run first, the reverse order passes,
+  and the three classes that touch process state restore it (`monkeypatch` on `Path.resolve`,
+  `Path.read_text`, `Path.glob` and `sys.argv`; `importlib.reload` of an import-only module;
+  a subprocess with a copied environment). No test changes the working directory, the
+  environment or a registry: `DiagnosticBag.register` is per bag (`diagnostics.py:470-478`)
+  and `CHECKS` is never mutated. `main()` reconfigures the encoding of `sys.stdout` and
+  `sys.stderr` on every call (`cli.py:100-112`); under pytest both are capture streams that are
+  utf-8 already, so the change is a no-op and needs no teardown.
+- Nothing writes outside `tmp_path`: `DEMO` and `EXAMPLES` are only read
+  (`tests/test_compare.py:389-466`, `tests/test_edge_cases.py:396-442`,
+  `tests/test_embedded.py:230`). `write_tree` writes bytes exactly (`newline=""`,
+  `tests/conftest.py:66-80`), so a fixture is the same file on both platforms; the one
+  platform-split behaviour, a NUL byte in a path, is exercised on whichever platform the suite
+  runs and forced for the other (`tests/test_hardening.py:950-976`). No test depends on mtime,
+  hash order, the network or an installed `ddd` (the subprocess runs `sys.executable -m ddd`
+  with `PYTHONPATH=src`).
+- The only default silence is documented and opted back into where it matters:
+  `missing-id=ignore` in `run_analysis` (`tests/conftest.py:92-99`), `missing-id=info` in
+  `tests/test_models.py:334-358`; `tests/test_constants.py:405-420` and
+  `tests/test_embedded.py:221-239` silence it explicitly for a CLI and an example run.
+  Relaxations elsewhere are the subject of the test (`unknown-constant=ignore`,
+  `unknown-reference=warning`, `missing-producer=warning`).
+- Assertions are behavioural: findings by identifier, messages by their load-bearing phrase,
+  pointers by text, generated files by content, dictionaries by round trip. No whole-document
+  snapshot exists in the half; the strongest pins are relative ones - the byte identity of the
+  embedded and the standalone homes (`tests/test_embedded.py:357-369`), the include-order
+  independence of the enum registry (`tests/test_hardening.py:290-319`).
+- The fix plans' promised core tests all exist and pin what the plans say: the thirteen of
+  `2026-09-08-dropped-declarations-are-marked.md` (`tests/test_analysis.py:704-1039`), the
+  seven of `dangling-references-are-dropped.md` (`:1041-1215`, `tests/test_edge_cases.py:306-338`),
+  the five of `2026-09-09-local-reference-is-a-use.md` (`:1283-1438`), the six tasks of
+  `core-robustness.md` (`tests/test_models.py:423-780`, `tests/test_loading.py:159-302`,
+  `tests/test_structures.py:313-726`, `tests/test_analysis.py:579-702`,
+  `tests/test_hardening.py:569-633, 1013-1031`, `tests/test_structures.py:1824-1903`) and task 3
+  of `listing-commands.md` (`tests/test_analysis.py:343-384`).
+- `tests/test_hardening.py` is what its docstring says: 65 tests in eleven classes named by what
+  was at stake; 37 of them pin a message phrase and one pins a count. `tests/test_edge_cases.py`:
+  39 of its 40 tests assert a behaviour (the one exception is Minor 3).
+- The coverage gate is real for this half: with my fifteen files alone, `compare.py` is at 100 %,
+  `analysis.py` at 99 % (the eight missed statements are every external-type branch:
+  `analysis.py:1030, 1154, 1161, 1203-1205, 1589, 2035-2043`, reached only by
+  `tests/test_external.py`), `loading.py` at 91 % (plugin loading and block validation,
+  `:892-981`, part B), `diagnostics.py` at 88 % (`to_dict`, the policy's usage errors, `verify`,
+  `register`: `tests/test_cli.py:134-142`, `tests/test_plugins.py:531, 1208`). The two pragmas
+  in `src/` (`cli.py:104` `no branch`, `identity.py:32` `no cover`) and the two `exclude_also`
+  patterns (four Protocol bodies, `TYPE_CHECKING` blocks) hide nothing executable.
+- The 27 bare `pytest.raises(ValidationError)` in the half each validate a payload with a single
+  failing cause, so none hides a second one today.
+
+### Issues
+
+#### Critical
+
+None.
+
+#### Important
+
+1. **`test_a_literal_that_overflows_to_infinity_is_refused` passes on a different error and
+   would stay green with the infinity refusal deleted** (`tests/test_hardening.py:541-548`,
+   `'{"name": "X", "datatype": "float64", "conversion": {"factor": 1e400}}}]}}'`). The definition
+   states neither `kind` nor `volatile`, so the discriminated union fails before any number is
+   read, and the one assertion, `"schema" in checks(bag)`, is satisfied by that. Run on the
+   test's own payload (`exp-inf/run.py`): the only finding is
+   `definition: error[schema]: Unable to extract tag using discriminator 'kind'`; with `kind` and
+   `volatile` added the finding becomes `definition.conversion.factor: error[schema]: Input
+   should be a finite number (got: inf)`. Removing `allow_inf_nan=False` from `Real`
+   (`src/ddd/models/common.py:112`) changes nothing this test sees. Fix: state `kind` and
+   `volatile`, assert the `definition.conversion.factor` pointer and "finite number".
+2. **The comparison-table guard cannot see a leaf's own fields, and `bits` is compared by
+   nothing** (`tests/test_comparison_tables.py:137-149`,
+   `for name in ResolvedObject.model_fields:`; the excuse at `:93-98` says so itself: "which
+   this guard does not reach because it walks ResolvedObject.model_fields alone").
+   `ResolvedLeaf` adds `path`, `instance`, `instance_id` and `bits` (`src/ddd/ir.py:437-488`);
+   `bits` is in no table of `compare.py` and in no excuse, which is exactly the fail-open the
+   file exists to prevent. Run (`exp-bits/run.py`): a member widened from 2 to 4 bits between
+   two deliveries compares `[]`; narrowed from 4 to 2 it is `['narrowed-limits']` only ("limits
+   tightened from [0, 15] to [0, 3]"); the two members of the structure swapped compares `[]`.
+   The behaviour is pass 9 Important 2 and its open question; the test defect is that a guard
+   documented as an allowlist watchdog leaves the four leaf fields unaccounted, so whichever
+   way the question goes nothing fails until somebody decides. Fix: walk
+   `ResolvedLeaf.model_fields` beside `ResolvedObject.model_fields` with an excuse dict for
+   `path`, `instance` and `instance_id`; `bits` then fails until it is a table entry or an
+   excuse with a reason.
+
+#### Minor
+
+1. **A dead alternative in an `or` assertion** (`tests/test_sections.py:232-234`,
+   `assert checks(bag) == ["section-alignment", "unused-output"] or checks(bag) == [`). The
+   declaration is `local`, so `unused-output` cannot fire (`analysis.py:2848`); the first
+   alternative is unreachable and the assertion reads as two accepted outcomes. Fix: keep the
+   second.
+2. **A subprocess where the in-process test above it already proves the entry point**
+   (`tests/test_edge_cases.py:471-482`, `subprocess.run([sys.executable, "-m", "ddd",
+   "--version"], ...)`; 0.38 s, the second slowest test of the half). `:456-464` runs
+   `runpy.run_module("ddd", run_name="__main__")` and asserts the exit status and the output;
+   the subprocess adds only that the documented spelling resolves. Fix: keep one, or assert
+   something only the subprocess can show (the exit code reaching the shell).
+3. **Three tests assert nothing** (`tests/test_models.py:792` `test_sint8_is_a_byte_too`,
+   `tests/test_edge_cases.py:466-469` `test_importing_the_entry_point_module_does_not_run_it`,
+   `tests/test_sections.py:487-488` `test_a_name_with_a_dollar_or_a_dot_is_a_section_name`).
+   Each proves survival only; the second's claim ("must stay silent") is observable through
+   `capsys` and `SystemExit` and is not asserted. Fix: one assertion each.
+4. **`test_every_check_is_registered` guards four literals, not the identifiers the analysis
+   uses** (`tests/test_analysis.py:569-577`, `# Guards against a typo in a check identifier
+   used by the analysis.`). Nothing in the suite walks the first argument of the 66 `bag.add(`
+   calls in `src/ddd/analysis.py` (`grep -n` list in `scratchpad/pass-11a`), and an unregistered
+   identifier is reported at `error` rather than refused (`diagnostics.py:449-451`). A typo is
+   caught only where a test asserts that exact identifier. Fix: an `ast` walk over `src/ddd`
+   collecting every string literal passed as the first argument of `.add(` and asserting
+   membership in `CHECKS` (plugin identifiers, with `/`, excepted).
+5. **Dead statements in tests** (`tests/test_hardening.py:529`, a `write_tree` overwritten on the
+   next line; `:522`, `assert location.pointer` on a template that is not a diagnostic;
+   `tests/test_sections.py:471`, `= None` followed by `del`; `tests/test_models.py:93-94`,
+   re-imports of names the module already imports; `tests/test_compare.py:525, 600, 606, 632,
+   654, 675`, `verdict(...)` computed twice per assertion). Fix: delete each.
+6. **A core test file imports helpers from the LSP test module**
+   (`tests/test_constants.py:1163`, `from test_lsp import build_record, framed, sent`). The
+   constants tests depend on `tests/test_lsp.py` importing (its 4476 lines, its fixtures), and
+   the three helpers are used by two files. Fix: move `build_record`, `framed` and `sent` to
+   `tests/conftest.py`.
+7. **Five spellings of one types-file builder** (`tests/test_structures.py:29-51` `val`, `struct`,
+   `scalar`, `types`; `tests/test_types.py:31-51` `value`, `structure`, `scalar`;
+   `tests/test_constants.py:44-57` `struct_type`, `value_member`; `tests/test_embedded.py:38-55`
+   `scalar_type`, `struct_type`, `value_member`, `typed_member`; `tests/test_external.py:42-53`
+   `val`, `struct`, `types`). Fix: one family in `conftest.py`, beside `declare`.
+8. **Nine order pins depend on the schedule of the analysis; the rest do not**
+   (`tests/test_analysis.py:772, 1303, 1434`, `tests/test_structures.py:538`,
+   `tests/test_constants.py:465, 494`, `tests/test_compare.py:831, 872`, and the dead half of
+   Minor 1). The half carries 329 `checks(bag) == [...]` pins (`test_analysis.py` 76,
+   `test_structures.py` 69, `test_constants.py` 38, `test_compare.py` 33, `test_loading.py`
+   26, `test_models.py` 20, `test_sections.py` 16, `test_edge_cases.py` 13, `test_rasters.py`
+   13, `test_units.py` 10, `test_calibration.py` 8, `test_embedded.py` 6, `test_hardening.py`
+   1), but only these nine list two different identifiers, and only those would break on a
+   benign reordering of `_Analysis.run` (`analysis.py:743-776`) or of `compare`
+   (`compare.py:342-383`): `local-conflict` before `unused-output` (`_select_producer` before
+   `_build_variable`), `incomplete-project` before `consumer-storage` and `missing-producer`
+   (`_collect_component` before ownership), `schema` before `type-cycle` (the nesting cap
+   before the cycle walk), `unknown-type` before `duplicate-declaration`, `renamed-object`
+   before `changed-interface`, `reused-name` before the removal and the addition. The previous
+   review's "a few hundred" is therefore nine here. Fix: `sorted(checks(bag))` at the nine;
+   the report order of `reused-name` is pinned separately and correctly through `bag.sorted`
+   (`tests/test_compare.py:1189-1203`).
+9. **A redundant pragma, and a collection-only run that reports a coverage failure**
+   (`src/ddd/identity.py:32`, `if TYPE_CHECKING:  # pragma: no cover`, already excluded by
+   `pyproject.toml:115`; `python -m pytest --co` prints `FAIL Required test coverage of 100%
+   not reached. Total coverage: 29.11%` and exits 0, because `--cov --cov-fail-under=100` sit
+   in `addopts`, `pyproject.toml:102`). Fix: drop the pragma; document `--co --no-cov` under
+   "Running the checks", or move the fail-under into CI.
+10. **Two performance tests bound nothing** (`tests/test_structures.py:554-579`, "Nothing about
+    the time is asserted here"; `tests/test_sections.py:334-360`, "what this test watches is the
+    clock"). Both would pass, minutes late, if the walk they guard went exponential again; the
+    suite would become unusable rather than red. A wall-clock bound of ten seconds is not
+    flaky on any machine that runs the suite in two and a half minutes. Fix: `time.perf_counter()`
+    around the run with a generous bound, or leave as is and record the durations in CI.
+11. **`DERIVED_AS` claims the extractor reads the field, and only one entry is executed**
+    (`tests/test_comparison_tables.py:41-58`, "The value extractor of that table entry has to
+    actually read this field - which is what makes the mapping a claim rather than a comment";
+    `:151-162` checks names only, `:276-285` evaluates the `shape` extractor once). A `shape`
+    entry that stopped reading `dimensions`, or an `a2l format` entry that stopped reading
+    `a2l`, would pass. Fix: for each mapping, build two objects differing only in that field and
+    assert the target entry's `value` differs.
+
+### Status of the 2026-09-08 findings in this area
+
+The previous review's core test review (`previous-review.md:1674-1686`):
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P7 test review 1 | `missing-id` silenced by `conftest`; `missing-producer` and `unknown-constant` relaxed in two files | consciously left, documented | `tests/conftest.py:92-99`, `tests/test_structures.py:1282`, `tests/test_constants.py:400, 427, 443` |
+| P7 test review 2 | `test_edge_cases.py:307-338` pin the dangling-reference behaviour and need rewriting | fixed | `tests/test_edge_cases.py:306-338` assert the drop |
+| P7 test review 3 | `TestQuotedNumbers` covers three of nine fields; the other six accept quoted values | consciously left (strict mode deferred) | `tests/test_models.py:397-420` |
+| P7 test review 4 | no dropped producer with a surviving consumer, or the reverse | fixed | `tests/test_analysis.py:713-733, 944-966` |
+| P7 test review 5 | deep JSON tested for the loader only; `_pointer_order` for ASCII only | fixed | `tests/test_hardening.py:569-616, 618-633, 1025-1031`; `Document` in `tests/test_lsp.py` (part B) |
+| P7 test review 6 | nothing states what `1.0` does on an integer | still open, carried over (gap 16) | `tests/test_analysis.py:176` still uses `1.5`; today `init-invalid` "written as a fractional number" (`exp-gaps/out.txt`) |
+| P7 test review 7 | ~170 message pins, mostly of the load-bearing phrase | unchanged; 292 in the half now, same character | counts per file in Minor 8's list |
+| P7 test review 8 | ~220 `checks(bag) == [...]` pins would fail "a few hundred tests" on a benign reordering | re-assessed: nine pins depend on the schedule | Minor 8 |
+| P7 test review 9 | the OS-failure monkeypatches assert on the finding, not the mock | unchanged, right | `tests/test_hardening.py:960-1010` |
+| P7 test review 10 | loader OS-level cases producible without mocking untested | partly fixed: NUL byte and a directory as root; `..`/`**` patterns, case-variant spellings still open (gaps 9, 11) | `tests/test_hardening.py:950-958`, `tests/test_edge_cases.py:126-136` |
+
+### Open questions
+
+1. Is a bitfield width or a member order change between two deliveries a `changed-interface`
+   (pass 9 Important 2, its question 1)? The answer decides whether the leaf guard of
+   Important 2 excuses `bits` with a reason or fails until `compare._INTERFACE_FIELDS` carries
+   it; the guard should be written either way.
+2. Which pass owns `tests/test_external.py` (44 tests)? Neither part A's nor part B's list names
+   it, and it is the only cover of the external-type branches of `analysis.py:1030, 1154, 1161,
+   1203-1205, 1589, 2035-2043`, `models/types.py:420-439` and `ir.py:304-310`. If nobody reads
+   it, those branches ship reviewed by their coverage alone.
+3. Does the maintainer want a wall-clock bound on the two performance tests (Minor 10)? Their
+   docstrings decline one on flakiness grounds; the alternative is a durations check in CI.
+
+### Test gaps
+
+Scenarios no test in the half pins, found in this pass (the consolidated list below carries
+these together with the earlier passes' items):
+
+- `tests/test_compare.py`: a `volatile` flip between deliveries is `changed-storage` with
+  `volatile: true != false` (only the table membership is pinned,
+  `tests/test_comparison_tables.py:231`); `changed-owner` when either side has no owner
+  ("nobody", `compare.py:600-606`); the message texts of `added-object` (kind, owner),
+  `project-mismatch` and `reused-name`, and the readers suffix of `renamed-object`
+  (`compare.py:344-350, 365-371, 378-383`); a delivery restating exactly the derived limits
+  compares clean.
+- `tests/test_analysis.py`: `condition-mismatch` message and its location (the `condition` key,
+  or the declaration when the other side states none, `analysis.py:3192-3200`);
+  declaration-form `local-conflict` message and note (`:2530-2536`, `:60-64` asserts the
+  identifier only); `enum-duplicate-value` message (`:2456-2460`); the locations of
+  `unused-output`, `multiple-producers` and its note, `missing-producer`, `empty-component`,
+  `storage-mismatch`, `name-similar` and its note, `a2l-unrepresentable`, and the own pointer
+  of `unknown-reference` and `reference-kind` (`definition.axis`, `:2708`; only the
+  `incomplete-project` that follows a silenced one pins the key).
+- `tests/test_models.py`: `raw_reading` rounding to twelve significant digits and the enum
+  lookup (`models/conversion.py:304-309`), reached in the half by nothing and in the suite
+  only through a hover (`tests/test_lsp.py:1591-1601`).
+- `tests/test_loading.py`: the `include-cycle` message chain (`loading.py:1023-1024`); the
+  `duplicate-component` note (`:646-651`); the `file-not-found` message of a missing include
+  ("does not exist", pinned only through the CLI at `tests/test_compare.py:422-424`); a
+  directory named by an include entry (root only, `tests/test_edge_cases.py:126-136`); a byte
+  order mark on an included file (root only, `tests/test_hardening.py:556-561`).
+- `tests/test_sections.py`, `tests/test_rasters.py`: the locations of `section-access`,
+  `section-alignment`, `unknown-raster` (both sites), `raster-kind` and the five
+  `consumer-*` pointers (`definition.<key>`, `analysis.py:2277-2284`).
+- `tests/test_structures.py`: the location of `type-kind` (`definition`) and its note
+  (`analysis.py:2158-2164`).
+
+Pinned dimensions per check, from reading every test of the half against every `bag.add` site
+(trigger / location / message; the loader's mapping and the models' validators are pinned on
+all three except where listed):
+
+| check | trigger | location | message |
+| --- | --- | --- | --- |
+| `unknown-unit`, `unknown-section`, `unknown-constant`, `dimension-value`, `unknown-type`, `type-cycle`, `include-depth`, `duplicate-id`, `incomplete-project`, `definition-mismatch`, `enum-conflict`, the seven `schema` sites of the analysis, reference-form `local-conflict` | yes | yes | yes |
+| `init-invalid` (8 sites) | yes | yes for shape, string and typed init | yes |
+| `reserved-identifier` (8 sites) | yes | member, constant, project only | type, member, project, enum sites |
+| `name-collision` (9 sites) | yes | no | six of nine |
+| `limits-out-of-range` | yes | scalar type only | yes |
+| `section-access`, `section-alignment`, `unknown-raster`, `raster-kind`, `consumer-storage`, `consumer-raster`, `consumer-identity`, `storage-mismatch`, `a2l-unrepresentable`, `type-kind`, `name-similar`, `duplicate-declaration` | yes | no | yes |
+| `multiple-producers` | yes | no | fragment |
+| `duplicate-event` | yes | note only | yes |
+| `empty-component`, `unused-output`, `missing-producer`, `enum-duplicate-value`, `condition-mismatch`, declaration-form `local-conflict`, `missing-id`, `include-cycle`, `duplicate-component` | yes | no | no |
+| `unknown-reference`, `reference-kind` | yes | no | yes |
+| `renamed-object`, `removed-object`, `removed-unused-object`, `changed-interface`, `changed-storage`, `narrowed-limits`, `changed-condition`, `changed-a2l` | yes | n/a (the CLI's, part B) | yes |
+| `changed-owner` | yes | n/a | one direction |
+| `added-object`, `project-mismatch`, `reused-name` | yes | n/a | no (note text yes for `reused-name`) |
+| `missing-plugin`, `address-missing`, `unknown-extension`, `consumer-extension`, `plugin-*` | part B | | |
+
+### Consolidated test gaps (core and formats)
+
+Passes 1, 2, 3, 4, 8 and 9, the previous review's core items and this pass, merged per file,
+deduplicated, each grepped for an existing test. Dropped as already pinned: numeric or other
+strings inside a list init (pass 2, pass 8) - `tests/test_hardening.py:1035-1055`, a text
+element of a nested init is `schema` and `InitElement` refuses every `str`
+(`models/objects.py:36-42`); a dropped producer beside a surviving consumer (previous review) -
+`tests/test_analysis.py:713-733, 944-966`; deep JSON at the dictionary reader and
+`_holds_a_description`, and a non-ASCII pointer key (previous review) -
+`tests/test_hardening.py:569-633, 1025-1031`; one finding for an enumerator past both bounds on
+a declaration (pass 9 Minor 3, half of it) - `tests/test_analysis.py:442-453`. Items that belong
+to `tests/test_cli.py`, `tests/test_lsp.py`, the backends and the documentation guards are
+part B's and are not repeated here.
+
+`tests/test_models.py`
+
+1. Quoted and JSON-boolean spellings per field (`"volatile": "no"`, `"export": 0`,
+   `"limits": {"min": "0"}`, `"factor": "0.5"`, `"bits": true`): pins the deferred strictness
+   decision either way (pass 2 Important 2, previous review).
+2. `Identifier` at 128 accepted and 129 refused, on an object name, a constant name and an
+   `axis`/`input`/`typename` (pass 2; `models/common.py:44-55`).
+3. `"dimensions": []` on a measurement read as the scalar (pass 2, `SPEC.md:410`).
+4. A `condition` ending in a backslash (pass 8 Minor 1); an `a2l.format` with non-ASCII digits
+   (pass 8 Minor 3).
+5. `raw_reading`: twelve significant digits and the enum name lookup, directly (this pass).
+6. `duplicate-id` reported on the second in name order when the load order differs (pass 3;
+   `:360-371` loads in name order).
+7. A definition or component `raster` of `""` or with whitespace (pass 2 Minor 8;
+   `tests/test_rasters.py:62` covers the file's entry only).
+
+`tests/test_loading.py`
+
+8. A byte order mark on an included file (pass 2; root only at `tests/test_hardening.py:556`).
+9. A literal `..` entry, a character class `[ab]?`, a dot-prefixed file, two case spellings of
+   one file loaded once on Windows, a match set created out of sort order, symlink identity
+   (pass 2, previous review).
+10. An include entry naming an existing file whose path contains a glob character (pass 10
+    Important 1, whichever side takes it).
+11. A directory named by an include entry (previous review; root only at
+    `tests/test_edge_cases.py:126`).
+12. The `include-cycle` message chain; the `duplicate-component` note; the `file-not-found`
+    message of a missing include (this pass).
+13. A hyphenated extension key inside a definition keeps its key in the pointer; two malformed
+    blocks in one definition are two findings (pass 8 Important 2 and 3; `:434-448` is the
+    project level).
+14. A `null` or text inside a 2-D init yields one `schema` finding at the innermost pointer -
+    the count (pass 2 Important 3; `tests/test_hardening.py:1035` pins the pointer shape only).
+15. A wildcard include whose matches differ only in case class, ordered the same on every
+    platform (pass 1 Important 4, once its question is decided).
+
+`tests/test_analysis.py`
+
+16. `1.0` on an integer datatype: today `init-invalid` "written as a fractional number"
+    (previous review, pass 9; carried over).
+17. A stated limit inside the 1e-9 band: `{"min": 0, "max": 255.0000001}` on `uint8` is
+    accepted in silence (`exp-gaps/out.txt`; `analysis.py:3284-3289`) (previous review, pass 9
+    Important 1).
+18. Three producers give two `multiple-producers` (`exp-gaps/out.txt`: two, plus
+    `unused-output`) (pass 3).
+19. `consumer-raster` and `raster-kind` both on one declaration (`exp-gaps/out.txt`: both
+    fire) (pass 3, `SPEC.md:1042`).
+20. An axis whose `input` names a structured instance is `reference-kind`, and the a2l names no
+    such measurement (pass 3 Important 1, pass 4).
+21. A reported `reference-kind` beside a silenced transitive absence yields no
+    `incomplete-project` (pass 3 Minor 1).
+22. `duplicate-id` between a dropped and a surviving declaration (pass 3 Minor 2).
+23. A text init on a dropped non-string declaration (pass 3 Minor 3).
+24. The pointer of the enumerator `init-invalid` on a declaration (pass 3 Minor 4; `:431-440`
+    pins the message).
+25. A `typename` producer against an equivalent inline consumer checks clean (pass 3;
+    `tests/test_structures.py:1245-1257` names types on both sides).
+26. A table of N bad elements: today one finding per element (`exp-gaps/out.txt`: three for
+    three) - pin the count or a bound (pass 9 Important 3).
+27. The bitfield phrase and the single finding past both bounds on a member (pass 9 Minor 3).
+28. `[[1], [2]]` on `[2]`: today "init is a list but the object is a scalar"
+    (`exp-gaps/out.txt`) - pin, or reword and pin (pass 9 Minor 4).
+29. The enum note's location under a documented second copy (pass 9 Minor 6; `:332-341` pins
+    the note text).
+30. The spelling of a derived limit under a decimal factor, `7.65` not `7.6499999999999995`
+    (pass 4).
+31. The messages and locations listed under "Test gaps" above: `condition-mismatch`,
+    declaration-form `local-conflict`, `enum-duplicate-value`, `unused-output`,
+    `multiple-producers`, `missing-producer`, `empty-component`, `storage-mismatch`,
+    `name-similar`, `a2l-unrepresentable`, `unknown-reference`, `reference-kind` (this pass).
+
+`tests/test_structures.py`
+
+32. A cyclic structure reaching (or not) the dump's `types` (pass 9 Minor 1;
+    `analysis.py:424-463` leaves a cycle out).
+33. A `ResolvedMember` without storage refused (pass 9 Minor 2; `ir.py:304-310`, uncovered by
+    the half).
+34. The element order of an instance `[12]`: `[10]` after `[2]` (pass 9 Minor 7;
+    `analysis.py:411-421`).
+35. The location and note of `type-kind` (this pass).
+
+`tests/test_constants.py`
+
+36. `2.50` and `1e3` constants through the generated header, pinning the normalisation
+    (pass 2 Minor 4).
+
+`tests/test_rasters.py`, `tests/test_sections.py`
+
+37. A raster name of eight non-ASCII characters (pass 8 Minor 16).
+38. The locations of `unknown-raster` (both sites), `raster-kind`, `section-access`,
+    `section-alignment` and the `consumer-*` pointers (this pass).
+
+`tests/test_compare.py`
+
+39. A scalar init against its broadcast list, and a byte list against its text on a string
+    (pass 3 Important 2, its question 1; `_STORAGE_FIELDS` compares `init` raw,
+    `compare.py:182`).
+40. A baseline whose `format` is `"9"` or `9.0` (pass 3 Minor 7; `tests/test_hardening.py:872-893`
+    has `"two"` and `true`).
+41. A reordered structure and a changed `bits`: today `[]` and `narrowed-limits`
+    (`exp-bits/run.py`) (pass 9 Important 2; with Important 2 above).
+42. A changed init of a large block reported in a bounded message (pass 9 Minor 5).
+43. The `--renames` id of an array-of-structures member: `k7m2q9xr4t8w[0].a`
+    (`exp-bits/run.py`; `TestRenamesOfStructuredVariables` pins `abcdefghjkmn.x` for a scalar
+    instance) (pass 1 Important 1).
+44. A `volatile` flip is `changed-storage`; `changed-owner` with "nobody"; the `added-object`,
+    `project-mismatch` and `reused-name` messages; the readers suffix of `renamed-object`;
+    restated derived limits compare clean (this pass).
+45. A performance guard for a rename sweep without ids, or the bound of pass 9's question 3
+    pinned (pass 9 Important 4).
+46. `-W x=error` reaching a description baseline (pass 3; CLI side, shared with part B).
+
+`tests/test_comparison_tables.py`
+
+47. A guard over `ResolvedLeaf.model_fields` (pass 9 Important 2; Important 2 here).
+48. Each `DERIVED_AS` mapping executed, not only named (Minor 11 here).
+
+`tests/test_hardening.py`
+
+49. The 1e400 literal refused for its own reason (Important 1 here).
+50. A duplicate key and a `format` of `0` in a dump (pass 8 Minor 7; `:872-893` peeks at a
+    higher version only).
+51. `size_t` and `NULL` reserved, if pass 8 Minor 2 is adopted (`:171` covers `<stdint.h>`'s
+    own names).
+52. A document nested 600 levels through `ddd id --assign` and `Document(text)` (pass 8
+    Important 1; `:587-599` pins 100 000 levels; shared with part B).
+
+`tests/test_edge_cases.py`
+
+53. `test_importing_the_entry_point_module_does_not_run_it` asserting the observable silence
+    (Minor 3 here).
+
+### Assessment
+
+The core half of the suite is sound where it counts: it is order independent, it writes nowhere
+it should not, it silences one check on purpose and says so, and its assertions are on
+behaviour - identifiers, phrases, pointers, generated text, round trips - rather than on mocks
+or on whole documents. The fix plans' promised tests all exist and pin what the plans say, and
+the coverage gate is honest for this half: the eight core statements it does not reach are the
+external-type branches, which a file neither part of this pass owns covers. Two tests would
+pass with their feature broken: the infinity refusal is asserted on a payload that fails for a
+different reason, and the comparison-table guard cannot see the four fields a leaf adds, so
+`bits` is compared by nothing and the guard does not know it. The rest is hygiene: a dead
+`or` alternative, a redundant subprocess, three assertion-free tests, a guard that overclaims,
+helpers spelled five times, and nine order pins - not a few hundred - that depend on the
+analysis schedule. The consolidated list above is 53 gaps, most of them the unpinned location
+of a finding, which is the dimension the half pins least and the one an editor relies on.

@@ -1972,3 +1972,316 @@ recipe for the second half of the two-run flow does not survive a 64-bit host, a
 server still dies on a record from a newer build. None of the four Important findings of this
 pass requires a design change; each is a guard or a redirection at one site, and the spec
 sentences they touch are already right.
+
+## Pass 6: the editor integration (SPEC.md section 7.2, the language server, the extension)
+
+### Scope covered
+
+Read in full, with line numbers: `SPEC.md:1995-2075` (7.2); every file of `src/ddd/lsp/`
+(`__init__.py`, `protocol.py`, `server.py`, `discovery.py`, `diagnostics.py`, `navigation.py`,
+`ranges.py`, `edits.py`, `hover.py`, 2878 lines); `src/ddd/build_info.py`; `src/ddd/cli.py:276-335,
+520-560, 600-660, 1100-1130, 1340-1370` (the `lsp` and `build-info` parsers,
+`_add_policy_arguments`, `_command_lsp`, `_command_build_info`, `_analyze`);
+`src/ddd/diagnostics.py:250-300, 396-530` (`STANDALONE_POLICY`, `Location`, `SeverityPolicy`,
+`DiagnosticBag`); `src/ddd/plugins.py` (the
+exception boundary, `:183-260, 311-360, 465-495`); `src/ddd/loading.py:69-81, 386-420, 470-530,
+1092-1125, 1195-1210`; `src/ddd/analysis.py:254-262, 2120-2135`; `src/ddd/models/common.py:42-54`,
+`src/ddd/models/objects.py:823-846`; `src/ddd/identity.py:21-40`; `editors/vscode/package.json`,
+`src/extension.ts`, `src/config.ts`, `src/config.test.ts`, `src/launch.test.ts`, `README.md`,
+`.vscodeignore`, `tsconfig.json`, `package-lock.json:1-12`; `docs/editor_integration.rst` (all);
+`README.md:133-237`; `docs/developer_documentation.rst:505-520`; `docs/plugins.rst:205-214`;
+`docs/build_integration.rst:252-290`; `.github/workflows/ci.yml:80-98`, `publish.yml:68-110`;
+`tests/test_lsp.py`: every class and test name, and the bodies at `:1-88, 338-375, 606-613,
+620-727, 2853-2925, 2957-3010, 3438-3468, 4257-4275, 4361-4384`;
+`tests/test_documentation.py:655-672`;
+`reports/pass-5.md` (Important 5, the status table, the forwarded minors);
+`previous-review.md:1275-1352, 1733-1834`; `git log 441c600..HEAD` on the area.
+
+Ran (everything under `scratchpad/pass-6/`; the repository was never written to): a scripted
+client over pipes (`lspclient.py`, 47 sessions of the real `ddd lsp`, transcripts of every byte in
+`transcripts/*.txt`, summaries `p1*_summary.txt` to `p7_summary.txt`): framing variants, ids of
+every type, the lifecycle, unknown methods, bad bodies and headers, an emoji before a finding,
+CRLF buffers, six uri spellings plus a junction, a `subst` drive, a differently cased path, a
+UNC administrative share, percent-encoded and non-ascii names, `didChange` full and incremental,
+`didSave` with and without text, `didClose`, versioned edits, drifted buffers, rename refusals,
+every code action, a project file and every vocabulary kind with and without a project, records
+with `-W`/`--strict`, an unknown check, an unknown plugin check, a malformed override, a missing
+project, two records, a junction loop under `build/`, plugins raising at import and in a hook and
+printing to stdout, an unreadable directory under `build/`, a 30 304-file build tree, a flat
+directory of 200 components; `ddd check`/`ddd build-info` on the same fixtures for comparison;
+Python facts (`Path.resolve()` casing and junctions, `rglob` through a junction, `int(b"1_2")`,
+`url2pathname` on each spelling). No node on this machine: the extension is reviewed from source.
+
+### Strengths
+
+- The framing is robust where it matters: invalid json and a batch get the codes json-rpc
+  defines and the loop reads on; a negative length ends the run with one line on stderr; a
+  body split across three writes and a 200 KB `didOpen` are read whole (`p1_framing.txt`).
+- Columns are utf-16: with an emoji earlier on the line, `prepareRename` and the rename edit land
+  on `"Speed"` at 79..84 where a code-point count would say 78..83, and a CRLF buffer answers
+  the same positions (`p2b_emoji.txt`, `p2_crlf.txt`).
+- The document store does what 7.2 promises: positions and edits come from the buffer, a client
+  announcing `documentChanges` gets the version of every open file and `null` for the rest, an
+  incremental change is left alone rather than misapplied, and a rename touching a declaration a
+  buffer has moved is refused naming the file, from either side (`p3_buffers.txt`).
+- The record's policy is the build's: `-W unused-output=info`, `missing-producer=ignore` and
+  `--strict` reproduce `ddd check` exactly (`p4_policy_inc.txt`, `p2b_strict.txt`).
+- The plugin boundary holds in the server: a plugin raising at import or in its `check` hook is
+  one `plugin-invalid` on the project file, the open file still gets its own findings, hover
+  still answers, and a plugin printing a fake frame to stdout lands on stderr while the wire
+  stays intact (`p4_plugin_*.txt`, `p2b_plugin_*.txt`).
+- Nothing is analysed per keystroke (no publication after `didChange`, 0.00 s to the next
+  hover), discovery skips a directory it may not read and a malformed record, and every file of
+  the project is published with both sides of a conflict marked.
+- The trust statement is in all three places (`SPEC.md:2069-2075`, `docs/editor_integration.rst:
+  130-140`, `editors/vscode/README.md:50-56`), the manifest declares `untrustedWorkspaces`
+  unsupported (`package.json:37-42`), the three versions agree (0.9.0), and `publish.yml:106-109`
+  attaches `editors/vscode/*.vsix` to the release as the README says.
+
+### Issues
+
+#### Critical
+
+1. **A project file opened in a tree without a build record is checked under the standalone
+   policy, so the ten project checks are silenced for the whole project - and opening it
+   withdraws them from the components** (`src/ddd/lsp/diagnostics.py:136` `bag, sources =
+   analyse_standalone(document)`, reached for any document kind once `containing.projects` is
+   empty, which it always is for a project file nothing includes). Trigger: an unconfigured tree
+   - a fresh clone, a project not built through CMake, the case `navigation.py:207` calls the one
+   "an editor meets constantly" - and the reader opens `project.ddd.json`. Outcome: `ddd check
+   project.ddd.json` on `examples/inconsistent` reports `missing-producer` and `unused-output`
+   among 4 errors and 1 warning; the server publishes `component_c.ddd.json:
+   [definition-mismatch, local-conflict]` and `component_a.ddd.json: [multiple-producers,
+   definition-mismatch, local-conflict]` - no `missing-producer`, no `unused-output`
+   (`p6_project_nobuild.txt`). Worse: with `component_c.ddd.json` opened first the full findings
+   appear (through the containing project), and opening `project.ddd.json` next republishes the
+   thinner set, withdrawing the two squiggles from the screen (`p6_component_then_project.txt`).
+   `SPEC.md:2030-2035` justifies holding the ten back for "a component read alone"; a project
+   file is the whole project. Fix: run a root that is a project under the full default policy
+   (`_run(document, DiagnosticBag())`, as `:133` does for a containing project) and keep
+   `analyse_standalone` for a component root.
+
+#### Important
+
+1. **Diagnostics, jumps and edits are published under the resolved path, so a document opened
+   through a junction, a `subst` drive, a symlink or a differently cased spelling never gets its
+   findings in the editor** (`src/ddd/lsp/server.py:625` `{"uri": path.as_uri(), "diagnostics":
+   findings}` with `path` the loader's `_resolve()`d spelling, `src/ddd/lsp/diagnostics.py:141-143`;
+   the same in `navigation.py:535, 543` and `edits.py:163, 340`). Trigger: VS Code opened on
+   `W:\proj` (`subst`), on a junction or mapped drive, on macOS under `/tmp`, or with the path
+   cased differently from the disk. Evidence: sent `file:///w%3A/component_c.ddd.json`, published
+   `file:///C:/.../ws/inconsistent/component_c.ddd.json` (`p7_subst_live.txt`); sent
+   `.../ws/link/component_c.ddd.json`, published `.../ws/inconsistent/...` (`p2_junction.txt`);
+   sent `.../C--git-ac11-ddd/...`, published `.../c--git-ac11-ddd/...` (`p2b_casing.txt`; whether
+   VS Code matches that last pair case-insensitively is unconfirmed - it does not for the first
+   two, which are different paths). VS Code keys diagnostics by the uri string, so the squiggles
+   go to a resource that is not the open editor; a rename edit is applied to the real path's
+   document, not the one on screen. The one existing test resolves both sides before comparing
+   (`tests/test_lsp.py:2904-2909`). Fix: remember the client's spelling per resolved path
+   (`didOpen`, `initialize`) and publish and edit under it; files never opened stay resolved.
+
+2. **Through such a spelling the opened file is found as its own containing project and
+   analysed a second time under the full policy** (`src/ddd/lsp/navigation.py:281` `if candidate
+   == document:` compares the resolved candidate with the client's spelling; `SPEC.md:2029` "the
+   opened file itself excluded"). Trigger: as in 1. Outcome: `component_c.ddd.json` gets
+   `[missing-producer, missing-producer, missing-producer, definition-mismatch, missing-producer,
+   local-conflict]` - three `missing-producer` for inputs the project does produce - and the
+   rename and code actions run over two "projects" (`p2_junction.txt`, `p7_subst_live.txt`;
+   `navigation.containing_projects` returns `('component_c.ddd.json', 'project.ddd.json')` for
+   the junction and the `subst` spellings, `('project.ddd.json',)` for the direct one). Fix:
+   compare `candidate == document.resolve()` (resolved once, above the loop).
+
+3. **A rename or a quick fix computed while one file of the project did not load rewrites the
+   rest of the project around it** (`src/ddd/lsp/navigation.py:248` `return load_workspace(path,
+   DiagnosticBag())` discards the bag, so a workspace whose component was dropped by a `schema`
+   error is indexed as if it had never declared anything; `server.py:543-557`). Trigger: F2 on
+   `Speed` in `a.ddd.json` while another declaration of `a.ddd.json` has a schema error (`uint99`),
+   or from `b.ddd.json` while `a.ddd.json` is in that state - an ordinary mid-edit condition.
+   Outcome: edits in `b.ddd.json` and `c.ddd.json` only, `a` keeps `Speed`; `definition` answers
+   nothing and hover says "No component produces this"; in `c.ddd.json` the lightbulb offers
+   "Remove this unit, which no other declaration of 'Speed' has" although the unloaded `a` is the
+   producer (`p5_partial_rename.txt`). `SPEC.md:2012-2014` refuses a rename rather than "renaming
+   the rest of the project around it" for a drifted buffer; a dropped file is the same hole.
+   Fix: keep the bag in `_loaded` and refuse the rename and the fixes (`REQUEST_FAILED`, naming the
+   file) when the load reported an error, as the drift refusal does.
+
+4. **A build record naming a check the server does not know ends the server on the first
+   `didOpen`** - carried over (previous pass 5 Important 1, pass 5 of this review Important 5).
+   `src/ddd/lsp/diagnostics.py:53` `policy = SeverityPolicy.from_strings(list(info.severity),
+   strict=info.strict)` raises `UnknownCheckError` past `run()`; `discovery.py:56` guards the read
+   only. Trigger: a record written by a newer `ddd` in the build tree while the editor runs an
+   older one, or a hand-edited record; a malformed entry (`"unused-output"`) does the same.
+   Outcome: `initialize` answered, the record announced, exit 2 with `ddd: unknown check
+   'no-such-check'` and no publication (`p4_unknown_check.txt`, `p4_malformed_override.txt`);
+   the client restarts it five times and gives up. `SPEC.md:2047` and
+   `docs/editor_integration.rst:110-111` say such a record is skipped. Fix: build the policy under
+   `try/except UnknownCheckError` in `load_builds`, skip the record and announce it as a missing
+   project is announced.
+
+5. **F2 on an enum's name or on an enumerator opens a rename box whose rename returns an empty
+   edit** (`src/ddd/lsp/navigation.py:303` `if pointer.startswith(_DECLARATION) and _key(pointer)
+   in VARIABLE_KEYS:` - `_key` is the last segment, so `definition.conversion.name` and
+   `definition.conversion.enumerators[0].name` pass as the object's name). Trigger: F2 on
+   `StateA_t` or `STATE_OFF` in `examples/demo`. Outcome: `prepareRename` answers a range and
+   the placeholder, `rename` answers `{"documentChanges": []}` - the "rename that quietly did
+   nothing" `server.py:523-524` says the refusal exists to prevent - and had a variable of that
+   name existed elsewhere it would have been renamed instead (`p3_enum_subjects.txt`).
+   `SPEC.md:2007-2009` limits the rename to an object, a declared type or a declared constant.
+   Fix: match the key directly under `definition` (`re.fullmatch(r"component\.interface\[\d+\]
+   \.definition\.(name|axis|x_axis|y_axis|input)", pointer)`); the same applies to
+   `constant_at` (`:319`, any `size` key) and `type_at` (`:334`, any `typename` key), which an
+   `extensions` block can spell.
+
+6. **A file two build records cover is published with every finding twice, and nothing tells
+   the two apart** (`src/ddd/lsp/diagnostics.py:115-117` runs every build,
+   `:158-161` appends each run's findings to the same file, `_as_lsp` carries no image).
+   Trigger: two images sharing a component - the firmware and the test binary the docs use as
+   the example (`SPEC.md:2023-2025`). Outcome: `component_a.ddd.json: [multiple-producers,
+   definition-mismatch, local-conflict, unused-output, multiple-producers, definition-mismatch,
+   local-conflict, unused-output]` with two records of identical policy (`p4_two_records.txt`):
+   every squiggle doubled, the Problems count doubled, and with policies that differ the
+   reader cannot say which image reports the error. Fix: drop a finding equal in code, message,
+   location and severity to one already filed, or put the image in the message (`[img_b]`).
+
+#### Minor
+
+1. `codeAction` with `"context": null` ends the server with a traceback (carried, previous
+   pass 8 Minor 1): `src/ddd/lsp/server.py:583` `reported = params.get("context",
+   {}).get("diagnostics", [])`; observed `AttributeError: 'NoneType' object has no attribute
+   'get'`, exit 1 (`p1_methods.txt`). Use `_field`.
+2. `initialize` with a `workspaceFolders` entry lacking `uri` ends the server: `src/ddd/lsp/
+   server.py:595` `self.roots = [uri_to_path(folder["uri"]) for folder in folders]`; observed
+   `KeyError: 'uri'`, exit 1 (`p1_init_folders.txt`). Use `_field`.
+3. `exit` without `shutdown` returns 0 where the protocol asks for 1 (carried, previous pass 8
+   Minor 10): `src/ddd/lsp/server.py:227-228`; `editors/vscode/src/launch.test.ts:33-37` pins
+   the 0 (`p1_exit_without_shutdown.txt`).
+4. No lifecycle gating: a request before `initialize` is served and one after `shutdown` too,
+   `initialize` twice is accepted (`src/ddd/lsp/server.py:222-248`; `p1_order.txt`); the protocol
+   wants `ServerNotInitialized` (-32002) and `InvalidRequest`.
+5. A notification with bad params is answered with an error carrying `"id": null`, which the
+   comment above says a notification never gets (`src/ddd/lsp/server.py:209-213`; `p1_methods.txt`
+   after `didOpen` without params). vscode-jsonrpc logs it as an error in the output channel.
+6. `Content-Length` is read with `int()`, which accepts `1_2` (as 12), `+7` and surrounding
+   whitespace (`src/ddd/lsp/protocol.py:68`; observed: `1_2` swallowed ten bytes of the next
+   frame, `p1_bad_bodies.txt`). Match `\d+`.
+7. `rglob` follows a junction (Python 3.13 excludes symlinks from `**`, not junctions), so a
+   junction loop under `build/` yields 22 spellings of one record, 22 announcements and 22
+   copies of every finding (`src/ddd/lsp/discovery.py:40`; `p4_junction_loop.txt`: 88 findings
+   on `component_a.ddd.json`). Resolve before adding to `found`, or skip `is_junction()`.
+8. The extension's watcher feeds `workspace/didChangeWatchedFiles`, which the server drops, and
+   the comment promises the opposite (carried, previous pass 5 Minor 3): `editors/vscode/src/
+   extension.ts:50-53`; observed a file rewritten on disk, the notification, no publication,
+   `definition` answered from the cached project until the next `didSave` (`p7_watched.txt`).
+   Also `package.json:35` `"onLanguage:json"` starts the server, and with `ddd` missing shows
+   the error popup, in every workspace where any json file is opened.
+9. A record override naming a plugin check nobody registers is accepted silently in the
+   editor while `ddd check` refuses it with exit 2: `src/ddd/lsp/diagnostics.py:53` never calls
+   `verify` (`p4_unknown_plugin_check.txt` versus `ddd check project.ddd.json -W
+   layout/no-such=ignore`). One more place "the same policy" is five call sites.
+10. A containing project is checked under the default policy - no `-W`, no `--strict` - which
+    no page says (`src/ddd/lsp/diagnostics.py:133` `_run(project, DiagnosticBag())`), and
+    `README.md:212-220` skips the containing-project stage altogether ("A file no build claims
+    is still checked, on its own") where `docs/editor_integration.rst:112-117` states it.
+11. Hover on a declared type's own entry, or on a `typename` inside a types file, answers
+    nothing (`src/ddd/lsp/server.py:462-476`: `named_type` is looked up as external only), while
+    the same type hovered from a component's `typename` describes the object and its members
+    (`p3_subjects.txt`, `p2b_member.txt`). Not promised by the docs; a gap a reader meets.
+12. `_related` sends `"uri": ""` for a note without a location and its docstring says the note
+    is "given the first line of the file the finding is on" (`src/ddd/lsp/diagnostics.py:211-219`;
+    pinned by `tests/test_lsp.py:606-613`). VS Code parses `""` as `file:///`. Unconfirmed
+    trigger - every core note carries a location (`analysis.py:2130` `_Cause.location` is
+    never `None`); a plugin note would confirm it.
+13. Work repeated per save and per first request: discovery walks the build tree on every
+    refresh (0.6 s for 30 304 files, `p4_big_build.txt`), `collect` loads every candidate above
+    the file and then the containing project again (`src/ddd/lsp/diagnostics.py:121, 133`), and
+    the first hover after a save does both once more through `workspaces`
+    (`navigation.py:225-226, 231`): a flat directory of 200 components costs 0.5 s per save and
+    2.2 s for that hover (`p4_flat.txt`), against 0.7 s for `ddd check` of the whole project. The
+    previous review's "three lookups, two implementations" stands; the caches `server.py:154-175`
+    remove the repetition between requests, not within a refresh.
+14. `_insert` takes the indentation line from `str.splitlines()` while every position counts
+    `\n` only (`src/ddd/lsp/edits.py:563`): a form feed, NEL or U+2028 in a description above
+    shifts the index and the inserted key copies another line's indentation. Cosmetic; observed
+    correct only because the neighbouring lines share the indentation (`p5_linesep.txt`).
+15. A document under a scheme other than `file:` becomes a path relative to the server's
+    working directory and a `file-not-found` finding is published for a phantom
+    `file:///<cwd>/Untitled-1` (`src/ddd/lsp/server.py:92-117`; `p2b_schemes.txt`). The extension
+    never sends one (`extension.ts:49` `scheme: "file"`); other clients can.
+16. Still open from the previous pass 8, in bulk: 3 (hover markdown unescaped, `src/ddd/lsp/
+    hover.py:217, 226` - a unit with a backtick or `|` breaks the table), 5 (the restart race,
+    `editors/vscode/src/extension.ts:56-59` still clears the module-level `client` on a rejected
+    start whatever `restartServer` assigned meanwhile).
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P5 I1 | a build record naming an unknown check ends the server | still open - carried over (Important 4) | `src/ddd/lsp/diagnostics.py:53`; `p4_unknown_check.txt` exit 2 |
+| P5 M3 | the watcher feeds a notification the server drops; `onLanguage:json` | still open (Minor 8) | `editors/vscode/src/extension.ts:50-53`, `package.json:35`; `p7_watched.txt` |
+| P5 M4 | a header block without a length ends the session silently | consciously left: the spec now states it | `SPEC.md:2061-2062`; `src/ddd/lsp/protocol.py:65-66`; observed exit 0 |
+| P5 M10 | `-b` relative to the working directory undocumented | fixed | `docs/editor_integration.rst:104-107`; `package.json:66` |
+| P8 C1 | VS Code's `file:///c%3A/` uri kills the server on Windows | fixed | `src/ddd/lsp/server.py:83-117`; `p2_uri_vscode.txt` analysed and published under `file:///C:/`, which VS Code normalises; the residual spelling defect is Important 1 |
+| P8 C2 | rename and quick-fix edits computed from the disk while the client applies them to its buffer | fixed | `src/ddd/lsp/server.py:176-185, 263-304, 499-518`; `p3_buffers.txt`: buffer positions, versions, drift refused |
+| P8 C3 | opening a file runs repository python and nothing says so | fixed for the docs and the extension; the server itself still runs plugins whatever the client, consciously (`SPEC.md:2069-2075` puts the decision on the extension) | `docs/editor_integration.rst:130-140`; `editors/vscode/README.md:50-56`; `package.json:37-42` |
+| P8 M1 | `codeAction` with `context: null` ends the server | still open (Minor 1) | `src/ddd/lsp/server.py:583`; `p1_methods.txt` |
+| P8 M3 | hover markdown not escaped | still open (Minor 16) | `src/ddd/lsp/hover.py:217, 226` |
+| P8 M5 | restart race in the extension | still open (Minor 16) | `editors/vscode/src/extension.ts:56-59` |
+| P8 M7 | a plugin that imported is never re-read by the server | consciously left: documented | `docs/plugins.rst:197-203` |
+| P8 M10 | `exit` without `shutdown` returns 0 | still open (Minor 3) | `src/ddd/lsp/server.py:227-228`; `launch.test.ts:37` pins it |
+
+The previous pass 8 design notes: "a document store for the server" is done (`server.py:176-185`);
+"three lookups, two implementations" remains (Minor 13); "Windows is tested through
+`Path.as_uri()` only" is half done - `tests/test_lsp.py:2856-2909` sends the `%3A` spelling but
+resolves both sides before comparing what is published (Important 1).
+
+### Open questions
+
+1. Should a project file opened in an unconfigured tree be analysed as the project it is
+   (Critical 1)? Yes seems the only answer; the alternative is documenting that the editor shows
+   fewer findings than `ddd check` on the project file, which no page would want to say.
+2. Under which spelling should the server publish and edit: the client's for the documents it
+   opened, and the workspace folder's for the rest (Important 1)? A per-session table from
+   resolved path to the client's spelling settles the opened files; the others need a rule,
+   and the answer changes whether `Site.path` stays resolved or carries both.
+3. Two records covering one file: deduplicate identical findings, or tag each with the image
+   (Important 6)? Tagging changes every message an editor shows for a shared component.
+4. Should the server refuse plugins unless the client announces a trusted workspace (the second
+   half of the previous C3), or is the extension's gate the whole answer, as 7.2 now says?
+5. Should `exit` without `shutdown` return 1 as the protocol asks (Minor 3)? `launch.test.ts`
+   would have to send `shutdown` first.
+
+### Test gaps
+
+- A project file opened with no build record, and a component opened first then the project
+  file: what is published and what is withdrawn (`tests/test_lsp.py`, `TestDiagnostics`).
+- A document spelled through a junction, a `subst` drive or a symlink: the published uri equals
+  the sent one, and the file is not its own candidate. `TestSymlinkedWorkspace` needs
+  `SeCreateSymbolicLinkPrivilege` (or Developer Mode) for `symlink_to`, fails without it, and
+  pins only that `workspaces()` finds the build - `_winapi.CreateJunction` would run on any
+  Windows account and the assertion should cover the publication (`tests/test_lsp.py:4361-4384`).
+- A rename and a quick fix while a file of the project failed to load (`TestRename`,
+  `TestPropagating`).
+- A record naming an unknown check, and one with a malformed entry (`TestDiscovery`; carried).
+- F2 on an enum name and on an enumerator; a `size`/`typename`/`name` key inside an
+  `extensions` block (`TestRename`, `TestHover`).
+- Two records covering one file: what is published for it (`TestDiagnostics`).
+- `codeAction` with `context: null`; `initialize` with a folder entry lacking `uri`; a request
+  before `initialize` (`TestServer`).
+- A junction loop, or any junction, under `build/` (`TestDiscovery`, Windows).
+- `launch.test.ts` still opens no document (carried from the previous test review).
+
+### Assessment
+
+The server is in far better shape than at the previous review: the Windows uri, the buffer
+store, the drift refusal, the versioned edits and the plugin boundary all hold under a real
+client, the columns are utf-16, and the record's policy is the build's to the letter. What this
+pass found is one blind spot and one seam. The blind spot is the project file itself: opened in
+an unconfigured tree it is treated as "a component read alone" and the two checks the editor
+exists for are silenced and even withdrawn - a Critical on the most ordinary of setups. The seam
+is the spelling of a path: everything the server publishes and edits is spelled as the loader
+resolved it, so any client spelling `resolve()` changes - a junction, a `subst` or mapped drive,
+a symlinked directory, a different case - sends the findings to a resource the editor is not
+showing and, through the candidate comparison, adds three wrong `missing-producer` findings on
+top. Add the rename computed over a project a file of which did not load, the carried-over exit
+on an unknown check, the enum rename box and the doubled findings of two records, and the list
+is six Important, all reproduced over pipes with transcripts, each with a one-line fix.

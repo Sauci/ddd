@@ -753,3 +753,345 @@ the full list rather than case by case; the rest is prose that has drifted from 
 the README, one page that contradicts itself about the include depth, a reference page missing
 the fourth conversion, and the "as written" claim about constant literals that the outputs do
 not keep.
+
+## Pass 3: the consistency checks and the comparison (SPEC.md section 4)
+
+### Scope covered
+
+Read in full, with line numbers, on the review tree (`master` at `6e9e99f`): `SPEC.md` 1143-1507
+(sections 4 and 4.1) plus the sentences the checks lean on in 2.1, 3.3 and 3.10 (443-449,
+492-524, 1036-1042); `src/ddd/analysis.py` 1-3289; `src/ddd/compare.py` 1-672;
+`src/ddd/identity.py` 1-183; `src/ddd/diagnostics.py` 1-523; the check sites of
+`src/ddd/loading.py` (440-660, 690-760, 870-1160); `src/ddd/plugins.py` 266-303 and 362-402;
+`src/ddd/cli.py` 540-725 and 1350-1500; `src/ddd/ir.py` 100-260 and 560-720;
+`src/ddd/models/objects.py` 20-120 and 430-830; `src/ddd/models/conversion.py` 125-300;
+`src/ddd/backends/a2l/model.py` 398-430; `docs/consistency_checks.rst` and
+`docs/comparing_deliveries.rst` in full; `README.md` 480-607; `CHANGELOG.md` "Unreleased";
+`previous-review.md` 964-1123 and 1655-1680; `reports/pass-1.md` and `pass-2.md`; the test names
+of `tests/test_analysis.py`, `test_compare.py`, `test_calibration.py`, `test_structures.py`,
+`test_constants.py`, `test_rasters.py`, `test_models.py`, `test_cli.py`,
+`test_documentation.py`, and the bodies of the tests cited below.
+
+Ran, from the venv, everything kept under `scratchpad/pass-3/`: `ddd checks` in text and json;
+five probe scripts (`probes_a.py`, `probes_a2.py`, `probes_b.py`, `probes_b2.py`,
+`probes_b3.py`) writing 48 throwaway projects under `cases/` and running about 190 commands -
+`check`, `check --standalone`, `check --baseline`, `list`, `dump`, `generate c|a2l`, `compare`
+with `--renames`, `--plugin`, `-W`, `--strict`, `--format json` - with the transcripts in
+`results_a.txt`, `results_a2.txt`, `results_b.txt`, `results_b2.txt`, `results_b3.txt`. Case
+ids `Cnn`, `Mnn`, `Nnn` below refer to those. Every one of the 69 identifiers was lined up
+against the registry, the code that adds it, the spec, both doc pages and the README, and all
+69 were observed firing. The verdict rule was exercised on ten configurations (`M03`, `N01`,
+`N03`), the comparison on a pair carrying all thirteen checks at once (`M02`), on format 7, 3
+and 9 dictionaries (`M05`), on the plugin example (`M08`) and on the shipped pressure example
+(`N02`). Not covered: the language server's use of `STANDALONE_POLICY` beyond reading
+`lsp/diagnostics.py:59`, and the generated artefacts except where a check gap reached them.
+
+### Strengths
+
+- The registry is section 4 exactly: 69 identifiers, every default severity, the eight fixed
+  ones, exactly the ten whole-project ones (`diagnostics.py:89-255`), from which
+  `STANDALONE_POLICY` (`:257-261`), `ddd check|list|dump --standalone` (`cli.py:1359`) and the
+  editor (`lsp/diagnostics.py:59`) are all derived; `ddd checks` marks `(fixed)`, `(project)` and
+  `(comparison)` and the json carries the three flags. `dimension-value` is rightly not flagged:
+  alone, a component can only name its own constants, and `C14` shows it firing on them under
+  `--standalone` at a declaration's `dimensions`, an axis's `size` and a member.
+- Ownership is decided over the census, dropped declarations included, in every configuration
+  tried: a dropped producer is no `missing-producer` and a dropped consumer no `unused-output`
+  (`C03`), the object is built from the producer that resolved whatever the include order
+  (`C03b`), and a dropped producer takes its consumers' copies out whole, each with
+  `incomplete-project` and a note at the producer when the cause was silenced.
+- `incomplete-project` now says every absence the spec lists, and one it does not: a poisoned
+  type with the cause and a note at the member (`C29`: nine findings for nine drops through a
+  cycle, an unknown member type and a structure nesting either), a member's `dimension-value`
+  (`C14`), a refused reference ("its input 'Nobody' does not resolve, and the unknown-reference
+  that says why is not reported", `C09`), a transitive absence at the reference that pulled it
+  down, and a map explained on one axis only (`C06`).
+- A dangling reference drops the referrer (`C09`: four objects gone from `ddd list`), a reference
+  into another component's `local` object is `local-conflict` at the reference with a note,
+  nothing dropped and the same answer in either include order (`C08`), a scope clash involving a
+  `local` is never also `multiple-producers` (`C35`).
+- A scalar type is checked once, at its declaration, used or unused (`C13`: `limits-out-of-range`
+  at `types[0].limits` on a type nobody names, the enumerator finding at `types[1].conversion`
+  once although two components name the type), and a declaration naming a type checks clean
+  against an equivalent inline one (`C26` `T`).
+- The severity policy is the spec's to the letter (`C23`): last override wins, `--strict` after
+  the overrides, a fixed or unknown check, an unknown severity, a missing `=` and a plugin check
+  nobody registers are usage errors with exit 2 and the messages the reference page prints.
+  Findings sort by index, not text (`C38`), and two runs print the same json (`C01`).
+- The comparison does what 4.1 says in every configuration tried: all thirteen checks fire with
+  the messages the docs show (`M02`); the verdict is "can replace" exactly when nothing is an
+  error - a warning-only run exits 0, `--strict` or `-W x=error` turns it into "cannot" and exit
+  1, a candidate's own error refuses, a broken description baseline carries its errors as "in the
+  baseline:" and still compares a dumped candidate but analyses no description candidate and
+  prints no verdict, an unreadable side exits 1 and writes no renames file, the baseline's
+  warnings are dropped, json prints no verdict line (`N03`, `M03`, `N01`). Renames are keyed
+  `<id>[0].a` and `<id>.a`, sorted by `to`, `[]` when nothing moved (`M02`, `M06`, `N03`); a
+  renamed instance whose type also renamed a member pairs the surviving members and reports the
+  rest as removal and addition (`M06`). A format 7 dump reads back, a format 3 one compares shapes
+  by value alone, format 9 is refused on either side and under `check --baseline` (`M05`). The
+  plugins behave as 4.1 states (`M08`), and the shipped pressure sequence reproduces the docs'
+  transcript to the character (`N02`).
+
+### Issues
+
+#### Critical
+
+None.
+
+#### Important
+
+1. **An axis whose `input` names a structured measurement instance passes `reference-kind`, and
+   the A2L then binds the axis to a name that has no `MEASUREMENT` record**
+   (`src/ddd/analysis.py:2700` `elif found.kind is not _EXPECTED_KIND[key]:` - a structured
+   instance's `kind` is `measurement`, so the test passes; `src/ddd/backends/a2l/model.py:412`
+   and `:425` write `references.get("input")` verbatim). Trigger (`C09b`): a structure `S_t`
+   with a member `a`, an instance `Inst` of it, an axis `Cx` with `"input": "Inst"` and a curve
+   over `Cx` -> `ddd check` prints `ok: 3 variables in 2 components are consistent`, and
+   `ddd generate a2l` writes `/begin AXIS_PTS Cx ... 0x00000000 Inst RL_AXIS_UWORD ...` and
+   `COM_AXIS Inst NO_COMPU_METHOD ...` while the only measurement record is
+   `/begin MEASUREMENT Inst.a`. `_EXPECTED_KIND`'s own docstring (`analysis.py:137-140`) and
+   `SPEC.md:1292-1293` ("an axis naming an absent measurement would leave a dangling name in the
+   A2L") describe exactly the outcome. A curve naming the instance as its `axis` is refused
+   (`C09`: "'Inst' is of kind 'measurement'"); only the `input` key, which expects a
+   measurement, lets a structured one through. Fix: in `_refuse_reference`, refuse a target whose
+   `declared_type` names a structure as `reference-kind` ("'Inst' is a structured object; an
+   input quantity is a plain measurement"), which drops the axis as every wrong-kind reference is.
+
+2. **`changed-storage` compares `init` as spelled, so a byte-identical respelling is a warning and,
+   under `--strict`, a false "cannot replace"** (`src/ddd/compare.py:182`
+   `ComparedField("init", lambda o: o.init, lambda o: _describe_init(o.init)),`; the dictionary
+   carries the init as written, `analysis.py:390` `init=definition.init,`, although
+   `ir.py:186-187` says "nested to match `shape`"). Trigger (`N01`): a baseline with `"init": 7`
+   on `uint8[4]` and `"init": [72, 105, 0, 0]` on a `uint8[4]` string, a candidate spelling them
+   `[7, 7, 7, 7]` and `"Hi"` ->
+   `warning[changed-storage]: 'Arr': init: (7, 7, 7, 7) != 7` and
+   `warning[changed-storage]: 'Str': init: "Hi" != (72, 105, 0, 0)`, "can replace", exit 0; with
+   `--strict`, the gate `docs/comparing_deliveries.rst:660-662` recommends, three errors and
+   "cannot replace", exit 1. The generated c is the same in both deliveries, and the text
+   spelling is the migration the strings feature invites (`CHANGELOG.md` "Strings"). Pass 1
+   Minor 6 asked which comparison is meant; from the code it is the spelling. Fix: compare the
+   init broadcast over `shape` (`models.objects.broadcast`) and a string as its byte tuple padded
+   with zeros to the dimension - or, if the spelling is meant to count, say so in 4.1 beside
+   `changed-storage` and in 5.3, so that `--strict` users know the respelling costs a release.
+
+3. **Comparison findings carry the candidate path as it was typed, so `--format json` reports a
+   cwd-relative `location.path` where the reference page promises an absolute one**
+   (`src/ddd/cli.py:649` `location = Location(args.candidate)`, `:602` and `:609`
+   `Location(args.project)` under `check --baseline`, `:712` `Location(path)` for
+   `address-missing`; `docs/consistency_checks.rst:975` "``location`` is an absolute,
+   forward-slashed path together with the json pointer"). Trigger (`N01`):
+   `ddd compare base.json warn/p.ddd.json --format json` -> `"path": "warn/p.ddd.json"` for
+   `removed-unused-object`, beside `"path": "C:/.../cases/N01/warn/sensor.ddd.json"` for the
+   candidate's own `init-invalid` in the same document; `N02`: `"path":
+   "examples/pressure/work/pressure.ddd.json"`. A dashboard or editor following the documented
+   contract cannot resolve the path without knowing the run's working directory. A side effect
+   in text mode: within one severity the sort key is `path.as_posix()`
+   (`diagnostics.py:354`), and `C:/...` sorts before `cand/...`, so every comparison finding
+   lands after every finding of the candidate's own analysis (`M02`: `project-mismatch` after
+   eleven `unused-output` warnings), which is what `docs/comparing_deliveries.rst:589-590` says
+   does not happen. `tests/test_cli.py:919-930` pins "as typed" for `generate`'s `generated`
+   payload, not for a diagnostic's `location`. Fix: build these locations from the resolved path
+   (`loading._resolve`), or amend the sentence on the reference page and the ordering claim.
+
+#### Minor
+
+1. **A reported refusal beside a silenced transitive absence still earns `incomplete-project`**
+   (`src/ddd/analysis.py:2671` `explained = own.get(name, True) and all(absent[target] for _,
+   target in gone)`; `SPEC.md:1368-1369` "This check fires only when the cause is silenced; a
+   reported cause already says the declaration could not resolve"). Trigger (`C06`,
+   `-W unknown-constant=ignore`): axis `Az` with `"input": "Cv"`, `Cv` a curve over the silently
+   dropped `Ax` -> at `interface[4].definition.input` both `error[reference-kind]: the input of
+   axis 'Az' must be of kind 'measurement'` and `info[incomplete-project]: 'Az' is not in the
+   data dictionary: its input 'Cv' did not resolve, and the finding that says why is not
+   reported`. Fix: a name with a reported refusal of its own is explained
+   (`explained = own[name] if name in own else all(...)`).
+
+2. **`duplicate-id` does not see the id of a dropped declaration**
+   (`src/ddd/analysis.py:1783` `for name, refs in ordered:` over `ordered = sorted(self._refs.
+   items())`, `:720`, the surviving names only). Trigger (`C12` `p2`): `Gamma` with an unknown
+   `typename` and `Delta`, both `"id": "abcdefghjkmn"` -> `unknown-type` alone; the shared id
+   surfaces as a second wave once the type is fixed. The one failure mode of the previous
+   review's design note 1 that survives the census. Fix: walk `self._census` as
+   `_select_producer` does.
+
+3. **A text init on an object that is not a string is refused only once the declaration
+   resolved** (`src/ddd/analysis.py:3137-3144` runs from `_check_init_shape`, which only
+   `_build_variable` calls, `:3019`; `:2237-2244` promises that "an init outside the datatype is
+   wrong whatever the shape turns out to be, and silencing unknown-constant must not silence
+   that"). Trigger (`C24`): `D1` `"dimensions": ["NOPE"], "init": "text"` on a `uint8` ->
+   `unknown-constant` alone, while `D2` with `"init": 300` also gets `init-invalid`; with
+   `-W unknown-constant=ignore` the text init is never reported. Fix: test the conversion in
+   `_check_init` and leave only the printable and terminator rules to `_check_string_init`.
+
+4. **The enumerator-out-of-range finding sits at `definition` on a declaration and at
+   `conversion` on a type** (`src/ddd/analysis.py:2307` `location = ref.location("definition")`
+   handed to `_check_enum_fits` at `:2333-2335`, against `:881-885` `entry.location(
+   "conversion")`). Trigger (`C24` `E1`, `C13`):
+   `a.ddd.json#component.interface[22].definition: error[init-invalid]: enumerator(s) B=256 ...`
+   against `t.ddd.json#types[1].conversion: error[init-invalid]: enumerator(s) ON=300 ...`.
+   Fix: `ref.location("definition.conversion")`, where the enum is written.
+
+5. **Under a silenced `local-conflict` the owner follows the include order** (carried over,
+   previous Minor 7; `src/ddd/analysis.py:2556-2557` `owning = [...] or producers` then
+   `owning[0]`). Trigger (`C35`, `C08` `p3`/`p4`): `A` local `X` and `B` output `X` list
+   `X ... A (local)` with the includes `a, b, c` and `X ... B` with `b, a, c`; two locals of one
+   name the same. Only visible with the check relaxed, but then the generated files depend on
+   the include order. Fix: prefer the `local` declaration, else order producers by component.
+
+6. **Under `--standalone` a silenced cause that needs no project leaves no trace at all**
+   (`src/ddd/diagnostics.py:208-211` flags `incomplete-project` as one of the ten, so
+   `STANDALONE_POLICY` silences the trace together with the checks whose absence is
+   legitimate). Trigger (`C14`): `ddd check c.ddd.json --standalone -W dimension-value=ignore` on
+   a component whose own constant `ZERO` dimensions a measurement, an axis and a member ->
+   `ok: 1 variable in 1 component are consistent`, and `ddd list --standalone` is three rows
+   short with nothing said, the very outcome `SPEC.md:1365-1368` gives as the reason the check
+   exists. Fix: report `incomplete-project` in a standalone run when the silenced cause is not
+   itself a whole-project check, or say in 4 and 7 that `--standalone` silences the trace too.
+
+7. **A dictionary whose `format` is spelled `"9"` or `9.0` is read as a format 9 dictionary**
+   (`src/ddd/loading.py:459` `if not isinstance(found, int) or isinstance(found, bool) or found
+   <= DICTIONARY_FORMAT: return True`, then `ir.py:593` `format: int = DICTIONARY_FORMAT` coerces
+   the text and the float). Trigger (`M05`): the same dump with `"format": "9"` or `9.0` as the
+   baseline -> "can replace", exit 0, where `9` is `error[schema]: this dictionary is in format
+   9 ... use a newer DDD`. A dump never writes either; a hand edit does. Fix: strict `int` on
+   `format`, and refuse a non-integer spelling in `_dictionary_format_is_supported`.
+
+8. **Docs drift on three checks.** `docs/consistency_checks.rst:619` still says
+   `a2l-unrepresentable` fires for "an exported object" where `SPEC.md:1345-1346` and the code
+   (`C30`: `Hidden4`, `"export": false`, reported because an exported axis names it as `input`)
+   say the object the A2L carries; `docs/consistency_checks.rst:397-403` says of
+   `dimension-value` "The declaration is dropped" and, like `SPEC.md:1369-1376`, not that at a
+   member the type becomes unusable and every declaration naming it is dropped (pass 1 Minor 5,
+   confirmed: `C14` prints "it names the type 'S_t', and the dimension-value that says why the
+   type is unusable is not reported"); and the in-file `duplicate-type` is a `schema` finding
+   located at the whole file, `t3.ddd.json: error[schema]: Value error, type 'W_t' is already
+   declared in this file` (`C28`), where `duplicate-unit`, `duplicate-section`,
+   `duplicate-constant` and `duplicate-raster` point at the entry (`loading.py:727-736`).
+
+9. **The second copy of a `duplicate-declaration` still earns `unknown-section` and
+   `unknown-raster`, and nothing else** (carried over, previous Minor 8; `src/ddd/analysis.py:
+   2214-2221` `continue`s before `_check_declared_name`, while `_check_sections` and
+   `_check_rasters` walk `component.interface` whole, `:1044-1045`, `:1109-1110`). Trigger
+   (`C37`): a duplicate `input` stating `init`, `section: ".nope"`, `raster: "r"` and an enum
+   with the enumerator `int` -> `duplicate-declaration`, `unknown-raster`, `unknown-section`; no
+   `consumer-*`, no `reserved-identifier`. Harmless; `docs/consistency_checks.rst:483` "The
+   second declaration is ignored for the rest of the run" is only mostly true.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| C1 | `incomplete-project` silent for most silenced drops | fixed | `analysis.py:2111-2131`, `2747-2806`; `C29`, `C06`, `C14` |
+| I1 | an unresolvable reference keeps its object | fixed | `analysis.py:2677-2713`, `2603-2626`; `C09` (four objects dropped, `incomplete-project` when silenced) |
+| I2 | enum reordering reported twice, once empty | fixed | `analysis.py:162-181`; `C25` (`enum-conflict` alone, with both spellings in the notes) |
+| I3 | renamed structured object is N findings | consciously left, spec moved | `SPEC.md:1489-1491`; `M06` |
+| I4 | `address-missing` empty map and one-per-run unstated | fixed | `SPEC.md:1348-1356`; `C31b` |
+| I5 | a raising hook discards the run's findings | fixed | `cli.py:1365-1373`, `1460-1488`; `M06` "renames into a missing directory" prints the findings before the usage error |
+| I6 | docs: "two other load time checks" | fixed | `docs/consistency_checks.rst:244-253`, `272-281` |
+| I7 | checks reference lacks `--standalone` | fixed | `docs/consistency_checks.rst:174-225` |
+| I8 | `ddd checks` prints no whole-project flag | fixed | `(project)` in text, `needs_every_component` in json; `docs/consistency_checks.rst:1003-1005` |
+| I9 | spec: `typename` compares as resolved | fixed | `SPEC.md:505-509`, `1504-1506`; `C26` `T` |
+| I10 | spec: reference into another's `local` | fixed | `SPEC.md:1197-1201`; `analysis.py:2715-2745`; `C08` |
+| I11 | spec: alignment need per datatype | fixed | `SPEC.md:703-707`; `C15` (4 for `uint32`, 8 for `float64`) |
+| M1-M8 | minors, checked in bulk | M1-M6 fixed (`diagnostics.py:156-158`, `README.md:500`, `:579`, `SPEC.md:1345-1346`, `1481-1484`, `analysis.py:2207-2222`, `SPEC.md:1186-1188`); M7 fixed in the spec (`SPEC.md:1412-1413`, `M03` (f)); M5 and M8 of pass 7's list still open as Minor 5 and Minor 9 above | - |
+
+Design notes 1 and 2 of pass 7. Note 1 (dropping versus marking): the analysis now keeps every
+declaration in `_census` (`analysis.py:673-680`) and records per declaration whether its cause
+was reported (`_dropped`, `:681-687`); ownership (`:2504-2557`), the readers (`:2840-2842`) and
+`incomplete-project` (`:2747-2806`) all read it, and the failure modes the note described -
+false `missing-producer` and `unused-output`, an owner chosen by include order, silent consumers
+- are gone (`C03`, `C03b`). Two censuses still read the surviving names only: identities
+(Minor 2) and similar names (`:3202-3224`, `C11`: a dropped `Baz` beside `baz` is not reported,
+which the spec's "for the ownership checks" permits). Note 2 (types checked through their
+users): `_check_scalar_type` (`:865-888`), `_register_member_enums`, `_check_member_limits` and
+`_refuse_infinite_type_limits` check a type once where it is declared, used or not, and a
+declaration naming a type skips the limits and enum checks (`:2319-2325`); `C13` shows one
+finding per mistake at the types file. No failure mode of that note survives.
+
+Of the previous pass's "spec gaps proven from code", all are written into `SPEC.md` now
+(resolved `typename` 505-509 and 1504-1506, the empty map 1349-1350, the verdict 1398-1402, the
+renames keys 1407-1413, older formats 1502-1504, a refused reference 1290-1296, whose plugins
+1471-1474, the tie-break 1430-1431, both raster findings on one declaration 1042, the in-file
+`duplicate-type` 837-838, the project block 1090-1091, a reference into a `local` 1197-1201,
+the alignment 703-707, the closure 1345-1346, the note 1480-1484, per-member renames 1489-1491,
+`missing-id` on a `local` 1377) except one: that every load-time error, the nine relaxable
+checks included, withholds the interface checks is stated at `docs/consistency_checks.rst:
+272-281` and nowhere in the spec (`SPEC.md:263-264` says only "loading continues"). Of its
+test gaps, five are closed (`tests/test_analysis.py:909-1000`, `:343`, `:1290-1345`,
+`:1049-1080`, `tests/test_models.py:334-345`); the rest are listed under "Test gaps".
+
+What passes 1 and 2 forwarded, settled from the code. Pass 1 Important 5: a delivery
+comparison does compare the enumerators - `compare.py:128-132` reads
+`conversion_identity(o.conversion)`, which for an enum is `("enum", name, tuple((entry.name,
+entry.value) ...))` (`models/conversion.py:260-265`), descriptions left out; `M02` prints
+`conversion: enum(Mode_t: OFF=0, ON=2) != enum(Mode_t: OFF=0, ON=1)` and the description-only
+edit on `Mode2_t` is silent, so 4.1 should say "an enum by its name and its ordered
+enumerators". Pass 1 Minor 5: confirmed, Minor 8 above. Pass 1 Minor 6: `"Hi"` and
+`[72, 105, 0, 0]` compare unequal, Important 2 above. Pass 1 Minor 12's `duplicate-type` split:
+confirmed at `C28`, Minor 8 above. Pass 1 Important 1: the renames id of an array element is
+`j1j1j1j1j1j1[0].a` and of a scalar instance's member `k9k9k9k9k9k9.a` (`M02`, `M06`,
+`compare.py:201-205`, `:303`) - the spec's "followed by `.`" is wrong for an element, the code
+is consistent. Pass 2's two items: a quoted number nested in a list init reaches the analysis
+as the number - `C24` `Q3` `["1", "300"]` earns `init value 300 does not fit into uint8`, so the
+coercion happens in the model and nothing in the analysis can tell; the per-enclosing-list
+`schema` findings of a wrong nested init are the loader's and the file never reaches the
+analysis. Neither is a defect of section 4.
+
+### Open questions
+
+1. Is `init` compared as bytes or as spelled (Important 2)? Bytes changes `compare.py:182` and
+   makes the strings migration silent; spelled changes 4.1 and 5.3 and keeps `--strict` failing
+   a respelling.
+2. Should `-W` overrides reach a description baseline's own analysis? `_read_baseline`
+   (`cli.py:1408`) analyses it with the run's overrides and without `--strict`; `N03` (h):
+   `-W unused-output=error` carries the predecessor's unread output as `error[unused-output]: in
+   the baseline: ...` and refuses a verdict, `--strict` does not. A project gating with
+   `-W missing-id=error` (`docs/consistency_checks.rst:659-660`) against an older description
+   baseline without ids fails on the predecessor. The answer changes either `_read_baseline`'s
+   policy or the sentence at `SPEC.md:1393-1396`.
+3. Is a reference a read for `unused-output`? `C07`: axes produced by `A` and referenced only by
+   `B`'s map are `unused-output`, while for `local-conflict` "a reference is a use as much as a
+   declaration is" (`SPEC.md:1198-1199`). Counting referrers changes `_consumers`
+   (`analysis.py:2840-2842`) and the demo transcripts; not counting them wants one sentence in 4.
+4. Is a diagnostic's json `location.path` absolute, as the reference page says, or as typed, as
+   `generate`'s `generated` payload is (Important 3)?
+
+### Test gaps
+
+- `tests/test_calibration.py`: an axis whose `input` names a structured measurement instance is
+  `reference-kind` and the A2L names no such measurement (Important 1).
+- `tests/test_compare.py`: a scalar init against its broadcast list and a byte list against its
+  text on a string, whichever way question 1 goes (Important 2); a baseline whose `format` is
+  `"9"` or `9.0` (Minor 7); `-W x=error` reaching a description baseline (question 2).
+- `tests/test_cli.py`: the `location.path` of a comparison finding under `--format json`
+  (Important 3); the renames file not written when a side cannot be read
+  (`test_an_unreadable_baseline_is_reported`, `:422`, checks the message only; previous gap,
+  still open); a standalone run with a silenced non-project cause (Minor 6).
+- `tests/test_analysis.py`: a reported `reference-kind` beside a silenced transitive absence
+  yields no `incomplete-project` (Minor 1); `duplicate-id` between a dropped and a surviving
+  declaration (Minor 2); a text init on a dropped non-string declaration (Minor 3); the
+  pointer of the enumerator finding on a declaration (Minor 4); three producers give two
+  findings (`test_multiple_producers`, `:33`, uses two and asserts membership; previous gap);
+  the 1e-9 tolerance inside the band (no test names `isclose` or a value inside it; previous
+  gap); a `typename` producer against an equivalent inline consumer checking clean
+  (`tests/test_structures.py:825-826` names the type on both sides; previous gap);
+  `consumer-raster` and `raster-kind` both on one declaration (`tests/test_rasters.py:396`,
+  `:407` test each alone, `SPEC.md:1042` now states both; previous gap).
+- `tests/test_models.py`: `duplicate-id` reported on the second in name order when the load
+  order differs (`test_two_objects_may_not_share_an_identity`, `:360`, loads in name order;
+  previous gap, `C12` shows the behaviour is right).
+
+### Assessment
+
+Section 4 is implemented as written, and the parts the previous review found broken are now
+the strongest: dropped declarations count for ownership, every silenced drop leaves an
+`incomplete-project` trace, a dangling reference drops its referrer, a reference into a `local`
+is the conflict it is, types are checked once where they are declared, and the comparison's
+verdict, renames, formats and plugins behave as 4.1 states in every configuration tried. What
+remains is at the edges. One check gap reaches a generated file: an axis indexed by a structured
+instance is accepted and the A2L then names a measurement that does not exist. One comparison
+rule decides a `--strict` verdict on the spelling of an initial value rather than on its bytes,
+which the spec has not yet said either way. And one contract of the reference page - an absolute
+`location.path` in json - is broken for exactly the findings a comparison produces. The rest are
+small consistencies in where a finding sits or which census a check reads, and three prose
+drifts between the docs table and the spec.

@@ -2656,3 +2656,400 @@ page, which is the project's own rulebook, has drifted in a handful of sentences
 skips, runs for minutes, has an extension job and a language server), the FAQ still promises
 unbounded arrays two releases after the caps, and the release commit has nine files and one
 changelog sentence to touch with only three of them under test.
+
+## Pass 8: code review of the core, part A (models, loading, diagnostics, identity)
+
+### Scope covered
+
+Read in full, with line numbers, on the review tree (`master` at `6e9e99f`): `src/ddd/__init__.py`,
+`src/ddd/__main__.py`, all thirteen files of `src/ddd/models/` (`__init__`, `common`, `component`,
+`constants`, `conversion`, `objects`, `project`, `rasters`, `reserved`, `schema`, `sections`,
+`types`, `units`), `src/ddd/loading.py` 1-1272, `src/ddd/diagnostics.py` 1-523,
+`src/ddd/identity.py` 1-183, and `src/ddd/lsp/ranges.py` 1-324, because `identity.assign` and
+every finding's range go through its `Document`. For the cross-module angle: `src/ddd/cli.py`
+95-128, 593-622, 1012-1025, 1356-1460 and every use it makes of the core (grep);
+`src/ddd/plugins.py` 94-345; `src/ddd/ir.py` 41-67, 127-190, 583-673; `src/ddd/lsp/diagnostics.py`
+63-233,
+`lsp/server.py` 1-30, 185-235, 290-312, `lsp/edits.py` 125-160; the import lists and every helper
+use in `src/ddd/analysis.py` and `src/ddd/compare.py` (grep); `src/ddd/backends/c/literals.py`.
+Tests: the names of the nine listed files, and the bodies of `tests/test_hardening.py` 563-635,
+950-1057 and `tests/test_loading.py` 53-63, 434-448. `docs/developer_documentation.rst` 16-63 and
+193-242, the coverage section of `pyproject.toml`, `SPEC.md` 63-78, 245-266, 1814-1834, 1854-1866,
+1880-1890; `previous-review.md` 52-176 (its pass 7); `reports/pass-1.md` to `pass-7.md`.
+
+Ran, from the venv, everything kept under `scratchpad/pass-8/`: `facts.py` (Python and pydantic
+facts, `facts.txt`); `probes.py`, `probes2.py`, `probes3.py` (about 80 commands over 40 throwaway
+cases under `cases/`, transcripts `results.txt`, `results2.txt`, `results3.txt`: `check`,
+`check --standalone`, `dump`, `compare`, `sources`, `id --assign`, `generate c|a2l`, MinGW gcc 13.1
+`-fsyntax-only` on generated c, `jsonschema` over the published component schema, a `subst` drive);
+`lsp_probe.py` (a scripted `initialize`/`didOpen` against `ddd lsp`, `lsp_probe.txt`); `gen.py` and
+`timeit2.py` (the synthetic project and the timings, `perf_results.txt`); the cold-start and
+`python -X importtime` measurements (`importtime.txt`). Probe ids `Pnn`/`Qnn` below refer to those
+transcripts.
+
+Forwarded items, settled from the code:
+
+- Pass 2 Important 1 (a quoted number nested in a list init): the chain is `InitValue =
+  InitScalar | str | tuple[InitElement, ...]` (`src/ddd/models/objects.py:44-46`), whose tuple
+  items are `InitElement = InitScalar | tuple[InitElement, ...]` (`:36`) with `InitScalar =
+  Annotated[int, Field(ge, le)] | bool | Real` (`:33`) - no `str` arm below the top level and no
+  `strict` on any arm. pydantic's smart union first tries every arm in strict mode, where a
+  `str` matches only a `str` arm: at the top level the `str` arm wins before any coercion; one
+  level down there is none, so the union falls back to the lax pass, where the `int` arm parses
+  `"1"`, `" 1 "` and `"1_0"`, the `bool` arm parses `"yes"`/`"no"`/`"on"`/`"off"`/`"true"`, and
+  the `float` arm parses `"1.5"` and `"1e2"` (`facts.txt`; P03: `"init": ["on", "off"]` on a
+  `uint8[2]` checks clean and dumps as `[true, false]`, which `backends/c/literals.py:29` renders
+  as `{ 1U, 0U }`; `[" 1 ", "1_0"]` dumps as `[1, 10]`). So the fix pass 2 proposed has to make
+  all three arms strict, not the `int` and `float` arms alone: the `bool` arm matches by exact
+  type only in strict mode, in lax mode it reads words.
+- Pass 2 Important 2 and 3, Minor 7 and 9: confirmed from the code (`common.py:144-146`,
+  `objects.py:147`, `:484`, `types.py:173`, `conversion.py:87-90`; `loading.py:1154-1193`). A
+  second defect of `_one_per_place` is Important 3 below.
+- Pass 3 Minor 7: `loading.py:459` `found <= DICTIONARY_FORMAT` after `isinstance(found, int)`
+  passes `"9"` and `9.0` to `ir.py:593` `format: int = DICTIONARY_FORMAT`, a lax `int`; P06 adds
+  that `0` and `-3` pass the same way (below, Minor 7).
+- Pass 5 Minor 4: `identity.py:182` `path.write_bytes(...)` is unguarded, confirmed; the write is
+  also not atomic (Minor 18).
+- Pass 1 Important 4 / pass 2 open question 2 (the sort key): `loading.py:1006-1010` sorts
+  `Path` objects. `PurePath.__lt__` compares `_str_normcase`, which on Windows is
+  `ntpath.normcase(str(self))` - lower-cased, backslashed - and on POSIX the string itself. The
+  set `Zeta, _under, alpha, Beta, beta2` therefore orders `_under, alpha, Beta, beta2, Zeta` on
+  Windows and `Beta, Zeta, _under, alpha, beta2` on POSIX (`facts.txt`, `PureWindowsPath` and
+  `PurePosixPath` side by side); a code-point sort - `key=lambda p: p.as_posix()` - would give
+  the POSIX order on both. `SPEC.md:255-258` now states the platform order, so the loader
+  conforms; the same `sorted(Path)` orders `read_paths` (`:531`, `:558`) and `sources()` (`:396`).
+- Pass 6 Important 1 (the resolved spelling): the loader canonicalises in exactly three places -
+  the root (`loading.py:498` `_resolve(path)`), a literal include (`:992`) and every wildcard
+  match (`:1009`) - and dedupes on the resolved path (`_seen_paths`, `:1026`), so two spellings
+  of one file never load twice (P12: a `subst` drive resolves to the real path, and
+  `relative_to(Path.cwd())` is suppressed on a `ValueError`, `diagnostics.py:309-310`, so a
+  path on another drive renders absolute rather than raising).
+- The previous review's pass 7 Important 2, 3, 4, 6, 8 and design note 3: status table below.
+
+Performance (`perf_results.txt`; N components of 50 objects each - 30 measurements, 5 inputs
+read from the next component, 5 parameters in a section, 3 constant-dimensioned value blocks, 2
+axes, 2 curves, 1 map, 2 structured measurements of a shared two-level structure, the rest a
+shared scalar type - plus types, units, sections, constants and rasters files, every producer
+stamped with an id; wall clock of `ddd check -W unused-output=ignore`, best of two):
+
+| N | objects | `ddd check` | load (in process) | analyze (in process) |
+| --- | --- | --- | --- | --- |
+| 10 | 530 | 0.46 s | - | - |
+| 100 | 5 300 | 0.86 s | 0.13 s | 0.29 s |
+| 1000 | 53 000 | 6.06 s | 1.50 s | 3.89 s |
+
+The loader is linear (0.13 s to 1.50 s for ten times the files). Profiled at N = 1000 (cProfile,
+2.57 s under the profiler): pydantic's `validate_python` 52 %, `_locations` 20 % (0.41 s of its own
+time building 50 000 `Location`s the analysis then builds again - harmless), `Path.resolve` 9 %,
+`json.loads` 8 %, `read_text` 6 %; nothing in these modules dominates. Cold start: `ddd --version`
+and `ddd --help` 0.40 s each against 0.05 s for `python -c pass`, of which 0.38 s is
+`import ddd.cli` (`importtime.txt`: `ddd.analysis` 176 ms cumulative including `ddd.compare` and
+`ddd.ir`, `ddd.models` 111 ms, `ddd.backends` 51 ms with jinja2, `ddd.diagnostics` 48 ms,
+`pydantic` 38 ms).
+
+### Strengths
+
+- Every failure of reading came back as a located finding: a directory as the root and as an
+  include, a bare `**` sweeping a text file and a 1 MB binary, a 300 MB file of whitespace
+  (1.5 s) and of random bytes (1.2 s), a NUL byte, a 5000-digit integer, a 400-digit limit and
+  enumerator value, `NaN` and `Infinity` inside a dumped dictionary, a project at the root of a
+  `subst` drive with rooted includes (P06, P07, P11, P12, P13, Q1). Only Important 1 below ends
+  in a traceback.
+- The 64-bit bound sits on every integer path - `common.py:145`, `conversion.py:46`,
+  `constants.py:45`, `objects.py:33` and `:70`, `sections.py:52`, `rasters.py:86` - and
+  `within_64_bits` (`common.py:122-141`) runs ahead of every union that has a float arm, with
+  `tests/test_models.py:423-780` pinning both ends of the range.
+- The pointer sort splits on the captured index (`diagnostics.py:291-292`), so a key that only
+  looks numeric sorts as text; the severity policy parses whitespace, case, a second `=`, an
+  empty check name and a plugin prefix into exactly the documented usage errors (P16).
+- The vocabulary registries share one `_register` (`loading.py:713-736`), so the duplicate rule
+  holds across a component's inline types and constants and the standalone files alike, with a
+  note at the first declaration.
+- `sources()` lists the vocabulary files and the plugin modules beside the components (P15), and
+  a file that was read and rejected stays a source (`loading.py:566-569`).
+- The eight published schemas carry no reStructuredText leftover (a grep of `schemas/*.json` for
+  roles, directives and single backticks finds none), and `schema.py` derives the conversion
+  kinds and the per-value documentation from the models rather than from lists.
+- `_validate_block` runs a plugin's own model under `guarding_plugin_model` (`loading.py:978`),
+  so a raising validator becomes one `PluginError` line at the cli and `plugin-invalid` in the
+  server (`lsp/diagnostics.py:85-89`) rather than a traceback.
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **A description nested about 500 levels deep ends `ddd id --assign` and the language server
+   with a `RecursionError`, while `ddd check` accepts the same file** (`src/ddd/lsp/ranges.py:60`
+   `scanner.value("")` - outside the `try` at `:46-48`, which guards `json.loads` alone; the
+   scanner recurses two frames per level, `:243-297`; reached from `src/ddd/identity.py:172`
+   `document = Document(text)` and from `ranges.py:225` `found = Document(text)` for every file
+   a finding is drawn on). Trigger: a component whose `extensions` block nests 520 lists
+   (`cases/P01_deep`). Outcome: `ddd check --standalone c.ddd.json` exits 0 with one
+   `missing-id`; `ddd id --assign c_520.ddd.json` prints a traceback ending in `RecursionError:
+   maximum recursion depth exceeded` and exits 1, where 480 levels are stamped (P01b, P01c); a
+   `didOpen` of the file ends `ddd lsp` after the `initialize` answer with the same traceback
+   (`lsp_probe.txt`, exit 1 in 0.5 s). Python's json parser gives up only at about 3000 levels
+   here (`facts.txt`: 1000 "SCANNER RecursionError", 3000 "json RecursionError"), so the
+   band between the two passes the guard that `fix/core-robustness` added and
+   `tests/test_hardening.py:587-599` pins only the 100 000-level case above it. Fix: catch
+   `RecursionError` around the scan as well (`data = None`, empty spans), or make `_Scanner`
+   iterative; a test at 600 levels beside the existing one.
+
+2. **A finding under a definition whose key is spelled with punctuation, or with the name of a
+   union variant, is located one level too high, because the pointer walk drops the document
+   after the first union tag** (`src/ddd/loading.py:1222` `present, node = _child(node, item)`:
+   a segment such as `measurement` is absent from the document, `node` becomes `None`, and
+   every later segment is judged by shape alone, `:1223` and `:1267`). Trigger: `"extensions":
+   {"a-b": 1}` or `{"map": [1]}` on a definition -> `error[schema]:
+   ...component.interface[0].definition.extensions: Input should be a valid dictionary (got:
+   1)` with the key gone from the pointer (P02a, P02b), while the same block on the project,
+   where no tag precedes it, keeps its key (`project.extensions.a-b`, P02d) - which is exactly
+   what `tests/test_loading.py:434-448` pins, at the project level only. A plugin named after
+   a variant (`map`, `axis`, `enum`, `string`, `linear`, `curve`...) is a legal plugin name
+   (`plugins.py:42`), so the pointer of every malformed block of such a plugin lands on
+   `extensions` and the editor underlines the whole block. Fix: advance `node` only when the
+   segment was present (`if present: node = child`), so that the walk survives a tag.
+
+3. **Two malformed extension blocks in one definition or one project become one finding**
+   (`src/ddd/loading.py:1167` `kept.setdefault(_pointer(item["loc"]), item)` - `_one_per_place`
+   keys on the pointer computed without the document, so any key `_is_branch_tag` misjudges by
+   shape, or that is in `_UNION_TAGS`, is stripped and two places collapse into one). Trigger:
+   `"extensions": {"a-b": 1, "c-d": 2}` on a definition, or `{"map": [1], "axis": [2]}`, or
+   `{"a-b": 1, "c-d": 2}` on the project -> one `schema` finding, the second block never
+   reported (P02a, P02b, P02d); the control `{"aa": 1, "bb": 2}` gives two (P02c). A lost
+   finding on a file the loader refuses, so the reader fixes one block, runs again and meets
+   the next. Fix: hand `_one_per_place` the document (key on `_pointer(loc, document)`, or on
+   the raw `loc` with the known tags removed), and pin the two-block case in
+   `tests/test_loading.py`.
+
+#### Minor
+
+1. **A `condition` ending in a backslash splices the next generated line into the `#if`**
+   (carried over, previous pass 7 Minor 1; `src/ddd/models/component.py:78` `for token in
+   ("/*", "*/", "//", "#"):` refuses line breaks and comment tokens only). Trigger (Q2):
+   `"condition": "defined(FEAT_X) \\"` -> `ddd check` ok, `ddd generate c` writes `#if
+   defined(FEAT_X) \` followed by `extern volatile uint8_t A;`, and gcc stops with `error:
+   missing binary operator before token "extern"`. Loud, so minor. Fix: refuse a stripped
+   condition ending in `\`.
+
+2. **Names MinGW's `<stdint.h>` declares by way of `<crtdefs.h>` pass `reserved-identifier` and
+   fail the build** (`src/ddd/models/reserved.py:54` `if _STANDARD_TYPE_PATTERN.match(name) or
+   _STANDARD_MACRO_PATTERN.match(name):`; the docstring at `:12-14` promises "everything
+   ``<stdint.h>`` declares, because a project's types header may include it"). Trigger (Q3):
+   a measurement named `size_t`, `NULL`, `wchar_t`, `ptrdiff_t` or `errno` -> `ddd check` "ok",
+   `ddd generate c` with the example templates, and gcc 13.1 (MinGW) refuses the header:
+   `'size_t' redeclared as different kind of symbol`, `<stdint.h>:28` -> `<crtdefs.h>`.
+   `offsetof`, `assert` and `EOF` compile here; the C23 width macros (`UINT8_WIDTH`,
+   `SIZE_WIDTH`) are absent from `_STANDARD_MACRO_PATTERN` (`:42-47`) and compile with this
+   toolchain, which does not define them under `-std=c2x` (unconfirmed for a glibc toolchain,
+   which does). Fix: add the `<stddef.h>` names (`size_t`, `ptrdiff_t`, `wchar_t`,
+   `max_align_t`, `NULL`, `offsetof`) and the `_WIDTH` family; `errno` is `<errno.h>`'s and
+   stays a project's own risk.
+
+3. **The a2l format pattern admits non-ASCII digits** (`src/ddd/models/common.py:102`
+   `A2L_FORMAT_PATTERN: Final = r"^%\d*\.\d+$"`; pydantic compiles it with the Rust engine,
+   where `\d` is Unicode). Trigger (P04): `"a2l": {"format": "%\u0663.\u0662"}` (Arabic-Indic
+   digits) -> `ddd check` ok and the generated a2l carries `FORMAT "%٣.٢"`, a string no
+   calibration tool parses as a format. The published pattern is the same text under ECMA-262,
+   where `\d` is `[0-9]`, so an editor bound to the schema refuses what the loader accepts
+   (unconfirmed for the editor - Python's `jsonschema` accepts it too, `re` being Unicode). Fix:
+   `[0-9]` in the pattern.
+
+4. **`_resolve` expands a leading `~`** (`src/ddd/loading.py:1206` `return
+   Path(path).expanduser().resolve()`). Trigger (P05): a root file named `~x.ddd.json` given
+   relative to the working directory -> `C:/Users/x.ddd.json: error[file-not-found]`, a path
+   the author never wrote (Windows reads `~x` as user `x`). Only the root is exposed - an include
+   is joined to an absolute parent first - and only when the shell did not expand the tilde
+   itself. Fix: drop `expanduser()`; expansion is the shell's.
+
+5. **`ddd id --assign` silently skips a declaration whose `name` key is spelled with a json
+   escape** (`src/ddd/lsp/ranges.py:307` `text = self.text[start : self.pos]` records the key
+   raw, undecoded, while `identity.py:69-88` reads the parsed document, so
+   `document.value_span_of(target)` at `identity.py:141` finds nothing and `:143` `continue`s).
+   Trigger (P10): `"na\u006de": "V"` -> `wrote 0 ids`, exit 0, while `ddd check --standalone`
+   reports `missing-id` for the same declaration; an escaped `scope` key (P10c) is stamped, as
+   `_PRODUCING` compares the decoded value. Fix: decode the key (`json.loads('"' + raw + '"')`)
+   before building the pointer.
+
+6. **On a file with bare-CR line endings the inserted `id` line ends in LF**
+   (`src/ddd/identity.py:94` `return "\r\n" if end > 0 and text[end - 1] == "\r" else "\n"` -
+   `_newline_at` looks for `\n` only). Trigger (P20): a component written with `\r` endings ->
+   `wrote 1 id`, the file now holds 16 CR and one LF. Implausible today; one more branch.
+
+7. **The dictionary reader keeps the last of two duplicate keys and accepts a `format` of `0` or
+   `-3`** (`src/ddd/loading.py:435` `return DataDictionary.model_validate_json(text)` - pydantic's
+   parser has no `object_pairs_hook`, where `_read_json` refuses a repeat, `:578`; `:459` `found
+   <= DICTIONARY_FORMAT` accepts any lower integer). Trigger (P06): a dump edited to carry
+   `"name": "P", "name": "Q"` compares with `project-mismatch: the baseline describes project
+   'Q'`, and `"format": 0` or `-3` compares clean and "can replace". Beside pass 3 Minor 7 (`"9"`
+   and `9.0`) and the previous review's Minor 4 (the invariants of `DataDictionary`, partly
+   done: `ir.py:244-248` now checks `dimensions` against `shape`). Fix: `ge=1, strict=True` on
+   `format`, and read the dump through `_read_json`'s hooks (or a `model_validate` over its
+   result) so that a duplicate key is refused on both sides.
+
+8. **A dumped dictionary is parsed three times per side** (`src/ddd/cli.py:1432` `data =
+   json.loads(path.read_text(encoding="utf-8-sig"))` to sniff the kind, `src/ddd/loading.py:450`
+   `data = json.loads(text, parse_constant=_reject_constant)` to peek at `format`, `:435`
+   `model_validate_json(text)` to read it). Measured in process on the 45 MB dump of the N = 1000
+   project (Q4): 0.39 s + 0.35 s + 1.29 s, so `load_dictionary` alone is 2.35 s of which 0.7 s
+   is repeated work, and `ddd compare big.json big.json` takes 6.1 s. Fix: sniff and peek on a
+   bounded prefix (the first few kilobytes: `"format"` is the first key a dump writes and
+   `"project"`/`"component"` the first of a description), or parse once and validate the dict.
+
+9. **`ddd --version` and `ddd --help` pay for the whole package** (`src/ddd/cli.py:46`
+   `from ddd.loading import load_dictionary, load_workspace` and the import block above it pull
+   in the analysis, the comparison, the ir, the backends and jinja2 at module level). Measured:
+   0.40 s for either against 0.05 s for `python -c pass`; `import ddd.cli` is 0.38 s
+   (`importtime.txt`). A pre-commit hook and a cmake configure step call `ddd` per file. Fix:
+   import the command modules inside their handlers, or keep `ddd.cli` to argparse and
+   dispatch.
+
+10. **A 5000-digit `cycle` count is reported with Python's advice to a programmer**
+    (`src/ddd/models/rasters.py:53` `return int(match.group(1)) * _NANOSECONDS[match.group(2)]`
+    - `_CYCLE` at `:43` accepts any run of digits, and `int()` raises past 4300 of them).
+    Trigger (P13): `"cycle": "111...1ms"` -> `rasters[0]: error[schema]: Value error, Exceeds
+    the limit (4300 digits) for integer string conversion ... use
+    sys.set_int_max_str_digits() to increase the limit (got: {'raster': 'r', ...` at the whole
+    entry, the same pass-through pass 2 Minor 7 found for a double BOM. Fix: bound the count in
+    the pattern (`[0-9]{1,18}`) so the ordinary "is no xcp event period" message answers.
+
+11. **An error inside a mapping-form enumerator is located at a key the file does not have**
+    (`src/ddd/models/conversion.py:157` `data["enumerators"] = [` rewrites the mapping into a
+    list before validation, so pydantic's `loc` says `enumerators, 0, value` and `_pointer` at
+    `loading.py:1229` renders `[0]`). Trigger (P14): `"enumerators": {"A": "x"}` ->
+    `...conversion.enumerators[0].value: error[schema]: Input should be a valid integer (got:
+    'x')`; the editor's range falls back to the parent (`ranges.py:155-164`). Fix: when the
+    document holds a mapping where the pointer says `[i]`, render the i-th key instead
+    (`_pointer` has the document).
+
+12. **The mapping form's published schema carries neither the value bound nor the name
+    pattern** (`src/ddd/models/conversion.py:121` `"additionalProperties": {"type":
+    "integer"},`). Trigger (P24, `jsonschema` Draft 2020-12 over
+    `schemas/ddd_component.schema.json`): `{"A": 18446744073709551616}`, `{"1bad": 0}` and
+    `{"A": 4.0}` are accepted by the schema and refused by the loader (`le`, the identifier
+    pattern, strict `int`), where the list form publishes all three constraints. Fix: publish
+    `additionalProperties` as the value's own schema (`minimum`/`maximum`) and `propertyNames`
+    with `C_IDENTIFIER_PATTERN`.
+
+13. **A `-W` naming a plugin check is never verified when the load reports an error**
+    (`src/ddd/cli.py:1363` `if workspace is None or bag.has_errors:` returns before `:1370`
+    `bag.policy.verify(bag.registered)`). Trigger (P08): `ddd check p.ddd.json -W
+    layout/x=error` with a missing include -> the `file-not-found` finding, exit 1, and no
+    `unknown check 'layout/x'`; the typo on the command line surfaces only once the project
+    loads. Fix: verify before the early return (the registered plugins are known by then).
+
+14. **An extension key containing `.` or `[n]` yields a pointer no consumer can split**
+    (`src/ddd/loading.py:949` `suffix = f"definition.extensions.{name}"`, `:849` for the
+    project). Trigger (P09): `"extensions": {"a.b": {}, "c[1]": {}}` -> pointers
+    `...extensions.a.b` and `...extensions.c[1]`, which `ranges.segments` (`ranges.py:195-203`)
+    reads as two keys and as an index. Cosmetic: such a key is `unknown-extension` anyway. Fix:
+    refuse a non-identifier plugin name in the block key, or escape it in the pointer.
+
+15. **A drive-relative include pattern globs the process's current directory, a drive-relative
+    literal the project's** (`src/ddd/loading.py:999` `base = Path(anchor) if anchor else
+    source.parent` against `:991` `candidate = raw if raw.is_absolute() else source.parent /
+    raw`). Trigger (`cases/P30_driverel`, `ddd sources` run from `elsewhere/`): `"includes":
+    ["C:*.ddd.json"]` lists `elsewhere/fromcwd.ddd.json`, `"includes": ["C:inproject.ddd.json"]`
+    lists `proj/inproject.ddd.json`. Nobody writes the first spelling on purpose, but the two
+    answers differ. Fix: join a drive-relative anchor to `source.parent` as the literal path is.
+
+16. **A raster name is capped in code points where the a2l field is bytes**
+    (`src/ddd/models/rasters.py:77` `StringConstraints(min_length=1,
+    max_length=EVENT_NAME_LENGTH, pattern=r"^\S+$")`, `\S` Unicode). Trigger
+    (`cases/P31_raster`): `"raster": "тактовый"` (8 letters, 16 utf-8 bytes) ->
+    `ddd check` ok; the `char[9]` `EVENT_CHANNEL_SHORT_NAME` the docstring at `:25-29` sizes
+    the cap for would
+    not hold it once the `DAQ` block is written. Fix: `pattern=r"^[\x21-\x7e]+$"`, or cap the
+    utf-8 length.
+
+17. **No bound on the size of a description file, and `MemoryError` is the one failure
+    `_read_text` does not turn into a finding** (`src/ddd/loading.py:1112` `return
+    path.read_text(encoding="utf-8-sig")`, handlers at `:1113-1130` for `OSError`,
+    `UnicodeDecodeError` and `ValueError`). A 300 MB file is fine (P11: 1.5 s, one finding); a
+    file larger than the available memory - a log matched by a careless pattern - ends the run
+    with a traceback (unconfirmed - a multi-gigabyte file would confirm it). Fix: `stat()` first
+    and refuse above a generous cap with `json-syntax`, or catch `MemoryError` in the same
+    handler.
+
+18. **`assign` rewrites the file in place** (`src/ddd/identity.py:182` `path.write_bytes(mark +
+    text.encode("utf-8"))`; the artefact writer at `backends/base.py:197` goes through a
+    temporary file). A crash or a kill between the truncation and the write leaves a
+    hand-authored file empty, and the file changed between `:168` and `:182` is overwritten
+    without notice. The unguarded errno is pass 5 Minor 4. Fix: write to a sibling temporary and
+    replace.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P7 I2 | integers beyond the float range crash with `OverflowError` | fixed | `common.py:145`, `conversion.py:46`, `constants.py:45`, `objects.py:33`, `:70`, `sections.py:52`; Q1 (400-digit limit and enumerator are two `schema` findings); `tests/test_models.py:423-780` |
+| P7 I3 | recursion unbounded in the loader, the structure walks, the dictionary reader | partly fixed | includes capped (`loading.py:55`, `:1032-1037`, `tests/test_loading.py:176-303`), structures capped (`analysis.py:71`), `RecursionError` caught around `json.loads` (`loading.py:451`, `:587`, `cli.py:1433`, `ranges.py:48`); the scanner's own recursion is open between about 500 and 3000 levels - Important 1, carried over |
+| P7 I4 | a key of non-decimal digits breaks the sort | fixed | `diagnostics.py:291-292`; `tests/test_hardening.py:618-635`, `:1022-1033` |
+| P7 I6 | the loader accepts quoted numbers and booleans the schema refuses | consciously left | pass 2 Important 2 lists the residue; the list-init arms of pass 2 Important 1 are the same residue (settled above) |
+| P7 I8 | two readers turn malformed inputs into usage errors | fixed | `cli.py:1431-1435`, `loading.py:1115-1121`; `tests/test_hardening.py:569-615` |
+| P7 design note 3 | strict by default | open | what remains: `Number` (`common.py:144-146`), `factor`/`offset` (`conversion.py:87-90`), `InitScalar` (`objects.py:33`), `export` (`objects.py:147`), `volatile` (`:484`), `bits` (`types.py:173`), `format` (`ir.py:593`) |
+| P7 M1-M9 | minors, checked in bulk | M1 still open (Minor 1 above, carried over); M4 partly (`ir.py:244-248` checks `dimensions` against `shape`; duplicate keys, `format` bounds and orphan references open, Minor 7); M5 open as pass 2 Important 3; M6 open as pass 5 Minor 4 (Minor 18 adds atomicity); M2, M3, M7, M8, M9 lie in the analysis and the backends (pass 3 has M7 as its Minor 5) | - |
+
+### Open questions
+
+1. Should `ddd id --assign` and the server refuse a document by the same depth rule the loader
+   applies, or skip it as "not readable"? A stated cap shared by `_read_json` and `Document`
+   changes `SPEC.md:200-201` and both readers; a caught `RecursionError` changes `ranges.py`
+   alone (Important 1).
+2. Is "everything `<stdint.h>` declares" (`reserved.py:12`) the standard's list or what a real
+   toolchain's `<stdint.h>` drags in? MinGW's pulls `<stddef.h>` names; the answer decides
+   whether `size_t`, `NULL`, `wchar_t`, `ptrdiff_t` join `reserved.py` and section 4's list
+   (Minor 2).
+3. Does the mapping form of `enumerators` keep its keys in a finding's pointer
+   (`enumerators.A` rather than `enumerators[0]`)? The answer changes `_pointer` or the model
+   (Minor 11), and what the editor underlines.
+4. The wildcard order (pass 1 Important 4, restated with the facts above): keeping `sorted(Path)`
+   keeps `SPEC.md:255-258` as written and leaves the Windows/POSIX difference in the a2l's
+   `GROUP` order; sorting on `as_posix()` changes `loading.py:1006`, `:531`, `:558` and `:396`
+   and `tests/test_loading.py:53-63`.
+
+### Test gaps
+
+- `tests/test_hardening.py`: a document nested 600 levels through `ddd id --assign` and through
+  `Document(text)` directly - `:587-599` pins 100 000 levels only (Important 1).
+- `tests/test_loading.py`: a hyphenated or variant-named extension key *inside a definition*
+  keeps its key in the pointer (`:434-448` pins the project level only), and two malformed blocks
+  in one definition yield two findings (Important 2 and 3).
+- `tests/test_models.py`: `["on", "off"]`, `[" 1 "]`, `["1_0"]`, `["1e2"]` inside a list init,
+  whichever way pass 2's open question 1 goes; `:839` pins the whole init only.
+- `tests/test_models.py`: a `condition` ending in a backslash (Minor 1); an `a2l.format` with
+  non-ASCII digits (Minor 3); a raster name of eight non-ASCII characters in `tests/test_rasters.py`
+  (Minor 16).
+- `tests/test_hardening.py::TestNamesThatWouldNotCompile`: `size_t` and `NULL`, if Minor 2 is
+  adopted; `:171` covers `<stdint.h>`'s own names only.
+- `tests/test_cli.py`: `ddd id --assign` on a json-escaped key, on a bare-CR file, on a read-only
+  file (Minor 5, 6, pass 5 Minor 4); no test today reads a file back after `assign` except for
+  the ids themselves.
+- `tests/test_hardening.py::TestTheArchivedDictionary`: a duplicate key and a `format` of `0` in a
+  dump (Minor 7); `:882-895` peeks at a higher version only.
+- `tests/test_documentation.py`: the mapping form's schema refuses an out-of-range value and a
+  non-identifier key (Minor 12); `tests/test_plugins.py:1010-1060` pins `additionalProperties`
+  on the extension blocks only.
+- `tests/test_cli.py`: a `-W` naming an unregistered plugin check beside a load error (Minor 13).
+
+### Assessment
+
+The core reads as carefully as the previous review said it does, and the fixes it asked for are
+in: the integer bounds are on every path, the pointer sort is index-aware, the readers no longer
+turn a malformed file into a usage error, and about eighty adversarial runs - directories, a bare
+`**`, 300 MB files, NUL bytes, 5000-digit numbers, `NaN` in a dump, a `subst` drive - all end in
+a located finding. The loader is linear and cheap next to the analysis, and nothing in these
+modules dominates a run. What this pass adds sits in two places the earlier passes did not read
+line by line. The json scanner that `ddd id --assign` and every editor range borrow from the
+language server recurses without the guard its parser got, so a file `ddd check` accepts ends
+the command and the server in a traceback from about 500 levels on. And the pointer machinery
+of the loader has two gaps on one input: after the first union tag the document walk is lost,
+so a malformed extension block of a plugin named `map` or `axis` is located a level too high,
+and the one-finding-per-place filter, keyed without the document, drops the second of two such
+blocks. The rest is small: a carried-over backslash in a condition, names MinGW's `<stdint.h>`
+reserves that the list does not, Unicode `\d` and `\S` where bytes were meant, a tilde the
+loader expands, three parses of one dump, and a 0.4 s `--version`.

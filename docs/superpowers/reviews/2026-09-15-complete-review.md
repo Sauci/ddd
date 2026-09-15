@@ -4958,4 +4958,38 @@ close.
 
 ### Verification
 
-Not verified.
+Every candidate of this pass was handed to a second reviewer (group G): 18 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P11B-I1 | Important | CONFIRMED | Important | `test_lsp.py:65` `uri_to_path(message["params"]["uri"]).name: message["params"]["diagnostics"]` keys all seven `published()` sites (`:2903, 3048, 3054, 3068, 3104, 3140, 3147`); `:2905-2909` resolves both sides; `:3208, 3222, 3319, 3416, 3512, 2005, 1936, 2383` compare `uri_to_path(...).name`; the copy publishing under `<dir>/../<dir>/a.ddd.json` passes `test_lsp`, `test_constants`, `test_external` (424 tests, 423 passed, the symlink failure only; the `%3A` test at `:2856` green), while the string-keyed probe fails on it (`.../t0/../t0/a.ddd.json != .../t0/a.ddd.json`) and passes on the tree |
+| P11B-I2 | Important | CONFIRMED | Minor | `test_lsp.py:3613` `assert main(["lsp", "-b", str(tmp_path)]) == EXIT_OK` on an empty stdin, so `run()` returns at `server.py:204` `if message is None: return 0` before any refresh; `grep build_directories tests/` finds that line only; `launch.test.ts:32-33` sends `initialize` then `exit`; `:309-313` pins `build_files(tmp_path, [elsewhere])` alone; the copy with `serve()` passing `build_directories=()` and `_builds_now` calling `discover(root)` and the unpatched control both give 741 tests / 736 passed / the same 5 failures (symlink + the copy's missing `cmake/` and `examples/`) |
+| P11B-M1 | Minor | CONFIRMED | Minor | `test_cli.py:128-130` asserts `EXIT_OK` for both runs; `ddd check examples/demo/demo.ddd.json` with and without `--strict` (and with `-W missing-id=warning`) prints `ok: 23 variables in 4 components are consistent`, exit 0 every time |
+| P11B-M2 | Minor | CONFIRMED | Minor | `test_lsp.py:3154` `assert sent(writer)`; on the copy with the loop at `server.py:384-385` (`self._publish(path, reports.get(path, []))`) replaced by `pass`, `test_saving_refreshes_as_opening_does` PASSED while `test_a_save_picks_up_what_changed_on_disk`, `test_opening_a_file_publishes_the_findings_of_its_project` and `test_a_finding_that_is_fixed_is_withdrawn` FAILED |
+| P11B-M3 | Minor | CONFIRMED | Minor | `:185` `if os.name == "nt":` guards the absolute/`as_uri` asserts; `:196` and `:203` expect `server_module.url2pathname(...)`, and the posix `url2pathname` (3.13.15 source) ends `return unquote(pathname, encoding=encoding, errors=errors)`, so `unquote('/c%3A/a.ddd.json') == unquote('/c:/a.ddd.json')` -> `True`; `:2876` `re.sub(r"^file:///([A-Za-z]):", ...)` matches nothing without a drive; `ci.yml:31` `os: [ubuntu-latest, windows-latest]` |
+| P11B-M4 | Minor | CONFIRMED | Minor | `:232` `for word in counted:`, `:245` `for word in re.findall(...)`, `:488` list over `spec_links()`, `:507` `for text, target in spec_links():`, `:746` `for name in sorted(read):`, `:967` `for enumeration in enumerations_in(published(kind)):`; grep: no `assert counted`, no `assert spec_links()`, `enumerations_in` called at `:967` only (the `:222-223` docstring describes a stale count, not a reworded phrase) |
+| P11B-M5 | Minor | CONFIRMED | Minor | `test_transcripts.py:389-393` and `:406-410` parametrize over `SHOWN`/`RUNS`, both built from `SHELL` (`:68`, matched at `:156, 159`); `test_empty.py` with `[]` -> `SKIPPED [1] test_empty.py:3: got empty parameter set for (page)`, exit 0; `empty_parameter_set_mark` is not set in `pyproject.toml` (`fail_at_collect` makes it a collection error, exit 2) |
+| P11B-M6 | Minor | CONFIRMED | Minor | `test_documentation.py:264-280` compares `commands()` with a literal set; `:260-262` looks `in README` only; `developer_documentation.rst:274-276` "every ... command ... is named in `README.md` and in `SPEC.md`"; all fourteen occur in `SPEC.md` today (grep counts 1 to 46) |
+| P11B-M7 | Minor | CONFIRMED | Minor | `test_cli.py:2393-2394` "writes through a text-mode file handle with no explicit `newline`"; `conftest.py:79` `path.write_text(written, encoding="utf-8", newline="")`; `write_tree` run on Windows: CR count 0, and the `.replace(b"\r\n", b"\n")` at `:2401` leaves the bytes unchanged |
+| P11B-M8 | Minor | CONFIRMED | Minor | `test_cli.py:2543-2547` the spy records `kwargs.get("newline", "unset")`; `:2559` `assert written["renames.json"] == ""`; the file's bytes are never read |
+| P11B-M9 | Minor | CONFIRMED | Minor | `test_plugins.py:1628-1863`: ten `write_plugin(tree / "tools", source=...)` each followed by the same `write_tree(...)`, and the identical `arguments = ["generate", "tag", root, "-o", str(out), "-W", "missing-id=ignore"]` at `:1640, 1661, 1684, 1710, 1734, 1760, 1787, 1811, 1863` (nine) |
+| P11B-M10 | Minor | CONFIRMED | Minor | `test_plugins.py:2062-2066` ends at `assert main(arguments) == EXIT_FINDINGS`; `tree / "out"` is never looked at |
+| P11B-M11 | Minor | CONFIRMED | Minor | `cli.py:104` `if reconfigure is not None:  # pragma: no branch - absent only on a replaced stream`; with the pragma removed in a copy, `test_the_command_serves_on_stdin_and_stdout` alone executes both arcs (`[104, -95]` and `[104, 105]`, no missing branch) because `test_lsp.py:3612` replaces `sys.stdout` and leaves `sys.stderr`; `test_strict_promotes_warnings` alone leaves `104->exit` missing |
+| P11B-M12 | Minor | CONFIRMED | Minor | `test_external.py:516` `from test_lsp import build_record, framed, sent`; duplicate of P11A-M6, whose verification already cites this line |
+| P11B-M13 | Minor | CONFIRMED | Minor | `test_cmake.py:487` `@pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])`; `:44-46` `compiler()` returns `[]` when `cl` is absent and `gcc` is not found; `:75` `assert run.returncode == 0, run.stdout + run.stderr` is where such a machine fails, with cmake's output as the message |
+| P11B-M14 | Minor | CONFIRMED | Minor | 14 configure-and-build tests (`test_cmake.py:111-471`); `pass-11a/full-suite-durations.txt`: the 14 cmake entries of the slowest 30 sum to 52.9 s; `test_the_examples_validate_against_their_own_schemas` 2.40 s (5.57 s in 11b's half run) from `jsonschema.validate(document, schema)` per file at `:1439`; `getting_started.rst` 3.71 s |
+| P11B-M15 | Minor | CONFIRMED | Minor | `test_example_plugin.py:40` `main(["compare", before, after, "-W", "missing-id=ignore"])` unassigned; the file's `EXIT_` asserts are at `:46, 50, 63, 73, 81, 290, 307, 326` - `check`, `dump`, `generate`, never `compare` |
+| P11B-M16 | Minor | CONFIRMED | Minor | `launch.test.ts:32-33` `initialize` then `exit`, `:37` `assert.equal(code, 0, ...)`; `:29` `spawn(settings.executable, ...)` with `executable: "ddd"` (`:43, 52`) and no `PYTHONPATH`; no `timeout` option on `test(...)` (`:42, 49`), and the `close` promise at `:36` never settles for a server that does not exit; `ci.yml:84` `pip install -e .`; the exit-code half is P6-M3 (verify-D: CONFIRMED, Minor) |
+
+Notes of the verifier:
+
+- P11B-I2 (regraded Minor). The gap is real and reproduced - patched and control copies give the
+same 741 / 736 / 5 - but nothing is hidden today: `cli.py:1112` `serve(args.build_directory)`,
+`server.py:640` passes it on and `:325` `discover(root, self.build_directories)` uses it. The
+clause is about a gap that hides a defect of that class, and the brief excludes "hypotheticals
+without a trigger"; a refactor that drops the argument is the only trigger the finder names.
+What keeps it at the top of the Minor list rather than in the gap table alone: the contract is
+documented in five places (`editors/vscode/package.json:60-66`, `docs/editor_integration.rst:160`,
+`README.md:209`, `SPEC.md:2066`, `docs/faq.rst:376`) and it is the extension's only setting, so
+the day it regresses nothing says so. The proposed `TestServer` test and a framed `didOpen`
+under `main(["lsp", "-b", ...])` would close it.

@@ -3053,3 +3053,307 @@ and the one-finding-per-place filter, keyed without the document, drops the seco
 blocks. The rest is small: a carried-over backslash in a condition, names MinGW's `<stdint.h>`
 reserves that the list does not, Unicode `\d` and `\S` where bytes were meant, a tilde the
 loader expands, three parses of one dump, and a 0.4 s `--version`.
+
+## Pass 9: code review of the core, part B (analysis, ir, compare)
+
+### Scope covered
+
+Read in full, with line numbers, on the review tree (`master` at `6e9e99f`): `src/ddd/analysis.py`
+1-3289, `src/ddd/ir.py` 1-733, `src/ddd/compare.py` 1-672. The models these call, in full:
+`src/ddd/models/objects.py`, `conversion.py`, `common.py`, `types.py`, `constants.py`. Every call
+site of what the three files export: `src/ddd/cli.py` 585-680, 785-830, 925-1000, 1340-1535
+(`_analyze`, `_read_dictionary`, `_read_baseline`, `_holds_a_description`, `_init_cell`,
+`_print_table`); `src/ddd/plugins.py` 255-410 (`resolve_blocks`, `settings_of`, the hook runners);
+`src/ddd/loading.py` 100-200 and 405-470 (`LoadedComponent`, `LoadedType`, `load_dictionary`,
+`_register`); `src/ddd/diagnostics.py` 279-523; `src/ddd/lsp/diagnostics.py` 60-215 and
+`lsp/hover.py` 78-102; the backends' uses of the records by grep, `backends/c/model.py` 289-310 and
+436-456. `docs/developer_documentation.rst` 1-100 (the layer table), `SPEC.md` 1306-1318 and
+1421-1507, `docs/comparing_deliveries.rst` 196-230, 429-530, 655-665, `CHANGELOG.md` 586-640 and
+760-772; `tests/test_comparison_tables.py` 40-130 and the names of every test in
+`tests/test_analysis.py`, `test_compare.py`, `test_structures.py`, `test_calibration.py`,
+`test_embedded.py`, `test_hardening.py`, with the bodies cited below; `previous-review.md`
+1590-1700; `reports/pass-3.md`, `pass-4.md`, `pass-8.md`.
+
+Ran, from the venv, everything kept under `scratchpad/pass-9/`: `probes.py`, `probes2.py`,
+`probes3.py`, `probes4.py` (28 throwaway cases under `cases/`, about 60 commands - `check`,
+`check --standalone`, `list`, `dump`, `compare` with and without `--strict`, `generate c --force`
+- transcripts in `results.txt` to `results4.txt`; case ids `Ann`, `Bnn`, `Cnn` below refer to
+those); `gen9.py`, which reuses pass 8's `gen.py` read-only for N components of 50 objects and
+adds one component of 20 000 objects; `perf.py` (wall clock of `ddd check` at N = 100, 1000, 3000
+and on the wide component, `cProfile` of `analyze` at N = 1000 and on the wide component,
+`ddd compare` of the N = 100 and N = 1000 dumps against themselves and against a copy with every
+name prefixed and no ids; `perf_check_stdout.txt`, `perf_profile_stdout.txt`,
+`perf_compare_stdout.txt`); determinism of `dump`, `check --format json` and `list --format json`
+under `PYTHONHASHSEED` 0, 1 and 12345 on six examples, two cases and the N = 100 project
+(`results3.txt` B30).
+
+### Strengths
+
+- Deterministic in fact, not only by design: `dump`, `check --format json` and `list --format
+  json` are byte-identical under three hash seeds on `examples/demo`, `structures`,
+  `pressure/release`, `inconsistent`, `vocabulary`, `layout`, two enum cases and the 5 300 object
+  project (B30). Every set in the three files is consumed by membership or sorted before it
+  reaches a finding (`analysis.py:720`, `:731`, `:771`, `:786`, `:788`, `:2454`, `:2646`,
+  `compare.py:270`, `:276`, `:285-287`, `:307`, `:354`).
+- Linear and cheap: `ddd check` takes 0.89 s / 9.4 s / 18.8 s for 100 / 1000 / 3000 components of
+  50 objects and 2.2 s for one component of 20 000 objects; under the profiler at N = 1000 no
+  function of these modules dominates - pydantic's record construction is 19 %, `_build_variable`
+  and `Variable.resolve` 20 % together, `_check_similar_names` is one linear pass (0.4 s), the
+  absence fixpoint 0.2 s (`perf_profile_stdout.txt`). The three graph walks that could have been
+  exponential are not: `_nesting_cycle` shares `settled` across starts (`analysis.py:1274-1276`),
+  `_leaves_of_types` counts over the type graph rather than the instance (`:1357-1397`),
+  `_reaches_external` is memoised (`:1173-1211`).
+- The caps run before any expansion: a map of 4000 x 4000 is refused at the map (A06), a
+  structure of one external member dimensioned `[2000000]` checks in 1.2 s with zero leaves (A12),
+  a 64-level structure resolves to a 64-deep path and a 65-level one is refused at the type that
+  crosses the limit (A06, A06b). Nothing allocates before `_shape_fits` (`:1917`) has weighed
+  the product.
+- The phase order of `_Analysis.run` holds for every input tried: `_unwalkable_types` is complete
+  before `_check_sections` walks a type (`:711` before `:713`, guard at `:1138`), `_type_leaves`
+  before `_shape_fits` asks (`:1263`, `:1925`), `_effective` before `_resolve_shape` and the a2l
+  closure read it (`:733`, `:736`, `:741`), and every path that drops a declaration records it
+  in `_dropped` (asserted at `:2234`). The two fixpoints of `_absent` are monotone (an `and` over
+  values that only fall), so they converge on a reference graph of any shape.
+- Self references are refused where they are written: an axis whose `input` is itself and a
+  curve whose `axis` is itself are `reference-kind` (A05).
+- `compare` degrades safely on the inputs the previous review worried about: colliding ids fall
+  back to names (`compare.py:208-231`), a swap is two renames and two `reused-name`s, a
+  half-migrated project pairs by what each object carries, and a plugin's block is left to the
+  plugin - two dumps differing only in `extensions` are `missing-plugin` and nothing else (C05).
+- The records are frozen with a hash that leaves the mapping fields out (`ir.py:148`, `:359`,
+  `:670`); nothing in the three modules mutates an `extensions` dict after it is built, and
+  `resolve_blocks` returns a fresh, sorted dict per object (`plugins.py:270-303`).
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **`narrowed-limits` compares limits exactly, so stating the limit a datatype implies is a
+   narrowing by 3e-13 and, under `--strict`, a false "cannot replace"** (`src/ddd/compare.py:590`
+   `narrowed = new.limits.min > old.limits.min or new.limits.max < old.limits.max`). Trigger (A11):
+   a baseline dumped from `sint16` under `{"factor": 0.1}` with no limits carries `"max":
+   3276.7000000000003` (pass 4 Important 3, where the value is *produced*); a candidate that
+   writes `"limits": {"min": -3276.8, "max": 3276.7}` - making the implicit limits explicit, or
+   adopting a scalar type that states them - is `warning[narrowed-limits]: 'T': limits tightened
+   from [-3276.8, 3276.7000000000003] to [-3276.8, 3276.7]`, and with `--strict`, the gate
+   `docs/comparing_deliveries.rst:661` recommends, `error[narrowed-limits]` and `c.ddd.json cannot
+   replace baseline.json`, exit 1. The reverse edit is silent (widening). The analysis knows this
+   arithmetic is approximate - `_below`/`_above` accept `rel_tol=1e-9` (`analysis.py:3284-3289`) -
+   and the comparison does not. Fixing pass 4 Important 3 alone moves the problem rather than
+   removing it: every archived baseline then carries the unrounded value against a candidate that
+   derives the rounded one, which is a narrowing on every rescaled object of every old baseline.
+   Fix: compare with the analysis's tolerance (one shared `_below`/`_above` in `models`), whatever
+   is decided about rounding the derived value.
+
+2. **A reordered structure, and a bitfield whose width changed, are "can replace", while the
+   published schema promises that a comparison reports the reordering** (`src/ddd/compare.py:
+   121-148` compares kind, datatype, unit, conversion, shape and locality of each leaf and nothing
+   about its `bits` or its position; `src/ddd/models/types.py:124-126` "Reordering members of a
+   released structure moves every address after the change, which is why a comparison against a
+   baseline reports it", published verbatim in `schemas/ddd_types.schema.json:287` and
+   `schemas/ddd_component.schema.json:1376`). Trigger (A08): baseline `S_t {a: uint8, b: uint16, f:
+   uint16 bits 3}`, candidate `{b, a, f}` -> no finding, `p.ddd.json can replace baseline.json`,
+   also under `--strict`; `f` widened to 4 bits -> no finding (the derived limits widen, which is
+   silent); `f` narrowed to 2 bits -> only `warning[narrowed-limits]: 'Inst.f': limits tightened
+   from [0, 7] to [0, 3]`, the layout change itself unmentioned. The dictionary carries `bits` on
+   every leaf (`ir.py:488`, `ddd list --format json` shows `('Inst.f', 3)`), and
+   `tests/test_comparison_tables.py:94` says its guard "walks ResolvedObject.model_fields alone",
+   so a leaf field can fall behind unnoticed. `SPEC.md:1422` lists neither in `changed-interface`,
+   so the code matches the spec and contradicts the model's docstring. Fix: decide (open question
+   1); compare `bits` as an interface field of a leaf and the member order of each `types` entry
+   (or drop the sentence from `Member` and say in 4.1 that layout inside a structure is not
+   compared), and extend the tables guard to `ResolvedLeaf.model_fields`.
+
+3. **One table typed one datatype too narrow is one `init-invalid` per element** (`src/ddd/
+   analysis.py:2339` `for value in definition.scalar_values():` with `self._bag.add(...)` inside
+   at `:2351` and `:2359`; the bag keeps every call, `diagnostics.py:485-500`). Trigger (A09): a
+   `value_block` `uint8[4096]` with `"init": [300, 300, ...]` -> `ddd check --standalone` prints
+   4096 identical lines at one pointer (499 724 characters), `--format json` carries 4096
+   diagnostics, and the server publishes 4096 diagnostics on one range (`lsp/diagnostics.py:
+   157-160`, `_as_lsp` is one to one). `[1.5] * 8` is eight findings (C07). The enumerator check
+   beside it already spells the offending subset in one finding (`_check_enum_fits`, `:2492-2502`).
+   Fix: one finding per declaration with the count and the first offending values ("4096 init
+   values do not fit into uint8, the first is 300 at [0]"), or collapse identical
+   (check, location, message) triples in the bag.
+
+4. **The lost-identity note is quadratic in the additions that share a bucket, so a rename sweep
+   on a project without ids takes ten seconds at 5 300 objects and does not finish in fifteen
+   minutes at 53 000**
+   (`src/ddd/compare.py:439-446` `same = [new for new in candidates if ... not differing(...) and
+   not differing(...) and _compare_references(...) is None]`, asked for every removal;
+   `:388-409` buckets on kind, datatype and unit only and says "no such delivery has been seen").
+   Trigger (`perf_compare_stdout.txt`): the N = 100 dump with every id nulled against a copy with
+   every name prefixed `x_` - the naming-convention sweep that a project does *before* it has
+   ids, which is what `renames` exists for - compares in 9.6 s against 0.9 s for the same dump
+   unchanged, with `differing` called 2.36 million times from `_lost_identity_note` (28.7 s under
+   the profiler); the N = 1000 pair - 53 000 objects, 10 000 of them in one bucket - did not
+   finish within the 900 s allowed (`TIMEOUT after 900 s`), against 6.0 s for that dump against
+   itself. The note is advisory ("if there is exactly one" identical addition). Fix: key the
+   bucket on everything hashable the note compares
+   (conversion identity, `written_shape`, `local`, `volatile`, `section`, `raster`, the reference
+   keys), so a bucket holds only genuine candidates, and skip the note outright when a bucket
+   exceeds a small bound - two identical additions already yield no note.
+
+#### Minor
+
+1. **Cyclic structures reach the dictionary's `types`, against the docstring that says they are
+   left out** (`src/ddd/analysis.py:432-433` "a cycle is reported by `_check_types` and the
+   structures in it are left out"; `:783` hands `_ordered_structures` every declared type).
+   Trigger (A01): `A_t <-> B_t` -> `type-cycle`, and `ddd dump` writes `types: [B_t, A_t, Ok_t]`.
+   Harmless (`type-cycle` is an error, a forced header fails loudly); fix the sentence.
+
+2. **`ResolvedMember` accepts a member with no storage at all** (`src/ddd/ir.py:297-311` checks
+   only that `external` and `header` travel together; `analysis.py:951-963` builds `datatype=None,
+   type=None, external=None` for a member naming an unknown type). Trigger (A02, C06): a member
+   `"typename": "Nope_t"` -> `unknown-type`, `ddd dump` carries `{"datatype": null, "type": null,
+   "external": null}`, the dump reads back and compares clean, and `generate c --force` writes
+   `None bad;` into `ddd_types.h` (`backends/c/model.py:453` `str(member.type)`). The docstrings
+   at `ir.py:264-268` say each is `None` exactly when the other is stated. Fix: a validator
+   "exactly one of `datatype`, `type`, `external`", and `<unresolved>` for the forced spelling.
+
+3. **The bitfield bound is phrased as the datatype, and a value past both the field and the c
+   `int` is two findings** (`src/ddd/analysis.py:838-840` passes `member.datatype.value` as the
+   phrase while the bounds are `_member_raw_range`; `:862` likewise; `:2467-2474` excepts the
+   datatype's range, not the field's). Trigger (A03, C03): `uint8` `bits: 2` with enumerator
+   `FAR=5` -> `enumerator(s) FAR=5 of enum 'Mode_t' do not fit into uint8`; limits `[0, 9]` ->
+   `exceed the range [0, 3] that uint8 can represent`; `uint64` `bits: 2` with `2**40` -> one
+   finding against the c `int` and one "do not fit into uint64". Fix: say "the 2-bit field of
+   uint8", and hand `except_outside` the bitfield's range.
+
+4. **A list nested one level too deep is reported as "the object is a scalar"** (`src/ddd/models/
+   objects.py:779-780`, reached from `analysis.py:3109`). Trigger (B24): `"init": [[1], [2]]` on
+   `uint8[2]` -> `'V': init is a list but the object is a scalar`; the object is an array, its
+   element is the scalar. Fix: "element [0] is a list but the shape has no further dimension".
+
+5. **`changed-storage` spells the whole init twice** (`src/ddd/compare.py:103-115` `_describe_init`
+   returns `repr(value)`; `cli.py:1491-1511` abbreviates the same value to `[...]` for the table).
+   Trigger (A10): a `uint8[100000]` block with one element changed -> one warning of 600 017
+   characters in text and in json; a 16 x 16 map costs about 1.6 kB per changed table. Fix:
+   abbreviate, naming the first differing index and both values there.
+
+6. **`enum-conflict`'s note "first defined as" points at the better documented copy, not the
+   first** (carried over, previous pass 7 Minor 9; `src/ddd/analysis.py:2412-2416` replaces the
+   registry entry, location included). Trigger (A07): `A` undocumented, `B` documented, `C`
+   conflicting -> the note points at `b.ddd.json`. Fix: keep the first location beside the best
+   documented conversion.
+
+7. **Leaves and listed variables are ordered as text: `[0], [10], [11], [1]`** (carried over,
+   previous pass 7 Minor 2; `src/ddd/analysis.py:786` `key=lambda x: x.path`, `ir.py:715`).
+   Trigger (C04): an instance `[12]` lists `Inst[0].v Inst[10].v Inst[11].v Inst[1].v ...`. Fix: a
+   key that splits on `[n]`, as `_pointer_order` does (`diagnostics.py:279-294`).
+
+8. **Only the first registration of an enum screens its enumerators** (`src/ddd/analysis.py:
+   2395-2400`; `_check_enum_names` is not reached on a conflicting second copy). Trigger (C02):
+   `A` `{OFF, ON}`, `B` `{OFF, ON, EXTRA}`, `C` a variable `EXTRA` -> `enum-conflict` alone, no
+   `name-collision` for `EXTRA`. Cosmetic, the conflict is already an error.
+
+9. **`2.0` on a boolean is refused as "init value 2", and `1.0` passes where `1.0` on `uint8` is
+   refused** (`src/ddd/analysis.py:2341-2346` `value not in (0, 1)` then `format_number`; `:2348`
+   spells the integer case with `{value!r}` for exactly this reason). Trigger (A04): `"init":
+   2.0` on `boolean` -> `init value 2 is not a valid bool`; `1.0` -> no finding, `= 1`. Cosmetic.
+
+10. **Rules spelled twice inside the two files** (reuse). `_refuse_infinite_type_limits` re-derives
+    a member's raw range inline (`src/ddd/analysis.py:1526-1530`) beside `_member_raw_range`
+    (`:3240-3245`); `_describe_references` is copied between `analysis.py:155` and
+    `compare.py:84`, and `_condition` renders an absent condition as "no condition" at
+    `analysis.py:3264` and "none" at `compare.py:627` (previous pass 7 Minor 3f, still open);
+    `Variable.is_local` (`:357`) is re-spelled at `:2900`.
+
+11. **The layer table says the analysis knows "any output format" not at all; it knows the a2l's
+    dimension cap and the c `int`, and the leak guard does not read it** (`src/ddd/analysis.py:
+    68-69` `_A2L_MAX_DIMENSIONS` "Dimensions `MATRIX_DIM` can carry ... (ASAP2 1.6.1)", `:127-128`
+    `_INT_MIN, _INT_MAX` "Range of a c `int` on the 32 bit targets", messages naming `MATRIX_DIM`
+    and `ASAP2 1.6.1` at `:2916-2918` and `:3033-3035`, `typedef` at `:1683-1685`;
+    `docs/developer_documentation.rst:32-34`, and `:88-89` says the spelling guard reads
+    `src/ddd/models/` only). Both facts are what section 4's `a2l-unrepresentable` and the
+    enumerator rule are about, so the row's wording is what is wrong, or the two constants belong
+    beside `reserved.py` with the same justification. No behaviour rides on it.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P7 I1 | a dropped declaration makes the ownership checks lie | fixed | `analysis.py:673-687` (`_census`, `_dropped`), `:2504-2557`, `:2840-2842`; `tests/test_analysis.py:713-775` |
+| P7 I5 | arrays of structures expanded without a bound | fixed | `analysis.py:102-125`, `_shape_fits` `:1887-1943`, `_leaves_of_types` `:1357-1397`, `_refuse_wide_types` `:1432-1468`, `_refuse_wide_maps` `:1945-1988`; A06 (1.6e7-element map refused), A12 (2e6 opaque elements in 1.2 s); `tests/test_analysis.py:597-700`, `test_structures.py:638-700` |
+| P7 I7 | scalar type findings at keys its users do not have, once per user | fixed | `_check_scalar_type` `analysis.py:865-888`, skipped for a filled-in declaration `:2319-2325`; `tests/test_structures.py:1825-1850` |
+| P7 design note 1 | dropping versus marking | mostly closed | `_census` and `_dropped` feed ownership, readers and `incomplete-project`; identities and similar names still read `ordered`, the survivors (`:1783`, `:3211`; pass 3 Minor 2) |
+| P7 design note 2 | types checked through their users | closed | `_check_scalar_type`, `_register_member_enums`, `_check_member_limits` at the type |
+| P7 design note 4 | implicit phase order in `run` | open, no defect | the order lives in comments (`:726-729`, `:1255-1263`); no assert on entry; every field read is filled first for every input tried (Strengths) |
+| P7 design note 5 | the IR is the a2l's shape | open | `leaves` per element (`:785-787`, 10 000 leaves for 2 000 instances at N = 1000); `init` unexpanded (pass 4 Minor 5) |
+| P7 M2, M3f, M8, M9 | leaves as text; `_condition`/`_describe_references` twice; member `unknown-type` at `members[i]`; enum note location | open | Minor 7, Minor 10, `analysis.py:1240` (still `members[{index}]`, not `.typename`), Minor 6 |
+| P7 M4, M7 | dictionary invariants; owner under a silenced local clash | partly / open | `ir.py:244-248` plus Minor 2 above; pass 3 Minor 5 |
+| P7 test review | ~220 `checks(bag) == [...]` order pins; the `1.0` init case; dropped-producer cases | open / open / closed | 345 such pins now (`grep -c` over `tests/`); `1.0` is refused as "written as a fractional number" (A04) and `tests/test_analysis.py:176` still uses `1.5` only; `tests/test_analysis.py:713-775` |
+
+Forwarded items, settled from the code. Pass 3 Important 1: the mechanism is `_refuse_reference`
+reading `found.kind` alone (`analysis.py:2700`) - a structured instance is a `Measurement` whose
+`declared_type` names a structure, and no test in `_EXPECTED_KIND` looks at `declared_type`;
+confirmed, nothing to add. Pass 3 Important 2: `compare.py:182` compares `o.init` as read, and
+the dictionary stores `definition.init` as written (`analysis.py:390`); confirmed. Pass 3 Minor
+1 (`explained`, `:2671`), Minor 2 (`:1783` over `ordered`), Minor 3 (`_check_init_shape` only
+from `_build_variable`, `:3019`), Minor 4 (`location` at `:2307` handed to `:2333-2335`), Minor 5
+(`owning[0]`, `:2556-2557`), Minor 6 (`STANDALONE_POLICY` includes `incomplete-project`), Minor 9
+(`continue` at `:2221` before `_check_declared_name`): all confirmed as described. Pass 4
+Important 3: the derived limits are computed in `physical_range` (`conversion.py:269-281`), reach
+the dictionary through `physical_limits()` (`objects.py:600-611`, `analysis.py:3044-3048`) and
+`_member_meaning` (`:2999-3001`), and are consumed with a tolerance by `_check_limits_fit`
+(`:3284-3289`) and without one by `compare.py:590` - Important 1 above. Pass 4 Minor 5 and 6:
+`ir.py:187` and `:98` unchanged. Pass 1 Important 5: `compare.py:128-132` reads
+`conversion_identity`, which for an enum is name plus ordered `(name, value)` pairs
+(`conversion.py:260-265`); confirmed, descriptions left out. Pass 8 open question 3 (the
+enumerator mapping form's pointer): the analysis never builds a pointer into `enumerators` - every
+enum finding sits at `...conversion` (`:2332`, `:835`, `:881`) - so the question is the
+loader's alone.
+
+### Open questions
+
+1. Is a change of a structure's layout - member order, a bitfield's width - a `changed-interface`
+   (Important 2)? Yes changes `compare.py` and the tables guard; no changes the `Member` docstring
+   and both published schemas, and wants a sentence in 4.1.
+2. Should `narrowed-limits` carry the analysis's `1e-9` tolerance (Important 1), or should the
+   derived value be rounded (pass 4 Important 3) and archived baselines be accepted as noisy? The
+   first is one helper shared by both modules; the second alone leaves every old baseline tripping
+   the check the other way.
+3. Should the lost-identity note give up above a bucket size (Important 4), or is a comparison
+   without ids allowed to take minutes? The answer decides whether `_by_discriminators` grows keys
+   or `_lost_identity_note` grows a bound.
+4. Is one `init-invalid` per element wanted anywhere (Important 3)? A per-element pointer is
+   never built (`definition.init` for all), so nothing is lost by folding them.
+
+### Test gaps
+
+- `tests/test_compare.py`: stated limits equal to the derived ones compare clean (Important 1;
+  no test names `isclose` or a value inside the band, previous gap still open); a reordered
+  structure and a changed `bits`, whichever way question 1 goes (Important 2); a changed init of
+  a large block reported in a bounded message (Minor 5).
+- `tests/test_comparison_tables.py`: a guard over `ResolvedLeaf.model_fields` beside the one over
+  `ResolvedObject` (Important 2; `:94` says the leaf is not walked).
+- `tests/test_analysis.py`: a table of N bad elements is one finding (Important 3); `1.0` on an
+  integer (previous gap, still open - `:176` uses `1.5`); the bitfield phrase and the single
+  finding past both bounds (Minor 3); `[[1], [2]]` on `[2]` (Minor 4); the enum note's location
+  under a documented second copy (Minor 6).
+- `tests/test_structures.py`: a cyclic structure reaching (or not) the dump's `types` (Minor 1);
+  a `ResolvedMember` without storage refused (Minor 2); the element order of an instance `[12]`
+  (Minor 7).
+- A performance guard for `ddd compare` on a rename sweep without ids, or the bound of question 3
+  pinned (Important 4).
+
+### Assessment
+
+The three modules read as one design carried through: every drop is recorded where it happens,
+the absence machinery is a monotone fixpoint, the caps are weighed before anything expands, the
+walks that could have gone exponential are memoised or counted over the type graph, and the
+outputs are byte-identical across hash seeds and linear in the project. Nothing in them
+dominates a run, and the defects the previous review found in this area - ownership lying about
+dropped declarations, unbounded expansion, scalar types checked through their users - are fixed
+and tested. What this pass adds sits at the comparison's edges and in one loop of the analysis:
+the limit comparison lacks the tolerance the analysis already uses, so making implicit limits
+explicit is a strict-mode refusal; a structure's layout is outside what `compare` sees although
+the published schema says otherwise; a table typed too narrow is reported once per element; and
+the advisory lost-identity note is quadratic on exactly the delivery ids were introduced to
+handle. Each is local. The minors are a stale docstring, an IR record that admits a member with
+no storage, three messages phrased for the wrong bound or object, one 600 kB message, and four
+carried-over small items.

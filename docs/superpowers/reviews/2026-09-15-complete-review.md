@@ -388,6 +388,38 @@ a string `init` in the dictionary and in a comparison, a member's `dimension-val
 type unusable, the normalised constant literal. Each is a sentence, not a redesign; Important 4
 and open question 1 are the two the maintainer has to decide rather than merely record.
 
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group A): 17 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P1-I1 | Important | CONFIRMED | Important | ran `ddd compare base/proj.ddd.json cand/proj.ddd.json --renames r.json` (copy of expC): `"id": "abcdefghjkmn[0].a"` for the array member, `"pqrstvwxyz23.a"` for the scalar one; `SPEC.md:1410-1411` "the instance's `id` followed by `.` and the member path" |
+| P1-I2 | Important | CONFIRMED | Important | copy of expB, one `definition-mismatch`: `ddd dump proj.ddd.json -o d.json` -> `wrote d.json (updated)`, exit 1; `ddd generate c ... --dictionary outB/d.json` on the same project -> nothing written, exit 1; a missing root leaves the file absent; `SPEC.md:1814-1817` "written the way `generate` writes an artefact ... left as it was when the project does not resolve" |
+| P1-I3 | Important | CONFIRMED | Minor | `SPEC.md:158` "a named integer declared by a constants file"; `:927` "named numbers", `:953-954`, `:1276`; `ddd dump` of expA carries `{'name': 'GAIN', 'value': 2.5}` |
+| P1-I4 | Important | CONFIRMED | Important | `loading.py:1006-1010` sorts `Path` objects; here `ddd sources`, the dump's `components` (`['Alpha', 'Zeta']`) and the A2L (`GROUP Alpha` at line 35, `GROUP Zeta` at 43) put `alpha` first; `sorted()` of the same names as `PurePosixPath` gives `Zeta, _under, alpha`; `SPEC.md:1607` "the same bytes on any machine" vs `:1612` "only file paths order as the platform compares them" |
+| P1-I5 | Important | CONFIRMED | Important | copy of expK: `error[changed-interface]: 'Mode' is not the same object any more (conversion: enum(Mode_t: OFF=0, ON=2) != enum(Mode_t: OFF=0, ON=1))`, "cannot replace", exit 1; `SPEC.md:1202-1203` "an enum by its name - `enum-conflict` compares the enumerators"; 4.1 (`:1422-1425`) names no enumerator rule |
+| P1-M1 | Minor | CONFIRMED | Minor | `SPEC.md:1276` "A constant may hold any number" set plain; `:77-78` "set in bold wherever they bind" |
+| P1-M2 | Minor | CONFIRMED | Minor | `SPEC.md:98` "**shall** be defined and declared by code DDD renders" (binds the project's objects), `:730` "A build **shall**", `:1734` "a reader **shall** refuse", `:2069` "An editor extension **shall**", `:463` "**should** be confirmed on the toolchain"; `:69` "a binding requirement on DDD" |
+| P1-M3 | Minor | CONFIRMED | Minor | `SPEC.md:621-622` "`kind` **must** be stated"; `:631-634` "one stating nothing, `{}`, is the identity"; `:70` a **must** violation "is reported under the named check" - none is named and `{}` is valid |
+| P1-M4 | Minor | CONFIRMED | Minor | expA `generate all`: `#define BIG 1000.0`, `#define GAIN 2.5`, `SYSTEM_CONSTANT "BIG" "1000.0"` from `1e3` and `2.50`; `SPEC.md:955-956` "the outputs carry the literal as written"; primary of the pair with P2-M4 |
+| P1-M5 | Minor | CONFIRMED | Minor | expE with `-W dimension-value=ignore`: `Obj` absent from `ddd list`, `info[incomplete-project]: ... it names the type 'T_t', and the dimension-value that says why the type is unusable is not reported`; `SPEC.md:1370-1371` lists "cycle, unknown member type or unknown member constant" only, `:974-976` says nothing of the type |
+| P1-M6 | Minor | CONFIRMED | Minor | expD: `warning[changed-storage]: 'Label': init: "Hi" != (72, 105, 0, 0)`, "can replace"; under `--strict` an error and "cannot replace"; `SPEC.md:1745` lists `init` with no text form, `:1451` "the initial value ... changed" |
+| P1-M7 | Minor | CONFIRMED | Minor | on `examples/layout`: `ddd compare project.ddd.json layout.json --plugin ../plugins/ddd_layout.py` -> "layout.json can replace project.ddd.json", exit 0; sides swapped -> "ddd: --plugin names the plugins of an archived dictionary; a project description names its own", exit 2; `SPEC.md:1877-1878` "a `--plugin` refused beside a description" |
+| P1-M8 | Minor | CONFIRMED | Minor | `SPEC.md:1974` "`<NAME>.dictionary.json`" against `:1937-1938`; `Ddd.cmake:428` "NAME is ignored with PROJECT - the a2l and the dictionary are named after the project name inside", `:447` replaces `arg_NAME`, `:547` names the file from it |
+| P1-M9 | Minor | CONFIRMED | Minor | "storage category" occurs at `SPEC.md:1629`, `:1676` only; "vocabulary file" at `:1907`, `:1914` only; "member path(s)" at `:1411`, `:1605`, `:1652`, `:1720` beside the defined "access path" (`:159`); "instance" `:150` vs `:1748-1750`; "standalone" `:289-291` vs `:1849`; "delivery" `:164` vs `:1391-1392` |
+| P1-M10 | Minor | CONFIRMED | Minor | `ddd list --format json` on `examples/structures`: 7 of 9 `variables` carry `path` and no `name` key; `ddd checks --format json` rows carry 6 keys where `:1842` names 2; `artefacts` JSON carries `plugins_without_artefact`; `generate` reports under `generated`; the build record writes `"image": ""` |
+| P1-M11 | Minor | CONFIRMED | Minor | `SPEC.md:157-158` "declared by a types file" / "a constants file" vs `:281-285`; `:162` "findings reported as errors fail the run" vs `:1884-1886` "exit 0 whatever the findings"; `:170` is the one scope row naming no check |
+| P1-M12 | Minor | CONFIRMED | Minor | `:396-397` omits constants, `:948-949` applies the cap; `include-depth` at `:1314` and `:1317`; `:1691-1692` vs `:1637`; `:592-593` vs `:1706-1707` and `:1722`; a structured declaration with `a2l.format`/`display_identifier` is accepted silently, the dump's instance record carries both and the A2L writes neither; `:837-838` vs `:1230-1236` |
+
+Notes of the verifier:
+
+- **P1-I3, regraded to Minor.** The row is stale wording contradicted by the normative 3.9
+(`:927`, `:953-954`) and by section 4 (`:1276`) in the same document, and the tool follows 3.9. A
+reader is told a feature does not exist; nobody is led to a wrong verdict or output, which under
+the brief is a small inconsistency. It is the same stale word as P2-M1 in the README: P1-I3 is
+primary, P2-M1 its copy, two files and one fix.
+
 ## Pass 2: the file formats (SPEC.md section 3.1 to 3.10)
 
 ### Scope covered
@@ -756,6 +788,40 @@ the README, one page that contradicts itself about the include depth, a referenc
 the fourth conversion, and the "as written" claim about constant literals that the outputs do
 not keep.
 
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group A): 12 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P2-I1 | Important | CONFIRMED | Important | `"init": ["1", "2"]` on `uint8[2]`: `ddd check --standalone` clean, `ddd dump` carries `'V': [1, 2]`; the whole init `"12"` -> `init-invalid` "initialised with text"; `jsonschema` REFUSED at `definition`; `SPEC.md:433-434` "a quoted number is text, not the number"; `objects.py:37` "never text" |
+| P2-I2 | Important | CONFIRMED | Minor | `"volatile": "no"` -> `uint8_t V;`, `"export": "no"` -> no `MEASUREMENT X`, `{"min": "0", "max": "10"}` -> `{'min': 0, 'max': 10}`, `"factor": "0.5"` -> 0.5, `"bits": "2"`/`true` -> `f : 2`, `g : 1`; `jsonschema` refuses all five; the deferred strict-mode residue |
+| P2-I3 | Important | CONFIRMED | Important | `[[1, 2], [3, null]]`: `init: Input should be a valid integer (got: [[1, 2], [3, None]])`, `init[1]: ... (got: [3, None])`, `init[1][1]: ... (got: None)`, "3 errors"; `[1, 18446744073709551616]`: the `init` line precedes `init[1]: ... does not fit 64 bits`; `loading.py:1192` drops `too_short` only |
+| P2-M1 | Minor | CONFIRMED | Minor | `README.md:447` "a **constants** file declares named integer constants"; the tool dumps `2.5` (expA); the README copy of P1-I3 |
+| P2-M2 | Minor | CONFIRMED | Minor | `project.rst:166` "The nesting has no depth limit" vs `:227` "DDD follows at most 64 levels of includes"; `loading.py:55` `_MAX_INCLUDE_DEPTH = 64` |
+| P2-M3 | Minor | CONFIRMED | Minor | `src/ddd/models/__init__.py:21`, `:122` export `StringConversion`; the `autopydantic_model` directives under `docs/` name Identity, Linear, Enum and Enumerator only (`data_contracts.rst:298-306`); `:291-296` describes three kinds |
+| P2-M4 | Minor | CONFIRMED | Minor | `constants.py:78-79` "the generated code emits the literal as written", verbatim at `ddd_constants.schema.json:27`, `ddd_component.schema.json:401`, `constants.rst:28-29`; `c/model.py:193` "as the description wrote it"; outputs as in P1-M4, which is primary |
+| P2-M5 | Minor | CONFIRMED | Minor | `types.py:484-488` names the two forms while `:419-439` refuse whitespace, a quote and mixed angles; `rasters.py:94-99` vs `:56-68`; `conversion.py:148` vs `:163-169`; `objects.py:416-422`, `:469-475`, `:158-159` say nothing of a string while `:278-286` refuse all three; `index.rst:169-171` promises the rule in the description |
+| P2-M6 | Minor | CONFIRMED | Minor | `"dimensions": [4.0]`, `"event": 1.0`, `"alignment": 4.0`: `jsonschema` accepts all three; `ddd check` -> `Input should be a valid integer (got: 4.0)`, `(got: 1.0)`, `(got: 4.0)`; `objects.py:70`, `rasters.py:86`, `sections.py:52` `strict=True` |
+| P2-M7 | Minor | CONFIRMED | Minor | `"value": 1e400` -> `k.ddd.json#constants[0].value: error[schema]: Input should be a valid integer (got: inf)` beside `limits.max: ... Input should be a finite number (got: inf)`; two BOMs -> `bom.ddd.json:1:1: error[json-syntax]: Unexpected UTF-8 BOM (decode using utf-8-sig)`; `loading.py:583` passes `error.msg` through |
+| P2-M8 | Minor | CONFIRMED | Minor | `"raster": ""` and `"a b"` on definitions, `""` on the component -> three `unknown-raster` ("measured in ''", "'a b'"); a rasters entry `""` -> `schema` "at least 1 character"; `"section": ""` -> `schema` pattern `^[A-Za-z0-9_.$]+$`; `objects.py:432` `raster: str|None` vs `:424`; `SPEC.md:691-699` states no spelling rule |
+| P2-M9 | Minor | CONFIRMED | Minor | 98 nested lists: clean; 99: "100 errors", the deepest two `error[schema]: Recursion error - cyclic reference detected (got: 1)`; `SPEC.md:200-201` promises `json-syntax` for depth and no document states 98 |
+
+Notes of the verifier:
+
+- **P2-I2, regraded to Minor.** This is the residue of the strict-mode question the review brief
+lists among the follow-ups the maintainer left open on purpose ("strict-mode pydantic models and
+a JSON-boolean init deferred"; `docs/superpowers/plans/2026-09-09-core-robustness.md:29`
+"strictness is a separate, deferred change with its own migration note"; the previous review's
+Important 6 named these same fields). Every row reproduces, and none yields a value other than
+what its spelling says - `"no"` is false, `"0.5"` is 0.5, `"2"` is 2; `"bits": true` -> 1 is the
+one odd reading, on input nobody writes. The schema is the stricter side, so a CI job validating
+with it passes nothing the loader refuses; the cost is an editor underline on a file the build
+accepts. No wrong verdict or output, so not a defect the deferral now causes; the table remains
+the exact list the decision needs. P2-I1 is different and stays Important: `SPEC.md:433-434` and
+`objects.py:58-64` say the init half of the question was settled, and the nested case escaped
+the settlement.
+
 ## Pass 3: the consistency checks and the comparison (SPEC.md section 4)
 
 ### Scope covered
@@ -1097,6 +1163,25 @@ which the spec has not yet said either way. And one contract of the reference pa
 `location.path` in json - is broken for exactly the findings a comparison produces. The rest are
 small consistencies in where a finding sits or which census a check reads, and three prose
 drifts between the docs table and the spec.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group B): 12 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P3-I1 | Important | CONFIRMED | Important | `analysis.py:2700` `elif found.kind is not _EXPECTED_KIND[key]:` reads the kind only; ran `cases/I1` (struct `S_t`, instance `Inst`, axis `Cx` with `"input": "Inst"`, curve `Cu`): `ddd check` -> `ok: 3 variables in 2 components are consistent`; `ddd generate a2l` -> `0x00000000 Inst RL_AXIS_UWORD 0 NO_COMPU_METHOD 2 0 65535`, `COM_AXIS Inst NO_COMPU_METHOD 2 0 65535`, the only measurement `/begin MEASUREMENT Inst.a`; `a2lcheck.py`: "AXIS_PTS Cx input: references MEASUREMENT 'Inst', which is not defined"; the same instance as a curve's `axis` (`cases/I1b`) is refused `error[reference-kind]` |
+| P3-I2 | Important | CONFIRMED | Important | `compare.py:182` `ComparedField("init", lambda o: o.init, ...)`; `cases/I2`, baseline `init: 7` on `uint8[4]` and `[72, 105, 0, 0]` on a string, candidate `[7, 7, 7, 7]` and `"Hi"`: `warning[changed-storage]: 'Arr': init: (7, 7, 7, 7) != 7`, `'Str': init: "Hi" != (72, 105, 0, 0)`, "can replace", exit 0; `--strict` (own warnings silenced) -> `2 errors`, `project.ddd.json cannot replace base.json`, exit 1; the generated c is `uint8_t Arr[4] = { 7U, 7U, 7U, 7U };` in both and `{ 72U, 105U, 0U, 0U }` versus `"Hi"`, the same four bytes |
+| P3-I3 | Important | CONFIRMED | Important | `cli.py:649` `location = Location(args.candidate)`, `Location.to_dict` (`diagnostics.py:322`) writes `self.path.as_posix()`; `ddd compare base.json cand/project.ddd.json --format json` from `cases/I2` -> `"path": "cand/project.ddd.json"` on `project-mismatch`, both `changed-storage` and `added-object`, beside `"path": "C:/Users/.../cases/I2/cand/sub/deep/p.ddd.json"` on the candidate's own `unused-output` and `missing-id`; `consistency_checks.rst:975` "``location`` is an absolute, forward-slashed path"; in text mode `unused-output` printed before `project-mismatch` |
+| P3-M1 | Minor | CONFIRMED | Minor | `analysis.py:2671`; `cases/M1` with `-W unknown-constant=ignore`: at `interface[2].definition.input` both `error[reference-kind]: the input of axis 'Az' must be of kind 'measurement', but 'Cv' is of kind 'curve'` and `info[incomplete-project]: 'Az' is not in the data dictionary: its input 'Cv' did not resolve, and the finding that says why is not reported` |
+| P3-M2 | Minor | CONFIRMED | Minor | `analysis.py:1783` `for name, refs in ordered:` over the surviving `_refs`; `cases/M2` (`Gamma` of unknown type, `Delta`, one id): `error[unknown-type]` alone, `1 error`; `cases/M2b` (both resolve): `error[duplicate-id]: 'Gamma' carries the id 'abcdefghjkmn', which 'Delta' already carries` |
+| P3-M3 | Minor | CONFIRMED | Minor | `analysis.py:3137` sits in `_check_string_init`, reached from `_check_init_shape` (`:3107`), called at `:3019` in `_build_variable` only; `cases/M3`: `D1` (`"dimensions": ["NOPE"]`, `"init": "text"`) -> `unknown-constant` alone while `D2` (`"init": 300`) also gets `init-invalid`; with `-W unknown-constant=ignore` `D1` gets `incomplete-project` and the text init is never reported |
+| P3-M4 | Minor | CONFIRMED | Minor | `analysis.py:2307` `location = ref.location("definition")`; `cases/M4`: `c.ddd.json#component.interface[0].definition: error[init-invalid]: enumerator(s) B=256 of enum 'E_e' do not fit into uint8` against `t.ddd.json#types[0].conversion: error[init-invalid]: enumerator(s) ON=300 ...` |
+| P3-M5 | Minor | CONFIRMED | Minor | `analysis.py:2556-2557` `owning = [...] or producers` then `owning[0]`; `cases/M5` with `-W local-conflict=ignore`: `ddd list abc.ddd.json` -> `X ... A (local)  C`, `ddd list bac.ddd.json` -> `X ... B  C` |
+| P3-M6 | Minor | CONFIRMED | Minor | `diagnostics.py:208-211` flags `incomplete-project` `needs_every_component=True`; `cases/M6` `ddd check c.ddd.json --standalone -W dimension-value=ignore` -> `4 infos` (all `missing-id`), exit 0, `ddd list --standalone ...` lists `W` alone, `V`, `Ax`, `Obj` gone unmentioned; the same `-W` without `--standalone` prints three `info[incomplete-project]` |
+| P3-M7 | Minor | CONFIRMED | Minor | `loading.py:459` `if not isinstance(found, int) or ... : return True`; the `cases/I2` dump re-spelled `"format": "9"` and `"format": 9.0` -> `project.ddd.json can replace f9str.json` / `f9flt.json`, exit 0; `"format": 9` -> `f9int.json#format: error[schema]: in the baseline: this dictionary is in format 9, and this DDD understands up to 8`, exit 1 |
+| P3-M8 | Minor | CONFIRMED | Minor | (a) `consistency_checks.rst:619` "an exported object"; `cases/M8a`: `Hidden4` (`"export": false`, input of an exported axis) -> `warning[a2l-unrepresentable]`, `Hidden5` (hidden, unreferenced) silent; (b) `:397-403` "The declaration is dropped"; `cases/M8b` -> `info[incomplete-project]: ... it names the type 'S_t', and the dimension-value that says why the type is unusable is not reported`; (c) `cases/M8c` -> `t.ddd.json: error[schema]: Value error, type 'W_t' is already declared in this file`, located at the whole file |
+| P3-M9 | Minor | CONFIRMED | Minor | `analysis.py:2214-2221` `continue`s before `_check_declared_name`; `cases/M9` (second `input Dup` with `init`, `section ".nope"`, `raster "r"`, enumerator `int`): `duplicate-declaration`, `unknown-raster`, `unknown-section`, `3 errors`, no `consumer-storage`, no `reserved-identifier` |
 
 ## Pass 4: the generated artefacts, the address information and the dictionary (SPEC.md sections 5 and 6)
 
@@ -1443,6 +1528,29 @@ not, and the one dangling reference left after the previous fix - an axis input 
 structured instance - still writes a name the A2L does not define. None of the four needs a
 design change; each is a few lines in one place, and the strings, constants and dictionary
 work that landed since 0.9.0 is implemented as its design says.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group B): 16 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P4-I1 | important | CONFIRMED | Important | `literals.py:132` `return collapsed.replace("*/", "* /")`; `cases/I4` description `opens a comment /* inside` -> `/** opens a comment /* inside */`; gcc under the CI flags: `out/D.h:21:21: error: "/*" within comment [-Werror=comment]`, likewise `ddd_globals.h:25:21` and `ddd_globals.c:23:21`, `[base] compile failed`; `templates.rst:265-267` promises `.comment` "already defused" |
+| P4-I2 | important | CONFIRMED | Important | `a2l/model.py:652-662` `a2l_string` passes every non-control character; `cases/I5`: bytes `RAT_FUNC "%8.3" "\xc2\xb0C"` and `/begin MEASUREMENT Desc "temp\xc3\xa9rature du capteur"`, no BOM, `ddd check` clean; ASAP2 1.6.1 section 1.5.2 (page 16): the encoding "is defined in a Byte-Order Mark", `EF BB BF` UTF-8, and "If no encoding can be detected, ISO-8859-1 (Latin-1) encoding is used" - so a conforming reader decodes the unit as `Â°C` |
+| P4-I3 | important | CONFIRMED | Important | `conversion.py:279-280` `low = conversion.to_physical(raw_min)` in double arithmetic; `cases/I6` A2L: `UBYTE CM_LIN_U_2 0 0 0 7.6499999999999995` (`U8`, factor 0.03, no limits) beside `... 0 0 0 7.65` (`U8Lim`, stated, accepted by `ddd check`), `SWORD CM_LIN_U 0 0 -3276.8 3276.7000000000003`, `A_INT64 CM_LIN_C 0 0 -9.223372036854776e+18 9.223372036854776e+18`; dump `"max": 7.6499999999999995`; regenerated `examples/layout`: `LayoutDevice.a2l:42` `SWORD CM_LIN_DEGC 0 0 -3276.8 3276.7000000000003` |
+| P4-I4 | important | CONFIRMED | Important | `a2l/model.py:412` and `:425` `input_quantity=... references.get("input") or NO_INPUT_QUANTITY` written verbatim, `_resolve_exported` (`:312-323`) pulls only `by_name` entries; the `cases/I1` run above: `AXIS_PTS Cx ... Inst`, `COM_AXIS Inst`, no `MEASUREMENT Inst`; duplicate of P3-I1, which is primary |
+| P4-M1 | minor | CONFIRMED | Minor | `base.py:294` `where = f"template '{template_name}'"`, `_template_line` (`:311-317`) keeps the deepest jinja frame's line only; `_h.jinja2` with `{{ none.x }}` on its line 4, called from line 6 of `bad.h.jinja2` -> `ddd: cannot render template 'bad.h.jinja2', line 4: 'None' has no attribute 'x'` |
+| P4-M2 | minor | CONFIRMED | Minor | `ddd_types.h.jinja2:6-11` includes `<stdint.h>` only under `needs_stdint`; `cases/P4M2` (one `float32`): the generated `ddd_types.h` holds the guard alone, `tu_ddd_types.c:4: error: ISO C forbids an empty translation unit [-Werror=pedantic]`; `cases/P4M2b` (empty component): `tu_C.c`, `tu_ddd_globals.c`, `tu_ddd_types.c` and `ddd_globals.c:17` fail the same way |
+| P4-M3 | minor | CONFIRMED | Minor | `analysis.py:2358` checks `raw_min <= value <= raw_max` only; `cases/P4M3` `"init": 1e-50` on `float32`: `ddd check` -> `ok`, generated `float F32Tiny = 1e-50F;`, gcc `ddd_globals.c:20:1: error: floating constant truncated to zero [-Werror=overflow]`; `1e-40F` compiles |
+| P4-M4 | minor | CONFIRMED | Minor | `c/model.py:195-197` "already a c literal of the type its author meant"; `cases/P4M4` -> `#define C_I64MIN -9223372036854775808`, `#define C_U64MAX 18446744073709551615`; `use.c` under the CI flags: `use.c:2:15: error: integer constant is so large that it is unsigned [-Werror]` and `:3:24`; a warning without `-Werror` |
+| P4-M5 | minor | CONFIRMED | Minor | `ir.py:187` "Raw initial value, nested to match ``shape``"; the `cases/I2` base dump carries `Arr` with `"shape": [4]` and `"init": 7`; restates the previous review's design note 5 (`previous-review.md:1672`) |
+| P4-M6 | minor | CONFIRMED | Minor | `ir.py:98` "Path of the description file"; the `cases/I2` base dump of `sub/deep/p.ddd.json` carries `"source": "p.ddd.json"`; the previous review's Minor 6 (`previous-review.md:1197`), unchanged |
+| P4-M7 | minor | CONFIRMED | Minor | `generated_artefacts.rst:399` "20 of 21 declared variables are defined", `:402` "21 of 21"; the demo regenerated into `verify-B/ex/demo` and run through the compile harness prints `22 of 23 declared variables are defined / conditional, absent : ValueG` and `23 of 23 ... conditional, present: ValueG` |
+| P4-M8 | minor | CONFIRMED | Minor | `a2l/model.py:631-641` `_UNIT_WORDS` has no `²`; `cases/I5`: `m/s` -> `CM_LIN_M_PER_S`, `m/s²` -> `CM_LIN_M_PER_S_2` (the collision suffix), `m/s^2` -> `CM_LIN_M_PER_S2` |
+| P4-M9 | minor | CONFIRMED | Minor | `SPEC.md:1637` "and `COMPU_VTAB` per enum"; `_vtab` is reached only through `reference()` -> `_create` (`a2l/model.py:521-551`); `examples/structures` dump lists `enums: ['SensorMode_t']`, its only user the leaf `Inlet.status.mode` with `bits: 2`, and `StructuredDevice.a2l` contains no `COMPU_VTAB` |
+| P4-M10 | minor | CONFIRMED | Minor | `ddd_layout.py:255` `sizeof({entry.name}), &{entry.name}` after includes of `<stddef.h>` and `<stdint.h>` only (`:239-240`); `compile.sh` on `examples/layout` regenerated: `ddd_layout.h:18:23: error: 'EngineHours' undeclared here (not in a function)` |
+| P4-M11 | minor | CONFIRMED | Minor | long-path half: `cases/P4M11b` (component `C` + 127 `y`) -> `ddd: cannot write '.../out/Cyyy...yyy.h': No such file or directory`, exit 2, a 263-character path with `HKLM\...\FileSystem\LongPathsEnabled` = `0x0`; reserved-name half: component `Aux` -> `wrote .../Aux.h (created)` on this Windows 11 (10.0.26100), unconfirmed here as the finder said |
+| P4-M12 | minor | CONFIRMED | Minor | `backend.py:93-101` lists templates and reports the empty list; `-t does-not-exist` and `-t c.ddd.json` (a file) both -> `ddd: no template to render in '...': the c sources are generated from templates the project provides ...`, exit 2 |
 
 ## Pass 5: the tool interface (SPEC.md sections 3.11, 7 and 7.1)
 
@@ -1975,6 +2083,34 @@ server still dies on a record from a newer build. None of the four Important fin
 pass requires a design change; each is a guard or a redirection at one site, and the spec
 sentences they touch are already right.
 
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group C): 21 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P5-I1 | Important | CONFIRMED | Important | `cli.py:1373` and `:898` run hooks and plugin backends with `sys.stdout` untouched; ran a plugin printing in its hook: `check --format json` stdout starts `NOISY-CHECK-STDOUT`, `json.loads` of it fails; `dump -o out.json` prints the line on stdout (exit 0); `generate all --format json` carries `NOISY-CHECK-STDOUT` and `NOISY-GENERATE-STDOUT` before the document |
+| P5-I2 | Important | CONFIRMED | Important | on copies of the demo: `dump demo.ddd.json -o components/sensor_hub.ddd.json` -> `wrote components/sensor_hub.ddd.json (updated)`, exit 0, the file now starts `"format": 8`; `compare demo.ddd.json demo.ddd.json --renames demo.ddd.json` -> exit 0, the project file is `[]`; `generate c ... --dictionary components/dict.ddd.json` -> exit 0, the next `check` fails `error[file-kind]` on it |
+| P5-I3 | Important | CONFIRMED | Important | `Ddd.cmake:553` declares `${generated_outputs}` only, no `BYPRODUCTS`; three-component project, `gamma` (local variables only) unlinked and rebuilt: regeneration succeeds (`Dev.dictionary.json` updated, no `Gamma`), `Gamma.h` with `extern volatile uint16_t G;` stays, a TU including it compiles (exit 0), `ninja -t clean` removes 14 files and leaves `Alpha.h Beta.h Gamma.h stamp.h` |
+| P5-I4 | Important | CONFIRMED | Important | recipe of `docs/build_integration.rst:518-556` copied verbatim into `examples/cmake`'s components on MinGW: first build ok, the map has 98 entries (`"___crt_xc_end__": "0x140009018"`), the second and third builds fail `[code=2]` with `address of '___crt_xc_end__' is 5368746008, outside the range 0 .. 0xFFFFFFFF`, and `firmware.a2l` keeps 13 `ECU_ADDRESS 0x00000000` |
+| P5-I5 | Important | CONFIRMED | Important | duplicate of P6-I4 (primary); `lsp/diagnostics.py:53` builds the policy unguarded; a `ddd-build.json` with `"severity": ["no-such-check=ignore"]`: `initialize` answered, the record logged, `didOpen` -> stderr `ddd: unknown check 'no-such-check'`, process exit 2, no `publishDiagnostics` |
+| P5-M1 | Minor | CONFIRMED | Minor | `cli.py:146` builds the parser without `allow_abbrev=False`; `check controller.ddd.json --stand` -> `ok: 14 variables in 1 component are consistent`; `generate all ... --dict x.json --dry-run` -> `would write .../x.json (created)` |
+| P5-M2 | Minor | CONFIRMED | Minor | `plugins.py:487` `except (Exception, SystemExit)`, `cli.py:116-126` catches `UnknownCheckError`, `OSError`, `ValueError` only; a hook raising `Boom(BaseException)` -> traceback, exit 1; `raise KeyboardInterrupt` -> traceback, exit 130 |
+| P5-M3 | Minor | CONFIRMED | Minor | `plugins.py:63` hands the `DataDictionary` itself; a hook setting `block["key"] = 999` and `dictionary.extensions["mut"]`: `mut.h` written by the plugin reads `Speed={'key': 999, 'added': True}` / `project={'mut': {'injected': True}}`, and `--dictionary d.json` carries `"key": 999`, `"added": true`, `"injected": true` |
+| P5-M4 | Minor | CONFIRMED | Minor | `identity.py:182` `path.write_bytes(...)` unguarded, `cli.py:1016-1024` prints the total after the loop; `id --assign first ro after_ro` with `ro` read-only -> `ddd: [Errno 13] Permission denied: 'ro.ddd.json'`, exit 2, `first` stamped (12 ids), `after_ro` still 0, no `wrote N ids` line |
+| P5-M5 | Minor | CONFIRMED | Minor | `options.py:48-54` wraps `JSONDecodeError` only, `cli.py:1127-1130` and `:1136-1140` write unguarded; `--address-map nosuch.json` -> `ddd: [Errno 2] No such file or directory: '...'`; `--address-map adir` -> `[Errno 13] Permission denied`; `schema all -o afile.txt` -> `[WinError 183] Cannot create a file when that file already exists`; `build-info -o adir` -> `[Errno 13]` |
+| P5-M6 | Minor | CONFIRMED | Minor | `cli.py:124-126` reports every `OSError` as usage; `set -o pipefail; ddd schema component \|head -1` -> stderr `ddd: [Errno 32] Broken pipe`, rc 2 (`ddd list demo \|head -1` fits the pipe buffer, rc 0) |
+| P5-M7 | Minor | CONFIRMED | Minor | `cli.py:670-673` prints `args.candidate.name` and `args.baseline.name`; `compare examples/pressure/v1.3/pressure.ddd.json examples/pressure/release/pressure.ddd.json` -> `pressure.ddd.json can replace pressure.ddd.json` |
+| P5-M8 | Minor | CONFIRMED | Minor | `_holds_a_description` (`cli.py:1421-1435`) is reached from `_read_dictionary` only; `check v13.json` on a dump -> `error[file-extension]: 'v13.json' is a DDD description file ...` and `error[file-kind]: file has 'types' and 'constants' and 'rasters' at the top level; it must have exactly one`, exit 1 |
+| P5-M9 | Minor | CONFIRMED | Minor | `plugins.py:389-397` adds both findings at the one `location`, which `cli.py:649` makes the candidate, while `:638` `plugins = candidate.plugins` forgets the baseline's plugins `:632` imported and ran; `compare examples/layout/project.ddd.json layout.json` -> both warnings prefixed `layout.json:`, the first saying the baseline's `'layout'` is one "this run has not loaded"; primary of P10-M10 |
+| P5-M10 | Minor | CONFIRMED | Minor | `Ddd.cmake:165-171` answers `FALSE` when `string(JSON)` fails and `:243-246` skips the file; configured with `{ broken` -> `build.ninja:78` `build comp.ddd: phony` (no command); file fixed, `ninja comp.ddd` -> `ninja: no work to do.`; after `cmake -S ...` -> `ok: 6 variables in 1 component are consistent` |
+| P5-M11 | Minor | CONFIRMED | Minor | `cli.py:639-645` raises only when `candidate.from_description`; description baseline + dump candidate + `--plugin ddd_layout.py` -> exit 0, `layout.json can replace project.ddd.json`; sides swapped -> `ddd: --plugin names the plugins of an archived dictionary; a project description names its own`, exit 2; `command_line_interface.rst:84-85` and `SPEC.md:1877-1878` say "beside a description", `SPEC.md:1136-1138` "beside a project candidate" |
+| P5-M12 | Minor | CONFIRMED | Minor | `Ddd.cmake:98` `execute_process(COMMAND "${DDD_EXECUTABLE}" schema all --output "${directory}" ${plugin_arguments})` and `:62` `sources "${project_file}"` import the plugins at configure time; the `PLUGINS` and `SCHEMA_DIRECTORY` rows (`build_integration.rst:433-437`, `:450-455`) say nothing of it, and the page has no line saying configuring runs or imports a plugin (grep) |
+| P5-M13 | Minor | CONFIRMED | Minor | `.pre-commit-hooks.yaml:14` `language: python` with no `language_version`; `pyproject.toml:14` `requires-python = ">=3.12"`; the pre-commit section `build_integration.rst:676-710` names no Python floor (the page's only `3.12` is the docker image at `:580`) |
+| P5-M14 | Minor | CONFIRMED | Minor | `cli.py:1228-1232` emits `artefacts` (`{name, kind}`) and `plugins_without_artefact`, `:943-946` `components` and `variables`; grep of `docs/`, `README.md`, `SPEC.md` finds no `plugins_without_artefact`, and the CLI page describes `list` (`:132`) and `artefacts` (`:159-160`) in words only |
+| P5-M15 | Minor | CONFIRMED | Minor | `command_line_interface.rst:190-192` "A component checks, lists, dumps and generates on its own"; `generate c examples/demo/components/controller.ddd.json -o x -t examples/templates` -> two `error[missing-producer]`, exit 1, nothing written; with `--standalone` -> `ddd: error: unrecognized arguments: --standalone` |
+| P5-M16 | Minor | CONFIRMED | Minor | `Ddd.cmake:256-257` "an empty includes list, which DDD accepts"; `examples/templates/ddd_globals.c.jinja2:52-55` renders one comment for `not model.groups`; a project with `"includes": []` generates, then `gcc -std=c11 -Wpedantic -Werror -c ddd_globals.c` -> `ddd_globals.c:17: error: ISO C forbids an empty translation unit [-Werror=pedantic]`; the same through the module, `ninja` exit 1 |
+
 ## Pass 6: the editor integration (SPEC.md section 7.2, the language server, the extension)
 
 ### Scope covered
@@ -2287,6 +2423,36 @@ showing and, through the candidate comparison, adds three wrong `missing-produce
 top. Add the rename computed over a project a file of which did not load, the carried-over exit
 on an unknown check, the enum rename box and the doubled findings of two records, and the list
 is six Important, all reproduced over pipes with transcripts, each with a one-line fix.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group D): 23 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P6-C1 | Critical | CONFIRMED | Critical | `lsp/diagnostics.py:136` `analyse_standalone(document)` is reached for a project file no build names, since no candidate includes it; copy of `examples/inconsistent`, no record: `ddd check project.ddd.json` -> `4 errors, 1 warning`; `project.ddd.json` opened -> `component_c: [definition-mismatch, local-conflict]`, `component_a` without `unused-output` - the `--standalone` set (3 errors); `component_c` opened first got `[definition-mismatch, missing-producer, local-conflict]` and `component_a` `unused-output`, opening the project next republished both without them |
+| P6-I1 | Important | CONFIRMED | Important | `server.py:625` `path.as_uri()` on the loader's resolved path, `navigation.py:535, 543`, `edits.py:163, 340` likewise; junction `ws/link_inc -> ws/real_inc`: sent `file:///C:/.../link_inc/component_c.ddd.json`, every publication under `.../real_inc/...`; `subst W:`: sent `file:///w%3A/component_c.ddd.json`, published `file:///C:/.../real_inc/...`, rename edits and definition answers under `real_inc` too; control: VS Code's own `c%3A` spelling publishes `file:///C:/`, which it normalises |
+| P6-I2 | Important | CONFIRMED | Important | `navigation.py:281` `if candidate == document` compares a resolved candidate with the client's spelling; `containing_projects` answers `['component_c.ddd.json', 'project.ddd.json']` through the junction and through the `subst` drive, `['project.ddd.json']` through the real path; published `component_c: [missing-producer, missing-producer, missing-producer, definition-mismatch, missing-producer, local-conflict]`; a case difference does not trigger it on Windows (`Path` equality is case-insensitive: `['project.ddd.json']`) |
+| P6-I3 | Important | CONFIRMED | Important | `navigation.py:248` `load_workspace(path, DiagnosticBag())` discards the bag; `a.ddd.json` with `uint99`: published `{'a.ddd.json': ['schema']}`, F2 on `Speed` in `b` -> `[('b.ddd.json', 1, 1), ('c.ddd.json', None, 1)]`, `a` untouched; `definition []`, hover `*No component produces this.*`, `c` offered "Remove this unit, which no other declaration of 'Speed' has"; with `a` loading again the same rename edits `a`, `b` and `c` |
+| P6-I4 | Important | CONFIRMED | Important | duplicate of P5-I5 (pass 6 primary); `lsp/diagnostics.py:53` builds the policy unguarded, `discovery.py:54-57` guards the read only; record with `"severity": ["no-such-check=ignore"]`: `initialize` answered, record announced, `didOpen` -> stderr `ddd: unknown check 'no-such-check'`, exit 2, nothing published; `["unused-output"]` -> `ddd: expected 'check=severity', got 'unused-output'`, exit 2 |
+| P6-I5 | Important | CONFIRMED | Important | `navigation.py:303` `_key(pointer) in VARIABLE_KEYS` accepts `conversion.name` and `conversion.enumerators[0].name`; demo `controller.ddd.json`: `prepareRename` on `StateA_t` -> range 72:21-72:29, placeholder `StateA_t`, on `STATE_OFF` -> 74:25-74:34, both renames -> `{"documentChanges": []}`; with a variable `MODE_OFF` in `b.ddd.json`, F2 on the enumerator `MODE_OFF` in `a` answers one edit in `b` (the variable) and none on the enumerator; `"size"` and `"typename"` inside an `extensions` block open a box and rename nothing |
+| P6-I6 | Important | CONFIRMED | Important | `lsp/diagnostics.py:158-161` appends each run's findings to the same file and `_as_lsp` (`:192-208`) sends `code, message, range, severity, source` only; two records for `project.ddd.json` (`img_a`, `img_b`): `component_a` 8 findings of which 4 distinct, `component_b` 2, `component_c` 6; with `img_b` at `-W unused-output=error` one range carries severity 2 and severity 1 with one message; `ddd check` reports `4 errors, 1 warning` once |
+| P6-M1 | Minor | CONFIRMED | Minor | `server.py:583` `params.get("context", {}).get("diagnostics", [])`; `"context": null` -> no answer, stderr `AttributeError: 'NoneType' object has no attribute 'get'`, exit 1 |
+| P6-M2 | Minor | CONFIRMED | Minor | `server.py:595` `folder["uri"]`; `workspaceFolders: [{"name": "x"}]` -> no answer, `KeyError: 'uri'`, exit 1 |
+| P6-M3 | Minor | CONFIRMED | Minor | `server.py:227-228` `elif method == "exit": return False` whatever came before; `initialize` then `exit` -> exit code 0; `launch.test.ts:32-37` sends exactly that and asserts 0 |
+| P6-M4 | Minor | CONFIRMED | Minor | `server.py:222-248` keeps no lifecycle state; hover before `initialize` answered in full, hover after `shutdown` answered, a second `initialize` answered |
+| P6-M5 | Minor | CONFIRMED | Minor | `server.py:213` `error(message.get("id"), ...)`; `didOpen` without `params` -> `{"id": null, "error": {"code": -32602, "message": "'params' is missing or is not dict"}}` where `:210-211` says a notification gets nothing |
+| P6-M6 | Minor | CONFIRMED | Minor | `protocol.py:68` `int(raw_length)`; `Content-Length: 1_2` + `{}` + a hover frame -> `-32700 the message body is not json` (12 bytes read), then the split header `ngth: 379` has no length and the server exits 0; the hover is never answered |
+| P6-M7 | Minor | CONFIRMED | Minor | `discovery.py:40` `rglob` follows a junction; `mklink /J build/loop build` on a copy of `inconsistent` with one record: `build_files` finds 22 records, 22 log messages in 2.1 s, `component_a` published 88 findings, `component_b` 22, `component_c` 66 |
+| P6-M8 | Minor | CONFIRMED | Minor | `extension.ts:53` watches `**/*.ddd.json`, `server.py:218-255` has no branch for `workspace/didChangeWatchedFiles`; definition of `SharedValue` `[a, b]`, `b` rewritten on disk to produce `OtherValue`, the notification -> nothing published, definition still `[a, b]`; after `didSave` `[a]`; `package.json:35` `"onLanguage:json"` |
+| P6-M9 | Minor | CONFIRMED | Minor | `lsp/diagnostics.py:53` never calls `verify`; record `["layout/no-such=ignore"]` -> the full findings, exit 0; `ddd check project.ddd.json -W layout/no-such=ignore` -> `unknown check 'layout/no-such': no loaded plugin registers it`, exit 2 |
+| P6-M10 | Minor | CONFIRMED | Minor | `lsp/diagnostics.py:133` `_run(project, DiagnosticBag())` is the default policy; `docs/editor_integration.rst:112-117` names the stage and no policy; `README.md:212` "A file no build claims is still checked, on its own" goes straight to standalone |
+| P6-M11 | Minor | CONFIRMED | Minor | `server.py:466-467` looks a type name up as external only; `examples/structures`: hover on `"name": "Sample_t"` in `types.ddd.json` -> `null`, on the member `"typename": "Temperature_t"` (declared at `types.ddd.json:6`) -> `null`, on `"typename": "Sensor_t"` in `monitoring.ddd.json` -> `**Inlet** — measurement, ...` |
+| P6-M12 | Minor | CONFIRMED | Minor | `lsp/diagnostics.py:219` `{"uri": ""}`; a plugin whose hook adds `notes=[("...", None)]`: published `relatedInformation: [{"location": {"uri": "", "range": 0:0-0:0}, "message": ...}]`; `tests/test_lsp.py:612` asserts the `""` |
+| P6-M13 | Minor | CONFIRMED | Minor | `lsp/diagnostics.py:121` then `:133` load the project twice per refresh, `navigation.py:225-226, 231` again on the first request; flat 200 components: a save costs 0.39 s (`collect`) where one load plus `analyze` costs 0.12 s, the first hover after each refresh 0.33 s (`containing_projects` 0.22 s + a load 0.10 s); the finder's 0.6 s and 2.2 s include its client's 0.5 s quiet wait - the 30 304-file tree refreshes in 0.07 s |
+| P6-M14 | Minor | CONFIRMED | Minor | `edits.py:563` `text.splitlines()[end["line"]]` against `ranges.py:191` counting `\n` only; a description holding a literal U+2028 above the declaration, `conversion` written last: "Apply this unit" inserts `,\n` + 12 spaces + `"unit": "rpm"` where the plain control inserts 10 - `splitlines()[14]` is the `"kind": "identity"` line, `\n`-line 14 is the `}` |
+| P6-M15 | Minor | CONFIRMED | Minor | `server.py:108-117` keeps `urlparse("untitled:Untitled-1").path` as a relative path; `didOpen untitled:Untitled-1` -> published `file:///C:/.../ws/demo/Untitled-1: [file-not-found]`, server alive |
+| P6-M16 | Minor | CONFIRMED | Minor | `hover.py:217` wraps the unit in backticks and the model does not validate it (`objects.py:416` `unit: str = ""`); unit `a`, backtick, `b`, pipe, `c` passes `ddd check --standalone` and the hover's unit row carries the raw backtick and pipe, splitting the cell; `extension.ts:56-59` clears the module-level `client` on a rejected start whatever `stop()` and `start()` assigned meanwhile |
 
 ## Pass 7: the remaining documentation, the repository machinery and release readiness
 
@@ -2658,6 +2824,51 @@ page, which is the project's own rulebook, has drifted in a handful of sentences
 skips, runs for minutes, has an extension job and a language server), the FAQ still promises
 unbounded arrays two releases after the caps, and the release commit has nine files and one
 changelog sentence to touch with only three of them under test.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group E): 14 confirmed, 2 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P7-I1 | Important | CONFIRMED | Important | `publish.yml:131` `if: github.event_name == 'release' \|\|inputs.target == 'pypi'`; the tag check `:52` runs only `if: github.event_name == 'release'`; `gh api repos/Sauci/ddd/environments/pypi`: `deployment_branch_policy: null`, `protection_rules: []` |
+| P7-I2 | Important | CONFIRMED | Important | `order()` copied from `docs.yml:167-173` and run: `v0.9.0` on the site + release `v0.10.0rc1` -> `stable v0.10.0rc1`; + `v0.10.0` -> `v0.10.0`; hotfix `v0.9.1` after `v0.10.0` -> `v0.10.0` (right); `v0.9.1` beside the rc alone -> `v0.10.0rc1` |
+| P7-I3 | Important | CONFIRMED | Important | `gh api repos/Sauci/ddd --jq .has_issues` -> `false`; `README.md:45-46` "problems belong in the [issue tracker](https://github.com/Sauci/ddd/issues)", `pyproject.toml:37` `Issues = ...`, `package.json:16,18`; PyPI's 0.9.0 metadata already carries the url |
+| P7-I4 | Important | CONFIRMED | Important | `faq.rst:609-611` "There is no bound ... caps neither the number of dimensions nor their product"; `ddd check` on `"dimensions": [10000001]` -> `error[schema]: 'Huge' has 10000001 elements; DDD carries at most 10000000`, exit 1 (`[10000000]` passes) |
+| P7-I5 | Important | CONFIRMED | Minor | `developer_documentation.rst:301` "Nothing in the suite skips."; grep of `tests/`: `test_plugins.py:1973` `pytest.skip("directory junctions are a windows feature")` under `if os.name != "nt"`, `:1982`, `:1984`; nothing else |
+| P7-M1 | Minor | CONFIRMED | Minor | `README.md:891` "20 of 21 declared variables are defined", `:894` "21 of 21"; `verify_symbols.py` over a fresh `ddd dump` of the demo and the finder's `nm` lists -> "22 of 23" / "23 of 23" |
+| P7-M2 | Minor | CONFIRMED | Minor | `:298-299` "The suite runs in a few seconds" (baseline 2 min 22 s); `:336` "runs exactly the commands above" vs `ci.yml:66-98`; `:346` vs `ci.yml:84` `pip install -e .`; grep of the page for `lsp`, "language server", `identity.py`, `build_info`: no hit, nine modules in `src/ddd/lsp/` |
+| P7-M3 | Minor | PLAUSIBLE | Minor | `tests/test_documentation.py:573-585` pin `pyproject.toml` and `package.json` only; `package-lock.json:3,9` `"version": "0.9.0"`; no `npm` on this machine to run `npm ci` against a bumped manifest |
+| P7-M4 | Minor | CONFIRMED | Minor | `gh api repos/Sauci/ddd/environments`: `pypi` and `testpypi` `deployment_branch_policy: null` (`github-pages` still `custom_branch_policies: true`); `:521-528` tells the reader to add a `v*` tag rule |
+| P7-M5 | Minor | CONFIRMED | Minor | the four status lines at `:4` say "not (yet) implemented" against `CHANGELOG.md:623` (0.7.0 rasters), `:579` (0.8.0 plugins), `:312` (0.9.0 plugins in the build), `:33` (strings); `plugins-design.md:445` defers plugin backends under `all` while `CHANGELOG.md:339` says "`all` is the only run that produces a plugin's artefact"; `plugins-in-the-build-design.md:37-38` defers CMake in CI while `ci.yml:48` `pytest` runs `tests/test_cmake.py` |
+| P7-M6 | Minor | CONFIRMED | Minor | `CHANGELOG.md:31` "format 8 is unreleased"; `:33-47` says nothing of comparing a string `init` although `ac3c87a` added `_describe_init` to `compare.py`; `README.md:42-44` vs `CHANGELOG.md:7-13`; `README.md:933` "Four more suites" vs `developer_documentation.rst:267` "Five suites" |
+| P7-M7 | Minor | CONFIRMED | Minor | every `uses:` pinned by major tag; `publish.yml:125,143` `pypa/gh-action-pypi-publish@release/v1`; `:40` `pip install --upgrade pip build twine`; `package.json:74` `npx --yes @vscode/vsce package`; `requirements-dev.txt:1-13` lower bounds only; `.github/` holds only `workflows/`; `ci.yml:95` `upload-artifact@v5` vs `@v7` in the other two |
+| P7-M8 | Minor | CONFIRMED | Minor | `ci.yml:81`, `publish.yml:94` `node-version: "20"`; `package.json:81` `"@types/node": "^20.11.0"`; Node 20's maintenance ended 2026-04-30 on the Node.js schedule (not re-fetched here) |
+| P7-M9 | Minor | CONFIRMED | Minor | `docs/conf.py:97-102` names `/plantuml.jar`, `Dockerfile:38` installs apt `plantuml` and copies no jar; `compile.sh:53` `ddd dump ... --format json` after `generate all` while `ddd generate c --help` offers `--dictionary FILE`; `.dockerignore` (12 lines) lacks seven of `.gitignore`'s patterns, `docs/superpowers/*.pdf` (3.4 MB) and `.coverage` (376 KB) sit in the tree; `docker-compose.yml:95` reinstalls `.[docs]`; no workflow runs `docker` |
+| P7-M10 | Minor | CONFIRMED | Minor | each of the 17 terms has a page hit (ASCII `consistency_checks.rst:566` ... NaN `data_contracts.rst:133`) and none is on `docs/acronyms.rst`; `docs/conf.py:76` "twenty-six models" vs 31 `autopydantic_model` directives on `data_contracts.rst` (35 with `data_dictionary.rst`) |
+| P7-M11 | Minor | PLAUSIBLE | Minor | `pyproject.toml:13` `readme = "README.md"`; 32 relative links in `README.md` (`:13` `](SPEC.md)` ...) and the same 32 in the 0.9.0 description PyPI's json api returns; `assets/logo/README.md:52` "the package index, which renders neither a relative path nor an svg"; pypi.org answers curl and WebFetch with a "Client Challenge" page only |
+
+Notes of the verifier:
+
+- **P7-I5** - regraded to Minor. The sentence is false, but what contradicts it is a
+platform-conditional skip of a Windows-only feature (`mklink /J` needs no privilege, so the
+two fallback skips at `:1982,1984` are dead on a Windows runner), and every ubuntu run
+summary reports the skip; no behaviour, verdict or output is hidden by it, so it is a
+developer-page inconsistency to amend, or a skip to turn into a symlink case, not a
+misleading contract.
+
+- **P7-M3** - PLAUSIBLE. The half I can check is confirmed: nothing pins the two `version`
+fields of `package-lock.json`. The half that decides the outcome - `npm ci` passing a lock
+whose root `version` differs from the manifest's - needs `npm`, absent here; npm's documented
+`ci` rule speaks of the dependencies matching, not the root version, so the finder's doubt
+is well founded. What would confirm it: `npm ci` in `editors/vscode` with the manifest at
+`0.10.0` and the lock at `0.9.0` exiting 0.
+
+- **P7-M11** - PLAUSIBLE. The mechanism is in hand - the uploaded description carries the 32
+relative links verbatim, and the project's own `assets/logo/README.md:52` records that the
+index renders no relative path - but pypi.org hands curl and WebFetch a "Client Challenge"
+page, so the 404 itself was not seen. What would confirm it: open
+`pypi.org/project/ddd-tool/` in a browser and click `SPEC.md`.
 
 ## Pass 8: code review of the core, part A (models, loading, diagnostics, identity)
 
@@ -3056,6 +3267,41 @@ blocks. The rest is small: a carried-over backslash in a condition, names MinGW'
 reserves that the list does not, Unicode `\d` and `\S` where bytes were meant, a tilde the
 loader expands, three parses of one dump, and a 0.4 s `--version`.
 
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group F): 20 confirmed, 1 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P8-I1 | Important | CONFIRMED | Important | `ranges.py:60` `scanner.value("")` sits outside the `try` at `:46-48`; a 520-deep `extensions` block: `check --standalone` exit 0 (one `missing-id`), `id --assign` exit 1 `RecursionError: maximum recursion depth exceeded` (480 levels stamp fine), `didOpen` over pipes ends `ddd lsp` with exit 1 before any `publishDiagnostics` or the `shutdown` answer |
+| P8-I2 | Important | CONFIRMED | Important | `loading.py:1222` `present, node = _child(node, item)` sets `node = None` at the `measurement` tag; `{"map": [1]}` -> `...interface[0].definition.extensions: error[schema]: Input should be a valid dictionary (got: [1])`, key gone; the same key on the project keeps it: `project.extensions.a-b` |
+| P8-I3 | Important | CONFIRMED | Important | `loading.py:1167` `kept.setdefault(_pointer(item["loc"]), item)`; `{"a-b": 1, "c-d": 2}` and `{"map": [1], "axis": [2]}` -> `1 error`; the control `{"aa": 1, "bb": 2}` -> `2 errors`; the pair on the project -> `1 error` as well |
+| P8-M1 | Minor | CONFIRMED | Minor | `component.py:78` refuses line breaks and comment tokens only; generated `ddd_globals.h:23` `#if defined(FEAT_X) \` then `extern volatile uint8_t A;`; gcc: `error: missing binary operator before token "extern"` |
+| P8-M2 | Minor | CONFIRMED | Minor | `reserved.py:54` matches the `<stdint.h>` patterns only; `size_t` and `NULL` check `ok`; gcc: `'size_t' redeclared as different kind of symbol` (`stdint.h:28` -> `crtdefs.h`), `NULL` refused through `stdint.h:32` |
+| P8-M3 | Minor | CONFIRMED | Minor | `common.py:102` `r"^%\d*\.\d+$"`; `"%٣.٢"` checks ok and `out/P.a2l:27` carries `FORMAT "%٣.٢"` |
+| P8-M4 | Minor | CONFIRMED | Minor | `loading.py:1206` `Path(path).expanduser().resolve()`; `ddd check ~x.ddd.json` from its directory -> `C:/Users/x.ddd.json: error[file-not-found]` |
+| P8-M5 | Minor | CONFIRMED | Minor | `ranges.py:307` records the key raw; `"na\u006de": "V"` -> `check --standalone` reports `missing-id`, `id --assign` prints `wrote 0 ids`, exit 0, file unchanged |
+| P8-M6 | Minor | CONFIRMED | Minor | `identity.py:94` looks for `\n` only; a file of 16 CR and 0 LF -> `wrote 1 id`, afterwards 16 CR and 1 LF |
+| P8-M7 | Minor | CONFIRMED | Minor | `loading.py:459` `found <= DICTIONARY_FORMAT`, `:435` `model_validate_json(text)`; `"format": 0` and `-3` -> `can replace`; `"name": "P", "name": "Q"` -> `project-mismatch: the baseline describes project 'Q'`; one reader with P3-M7 |
+| P8-M8 | Minor | CONFIRMED | Minor | read: `cli.py:1432` `json.loads(path.read_text(...))` (sniff), `loading.py:450` `json.loads(text, ...)` (peek), `:435` `model_validate_json(text)` (read), per side through `_read_baseline`/`_read_dictionary` (`cli.py:1377-1394`); the timing is the finder's Q4 |
+| P8-M9 | Minor | CONFIRMED | Minor | `cli.py:34-46` imports `compare`, `identity`, `ir`, `loading` and the backends at module level; `ddd --version` 0.39 s (twice) against `python -c pass` 0.05 s |
+| P8-M10 | Minor | CONFIRMED | Minor | `rasters.py:43` `^([0-9]+)...`, `:53` `int(match.group(1))`; a 5000-digit cycle -> `rasters[0]: error[schema]: Value error, Exceeds the limit (4300 digits) ... use sys.set_int_max_str_digits()` |
+| P8-M11 | Minor | CONFIRMED | Minor | `conversion.py:157` rewrites the mapping into a list before validation; `{"A": "x"}` -> `...conversion.enumerators[0].value: error[schema]: Input should be a valid integer (got: 'x')` |
+| P8-M12 | Minor | CONFIRMED | Minor | `conversion.py:121` `"additionalProperties": {"type": "integer"}`; jsonschema accepts `{"A": 2**64}`, `{"1bad": 0}`, `{"A": 4.0}`, the loader refuses all three (`le`, `^[A-Za-z_][A-Za-z0-9_]*$`, `valid integer`); the list form refuses the first two and accepts `4.0` too (note) |
+| P8-M13 | Minor | CONFIRMED | Minor | `cli.py:1363` returns before `:1370` `bag.policy.verify(bag.registered)`; missing include with `-W layout/x=error` -> `file-not-found`, exit 1, no usage error; the same flag on a project that loads -> exit 2 `unknown check 'layout/x'`; a face of P6-M9 |
+| P8-M14 | Minor | CONFIRMED | Minor | `loading.py:949` `f"definition.extensions.{name}"`; `{"a.b": {}, "c[1]": {}}` -> `--format json` pointers `...definition.extensions.a.b` and `...definition.extensions.c[1]` |
+| P8-M15 | Minor | CONFIRMED | Minor | `loading.py:999` `base = Path(anchor) if anchor else source.parent` against `:991`; run from `elsewhere/`, `"C:*.ddd.json"` lists `elsewhere/fromcwd.ddd.json`, `"C:inproject.ddd.json"` lists `proj/inproject.ddd.json` |
+| P8-M16 | Minor | CONFIRMED | Minor | `rasters.py:77` `max_length=EVENT_NAME_LENGTH, pattern=r"^\S+$"` counts code points; `"raster": "тактовый"` (8 letters, 16 utf-8 bytes) -> `ok` |
+| P8-M17 | Minor | PLAUSIBLE | Minor | `loading.py:1112` `path.read_text(encoding="utf-8-sig")` with handlers `:1113-1130` for `FileNotFoundError`, `UnicodeDecodeError`, `OSError`, `ValueError` only; no `stat`, `st_size` or `MemoryError` in `loading.py`, `cli.py`, `ranges.py`; a file larger than memory would confirm |
+| P8-M18 | Minor | CONFIRMED | Minor | `identity.py:182` `path.write_bytes(mark + text.encode("utf-8"))` in place, where `backends/base.py:190-200` stages `STAGING_SUFFIX` and `temporary.replace(target)` |
+
+Notes of the verifier:
+
+- P8-M17 is PLAUSIBLE, not confirmed: the mechanism is exactly as read (`_read_text` turns four
+exception types into findings and `MemoryError` is not one of them; nothing in the loader, the
+cli or the scanner looks at a file's size), and a 300 MB file passes; only a file larger than the
+available memory would show the traceback, which this machine was not asked to produce.
+
 ## Pass 9: code review of the core, part B (analysis, ir, compare)
 
 ### Scope covered
@@ -3359,6 +3605,28 @@ the advisory lost-identity note is quadratic on exactly the delivery ids were in
 handle. Each is local. The minors are a stale docstring, an IR record that admits a member with
 no storage, three messages phrased for the wrong bound or object, one 600 kB message, and four
 carried-over small items.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group F): 15 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P9-I1 | Important | CONFIRMED | Important | `compare.py:590` exact `>`/`<`; the baseline dumped from `sint16` under factor 0.1 carries `"max": 3276.7000000000003`; a candidate stating `3276.7` -> `warning[narrowed-limits]: 'T': limits tightened from [-3276.8, 3276.7000000000003] to [-3276.8, 3276.7]`; `--strict` -> `error[narrowed-limits]`, `cannot replace`, exit 1; the widening direction is silent |
+| P9-I2 | Important | CONFIRMED | Important | `compare.py:121-148` compares neither `bits` nor position while `types.py:124-126` (published verbatim at `ddd_types.schema.json:287`) says a comparison reports reordering; `{b, a, f:3}` and `f: 4` -> no finding; `f: 2` -> `narrowed-limits` only; the dump carries `["Inst.f", 3]` |
+| P9-I3 | Important | CONFIRMED | Important | `analysis.py:2339` `for value in definition.scalar_values():` with `_bag.add` at `:2351`/`:2359`; `uint8[4096]` init 300 -> 4096 identical `init-invalid` lines at `...definition.init`, 569 357 characters; `--format json` 4096 diagnostics, 1.9 MB; `[1.5] * 8` -> 8 findings |
+| P9-I4 | Important | CONFIRMED | Important | `compare.py:439-446` scans the bucket per removal; N=50 (2150 objects) noid vs itself 0.57 s, vs every name prefixed 2.73 s; N=100 (4300) 0.75 s vs 9.67 s - the excess grows 4.1x for 2x objects; the N=1000 timeout is the finder's `perf_compare_stdout.txt` |
+| P9-M1 | Minor | CONFIRMED | Minor | `analysis.py:432-433` "the structures in it are left out" against `:783` over every declared type; `A_t <-> B_t` -> `error[type-cycle]` and the dump's `types` are `['B_t', 'A_t', 'Ok_t']` |
+| P9-M2 | Minor | CONFIRMED | Minor | `ir.py:297-311` checks `external`/`header` only; member `typename: Nope_t` -> dump `{"datatype": null, "type": null, "external": null}`, which `compare` reads back without a finding; `generate c --force` writes `ddd_types.h:18` `    None bad;` |
+| P9-M3 | Minor | CONFIRMED | Minor | `analysis.py:838-840` passes `member.datatype.value` as the phrase; `uint8` bits 2 with `FAR=5` -> `do not fit into uint8`; limits `[0, 9]` -> `exceed the range [0, 3] that uint8 can represent`; `uint64` bits 2 with `2**40` -> one finding against `a c 'int'` and one `do not fit into uint64` |
+| P9-M4 | Minor | CONFIRMED | Minor | `objects.py:779-780`; `[[1], [2]]` on `uint8[2]` -> `'V': init is a list but the object is a scalar` |
+| P9-M5 | Minor | CONFIRMED | Minor | `compare.py:115` `return repr(value)`; `uint8[100000]` with one element changed -> one `changed-storage` line of 600 077 characters |
+| P9-M6 | Minor | CONFIRMED | Minor | `analysis.py:2416` replaces the registry entry, location included; A plain, B documented, C conflicting -> `first defined as: OFF=0, ON=1` at `b.ddd.json`, not `a.ddd.json` |
+| P9-M7 | Minor | CONFIRMED | Minor | `analysis.py:786` `key=lambda x: x.path`, `ir.py:715` `key=lambda entry: entry.name`; `ddd list` of `Inst[12]` prints `Inst[0].v`, `Inst[10].v`, `Inst[11].v`, `Inst[1].v`, ... |
+| P9-M8 | Minor | CONFIRMED | Minor | `analysis.py:2395-2400` runs `_check_enum_names` on the first registration only; B adds `EXTRA`, C declares a variable `EXTRA` -> `enum-conflict` alone, no `name-collision` |
+| P9-M9 | Minor | CONFIRMED | Minor | `analysis.py:2341-2344` `value not in (0, 1)` then `format_number`; `2.0` on `boolean` -> `init value 2 is not a valid bool`; `1.0` on `boolean` passes; `1.0` on `uint8` -> `written as a fractional number` |
+| P9-M10 | Minor | CONFIRMED | Minor | read: `analysis.py:1526-1530` re-derives `_member_raw_range` (`:3240-3245`); `_describe_references` at `analysis.py:155` and `compare.py:84`; `_condition` "no condition" (`:3264`) against "none" (`compare.py:627`); `is_local` (`:357`) re-spelled at `:2900` |
+| P9-M11 | Minor | CONFIRMED | Minor | read: `developer_documentation.rst:32-34` "does not know about: any output format" against `analysis.py:68-69` (`MATRIX_DIM`, ASAP2 1.6.1), `:127-128` (the c `int`), `:2916-2918`; the guard `tests/test_backends.py:63-66` globs `models/*.py` only |
 
 ## Pass 10: code review of the periphery (cli, plugins, backends, build_info, the cmake module)
 
@@ -3742,6 +4010,28 @@ items in the command line - an unflushed table, a Python message for `-o .`, wid
 an override refused after it was applied. Two questions belong to the maintainer: whether the
 a2l should carry the A2ML its `IF_DATA` blocks presuppose, and whether templates, which run as
 freely as plugins, should be said to.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group C): 15 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P10-I1 | Important | CONFIRMED | Important | `Ddd.cmake:260` joins the collected paths verbatim into `includes`, `loading.py:990` treats any entry holding `*?[` as a pattern; collected mode with the source tree under `cmk/proj [v2]/`: the written project carries `".../proj [v2]/ddd/sensor_hub.ddd.json"`, `ninja` -> `error[include-empty]: pattern '.../proj [v2]/ddd/sensor_hub.ddd.json' matches no file`, exit 1, nothing written; the same include from a plain-named directory checks `ok` |
+| P10-I2 | Important | CONFIRMED | Important | `Ddd.cmake:363-369` checks `arg_UNPARSED_ARGUMENTS` only; `ddd_generate(fw.elf ... ADDRESS_MAP ${DDD_MAP})` with `DDD_MAP` unset: under `cmake_minimum_required 3.30` CMake itself prints an author warning, under `3.31` nothing; both: no `addresses.json` seeded, `build.ninja` has no `--address-map`, the build passes and `Miss.a2l` has 5 of 5 `ECU_ADDRESS 0x00000000` |
+| P10-M1 | Minor | CONFIRMED | Minor | `c/model.py:344` calls `owned_by` and `instances_owned_by` per component, `ir.py:722` scans every object each time; re-ran pass 10's `perf10.py`: c model 0.05 s at N=100 against 3.97 s at N=1000, of which `owned_by` 2.77 s in 44 000 generator calls |
+| P10-M2 | Minor | CONFIRMED | Minor | `a2l/model.py:448` `for leaf in self._dictionary.leaves:` inside `_group`, called once per component at `:279`; my profile: `_group` 0.55 s of the 1.47 s `build_a2l_model` at N=1000 (1 000 components x 10 000 leaves) |
+| P10-M3 | Minor | CONFIRMED | Minor | `a2l/model.py:223` `model = build_a2l_model(dictionary, A2lOptions(), "")` inside `addressed_symbols`, called from `cli.py:700` before `render` builds the model again at `:898`; measured 1.00 s beside the 1.69 s a2l render at N=1000 |
+| P10-M4 | Minor | CONFIRMED | Minor | `c/model.py:293-306` `alignment` recurses per member with no memo; pass 10's diamonds re-run: check / generate c 0.67 / 0.68 s at depth 16, 1.71 / 1.90 s at 20, 19.8 / 22.5 s at 24 - the c model's share doubles per level, on an input nobody writes |
+| P10-M5 | Minor | CONFIRMED | Minor | `options.py:49` `path.read_text(encoding="utf-8")` against `loading.py:1112` and `cli.py:1432` `utf-8-sig`; a map starting `EF BB BF` -> `ddd: the address map '...' is not valid json: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)`, exit 2 |
+| P10-M6 | Minor | CONFIRMED | Minor | `options.py:73-76` `int(text, base)`, `:49` `json.loads` without a pairs hook; `"0x1_0000"` -> `ECU_ADDRESS 0x00010000`, `"١٢"` -> `0x0000000C`, `"+5"` -> `0x00000005`; `{"ValueA": "0x10", "ValueA": "0x20"}` -> `0x00000020` with no message, exit 0 |
+| P10-M7 | Minor | CONFIRMED | Minor | `base.py:190` `target.with_name(target.name + STAGING_SUFFIX)` raises on a path with no name, printed by `cli.py:125`; `dump demo.ddd.json -o .` and `generate c ... --dictionary .` -> `ddd: WindowsPath('.') has an empty name`, exit 2 |
+| P10-M8 | Minor | CONFIRMED | Minor | `cli.py:953-954` prints the table then reports without a flush (`:1245`, `:1255`, `:1286` flush); `list examples/inconsistent > log 2>&1` -> first line `error[multiple-producers]`, last line the `UnusedSignal` row; `dump v1.3 > log 2>&1` -> the `unused-output` warning first, `}` last; `sources` starts with the listing |
+| P10-M9 | Minor | CONFIRMED | Minor | `cli.py:1532` `len(row[column])`, `:1534` `ljust`; a unit `温度`: its row is 67 code points but 69 display columns (the `V` row 67 / 67), so `SHAPE` onwards sit two columns right of the header |
+| P10-M10 | Minor | CONFIRMED | Minor | `cli.py:647` `bag.policy.verify(bag.registered)` after the baseline's plugin registered on the private bag of `:1408`; `compare examples/layout/project.ddd.json layout.json -W layout/removed-entry=ignore` -> `ddd: unknown check 'layout/removed-entry': no loaded plugin registers it`, exit 2; without `-W` the pair compares (`missing-plugin` twice); second face of P5-M9 |
+| P10-M11 | Minor | CONFIRMED | Minor | `base.py:225-232` builds a plain `Environment`; a template `{{ cycler.__init__.__globals__.__builtins__.__import__('os').getcwd() }}` rendered the working directory into `ddd_globals.c`, exit 0; `docs/templates.rst` has no sentence on templates being code (grep `trust`, `sandbox`, `as code`, `runs python`: none), `docs/plugins.rst:209-212` states the rule for plugins alone |
+| P10-M12 | Minor | CONFIRMED | Minor | `Ddd.cmake:39` `find_program(DDD_EXECUTABLE NAMES ddd ...)`, and no `--version` anywhere in the module (grep); `git show v0.9.0:src/ddd/cli.py` has no `--dictionary`, which `:549` passes on every generation, so a 0.9.0 tool under this module fails at build time with argparse's `unrecognized arguments` |
+| P10-M13 | Minor | CONFIRMED | Minor | `project.a2l.jinja:83-89` writes `/begin IF_DATA XCP ... /end IF_DATA` and the file has no `/begin A2ML` and no `/include` (grep); ASAP2 1.6.1 §3.5.75 (p. 130): the parameters of `IF_DATA` "have to be described in the ASAM MCD-2 MC metalanguage", §5.3 (p. 225): the AML's `IF_DATA` tag "is then used by the MCD tool to interpret the data"; `generated_artefacts.rst:762-766` and `faq.rst:598-604` name the `DAQ` list, the protocol layer and the transport, not the AML |
 
 ## Pass 11a: the test suite, part A (fixtures, models, loading, analysis, structures, comparison)
 
@@ -4191,6 +4481,26 @@ different reason, and the comparison-table guard cannot see the four fields a le
 helpers spelled five times, and nine order pins - not a few hundred - that depend on the
 analysis schedule. The consolidated list above is 53 gaps, most of them the unpinned location
 of a finding, which is the dimension the half pins least and the one an editor relies on.
+
+### Verification
+
+Every candidate of this pass was handed to a second reviewer (group E): 13 confirmed, 0 plausible, 0 refuted. The severity column is the verifier's grade; where it differs from the finder's, the notes say why.
+
+| id | finder | verdict | severity | proof |
+| --- | --- | --- | --- | --- |
+| P11A-I1 | Important | CONFIRMED | Important | finder's probe rerun: the test's payload -> only `error[schema]: Unable to extract tag using discriminator 'kind'`; with `kind`/`volatile` -> `definition.conversion.factor: error[schema]: Input should be a finite number (got: inf)`; on a copy of `src` with `Real = Annotated[float, Field()]` the test still passes (a probe plugin printed the copy's path) while the complete payload loads with `factor=inf` |
+| P11A-I2 | Important | CONFIRMED | Important | `test_comparison_tables.py:139` `for name in ResolvedObject.model_fields:`; `ResolvedLeaf` adds `bits`, `instance`, `instance_id`, `path` (computed); `grep bits src/ddd/compare.py` -> nothing; probe rerun: 2->4 bits `[]`, 4->2 `['narrowed-limits']` only, members reordered `[]` |
+| P11A-M1 | Minor | CONFIRMED | Minor | `test_sections.py:228` `declare("local", ...)`; `analysis.py:2848` `producer.scope is Scope.OUTPUT`; the tree replicated: `checks(bag) = ['section-alignment']`, the first alternative never holds |
+| P11A-M2 | Minor | CONFIRMED | Minor | `test_edge_cases.py:461-464` asserts the exit status and the output in-process; `:473-481` asserts only `result.stdout.startswith("ddd ")`; finder's durations: `0.38s call ... test_the_module_entry_point_runs_as_documented` |
+| P11A-M3 | Minor | CONFIRMED | Minor | `test_models.py:792-793`, `test_edge_cases.py:466-469`, `test_sections.py:487-488` hold no `assert`; the three ran PASSED |
+| P11A-M4 | Minor | CONFIRMED | Minor | `test_analysis.py:571-576` four literals; 69 `bag.add(` sites in `analysis.py`; `diagnostics.py:451-452` `if info is None: severity = Severity.ERROR` |
+| P11A-M5 | Minor | CONFIRMED | Minor | `test_hardening.py:529` `write_tree(...)` overwritten by `:530`; `:514` template, `:522` `assert location.pointer` on a constant; `test_sections.py:471-472` `= None` then `del`; `test_models.py:93-94` re-imports of `:8-9`; `test_compare.py:525,600,606,632,654,675` `verdict(before, after)` twice |
+| P11A-M6 | Minor | CONFIRMED | Minor | `test_constants.py:1163`, `:1208` and `test_external.py:516` `from test_lsp import ...`; the helpers are defined at `test_lsp.py:45,71,80` |
+| P11A-M7 | Minor | CONFIRMED | Minor | `test_structures.py:29-51` `val/struct/scalar/types`, `test_types.py:31-51` `value/bits/structure/scalar`, `test_constants.py:44-50` `struct_type/value_member`, `test_embedded.py:38-51` `scalar_type/struct_type/value_member/typed_member`, `test_external.py:42-54` `val/struct/types` |
+| P11A-M8 | Minor | CONFIRMED | Minor | scanned the 15 files: 319 `checks(...) == [...]` pins, 10 with two or more distinct identifiers - the finder's nine plus `test_compare.py:514` (`renamed-object` x2 then `reused-name` x2, the `compare.py:342-371` order) |
+| P11A-M9 | Minor | CONFIRMED | Minor | `identity.py:32` `if TYPE_CHECKING:  # pragma: no cover` beside `pyproject.toml:115` `'if TYPE_CHECKING:'`; `python -m pytest --co -q` printed `FAIL Required test coverage of 100% not reached. Total coverage: 29.11%` and exited 0 |
+| P11A-M10 | Minor | CONFIRMED | Minor | `test_structures.py:561-562` "Nothing about the time is asserted here", `test_sections.py:341-342` "what this test watches is the clock"; neither reads a clock |
+| P11A-M11 | Minor | CONFIRMED | Minor | `test_comparison_tables.py:42-43` "The value extractor of that table entry has to actually read this field"; `:160-162` asserts names only; `:281-285` evaluates the `shape` extractor once, on a curve |
 
 ## Pass 11b: the test suite, part B (cli, lsp, plugins, backends, generation, a2l, external, cmake, documentation, transcripts)
 
@@ -4645,3 +4955,7 @@ copies of a fixture, and a cmake file that spends a third of the suite's time co
 tree fourteen times. The consolidated list is 54 gaps, most of them carried from passes 5, 6 and
 7 and verified still open; the two that matter most are the ones the two Important findings would
 close.
+
+### Verification
+
+Not verified.

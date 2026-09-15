@@ -3357,3 +3357,386 @@ the advisory lost-identity note is quadratic on exactly the delivery ids were in
 handle. Each is local. The minors are a stale docstring, an IR record that admits a member with
 no storage, three messages phrased for the wrong bound or object, one 600 kB message, and four
 carried-over small items.
+
+## Pass 10: code review of the periphery (cli, plugins, backends, build_info, the cmake module)
+
+### Scope covered
+
+Read in full, with line numbers, on the review tree (`master` at `6e9e99f`): `src/ddd/cli.py`
+1-1535, `src/ddd/plugins.py` 1-495, `src/ddd/build_info.py` 1-88, `src/ddd/backends/__init__.py`,
+`base.py` 1-317, `c/__init__.py`, `c/backend.py` 1-130, `c/literals.py` 1-142, `c/model.py` 1-555,
+`c/options.py`, `c/types.py`, `a2l/__init__.py`, `a2l/backend.py`, `a2l/model.py` 1-662,
+`a2l/options.py` 1-86, `a2l/types.py`, `a2l/templates/project.a2l.jinja` 1-160 (as code),
+`cmake/Ddd.cmake` 1-676 (as CMake code), the five `examples/templates/*.jinja2` (as code),
+`examples/plugins/ddd_layout.py` 1-316. For the cross-module angle: `src/ddd/lsp/discovery.py`
+(the reader of the build record), `src/ddd/diagnostics.py` 296-330 and 384-523 (`Location`,
+`SeverityPolicy`, `DiagnosticBag`), `src/ddd/loading.py` 380-425, 835-945, 985-1030 (`sources`,
+`locate`, plugin loading, include expansion), `src/ddd/ir.py` 515-545 and 670-733 (the
+`DataDictionary` helpers the backends call), `src/ddd/analysis.py` 424-463 and 720-770
+(`_ordered_structures`, the object order), `src/ddd/models/common.py:326-340`,
+`objects.py:161`, `:811-820`, `pyproject.toml` 1-120, `docs/developer_documentation.rst` 1-110,
+`docs/templates.rst` and `docs/plugins.rst` by grep, `docs/acronyms.rst:170-185`,
+`docs/generated_artefacts.rst:740-770`, `docs/faq.rst:596-606`, `SPEC.md:1066-1076`,
+`:1722-1730`, `docker/compile.sh:48-53`; the names of every test in `tests/test_cli.py`,
+`test_plugins.py`, `test_backends.py`, `test_generation.py`, `test_a2l.py`, `test_calibration.py`,
+`test_example_plugin.py`, `test_cmake.py`, `test_external.py`, and the fixture helpers of
+`tests/test_external.py:20-68`; `reports/pass-4.md`, `pass-5.md`, `pass-8.md`, `pass-9.md` whole,
+`previous-review.md:1700-1837`.
+
+Ran, from the venv, everything kept under `scratchpad/pass-10/`: `perf10.py` (pass 8's `gen.py`
+reused read-only; wall clock of `ddd generate all --dictionary` at N = 100 and 1000, twice each;
+the phases in process; `cProfile` of `build_code_model` and `build_a2l_model` at N = 1000;
+`perf_results.txt`); `cmake_probe.cmake` under `cmake -P` (CMake 4.4.3: `string(JSON)` on a
+document with a byte order mark, `cmake_parse_arguments` with a keyword whose value expanded to
+nothing, the list handling of `_ddd_project_sources`); `probes10.py` and `probes10b.py` (eleven
+cases under `cases/`, transcripts `probes_results.txt` and `probes_results_b.txt`: `ddd list`
+into one redirected file, `dump -o .`, `--dictionary .`, three address maps, an include through a
+directory named with brackets, a diamond of external-only structures at depths 16, 20 and 24, a
+cyclic type under `--force`, a boolean constant, `compare` with `-W` on a baseline-only plugin
+check, a wide-character unit in the table, a lone surrogate in a unit, the demo's boolean row).
+Probe ids `Pn` below refer to those transcripts.
+
+### Strengths
+
+- The check registry is per bag, not global: `DiagnosticBag.register` fills `self._registered`
+  (`src/ddd/diagnostics.py:470-478`) and `CHECKS` is never mutated, so a language server
+  checking two projects with different plugins cannot leak a check or an override from one
+  into the other, and a plugin loaded twice registers on each bag once.
+- A plugin file is cached under a name derived from the sha256 of its *resolved* path
+  (`src/ddd/plugins.py:200-201`): two files with one stem in two directories are two modules,
+  two spellings of one file are one, and a body that fails or exits is unregistered so that a
+  second load retries (`:211-233`); `KeyboardInterrupt` still interrupts.
+- `render` resolves the output directory once, anchors bare paths to it, refuses an escape and
+  decides a clash on the resolved path (`src/ddd/backends/base.py:96-119`), which on Windows
+  folds case through `WindowsPath` equality; `write` decides every status first, stages every
+  payload beside its target, renames in order and rewrites the escaping error's `filename` to
+  the real target (`:172-220`), exactly as its docstring says.
+- The set the example type header includes `<stdint.h>` for counts the members of every
+  structure (`src/ddd/ir.py:691-706`), so a project whose only integer sits inside a structure
+  still compiles; the types header's order is a name-ordered depth-first post-order over member
+  type names whatever their dimensions (`src/ddd/analysis.py:424-463`), so a structure reached
+  only through an array member of another is complete before its container.
+- The bare `COMPU_METHOD` name is platform-independent: `dictionary.objects` is in name order
+  (`src/ddd/analysis.py:720`, `:742`, `:770`), so when two unit spellings share a slug (pass 4
+  Minor 8) the alphabetically first object keeps the bare name whatever the include order.
+- `boolean` is `bool` with `<stdbool.h>` in the ISO table and `1`/`0` in every literal
+  (`src/ddd/backends/c/types.py:18`, `:51`, `c/literals.py:18-24`), so an initialiser needs no
+  header on any platform.
+- The build record is closed and versioned (`src/ddd/build_info.py:47-54` `extra="forbid"`),
+  and a record from a newer tool - an unknown key or a higher stamp - is declined rather than
+  misread (`src/ddd/lsp/discovery.py:55-62`), as `SPEC.md:758` says.
+- `ddd cmake-dir` and `ddd templates-dir` find their files from a wheel (force-included at
+  `pyproject.toml:54-58`), an editable install and a checkout (`src/ddd/cli.py:89-92`,
+  `src/ddd/backends/c/backend.py:36-60`); a zip import answers "not part of this installation"
+  rather than crashing.
+- The conventions hold: outside `cli.py` nothing prints, exits or names a stream except the
+  server's own loop (`src/ddd/lsp/server.py:202`, `:638-639`) and `__main__.py:10`; no backend
+  imports the loader or the analysis (`tests/test_backends.py:74-87` enforces it), and neither
+  re-implements an analysis rule - the a2l's `_carries` and `_default_format` are mapping rules
+  section 5.2 states; the naming rules in the docstring of `c/backend.py:8-18` are the ones
+  `docs/templates.rst:86-88` documents.
+- CMake's `string(JSON)` accepts a byte order mark (`cmake_probe.cmake` 1a-1c), so a description
+  the loader reads with `utf-8-sig` is read by `_ddd_description_name`, `_ddd_is_component_file`
+  and `_ddd_project_plugins` too.
+- The forced generation is safe where a naive walk would not be: a cyclic type under `--force`
+  drops the instance, so `_section_groups.alignment` never recurses into the cycle (P6, exit 1,
+  four files written), and a boolean constant is refused by the model before any backend spells
+  it (P7: `constants[0].value: error[schema]: Input should be a valid integer (got: True)`).
+- Performance (`perf_results.txt`): `ddd generate all --dictionary` takes 2.0 s at N = 100
+  (4 300 objects, 1 000 leaves) and 21.6 s at N = 1000 (43 000 objects, 10 000 leaves; 17.6 s
+  when everything is unchanged). In process at N = 1000: load 1.45 s, analyze 3.96 s, c model
+  4.16 s, jinja for the c 0.3 s, a2l model 0.96 s plus 0.7 s of jinja, dictionary text 0.43 s
+  (45 MB), write 1.15 s. The renderers, the writer and the a2l record construction are linear;
+  what is not is below.
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **The collected project file spells its includes as literal absolute paths, and the loader
+   reads any path containing `[` as a glob** (`cmake/Ddd.cmake:260`
+   `set(entries "$<$<BOOL:${components}>:\n      \"$<JOIN:${components},\"$<COMMA>\n`
+   `\">\"\n    >")`, written verbatim into `"includes"` at `:275`; `src/ddd/loading.py:990`
+   `if not any(character in pattern for character in _GLOB_CHARACTERS):` with `:53`
+   `_GLOB_CHARACTERS = frozenset("*?[")`). Trigger: the ordinary collected mode on a checkout
+   under a directory whose name carries a bracket - `C:/work/proj [v2]/`, a copy Windows or a
+   user names that way - or, on POSIX, a `?` or `*`. Outcome (P4a-c, a project including
+   `.../cases/proj [v2]/c.ddd.json` by its absolute path): `error[include-empty]: pattern
+   '.../proj [v2]/c.ddd.json' matches no file`, exit 1 on `check` and `generate`, nothing
+   written, and `ddd sources` lists the project file alone, so the module's dependency list is
+   empty as well; the same file under `proj_v2/` checks clean (P4d). The message calls a
+   pattern what the module wrote as a path, and nothing in `docs/build_integration.rst` says
+   the source tree may not carry those characters. Fix: escape the glob characters in the
+   written includes (`[` as `[[]`, and `*`/`?` likewise) in `_ddd_write_project_file`, or let
+   `_expand` try the entry as a literal path first and treat it as a pattern only when no such
+   file exists.
+
+2. **`ddd_generate` and `ddd_add_component` never read `KEYWORDS_MISSING_VALUES`, so a keyword
+   whose value expanded to nothing is silently dropped** (`cmake/Ddd.cmake:363-369`
+   `cmake_parse_arguments(PARSE_ARGV 1 arg ...)` followed by `if(arg_UNPARSED_ARGUMENTS)` only;
+   `:191-194` likewise). Trigger: `ddd_generate(fw.elf TEMPLATE_DIRECTORY t ADDRESS_MAP
+   ${DDD_MAP})` with `DDD_MAP` unset or empty - the ordinary CMake mistake - or `PROJECT
+   ${PROJ}`, `SCHEMA_DIRECTORY ${DIR}`, `SEVERITY ${SEV}` the same way. Outcome
+   (`cmake_probe.cmake` 2, CMake 4.4.3): `arg_KEYWORDS_MISSING_VALUES='ADDRESS_MAP;PROJECT'`
+   and `arg_ADDRESS_MAP` unset, so `:406` `if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)` is false:
+   the a2l is generated with every `ECU_ADDRESS 0x00000000`, no map is seeded and none is a
+   dependency, and the two-run flow the map was configured for never happens; `PROJECT` without
+   a value falls into the collected mode. CMake prints an author warning under CMP0174 OLD and
+   nothing at all under a `cmake_minimum_required(VERSION 3.31)` project, where the variable is
+   the empty string. Fix: `if(arg_KEYWORDS_MISSING_VALUES) message(FATAL_ERROR ...)` beside the
+   unparsed-arguments check in both functions.
+
+#### Minor
+
+1. **`build_code_model` is quadratic in components times objects**
+   (`src/ddd/backends/c/model.py:344` `dictionary.owned_by(component.name) +
+   dictionary.instances_owned_by(component.name),` per component; `src/ddd/ir.py:722`
+   `return tuple(entry for entry in self.objects if entry.owner == component)`). Measured
+   (`perf_results.txt`): the c model takes 0.05 s at N = 100 and 4.16 s at N = 1000 - eighty
+   times for ten times the project - of which `owned_by` is 2.9 s and `instances_owned_by`
+   0.35 s (44 000 000 comparisons), the largest single phase of the
+   21.6 s run. Fix: bucket the objects and instances by owner once (`dict[str, list]`) in
+   `build_code_model`, or on the dictionary.
+
+2. **The a2l `GROUP` construction walks every leaf once per component**
+   (`src/ddd/backends/a2l/model.py:448` `for leaf in self._dictionary.leaves:` inside `_group`,
+   called per component at `:279`). Measured: `_group` is 0.56 s of the 0.96 s a2l model at
+   N = 1000 (1 000 components times 10 000 leaves), against 0.04 s for the whole model at
+   N = 100. Fix: index the leaves by `instance` once in the builder.
+
+3. **A run with an address map builds the whole a2l model twice**
+   (`src/ddd/backends/a2l/model.py:223` `model = build_a2l_model(dictionary, A2lOptions(), "")`
+   inside `addressed_symbols`, called from `src/ddd/cli.py:700` before `render` builds it again
+   at `:898`). Measured: 1.20 s at N = 1000 on top of the 1.67 s a2l render. Fix: build once and
+   read the names off the model the backend renders, or compute the exported names without the
+   record views.
+
+4. **`_section_groups.alignment` recurses without memoisation, so a diamond of external-only
+   structures costs the c model exponential time** (`src/ddd/backends/c/model.py:293-306`
+   `def alignment(name: str) -> int:` ... `strictest = max(strictest, alignment(member.type))`).
+   Trigger (P5): `L0_t {a: L1_t, b: L1_t}` ... `L23_t {a: Ext_t, b: Ext_t}` - external members
+   contribute no leaf, so the leaf cap never weighs the tree - and a placed instance of `L0_t`.
+   Outcome: `generate c` 23.1 s against `check` 20.4 s at depth 24 (1.74 s against 1.56 s at
+   depth 20), the difference doubling per level; the analysis's own walk grows the same way
+   (20 s for `check` alone, pass 9's area). Contrived input, so minor. Fix: memoise per type
+   name; the dictionary's types are already acyclic by construction.
+
+5. **The address map refuses a byte order mark that every description file may carry**
+   (`src/ddd/backends/a2l/options.py:49` `data = json.loads(path.read_text(encoding="utf-8"))`
+   against `src/ddd/loading.py:1112` and `src/ddd/cli.py:1432`, which read `utf-8-sig`).
+   Observed (P3a): `--address-map p3_bom.json` -> `ddd: the address map '...' is not valid
+   json: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)`, exit 2 -
+   Python's advice to a programmer, for a file a Windows tool or Notepad writes that way. Fix:
+   `encoding="utf-8-sig"`.
+
+6. **The address grammar is Python's `int()`, and a duplicate symbol keeps the last value
+   silently** (`src/ddd/backends/a2l/options.py:73-76` `base = 16 if text.lower().startswith(
+   ("0x", "-0x")) else 10` ... `number = int(text, base)`; `:49` `json.loads` without
+   `object_pairs_hook`, where the loader refuses a repeated key at `src/ddd/loading.py:578`).
+   Observed (P3b, P3c): `"0x1_0000"` -> `ECU_ADDRESS 0x00010000`, the Arabic-Indic digits
+   `"١٢"` -> `0x0000000C`, `"+5"` -> `0x00000005`; `{"ValueA": "0x10", "ValueA": "0x20"}` ->
+   `0x00000020` with no word. A map is "written by a linker script or a patch tool nobody is
+   looking at" (`:52-53`), which is the argument for a strict grammar. Fix: a pattern
+   `^(0[xX][0-9A-Fa-f]+|[0-9]+)$` on the stripped text and a pairs hook refusing a repeat.
+
+7. **`dump -o .` and `--dictionary .` end in a Python message about an empty name**
+   (`src/ddd/backends/base.py:190` `temporary = target.with_name(target.name + STAGING_SUFFIX)`,
+   a `ValueError` for a path with no final component, printed verbatim by `src/ddd/cli.py:125`).
+   Observed (P2a, P2c): `ddd dump demo.ddd.json -o .` -> `ddd: WindowsPath('.') has an empty
+   name`, exit 2; `-o <existing directory>` says `cannot write 'cases': Access is denied`
+   instead (P2b). Fix: refuse a target without a name in `_write_dictionary` and
+   `_dictionary_file` with the tool's own words ("-o names a directory, give it a file").
+
+8. **`list` does not flush the table before the findings, unlike its two siblings**
+   (`src/ddd/cli.py:953-954` `_print_table(dictionary)` then `_report(bag, args.format)`;
+   `artefacts` flushes at `:1245` and `:1255` and `sources` at `:1286` "so that the listing
+   must not interleave with the findings in a buffered pipe"). Observed (P1): `ddd list
+   examples/inconsistent/project.ddd.json > log 2>&1` -> the two `multiple-producers` and
+   `definition-mismatch` errors are the first lines of the file and the table the last, while
+   `ddd sources ... > log 2>&1` starts with the listing. `dump` to stdout has the same shape at
+   `:973-974`. Fix: `sys.stdout.flush()` before `_report` in both.
+
+9. **The table pads by code points, so an East Asian wide unit shifts its row**
+   (`src/ddd/cli.py:1532` `widths = [max(len(row[column]) for row in rows) ...]`, `:1534`
+   `value.ljust(width)`). Observed (P9): a unit `温度` is two code points and four columns
+   wide, so `SHAPE`, `INIT`, `PRODUCER` and `CONSUMERS` of that row start two columns right of
+   the header (`display=65` against `63` for the rows beside it). `°C` is fine. Fix: measure
+   with `unicodedata.east_asian_width` (`W`/`F` count two), or leave it as a known limit of
+   the text table.
+
+10. **A `-W` naming a check of a plugin only the baseline loads is refused after the baseline
+    was analysed under it** (`src/ddd/cli.py:647` `bag.policy.verify(bag.registered)`, where the
+    baseline's plugins registered on the private bag of `:1408` `own = DiagnosticBag(
+    SeverityPolicy(bag.policy.overrides, strict=False))` - the overrides shared, the
+    registrations not). Observed (P8b): `ddd compare examples/layout/project.ddd.json
+    layout.json -W layout/removed-entry=ignore` -> `ddd: unknown check 'layout/removed-entry':
+    no loaded plugin registers it`, exit 2; without `-W` the same pair reports `missing-plugin`
+    for both sides and "can replace" (P8c). The plugin ran for the baseline, its checks were
+    resolvable there, and the run then says it never loaded - the same asymmetry as pass 5
+    Minor 9, from the other side. Fix: register the baseline's plugin checks on the shared bag
+    before `verify` (they are known), or word the error "not among the candidate's plugins".
+
+11. **Templates run as unsandboxed Python, and no page says so beside the plugin boundary**
+    (`src/ddd/backends/base.py:225-232` builds a plain `Environment`, so `{{ ''.__class__
+    .__mro__[1].__subclasses__() }}` reaches `os` from any template; `docs/plugins.rst:209-212`
+    and `SPEC.md:1069-1076` state "naming a plugin runs it" for plugins alone; `docs/templates.rst`
+    has no sentence about it). Trigger: a repository's template directory is as much code as its
+    plugins, and a reader who has learnt the plugin rule concludes the templates are data. The
+    previous review's security note (`previous-review.md:1811`) accepted the boundary "as long as
+    it is stated next to them"; it is not. Fix: one sentence on the templates page and beside the
+    plugin rule (or `SandboxedEnvironment`, which nothing the example templates do would notice).
+
+12. **Nothing checks that the module and the tool it found are one release**
+    (`cmake/Ddd.cmake:39` `find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary
+    tool")`; no `--version` handshake anywhere). Trigger: a project that copied `Ddd.cmake` into
+    its tree, as `ddd cmake-dir` and the header at `:18` invite, beside a `ddd` of another
+    release - 0.10.0's module with 0.9.0's tool, say. Outcome: the configure passes (`schema all`,
+    `build-info` and `sources` accept the old tool) and the first build fails with argparse's
+    `generate: error: unrecognized arguments: --dictionary`, nothing naming the mismatch; the
+    reverse silently builds with the old module's option set. `DEPENDS "${DDD_EXECUTABLE}"`
+    (`:559`) likewise watches a wrapper script rather than the tool when `:38`'s "a wrapper
+    script running python -m ddd" is used. Fix: run `${DDD_EXECUTABLE} --version` at include
+    time and compare with a version spelled in the module (the release already spells it in
+    nine files).
+
+13. **The a2l carries `IF_DATA XCP` blocks and no A2ML that defines them, and the pages that
+    say what comes "from whatever configures the XCP stack" do not list the A2ML among it**
+    (`src/ddd/backends/a2l/templates/project.a2l.jinja:83-89` `/begin IF_DATA XCP` ...
+    `/end IF_DATA` per measurement with a raster; no `/begin A2ML` anywhere in the file;
+    `docs/generated_artefacts.rst:762-766`, `docs/faq.rst:598-604`, `SPEC.md:1727-1728` name
+    the module level `DAQ` list, the protocol layer and the transport). Fact: ASAP2 1.6.1
+    defines the content of an `IF_DATA` block only through the A2ML section of the same file.
+    Consequence: a reader without an XCP AML of its own either skips the block by bracket
+    counting - losing the event assignment the raster feature exists for, silently - or refuses
+    it; a project merging the stack's fragment as the pages say gets the AML with it, one that
+    loads the file alone does not. Unconfirmed against a calibration tool (none here - CANape
+    would settle which of the two it does). Fix: say on both pages that the merged fragment has
+    to carry the XCP A2ML, or write the standard block (open question 1).
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P8 I1 | a plugin module ran before it was in `sys.modules` | fixed | `src/ddd/plugins.py:211-233` (registered first, popped on failure); `tests/test_plugins.py:237`, `:637` |
+| P8 I2 | path clash decided on spelling; a backend could write anywhere | fixed | `src/ddd/backends/base.py:96-119`; `tests/test_backends.py:255-320`, `tests/test_plugins.py:1796-1961` |
+| P8 I3 | template and factory exceptions escape as tracebacks with exit 1 | mostly fixed | templates: `base.py:255-270` (bare exceptions too); factory and `generate` results: `plugins.py:423-434`, `:473-480`; residue: no last-resort handler in `main` (`cli.py:116-126`), pass 5 Minor 2 |
+| P8 I4 | findings discarded when a later step fails | fixed | `cli.py:1460-1488` (`_reported_on_failure`) around every producing step (`:599`, `:631`, `:830`, `:995`, `:1365`); residue: an exception outside `(OSError, ValueError)` still discards them (same residue as I3) |
+| P8 I5 | `sys.exit` in a hook was a clean run | fixed | `plugins.py:214`, `:251`, `:339`, `:487` catch `SystemExit` and name the code (`:183-187`) |
+| P8 I6 | generation not atomic, wrong file named | fixed | `base.py:184-219` (staging, rollback of creations, `filename` rewritten to the target); `tests/test_generation.py:277-370` |
+
+Minor ones of the previous pass 8 in this area, in bulk: 2 still open (`cli.py:106`
+`reconfigure(encoding="utf-8")` without `errors=`; P10c: a lone surrogate in a unit ends
+`ddd list` with `ddd: 'utf-8' codec can't encode character '\ud800'`, exit 2, after the table
+header; `check` passes because no finding quotes the unit, json mode is fine); 4 still open
+(`src/ddd/backends/c/literals.py:137-142` still folds `Sensor` and `Sensor_` into one guard and
+`name-collision` covers case alone); 6 still open (`docker/compile.sh:52` `grep -oE --
+'(-W [^ ]+|--strict)'` still misses `-Wcheck=sev`); 7 documented rather than changed (pass 5); 8
+still open (pass 5); 9 is pass 4 Minor 10; 11 fixed (`cli.py:907-912`). 1, 3, 5 and 10 are the
+server's and the extension's.
+
+The two design notes (`previous-review.md:1814-1821`): "Report before you write" is answered by
+`_reported_on_failure` rather than by reordering - the findings are still printed after the
+write (`cli.py:902`, then `:923`), but every `OSError` and `ValueError` between the analysis and
+the report now prints them first; what remains is the class of exception the block does not
+list. "The plugin boundary is thinner than its docstring says" is closed for the factory's result,
+the `generate` result, the paths and `SystemExit`, and validators are now guarded too
+(`plugins.py:319-342`); what remains is pass 5 Minor 2 (`BaseException`) and Minor 3 (hooks
+receive the mutable `dict`s inside the frozen records).
+
+Forwarded items, settled from the code (mechanism confirmed, nothing to add unless said):
+
+- Pass 4 Important 1: `c/literals.py:132` `return collapsed.replace("*/", "* /")` replaces the
+  closing marker alone. Important 2: `a2l/model.py:659-662` escapes `\`, `"` and the control
+  characters and passes every other code point. Important 4: `a2l/model.py:412` and `:425` write
+  `references.get("input")` verbatim; `_resolve_exported` at `:320` pulls only what `by_name`
+  holds, and `by_name` is the plain objects (`ir.py:674-675`), so an instance is never a record
+  and its name is written anyway. Minor 1: `base.py:294` names `template_name`, `:311-317` reads
+  the deepest frame's line and never its template; the `TemplateSyntaxError` branch at `:288-290`
+  has the same gap (`error.name` unused), so a syntax error inside an imported helper is named
+  under the importer too. Minor 4: `c/model.py:192-198` renders `value: int | float` bare. Minor
+  8: `:631-641`. Minor 11: nothing anticipates a reserved name or `MAX_PATH`; the `OSError` of
+  `base.py:189` or `:197` surfaces as `cannot write '...'`. Minor 12: `c/backend.py:93-101` -
+  `list_templates` over a nonexistent directory is empty, so the "no template" message answers.
+- Pass 5 Important 1: `cli.py:1373` and `:898` run hooks and plugin backends with `sys.stdout`
+  untouched; one more consequence in the module: `cmake/Ddd.cmake:62-77` turns every stdout line
+  of `ddd sources` into a dependency path, so a plugin's stray `print` becomes a file the build
+  cannot make. Important 2: `cli.py:998`, `:657`, `:900` compare nothing against
+  `workspace.sources()`. Important 3: `Ddd.cmake:553` declares `generated_outputs` alone, no
+  `BYPRODUCTS`; `base.py:172-220` never deletes. Minor 1: `cli.py:146`. Minor 2:
+  `plugins.py:487`, `cli.py:116-126`. Minor 3: `plugins.py:63` hands the dictionary itself, and
+  `resolve_blocks` at `:287` copies a block one level deep. Minor 5: `a2l/options.py:49`,
+  `cli.py:1127-1130`, `:1136-1140` unguarded. Minor 6: `cli.py:124-126` (`BrokenPipeError` is an
+  `OSError`). Minor 7: `cli.py:669-673`. Minor 8: `cli.py:1421-1435` exists on the compare side
+  only. Minor 9: `plugins.py:389-397` one `location` for both sides, `cli.py:638`; Minor 10 above
+  is its `-W` face. Minor 10: `Ddd.cmake:165-171`; since `string(JSON)` accepts a byte order
+  mark, only invalid json takes that branch. Minor 14: `cli.py:1228-1232`, `:943-946`. Minor 16:
+  `examples/templates/ddd_globals.c.jinja2:52-55`.
+- Pass 1 Minor 4: `a2l/model.py:291` `value=str(entry.value)` and
+  `examples/templates/ddd_types.h.jinja2:23` `{{ constant.value }}` both spell the parsed number.
+- Pass 8 Minor 8: `cli.py:1432` reads and parses the whole file to sniff. Minor 9: `cli.py:16-72`
+  imports the analysis, the comparison and the backends at module level; only the server is
+  lazy (`:1110`). Minor 13: `cli.py:1363` returns before `:1370` verifies.
+- Pass 6 Minor 9 (the server never calls `verify`): the five assemblies of the policy are
+  `cli.py:626`, `:1119`, `:1360`, `:1408` and the server's; only `:647` and `:1370` verify.
+- Pass 3 Important 3: the `Location(...)` sites built from a typed path are `cli.py:602`, `:609`,
+  `:649`, `:712`, `:1391`, as pass 5 listed; nothing changed.
+
+### Open questions
+
+1. Should the a2l carry the standard XCP A2ML block beside the `IF_DATA XCP` it writes, or should
+   the pages say the merged fragment has to bring it (Minor 13)? The first changes the template
+   and the "no module level XCP" decision's neighbourhood; the second is two sentences.
+2. Who escapes the glob characters of a collected include (Important 1): the module, when it
+   writes the project file, or the loader, by trying an entry as a literal path first? The
+   second also helps a hand-written include naming such a directory; the first keeps the loader's
+   grammar as written in section 2.
+3. Should `ddd_generate` refuse a keyword without a value (Important 2)? Yes is two `FATAL_ERROR`
+   lines; no leaves the unset-variable mistake to the a2l reader.
+4. Should the module verify the tool's version (Minor 12), and against what - a version spelled
+   in the module (a tenth file for the release script) or a `--cmake-api` answer?
+5. Should templates be sandboxed (Minor 11), or is the statement enough? `SandboxedEnvironment`
+   costs nothing the example templates use, but a project's helper may reach a method the
+   sandbox refuses.
+
+### Test gaps
+
+- `tests/test_cmake.py`: a source directory whose name carries `[` under the collected mode
+  (Important 1); a keyword given without a value - `ADDRESS_MAP ${UNSET}` - refused (Important 2);
+  a `DDD_EXECUTABLE` of another release (Minor 12).
+- `tests/test_loading.py`: an include entry that names an existing file whose path contains a
+  glob character (Important 1, whichever side takes it).
+- `tests/test_backends.py` or `tests/test_generation.py`: a bound on `build_code_model` - linear
+  in objects, say N components with M objects each generated in time proportional to N times M
+  (Minor 1); the a2l model likewise (Minor 2); a diamond of external-only structures rendered
+  (Minor 4).
+- `tests/test_a2l.py`: an address map with a byte order mark (Minor 5); one with underscores,
+  non-ASCII digits and a repeated key (Minor 6) - `:171-183` cover hex, decimal and the refusals
+  only.
+- `tests/test_cli.py`: `dump -o .` and `--dictionary .` (Minor 7); a wide-character unit in the
+  table (Minor 9); `compare` with `-W` on a check only the baseline's plugin registers
+  (Minor 10).
+- The interleaving of `list`'s table and findings (Minor 8) has no test on either sibling; a
+  test writing both streams into one buffer would pin all three.
+
+### Assessment
+
+The periphery reads as the previous review left it after its fixes, with the boundaries it
+asked for now in the code: the plugin cache is keyed on the real file, the check registry is
+per bag, the renderer confines and deduplicates on resolved paths, the writer stages and rolls
+back, every producing step prints its findings before a usage error, and the module declares
+every dependency it can name. The two Important findings sit where the CMake module meets the
+loader and CMake's own argument parser: a bracket in a source directory turns every collected
+include into a glob that matches nothing, and a keyword whose variable is unset drops the
+address map - or the project - without a word. The rest is small and mostly measured: the c
+model's per-component scan of every object is the one quadratic loop that shows at a thousand
+components, the a2l groups and the second model build behind an address map are its lesser
+cousins, an unmemoised alignment walk is exponential on an input nobody writes, the address map
+reads with a stricter encoding and a looser grammar than the descriptions, and four cosmetic
+items in the command line - an unflushed table, a Python message for `-o .`, wide characters,
+an override refused after it was applied. Two questions belong to the maintainer: whether the
+a2l should carry the A2ML its `IF_DATA` blocks presuppose, and whether templates, which run as
+freely as plugins, should be said to.

@@ -385,3 +385,371 @@ handful of decisions taken in code are not yet written down: enumerators in `cha
 a string `init` in the dictionary and in a comparison, a member's `dimension-value` making its
 type unusable, the normalised constant literal. Each is a sentence, not a redesign; Important 4
 and open question 1 are the two the maintainer has to decide rather than merely record.
+
+## Pass 2: the file formats (SPEC.md section 3.1 to 3.10)
+
+### Scope covered
+
+Read in full, with line numbers, on the review tree (`46a8807`, whose sources are `master` at
+`6e9e99f`): `SPEC.md` lines 179-1045 (section 3 intro, 3.1-3.10); the eight published schemas
+`schemas/ddd_*.schema.json` (component 2127 lines, dictionary only where it shares definitions
+with the others); every file of `src/ddd/models/` (`__init__`, `common`, `component`,
+`constants`, `conversion`, `objects`, `project`, `rasters`, `reserved`, `schema`, `sections`,
+`types`, `units`); `src/ddd/loading.py` whole; the analysis the format rules delegate to
+(`src/ddd/analysis.py` 85-160, 880-1140, 1530-1650, 1850-1910, 2040-2170, 2280-2520,
+3090-3240); `src/ddd/ir.py` 160-190 and 560-600; `src/ddd/backends/c/model.py` 180-200; all ten
+pages of `docs/file_formats/`; `docs/data_contracts.rst`; `README.md` 97-479; the schema tests
+`tests/test_documentation.py` 831-1013 and 1379-1439; the outlines of `tests/test_loading.py`
+and `tests/test_constants.py`; `previous-review.md` 695-963; `reports/pass-1.md`.
+
+Ran, from the venv, everything kept under `scratchpad/pass-2/`: `ddd schema <kind>` for all
+eight kinds and `ddd schema all`, diffed against `schemas/` (`schemas/`, `schemas_all/`); 252
+commands over 190 probe files (`probes.py`, outputs in `results.txt`) and 63 more in a second
+round (`probes2.py`, `results2.txt`): `ddd check --standalone` on component probes, `ddd check`
+on project probes, `ddd dump`, `ddd list`, `ddd sources` and `ddd generate` where the resolved
+form or the output mattered, and `jsonschema` (Draft 2020-12) over the published schemas for
+forty documents to settle which side accepts what (`results2.txt`, block `R12`). Probe ids
+`Lnn`/`Rnn` below refer to those files.
+
+Pass 1's questions, settled from the code:
+
+- Constants (pass 1 Important 3, Minor 4, open question 4): `src/ddd/models/constants.py:44-49`
+  is `ConstantValue = Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)] |
+  Annotated[float, BeforeValidator(_refuse_whole_number), Field(strict=True,
+  allow_inf_nan=False)]`, and `_refuse_whole_number` (`:31-41`) keeps an out-of-range `int` off
+  the float arm. Nothing in the model classifies the spelling: the JSON parser does
+  (`src/ddd/loading.py:575`, `json.loads`), which yields `int` for a literal without `.`, `e`
+  or `E` and `float` otherwise, so `2` is whole and `2.0`, `2.50`, `1e3`, `1E3`, `-0.0` are
+  fractional. No normalisation happens in the model either; the outputs render the Python
+  object with `str()` (`src/ddd/backends/a2l/templates/project.a2l.jinja:26`
+  `SYSTEM_CONSTANT "{{ constant.name }}" "{{ constant.value }}"`, and
+  `src/ddd/backends/c/model.py:192` `value: int | float` for the C templates), which is why
+  `2.50` reaches both as `2.5`, `1e3` as `1000.0`, `1e21` as `1e+21`, `0.10` as `0.1` and `1.0`
+  as `1.0` (probe L14c, `ddd_types.h` and `P.a2l`). A constant `1e1` named as a dimension is
+  `dimension-value` "whose value is 10.0" (L14c), because `analysis.py:92-99` `_is_length`
+  asks `isinstance(value, int)`.
+- Wildcard order (pass 1 Important 4, open question 2): `src/ddd/loading.py:1006-1010`
+  `matches = sorted(resolved for match in found if match.is_file() and (resolved :=
+  _resolve(match)) not in excluded)` sorts `Path` objects. A `WindowsPath` orders by its
+  case-folded string, a `PosixPath` by the raw string. The case-mixed set `Zeta.ddd.json`,
+  `_under.ddd.json`, `alpha.ddd.json` (L43) loads as `_under, alpha, Zeta` here (`ddd sources`,
+  the `PRODUCER` order of `ddd list` and the `components` of the dump all show it); a code-point
+  platform sorts the same three `Zeta, _under, alpha` (checked with `PurePosixPath`). So the two
+  platforms differ twice, on case and on where `_` (0x5F, between the cases) falls.
+- The name cap on constants (pass 1 Minor 12): `constants.py:65` `name: Identifier`, and
+  `Identifier` (`common.py:52-55`) carries `max_length=IDENTIFIER_MAX_LENGTH` (128); L22i
+  refuses a 129-character constant name and accepts 128. The cap applies; only the spec's list
+  at `SPEC.md:394-397` omits constants.
+- `duplicate-type` within one file (pass 1 Minor 12): `types.py:500-513`
+  `check_distinct_type_names` raises `ValueError`, reported as `schema` "type 'A_t' is already
+  declared in this file" (L42a for a types file, L42c for a component's `types`); across files
+  or homes it is `duplicate-type` with a note (L42b). Units, sections, rasters and constants go
+  through the registry in both cases (`loading.py:713-736` `_register`), so the same file twice
+  is `duplicate-unit`/`duplicate-constant` (L38b, L42d, L42e). The asymmetry is real and is
+  what `SPEC.md:837-838` says.
+- "Vocabulary file" (pass 1 Minor 9): `loading.py:69-85` names all five include-only kinds in
+  `_INCLUDE_ONLY_KINDS`, whose docstring reads "Why a vocabulary file is refused as the root,
+  by kind", and `_load_vocabulary` (`:685-711`) loads all five, `types` included (`:738-754`).
+  In the loader a types file is a vocabulary file.
+- A member's `dimension-value` poisons its type (pass 1 Minor 5): `analysis.py:1539-1570`
+  `_check_member_dimensions` records `self._poisoned_types.setdefault(entry.name,
+  _Cause(check, reported, location))` for `unknown-constant` and `dimension-value` alike (R4
+  shows the member finding at `types[0].members[0].dimensions[0]`).
+- A string `init` in the dictionary (pass 1 Minor 6): `src/ddd/ir.py:186-188` "Raw initial
+  value, nested to match `shape`, or the text of a string object", and the dump carries
+  `"init": "abc"` (L34w). The comparison side is pass 3's.
+
+### Strengths
+
+- All eight schemas regenerate byte for byte from the models (`ddd schema <kind>` and
+  `ddd schema all`, diffed against `schemas/`), and `tests/test_documentation.py:1389-1398`
+  pins it for every kind of `ddd.cli._SCHEMA_MODELS` (`src/ddd/cli.py:1028-1037`), `dictionary`
+  included.
+- The reading rules of the section 3 intro hold in every case tried: BOM on the root and on an
+  included file (L24a-b), UTF-16 and a latin-1 byte as `json-syntax` with the byte offset (L25b,
+  R9), a raw NUL (L25c), `NaN`/`Infinity`/`-Infinity` anywhere, an `extensions` block included
+  (L16a-d), a duplicate key at the top level, inside a definition, in an enumerator mapping and
+  inside an `extensions` block (L17a-d), a top level that is a list, a number, a string, `null`
+  or `true` (L27a-f), `$schema` as string, `null`, number, object, nested (L28a-e, L18t),
+  unknown keys in every object of every format, `units` and `includes` on a component (L18a-v),
+  `1e400` as `schema` "finite" wherever a number is read (L14a, R12_39), 64-bit bounds on every
+  integer position (L15, L15b).
+- `includes` does what 3.1 says: `..` in a literal and in a pattern, `**`, absolute literal and
+  pattern, a directory as literal (`file-not-found`), a pattern matching only a directory or
+  nothing or only the project itself (`include-empty`), one file under three spellings of its
+  case loaded once, one file through two patterns and a literal loaded once, `[ab]?`, an
+  unclosed `[`, a self-include and a mutual cycle (`include-cycle`), an included `.json`
+  (`file-extension`, loading continues), `*.ddd.json` matching `A.DDD.JSON` (L29a-q).
+- The string rules of 3.4 are enforced in all fifteen shapes tried, with the identifier the
+  spec names: 2-D, `uint16`, `boolean`, unit, limits, `a2l.format`, parameter, axis, curve, a
+  scalar string type named without dimensions, with a format or by a parameter, a member naming
+  it without dimensions, an own 2-D member, a bits member (L34a-r, R3); init exactly the
+  dimension, longer, a tab, non-ASCII, text on a non-string object all `init-invalid` (L34e-h,
+  L21f, L34t), `""` and a list init accepted (L34s, L34j), and the C literal escapes `"` and
+  `\` (L34i: `uint8_t V[8] = "a\"b\\c";`).
+- The vocabularies behave as 3.5, 3.8, 3.9 and 3.10 say: nineteen `cycle` spellings sort
+  exactly as the decade rule predicts (L36d), events bound 0..65535 and strict (L15b, L36e),
+  `duplicate-raster` within and across files (R6), raster names of 8 and 9 characters (L36a),
+  `raster-kind` and `consumer-raster` (L36b), sections refused for alignment 0, 3, `true`,
+  `"4"`, a quote or a space in the name (L37a), `unknown-section`, `section-access` and
+  `section-alignment` (R7), unit entries `""`, `5`, `null`, an object with an extra key,
+  `duplicate-unit` in one file, `unknown-unit` on a scalar type and a member with the nearest
+  spelling (L19o, L38a-c), constants of 0, negative, fractional and 2**63 accepted at the
+  declaration and `dimension-value` where a shape names them, at `dimensions[i]`, `size` and a
+  member (L35a, R4).
+- Embedded types and constants resolve in a standalone component run and reach the listing
+  (R5, R5b); the four consumer keys earn their four identifiers (R8); 128-character names are
+  accepted and 129 refused on objects, components, projects, enums, enumerators, types, members,
+  `display_identifier`, constants and the `axis`/`input`/`typename` references (L22a-j);
+  reserved identifiers are reported on objects, enums, enumerators, components, projects, types,
+  members and constants and not on `display_identifier` (L23a, R2).
+- The five earlier Important findings on the descriptions and the published type-name pattern
+  are fixed (status table); the previous review's twelve "spec gaps proven from code" are all
+  written into the spec now except one (below).
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **A quoted number nested in a list `init` is read as the number, which the spec and the
+   model's own contract say it is not** (`src/ddd/models/objects.py:36`
+   `type InitElement = Annotated[InitScalar | tuple[InitElement, ...],
+   BeforeValidator(within_64_bits)]`). Trigger: `"dimensions": [2], "init": ["1", "2"]` on a
+   `uint8` measurement -> `ddd check --standalone` reports nothing and `ddd dump` carries
+   `"init": [1, 2]` (L02, L02b); `"init": ["a", "b"]` is refused (L34u), so only the
+   numeric-looking strings slip through. `SPEC.md:433-434` says "a quoted number is text, not
+   the number"; the type's docstring at `objects.py:36-42` says "What a list init holds:
+   numbers, or lists of them, never text ... a string nested in a list is refused here, by the
+   contract"; `objects.py:58-64` says the quoted-spelling question "is answered"; the published
+   schema refuses it (`schemas/ddd_component.schema.json:845-872`, `InitElement` is `integer |
+   boolean | number | array`; R12 row "init ['1', '2']": schema REFUSED, loader accepted). Only
+   the whole init has a `str` arm (`objects.py:44-46`, `tests/test_models.py:842`); inside a
+   list pydantic's lax `int` parses `"1"`. The reader is told one thing by the spec, the
+   docstring and the editor, and the file means another - the exact "the file would say
+   something its author did not write" that `objects.py:74-76` gives as the reason `Dimension`
+   is strict. Fix: `Field(strict=True)` on the `int` and `float` arms of `InitScalar` (the
+   `bool` arm already matches by exact type), so `["1"]` fails where `"1"` does, and drop the
+   "answered" sentence of `objects.py:58-64`.
+
+2. **Six keys still read what the published schema refuses: string and number spellings of
+   booleans, quoted limits and factors, a quoted or boolean bit width** (the residue of the
+   deferred strict-mode question, listed so that what remains is exact). Trigger -> outcome,
+   each accepted without a finding while an editor bound to the schema underlines the value
+   (R12 rows, L03-L05, L09, L39):
+
+   | key | model | reads | spelling | schema |
+   | --- | --- | --- | --- | --- |
+   | `volatile` | `bool` (`objects.py:484`) | `"true"`, `"no"`, `1` -> true/false/true | `"volatile": "no"` drops the qualifier from the generated C | `type: boolean` (`ddd_component.schema.json:228`) |
+   | `a2l.export` | `bool \| None` (`objects.py:147`) | `"no"`, `0` -> false | object left out of the A2L | `:9-16` |
+   | `limits.min`/`max` | `Number` (`common.py:144-146`, "Not strict" `:154-156`) | `"0"`, `false` -> 0 | quoted limits pass | `:893-919` |
+   | `factor`/`offset` | `Real` (`conversion.py:87-90`) | `"0.5"` -> 0.5 | quoted scaling passes | `:939-950` |
+   | `bits` | `PositiveInt` (`types.py:173`) | `"2"` -> 2, `true` -> 1 | `"bits": true` is a one-bit field | `:1445-1453` |
+
+   Already strict on both sides: `dimensions`, `size`, `event`, `alignment`, an enumerator's
+   `value`, a constant's `value` (L06-L11, L11b), and the whole `init` (L01). `SPEC.md:322-334`
+   types `volatile` as "whether" and `limits` as `min`/`max` numbers;
+   `docs/file_formats/index.rst:118-124` promises that the schema lets "a ci job validate the
+   files without running DDD at all",
+   which these rows break in the direction that matters (the job passes a file `ddd check`
+   also passes, but an editor flags a file the build accepts). Fix: `strict=True` on these five
+   fields (or `ConfigDict(strict=True)` on the models with `Number`'s union arms marked strict),
+   and pin each row in `tests/test_models.py`; if the deferral stands, say so in
+   `data_contracts.rst:146-149`, which today describes only the int-before-float order.
+
+3. **A scalar-level mistake inside a nested `init` is reported once per enclosing list, and
+   every enclosing report is wrong** (`src/ddd/loading.py:1171-1193` `_meaningful` drops only
+   `too_short`; `:1154-1168` `_one_per_place` keeps the first union arm per pointer, the
+   scalar one). Trigger: a map `"init": [[1, 2], [3, null]]` on `"dimensions": [2, 2]` ->
+   three `schema` errors: `init: Input should be a valid integer (got: [[1, 2], [3, None]])`,
+   `init[1]: Input should be a valid integer (got: [3, None])`,
+   `init[1][1]: Input should be a valid integer (got: None)` (R1a); the same for text (R1b),
+   an object (R1c) and a 65-bit number (R1d: `init: Input should be a valid integer (got: [1,
+   18446744073709551616])` before the real `init[1]: does not fit 64 bits`); at 99 levels it is
+   100 findings (R10). The first two tell the reader a list should be an integer, the count
+   says three mistakes where there is one, and the reading phase then stops the analysis
+   (`docs/file_formats/index.rst:30-35`). `_meaningful`'s own docstring names the rule
+   ("Reporting both invites the reader to go looking for a second problem that is not there")
+   and applies it to one error type. Fix: in `_meaningful`, also drop an item whose `input` is
+   a list or an object when a strictly deeper item exists at a location under it, keeping
+   `missing` and the `too_short` case as they are.
+
+#### Minor
+
+1. **README still calls a constant an integer** (`README.md:447` "a **constants** file
+   declares named integer constants"). Trigger: a reader writing `"value": 2.5` -> told it is
+   refused; `SPEC.md:953-954`, `constants.py:44-57` and the tool accept it (L35a). Fix: "named
+   numbers".
+
+2. **project.rst contradicts itself about the include depth** (`docs/file_formats/project.rst:166`
+   "The nesting has no depth limit and no effect on the result" against `:226-228` "DDD follows
+   at most 64 levels of includes" and `SPEC.md:239`, `loading.py:55`). Fix: "The nesting has no
+   effect on the result".
+
+3. **The generated reference omits the fourth conversion** (`docs/data_contracts.rst:288-305`
+   lists `IdentityConversion`, `LinearConversion`, `EnumConversion`, `Enumerator`; no
+   `autopydantic_model:: ddd.models.StringConversion` anywhere under `docs/`, and the paragraph
+   at `:291-296` describes three kinds). Trigger: a reader looking up what `{"kind": "string"}`
+   is held to on the page that says it is "the generated reference for every model" (`:191`)
+   -> nothing. Fix: add the directive and "or a string" to the paragraph.
+
+4. **"The outputs carry the literal as written" is stated three times about constants and is
+   not what happens** (`src/ddd/models/constants.py:77-79` "the generated code emits the
+   literal as written, so the author picks the type rather than the format", published at
+   `schemas/ddd_constants.schema.json:27` and `schemas/ddd_component.schema.json:401`;
+   `docs/file_formats/constants.rst:28-30`; `src/ddd/backends/c/model.py:193` "The number as
+   the description wrote it"). Trigger: `"value": 2.50`, `1e3`, `1e21`, `0.10` -> `#define C
+   2.5`, `#define A 1000.0`, `#define E 1e+21`, `#define F 0.1` and the same strings in
+   `SYSTEM_CONSTANT` (L14c). The type survives (a point or an exponent stays a float), the
+   spelling does not. Pass 1 reported the spec sentence (`SPEC.md:955-956`); these are the
+   three copies it is echoed by. Fix: "the number in its shortest round-trip spelling, a whole
+   number without a point and any other with one, so `2.50` reaches the C as `2.5` and `1e3`
+   as `1000.0`".
+
+5. **Four rules enforced only in Python are missing from the descriptions the schema page
+   promises carry them** (`docs/file_formats/index.rst:169-171` "Some rules cannot be expressed
+   as a constraint and are written into the description of the key they hang off instead").
+   R12 shows the editor accepting and the loader refusing: `header` `"a b.h"` while
+   `types.py:484-488` says only "`my_driver.h` for the quoted form, `<os_types.h>` for the
+   angle form" (the whitespace, quote and angle rules of `types.py:410-440` and `SPEC.md:831-832`
+   are absent); `cycle` `"1234ms"` while `rasters.py:94-99` says "an integer and a unit ... no
+   space and no fractional part" and not the 1..255 times a decade rule of `:56-68`; duplicate
+   enumerator names while `conversion.py:148` says "The named values, either as objects or as
+   a mapping" (`:163-170` refuses the repeat); `unit`, `limits` and `a2l.format` beside a
+   string while `objects.py:416-422`, `:469-475`, `:158-159` say nothing about a string
+   (`:252-287` refuses all three). Fix: one sentence each.
+
+6. **Five integer keys published as `type: integer` accept `4.0` in an editor and are refused
+   by the loader** (`schemas/ddd_component.schema.json:1350-1352` `dimensions` items, `:239-241`
+   `size`, `:773-776` an enumerator's `value`, `schemas/ddd_rasters.schema.json:18-21` `event`,
+   `schemas/ddd_sections.schema.json:34-37` `alignment`; models `objects.py:70`, `conversion.py:46`,
+   `rasters.py:86`, `sections.py:52`, all `strict=True`). Trigger: `"dimensions": [4.0]`,
+   `"event": 1.0`, `"alignment": 4.0`, `{"A": 1.0}` -> `jsonschema` accepts (JSON Schema's
+   `integer` admits a zero fractional part), `ddd check` says `Input should be a valid integer
+   (got: 4.0)` (L12a-e, R12). The reverse direction of Important 2, and the harmless one. Fix:
+   accept a float with a zero fraction on these keys (a `BeforeValidator` turning `4.0` into
+   `4` and refusing strings keeps the two spellings of `"8"` apart), or say in the descriptions
+   that a whole number is written without a point.
+
+7. **Two pass-through messages a user cannot act on.** (a) `"value": 1e400` on a constant ->
+   `k.ddd.json#constants[6].value: error[schema]: Input should be a valid integer (got: -inf)`
+   (L14b): `_one_per_place` (`loading.py:1161-1163`) keeps the first arm, the strict `int` of
+   `ConstantValue`, so the finding names the wrong arm, where the same literal in `init`,
+   `limits` or `factor` says "Input should be a finite number" (L14a). (b) A file with two
+   byte order marks -> `c.ddd.json:1:1: error[json-syntax]: Unexpected UTF-8 BOM (decode using
+   utf-8-sig)` (L24c), Python's advice to a programmer passed through `loading.py:580-585`.
+   Fix: (a) prefer a `finite_number` error over the others in `_one_per_place`, or state the
+   finite rule in the `value` message; (b) map that `JSONDecodeError.msg` to "a second byte
+   order mark follows the first".
+
+8. **A `raster` reference is held to no rule while a `section` reference is patterned, and
+   the spec states neither** (`objects.py:432` and `component.py:96` `raster: str | None =
+   None` against `objects.py:424` `section: Annotated[str,
+   StringConstraints(pattern=SECTION_NAME_PATTERN)] | None`). Trigger: `"raster": ""` on a
+   definition or a component -> `unknown-raster: 'V' is measured in ''` (L19e, L19g), a name no
+   rasters file could declare (`rasters.py:76-78` refuses it); `"section": ""` or `"no-dash"`
+   -> `schema` before `unknown-section` gets a say (L19d, L37b), which `SPEC.md:691-699` does
+   not mention (carried over from the previous review's spec gaps, the one of twelve still
+   open). Fix: hold the raster reference to the declaration's `^\S+$` and length, and say in
+   3.5 that a definition's `section` obeys the declaration's spelling rule.
+
+9. **An `init` nested 99 levels deep is refused with a hundred wrong findings** (R10: 98
+   levels validate, 99 give `Recursion error - cyclic reference detected` at the two deepest
+   pointers under the cascade of Minor 3; L26 shows the same at 100, 300, 900 and 1500).
+   `SPEC.md:200-201` promises `json-syntax` for "nesting [that] exceeds the depth the parser
+   accepts"; the parser accepts these, pydantic-core's recursion guard on the recursive
+   `InitElement` (`objects.py:36`) does not, and no document states the cap. Implausible in a
+   description, so minor; Important 3's fix reduces it to one finding, and a sentence in 3.3
+   or a `json-syntax` finding when a list init nests deeper than 98 would state it.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| I1 | measurement "only read" by a calibration tool | fixed | `objects.py:89`, `:621-625`; `README.md:334-336`; `variable_definition.rst:444-450`; `ddd_component.schema.json:1165`, `:1340` |
+| I2 | identity described as "the default" | fixed | `conversion.py:64-69`; `ddd_component.schema.json:833` |
+| I3 | `unit` docstring predates the vocabulary | fixed | `objects.py:416-422`; `ddd_component.schema.json:126`; `variable_definition.rst:97-104`; `README.md:319` |
+| I4 | `"dimensions": []` accepted, spec said non-empty | fixed (spec side) | `SPEC.md:410` "`[]` or absent for a scalar"; L20b |
+| I5 | type-name pattern refused lowercase only | fixed | `common.py:269-282`; `ddd_component.schema.json:107`; R12 rows `UINT16`/`Uint8` refused on both sides; `tests/test_documentation.py:1096-1106` |
+| M1-M9 | minors, checked in bulk | M1, M2, M3, M4, M6, M7, M8, M9 fixed (`project.py:23-29`, `types.py:322-328`, `conversion.py:46-57`, `component.py:23`, `common.py:26`, `build_info.py:21`, `component.rst:356-363`, `project.rst:133-143`, `README.md:327`); M5 (whole-valued float init refused as "fractional") consciously left: the finding still reads `init value 1.0 is written as a fractional number` (L12h) and `SPEC.md:422-427` still states only the range rule | `analysis.py:2348-2357` |
+
+The previous review's twelve "spec gaps proven from code" are in the spec now: `[]` as the
+scalar spelling (`SPEC.md:410`), `$schema` string or null (`:207-208`), `export: null`
+(`:547-548`), `description` on scalar, struct and member entries (`:804`, `:818`, `:821`),
+the header spelling rules (`:831-832`), a member's `dimensions` naming a constant (`:974-976`),
+`NaN`/`Infinity`/`1e400` (`:201-203`), a non-object top level (`:204`), a units entry `""`
+(`:914`), `file-extension` after reading (`:263-264`), the exported-axis exception (`:543-546`),
+and restating beside a `typename` (`:587-588`, though `"unit": ""` is refused by presence,
+L32d). Still open: the section-name pattern on a definition's `section` (Minor 8). The
+`init: true` on an integer datatype is the deferred JSON-boolean init (L39). Of its eight test
+gaps, one is closed (the mixed-case type name against the published schema,
+`tests/test_documentation.py:1096-1106`); the character class, the dot-prefixed file, the sorted
+order winning over enumeration order (`tests/test_loading.py:53-63` still asserts the natural
+order `["A", "B"]`), symlink identity, the 128-character cap outside the LSP rename
+(`tests/test_lsp.py:2085-2087` only), a BOM in a loader test (`tests/test_cli.py:2362` is the
+`id --assign` path) and `"dimensions": []` in a model test (`tests/test_cli.py:985` shows it in
+a dump only) are open.
+
+### Open questions
+
+1. Is a quoted number inside a list `init` meant to be text, as `SPEC.md:433-434` and
+   `objects.py:36-42` say, or is the whole strict-mode question (Important 2) to be settled in
+   one change? Text alone changes `InitScalar`; the whole question changes five fields, the
+   `Number` alias and `data_contracts.rst:146-149`.
+2. Pass 1's question 2 (platform order of wildcard matches) has a code shape now: the loader
+   sorts `Path` objects (`loading.py:1006-1010`); code-point order means sorting on
+   `resolved.as_posix()` (or `str(resolved)`) instead, and `tests/test_loading.py:53-63` would
+   need a set whose enumeration order differs from the sort. Platform order keeps the loader
+   and narrows `SPEC.md:1604-1607`.
+3. Pass 1's question 4 (`1e3` as a fraction): the model cannot see the spelling, only the
+   parser's `float`; refusing or reclassifying exponent spellings would need a `parse_float`
+   hook in `loading.py:575` that keeps the literal text. Leaving it means writing the rule as
+   "a literal with a point or an exponent is fractional" in 3.9 and `constants.py:73`.
+4. For the five integer keys of Minor 6, accept `4.0` in the loader (consistent with the
+   published schema) or keep them strict and document the disagreement? The first changes
+   `Dimension`, `Enumerator.value`, `event` and `alignment`; the second changes five
+   descriptions.
+
+### Test gaps
+
+- `tests/test_models.py`: a numeric string nested in a list init (`["1", "2"]`) is refused or
+  read as the number, whichever open question 1 decides; `tests/test_models.py:842` pins only
+  the whole init. The same file, one case per row of Important 2 (`"volatile": "no"`,
+  `"export": 0`, `"limits": {"min": "0", ...}`, `"factor": "0.5"`, `"bits": true`), pinning the
+  decision either way.
+- `tests/test_loading.py`: a `null` or text inside a 2-D init yields one `schema` finding at
+  the innermost pointer (Important 3); today nothing pins the count, and
+  `tests/test_hardening.py:852` covers only the `too_short` filter.
+- `tests/test_loading.py`: a BOM on the root and on an included file; a literal `..` path; a
+  character class `[ab]?`; a dot-prefixed file; two spellings of one file's case on Windows
+  loaded once (L29i); a match set created in an order different from its sort; symlink
+  identity (all previous gaps, still open).
+- `tests/test_models.py`: 128 accepted and 129 refused on an object name, a constant name and
+  an `axis`/`input`/`typename` reference; `"dimensions": []` on a measurement read as the
+  scalar (`SPEC.md:410`).
+- `tests/test_constants.py:81-88` (`test_a_fractional_value_is_carried_as_written`)
+  parametrises `1.5, -0.25, 0.0, 2.0`, whose `repr` is their spelling; a `2.50` or `1e3` case
+  through `ddd generate` would pin the normalisation Minor 4 documents.
+- `tests/test_documentation.py`: that every `BaseModel` exported by `ddd.models` appears in an
+  `autopydantic_model` directive of `docs/data_contracts.rst` (Minor 3 would not have shipped).
+- `tests/test_rasters.py` or `tests/test_models.py`: a definition or component `raster` of `""`
+  or with whitespace, whichever way Minor 8 is settled.
+
+### Assessment
+
+The formats are in good shape: the eight schemas are current and pinned for every kind, the
+five Important findings of the previous review are fixed, its spec gaps are written down but
+one, and across some three hundred probes every refusal section 3 attaches to an identifier is
+reported with that identifier - the reading rules, the includes, the string rules, the four
+vocabularies and the name rules all do what the text says. What remains is concentrated in one
+place, the `init` union: a numeric string nested in a list is quietly read as a number against
+the spec's and the docstring's word, and a scalar mistake deep in a nested init is reported once
+per enclosing list with a wrong message each time. Beside those, the residue of the deferred
+strict-mode question is exactly five fields, listed above so that the decision can be taken on
+the full list rather than case by case; the rest is prose that has drifted from behaviour in
+the README, one page that contradicts itself about the include depth, a reference page missing
+the fourth conversion, and the "as written" claim about constant literals that the outputs do
+not keep.

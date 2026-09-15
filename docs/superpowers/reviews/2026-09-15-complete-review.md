@@ -42,9 +42,6 @@ and the documents again with the verified list in hand, looking only for what wa
 
 Line numbers refer to master at `6e9e99f` unless a pass says otherwise.
 
-**Status: in progress.** Passes are appended as they complete and pushed; the summary is
-written last.
-
 ## Baseline
 
 On master at `6e9e99f`, Windows 11, Python 3.13, the project's own venv:
@@ -59,7 +56,238 @@ On master at `6e9e99f`, Windows 11, Python 3.13, the project's own venv:
 
 ## Summary
 
-To be written when every pass, the verification and the sweeps are done.
+Eleven passes, the last one in two halves, produced 199 findings: 1 Critical, 40 Important and
+158 Minor after verification; the two sweeps that followed added 4 Important and 16 Minor, for
+219 findings in all - 1 Critical, 44 Important, 174 Minor. Every finding of the passes was
+handed to a second reviewer who had not written it: 196 were
+confirmed by reproducing the trigger or reading the anchored line, 3 are plausible (they need a
+tool or an environment this machine does not have: `npm`, the PyPI page rendered, a file larger
+than memory), and none was refuted; the sweeps reproduced their own findings, since no verifier
+followed them. Four were regraded from Important to Minor (the concept
+table's "named integer", the deferred strict-mode residue, the "nothing skips" sentence, the
+untested `-b` flag); no grade went up. Two pairs are one defect met from two sides and are
+counted twice: the axis input naming a structured instance (pass 3 Important 1, pass 4
+Important 4) and the build record naming an unknown check (pass 5 Important 5, pass 6
+Important 4).
+
+| pass | subject | Critical | Important | Minor |
+| --- | --- | --- | --- | --- |
+| 1 | the specification on its own | 0 | 4 | 13 |
+| 2 | file formats: spec, models, schemas, loader, docs | 0 | 2 | 10 |
+| 3 | consistency checks and comparison | 0 | 3 | 9 |
+| 4 | generated artefacts, address map, dictionary | 0 | 4 | 12 |
+| 5 | tool interface: CLI, plugins, CMake, pre-commit | 0 | 5 | 16 |
+| 6 | editor integration: spec, docs, server, extension | 1 | 6 | 16 |
+| 7 | remaining documentation, repository, release | 0 | 4 | 12 |
+| 8 | code review of the core, part A | 0 | 3 | 18 |
+| 9 | code review of the core, part B | 0 | 4 | 11 |
+| 10 | code review of the periphery | 0 | 2 | 13 |
+| 11a | the test suite, core and formats | 0 | 2 | 11 |
+| 11b | the test suite, periphery and guards | 0 | 1 | 17 |
+| sweep | the code | 0 | 4 | 6 |
+| sweep | the documents | 0 | 0 | 10 |
+| all | | 1 | 44 | 174 |
+
+**Verdict.** The tool is in better shape than the 2026-09-08 review left it, and in good shape
+for a release once a short list is fixed. On a project a team would plausibly write it gives the
+right answers: every example and twenty-six probe projects covering every datatype, shape, kind,
+conversion and structure form compile warning-free under the CI flag set and link to exactly the
+symbols the dictionary promises; every A2L generated passes a reference and nesting checker;
+`dump`, `check --format json` and `list --format json` are byte-identical under three hash
+seeds; `ddd check` is linear up to 3000 components; the wheel and the sdist build, install and
+run the tutorial from outside the repository, and the sdist runs its own suite through the
+coverage gate. The specification has absorbed the previous review - its Critical finding and all
+but one of its Important findings are fixed, and its six open questions are settled in the text -
+and the tiers of fixes that followed it hold under a second independent look: dropped
+declarations count for ownership, a dangling reference drops its referrer, the plugin boundary
+closes every hole the previous pass 8 opened, the language server reads positions and edits from
+the buffer and refuses a drifted rename. The problems that remain are of four kinds.
+
+1. **The editor, on an unconfigured tree and on an unusual spelling of a path.** The one
+   Critical: a project file opened in a tree without a build record - a fresh clone, a project
+   not built through CMake - is analysed as "a component read alone", so `missing-producer` and
+   `unused-output` never reach the editor, and opening the project file after a component
+   withdraws them from the screen (pass 6 Critical 1). Around it: everything the server
+   publishes and edits is spelled as the loader resolved it, so a document opened through a
+   `subst` drive, a junction, a symlink or a different case never gets its findings and is
+   analysed a second time as its own containing project (pass 6 Important 1, 2); a rename or a
+   quick fix computed while one file of the project failed to load rewrites the rest of the
+   project around it (Important 3); a build record from a newer tool still ends the server on
+   the first `didOpen` (Important 4, carried over from the previous review); F2 on an enum opens
+   a rename box that renames nothing (Important 5); a file two records cover is published twice
+   (Important 6); and the JSON scanner behind every editor range and `ddd id --assign` recurses
+   without the guard its parser got, so a description nested a few hundred levels deep kills the
+   server (pass 8 Important 1); and the rename guard knows only the enums stated on declarations,
+   so a rename onto an enumerator of a types file goes through and the next check reports the
+   collision (code sweep Important 2). All were reproduced over pipes; each is a few lines.
+2. **Text and arithmetic at the edges of the generated files and of the comparison.** A `/*` in
+   a description produces a header the CI flag set refuses (pass 4 Important 1); a non-ASCII
+   unit or description reaches an A2L that ASAP2 1.6.1 says a reader decodes as Latin-1 without
+   a byte-order mark, so `°C` becomes `Â°C` (Important 2); derived limits are written with
+   their binary noise, `7.6499999999999995` for `7.65` (Important 3), and the comparison
+   compares limits exactly where the analysis tolerates `1e-9` (pass 9 Important 1) and an
+   `init` as spelled rather than as bytes (pass 3 Important 2), so `--strict`, the documented
+   release gate, refuses byte-identical deliveries; a structure's member order and a bitfield's
+   width are outside what the comparison sees although the published schema says the reorder
+   is reported (pass 9 Important 2); an axis whose input is a structured instance passes the
+   kind check and leaves a dangling `COM_AXIS` in the A2L (pass 3 Important 1); a comparison
+   without ids is quadratic and does not finish on a large rename sweep (pass 9 Important 4); a
+   table typed one datatype too narrow is one finding per element (Important 3); a quoted
+   number nested in a list init is read as the number against the spec and the schema (pass 2
+   Important 1); a mistake deep in a nested init is reported once per enclosing list with a
+   wrong message each time (Important 3); the loader's pointer walk loses the key, and the
+   second finding, of a malformed plugin block under a definition (pass 8 Important 2, 3). The
+   code sweep added three at the seams: a declared constant sharing a name with a structure
+   member passes every check and the shipped types template emits a `#define` above the member
+   (code sweep Important 1); `reused-name` misses the rename that lands on a name an unstamped,
+   removed object freed (Important 3); and a structured variable is compared only through its
+   members, so a rename of its type is silent and a change of its own storage is reported once
+   per member (Important 4).
+3. **The tool meeting the world outside its own analysis: plugins, paths, the build.** A plugin
+   that prints to stdout corrupts every `--format json` document and the dumped dictionary
+   (pass 5 Important 1); `dump -o`, `--renames` and `--dictionary` overwrite a file the run
+   itself read, silently (Important 2); a removed component's header survives regeneration and
+   `ninja -t clean` and stays on every include path (Important 3); the documented address-map
+   recipe cannot complete the two-run flow on a 64-bit host (Important 4); a checkout whose
+   path carries `[` breaks every collected build because the module writes literal paths and
+   the loader reads them as globs (pass 10 Important 1); a keyword whose variable is unset -
+   `ADDRESS_MAP ${UNSET}` - is dropped without a word (Important 2); and comparison findings
+   carry the candidate path as typed where the reference page promises an absolute one, which
+   also sorts them behind the candidate's own findings (pass 3 Important 3).
+4. **The release machinery and the words.** A manual Publish run with `target: pypi` uploads
+   from any ref with no tag, release or environment check (pass 7 Important 1); a prerelease tag
+   would become the site's "stable" version and its root redirect (Important 2); every support
+   link - README, the PyPI sidebar, the extension's `bugs` field - points at a disabled issue
+   tracker (Important 3); the FAQ promises unbounded arrays two releases after the caps
+   (Important 4); five specification sentences say something the tool does not do (pass 1
+   Important 1, 2, 4, 5 and the concept table); and the suite carries two tests that pass with
+   their feature broken and a guard blind to the fields a leaf adds (pass 11a Important 1, 2;
+   pass 11b Important 1).
+
+**What to fix first, in order.**
+
+1. The editor's policy for a project file opened without a build record, and the record naming
+   an unknown check (pass 6 Critical 1 and Important 4): one line each in
+   `src/ddd/lsp/diagnostics.py`.
+2. The release path, before the tag: drop the `pypi` dispatch target or gate it on a `v*` tag
+   and add the environment rule (pass 7 Important 1); choose `stable` among the final tags
+   (Important 2); a support channel that exists (Important 3); the FAQ's bound (Important 4);
+   then the release checklist at the end of pass 7, which names the nine version files and the
+   tests that would catch a half-done bump.
+3. The generated files: defuse `/*` beside `*/` (pass 4 Important 1); write the byte-order mark
+   the standard reads the encoding from (Important 2); refuse a structured target of an axis's
+   `input` (pass 3 Important 1); round the derived physical range where readings are rounded and
+   give `narrowed-limits` the analysis's tolerance through one shared helper (pass 4 Important
+   3 with pass 9 Important 1 - fixing either alone moves the defect onto every archived
+   baseline); add the constant-against-member pair to `name-collision` (code sweep Important 1).
+4. The comparison's verdicts: `init` compared as bytes, or the spelling rule written into 4.1
+   and 5.3 (pass 3 Important 2 - a decision); a structure's layout compared, or the `Member`
+   docstring and both schemas corrected (pass 9 Important 2 - a decision), and in either case
+   the tables guard extended to the leaf fields (pass 11a Important 2); pair the instances
+   themselves and report a rename onto a freed name from both sides (code sweep Important 3, 4 -
+   one fix of how structured variables and renames pair); a bound on the lost-identity note
+   (pass 9 Important 4); one finding per wrongly typed table (Important 3).
+5. The command line's boundary: bind a hook's and a plugin backend's stdout to stderr as the
+   server does (pass 5 Important 1); refuse an output path among the run's sources
+   (Important 2); build comparison locations from the resolved path (pass 3 Important 3).
+6. The build: let `ddd generate` own its output directory, or declare the per-component headers
+   as byproducts (pass 5 Important 3); range-check only the symbols the A2L uses (Important 4);
+   escape or literal-first the collected includes (pass 10 Important 1); refuse a keyword
+   without a value (Important 2).
+7. The editor's remaining seams: publish and edit under the client's spelling for the documents
+   it opened and compare the candidate against the resolved document (pass 6 Important 1, 2,
+   with the test keyed by uri string, pass 11b Important 1); refuse a rename and the fixes when
+   a file of the project did not load (Important 3); match the rename subject's key directly
+   under `definition` (Important 5); deduplicate or tag the findings of two records (Important
+   6); catch `RecursionError` around the scanner or make it iterative (pass 8 Important 1);
+   register the enums of the types files in the rename guard (code sweep Important 2).
+8. The loader: `strict=True` on all three arms of `InitScalar`, not the numbers alone (pass 2
+   Important 1); one finding at the innermost pointer of a bad nested init (Important 3); the
+   pointer walk surviving a union tag and `_one_per_place` keyed with the document (pass 8
+   Important 2, 3).
+9. The specification sentences (pass 1 Important 1, 2, 4, 5) and the two test defects (pass 11a
+   Important 1, pass 11b Important 1).
+
+**Specification updates, grouped.** The `--renames` id of an array-of-structures member; `dump
+-o` under an error finding; a constant as a number in the concept table and the normalised
+literal the outputs carry; the same-bytes promise against the platform order of wildcard
+includes, or the sort key; the enumerators inside `changed-interface`; a string's `init` in 5.3
+and in 4.1; a member's `dimension-value` making its type unusable, and the case in
+`incomplete-project`'s list; `--plugin` refused beside a project candidate; `<NAME>` under
+`PROJECT`; the terms "instance", "storage category", "vocabulary file", "standalone"; the JSON
+shapes of `list`, `checks`, `artefacts` and the reports, and the collected mode's floor;
+`COMPU_VTAB` per enum a record uses; a structure's layout in 4.1 one way or the other; the A2ML
+the `IF_DATA XCP` blocks presuppose; the standalone trace of a silenced non-project cause; that
+every load-time error withholds the interface checks (passes 1, 3, 4, 5, 9, 10).
+
+**Documentation updates, grouped.** The README's "named integer constants" and its narrower
+statement of the public interface; `project.rst`'s "no depth limit"; `StringConversion` on the
+data contracts page; the four Python-only rules missing from the schema descriptions; the checks
+page's three drifts; the container transcript's counts on two pages; the developer page's
+sentences the repository contradicts (the suite's runtime, the extension job, the language
+server absent from the layer table, the lock-file claim, the environment rule, the skip); the
+four stale status lines of the design records; the changelog's "format 8 is unreleased" and
+its silence on the string init comparison; the sixteen acronyms; the build page's silence on
+plugins running at configure time; the pre-commit hook's Python floor; the CLI page's "generates
+on its own"; templates as code beside the plugin rule; the editor pages' containing-project
+policy (passes 2, 3, 4, 5, 6, 7, 10).
+
+**Open questions for the maintainer**, consolidated from the passes (each pass's section says
+what the answer changes):
+
+1. Is an `init` compared as bytes or as spelled (pass 3 Important 2; passes 1, 3)?
+2. Wildcard includes: the platform's order, as the spec now says, or code-point order, which
+   makes the same project the same bytes on every machine (pass 1 Important 4; passes 1, 2, 8)?
+3. Is a structure's layout - member order, bitfield width - a `changed-interface` (pass 9
+   Important 2; passes 9, 11a)?
+4. Derived limits: rounded like readings, and the comparison's tolerance (pass 4 Important 3,
+   pass 9 Important 1)?
+5. Non-ASCII text in the A2L: the byte-order mark the standard names, or transliteration (pass 4
+   Important 2)?
+6. Who owns the output directory (pass 5 Important 3), and should the address map's range check
+   cover only the symbols the A2L uses (Important 4)?
+7. Under which spelling does the server publish and edit, and what does it do with two records
+   covering one file (pass 6 Important 1, 6; pass 11b)?
+8. Plugin stdout bound to stderr or documented; an output path among the sources refused (pass 5
+   Important 1, 2)?
+9. Should `-W` reach a description baseline's own analysis while `--strict` does not; is a
+   diagnostic's JSON `location.path` absolute; is a reference a read for `unused-output`
+   (passes 3, 5)?
+10. The release itself: `Development Status`, Python 3.14, a full release rather than a
+    pre-release, whether `workflow_dispatch` keeps a `pypi` target, the Node version, where
+    problems go (pass 7).
+11. Smaller decisions: the strict-mode residue and `4.0` on integer keys (pass 2); `1e3` as
+    whole or fractional (passes 1, 2); the depth rule for `id --assign` and the server, the
+    `<stddef.h>` names, the enumerator mapping's pointer (pass 8); one `init-invalid` per
+    element, a bound on the lost-identity note (pass 9); the A2ML block, a version handshake
+    between module and tool, sandboxed templates, who escapes the collected includes, refusing
+    a keyword without a value (pass 10); `exit` without `shutdown`, the server refusing plugins
+    without a trusted workspace (pass 6); the silent transcript commands and wall-clock bounds
+    on the performance tests (passes 11a, 11b).
+
+**Status of the 2026-09-08 review.** Its six Critical findings are fixed, the plugin trust
+boundary by the statement on every page and the extension's gate, as section 7.2 now puts it.
+Of its sixty-five Important ones, one is still open and carried here (the build record naming
+an unknown check, pass 6 Important 4), four are partly fixed (the `--renames` member spelling,
+pass 1 Important 1; the plugin name grammar on the plugins page; the scanner's recursion band,
+pass 8 Important 1; the last-resort exception handler, pass 5 Minor 2), three were consciously
+left with the maintainer's reasons on record, and the rest are fixed and verified by the pass
+that owns each area. Its design notes on marking rather than dropping, on
+types checked at their declaration, on the document store and on reporting before writing are
+closed; "three lookups, two implementations" and "the IR is the a2l's shape" remain (pass 6
+Minor 13, pass 4 Minor 5). About thirty of its Minor findings are still open; each pass's status
+table names them.
+
+**Method.** Each pass read its material fresh, ran the tool on the examples and on probe
+projects written for the purpose (about 300 probes for the formats, 190 commands for the checks,
+26 compiled projects for the artefacts, 220 command lines and 11 CMake projects for the
+interface, 47 language-server sessions over pipes, a fresh venv with the built wheel and the
+unpacked sdist for the release), and wrote its section with every finding anchored and
+reproduced. A verifier then reproduced every Critical and Important candidate and read every
+Minor one at its anchor; that nothing was refuted says the finders reproduced their claims
+before writing them, and the four regrades are the verifiers' reading of the severity
+definitions rather than of the facts. The two sweeps read the code and the documents once more
+with the verified list in hand, looking only for what was missed.
 
 ## Pass 1: SPEC.md, internal quality
 
@@ -4993,3 +5221,429 @@ documented in five places (`editors/vscode/package.json:60-66`, `docs/editor_int
 `README.md:209`, `SPEC.md:2066`, `docs/faq.rst:376`) and it is the extension's only setting, so
 the day it regresses nothing says so. The proposed `TestServer` test and a framed `didOpen`
 under `main(["lsp", "-b", ...])` would close it.
+
+## Sweep of the code
+
+### Scope covered
+
+Read whole, against the verified list: every file under `src/ddd/` (17 127 lines - the package
+and models, `loading.py`, `diagnostics.py`, `identity.py`, `build_info.py`, `plugins.py`,
+`ir.py`, `compare.py`, `analysis.py`, `cli.py`, `backends/base.py`, `backends/c/*`,
+`backends/a2l/*` with `templates/project.a2l.jinja`, `lsp/*`), `cmake/Ddd.cmake`, the five
+`examples/templates/*.jinja2`, `examples/plugins/ddd_layout.py`, `editors/vscode/src/*.ts`,
+plus the spec and documentation passages the findings hinge on (`SPEC.md` 1300-1316, 418-440,
+945-990, 1378-1445; `docs/build_integration.rst` 148-158 and 219-236; `docs/plugins.rst`
+183-200; `docs/editor_integration.rst` 125-170). Ran: the tool on eight scratch projects under
+`<scratchpad>/sweep-code/` (`e1`, `e2`, `e4`, `e9`, `e11`, `e12`, `e12r`, `e13`),
+`ddd list --format json` on `examples/structures`, an in-process `Server` session on
+`examples/inconsistent`, a configure-and-build of `examples/cmake` plus one extra translation
+unit compiled with a component's own flags, and two targeted pytest runs.
+
+The "seen in passing" leads, settled:
+
+- verify-A (`cmake/Ddd.cmake:13-14` against `:201`): dropped. `SPEC.md:1911` and
+  `README.md:793` state that `ddd_add_component` needs 3.30 and that the PROJECT mode is the
+  mode *without* it; the header comment says the same once read that way, and the refusal names
+  the reason that applies to registering a component.
+- verify-B, the design record's "the a2l is an ASCII format until 1.7": dropped. A record under
+  `docs/superpowers/`, and the encoding defect it fed is P4-I2, already on the list.
+- verify-B, `compare.py:103-115` spelling a list init with `repr`: taken up as Minor 2.
+- verify-C, `docs/build_integration.rst:153-155` include isolation: taken up as Minor 3.
+- verify-D, `server.py:405-409` log overstating the standalone mode: taken up as Minor 4.
+- verify-E, `developer_documentation.rst:522` environment premise: dropped. A statement about
+  GitHub's environment semantics, outside the code; it extends P7-M4, which is on the list.
+- verify-F: none.
+- verify-G, `pyproject.toml:102` `-q` doubled by the command line: taken up as Minor 5.
+
+Checked and not reported: a plugin file edited under a running language server is never
+re-imported (`plugins.py:202-204` caches the module by path) - documented at
+`docs/plugins.rst:196-197`, "editing the plugin file only takes effect the next time a process
+starts"; `write()`'s `del error.filename2` (`backends/base.py:218`) - verified to print the
+target alone; `"init": true` on a numeric datatype is read as 1 with no finding
+(`analysis.py:2348` refuses a fractional spelling on an integer and nothing refuses a truth
+value; `e1` renders it `Flag = 1U`) - left out as marginal.
+
+### Findings
+
+#### Important
+
+1. **A declared constant sharing a name with a structure member breaks the generated types
+   header** (`src/ddd/analysis.py:1732`). Trigger: a constants file, or a component's
+   `constants`, declares `raw` and a structure declares a member `raw`; the shipped
+   `examples/templates/ddd_types.h.jinja2:23` emits every constant as a `#define` -> `ddd check`
+   reports nothing (`name-collision` compares a constant against data objects, enums,
+   enumerators and types only - the pairs `SPEC.md:1307-1312` lists) and the header carries
+   `#define raw 4` five lines above `uint16_t raw;`, which no compiler accepts. Evidence: on
+   `sweep-code/e1`, `ddd check project.ddd.json` -> "3 warnings, 3 infos", exit 0; `ddd generate c
+   project.ddd.json -o out -t examples/templates` wrote `out/ddd_types.h` with line 15
+   `#define raw 4 /**< cells */` and line 20 `    uint16_t raw;`; `gcc -std=c11 -c
+   out/ddd_globals.c -I out` -> `out/ddd_types.h:15:13: error: expected identifier or '('
+   before numeric constant` ... `note: in expansion of macro 'raw'`. The check's own docstring
+   (`:1724-1727`) names the textual replacement as the reason the constant pairs exist; a
+   member is the one identifier of the types header the pair list forgot, and in the same
+   header. Verdict: CONFIRMED. Fix: add the pair to `_check_constant_collisions` (walk the
+   members of every structure in `self._types`, note at the member) and to the pair list of
+   `SPEC.md:1307`.
+
+2. **The rename guard does not know the enums a types file declares, so a rename onto one of
+   their names goes through** (`src/ddd/lsp/navigation.py:150-152`). Trigger: `Index.occupied`
+   is filled from the conversions of declarations only; an enum on a scalar type or on a
+   structure member - `Status_t.mode`'s `SensorMode_t` in `examples/structures` - registers
+   nothing -> renaming a variable to `MODE_IDLE` or to `SensorMode_t` is accepted, every file is
+   rewritten, and the next check reports the collision `rename_problem`'s docstring
+   (`:461-467`) says the guard exists to prevent. Evidence: on
+   `examples/structures/project.ddd.json`, `index()` then `rename_problem(built, "MODE_IDLE")`
+   -> `None`, `rename_problem(built, "SensorMode_t")` -> `None`, while
+   `rename_problem(built, "Temperature_t")` -> "'Temperature_t' is the name of the type
+   'Temperature_t', which shares c's namespace with the variables"; applying the rename
+   `SampleCount` -> `MODE_IDLE` on a copy (`sweep-code/e2`), `ddd check project.ddd.json` ->
+   `sensing.ddd.json#component.interface[3].definition.name: error[name-collision]: 'MODE_IDLE'
+   is declared as a variable and is also an enumerator of enum 'SensorMode_t'`. Verdict:
+   CONFIRMED. Fix: in `index()`, register the enum name and the enumerators of every
+   `ScalarType.conversion` and of every member conversion in `occupied`, the way the analysis's
+   `_EnumRegistry` walks them.
+
+3. **`reused-name` misses the rename that lands on a freed name when the freed object had no
+   id** (`src/ddd/compare.py:359`). Trigger: baseline `A` (unstamped) and `B` (id `x`); the
+   candidate has only `A`, with id `x` - `B` renamed onto the name the removed `A` freed -> the
+   pairing matches baseline `B` to candidate `A` by id, and `compare()` then looks the shared
+   name up on the old side only (`renamed.get(name)`), where `A` was never renamed, while
+   `_states_different_identities` has no baseline id to compare -> `renamed-object` and
+   `removed-unused-object`, both warnings, and the verdict "can replace" - although a dataset
+   keyed by `A` now binds to what was `B`'s storage, the hazard `reused-name` is an error for
+   (`SPEC.md:1422-1431`). Evidence: `sweep-code/e12`, `ddd compare base.ddd.json cand.ddd.json`
+   -> `warning[renamed-object]: 'B' is now called 'A'`, `warning[removed-unused-object]: 'A' is
+   gone`, "2 warnings", "cand.ddd.json can replace base.ddd.json", exit 0. The mirror case the
+   spec lists (`e12r`: baseline `A` with an id renamed to `C`, a new unstamped `A`) reports
+   `error[reused-name]` with its note and exits 1. Verdict: CONFIRMED. Fix: in `compare()`,
+   also report a shared name that is the *new* side of a rename (`name in renamed.values()`),
+   noting the old name of the object now under it, and add that third proof to the
+   `reused-name` bullet of `SPEC.md:1422`.
+
+4. **A structured variable is compared only through its members: a change of its type is
+   silent and a change of its own storage is reported once per member** (`src/ddd/ir.py:687`).
+   Trigger: `DataDictionary.comparable` holds the objects and the leaves and never the
+   instances, so `compare()` sees no `type`; and every instance-level field a leaf carries -
+   `volatile`, `section`, `raster`, `condition`, `owner` (`analysis.py:2962-2966`) - is compared
+   per leaf -> renaming `Sensor_t` to `Sensor2_t` with the same members changes what every
+   consumer's header declares (`extern Sensor2_t Inlet`), a difference the in-project table
+   calls `definition-mismatch` (`analysis.py:187-191`), and the comparison says nothing; flipping
+   the instance's `volatile` yields one `changed-storage` per member. Evidence: `sweep-code/e13`,
+   `ddd compare base.ddd.json cand.ddd.json` (type renamed, `volatile` false -> true, three
+   members) -> exactly `warning[changed-storage]: 'Inlet.count': volatile: true != false`, the
+   same for `Inlet.flags` and `Inlet.value`, "3 warnings", "can replace". A neighbour of P9-I2
+   (member order and bit width), on a different field. Verdict: CONFIRMED. Fix: pair the
+   instances themselves (by id, then by name) and compare `type`, `shape` and `local` as their
+   interface and `volatile`, `section`, `raster`, `condition`, `owner` and `a2l` as their
+   storage, leaving the leaves the member-level fields.
+
+#### Minor
+
+1. **The number of dimensions is unbounded, and a scalar init over enough of them ends
+   `generate` in a `RecursionError`** (`src/ddd/models/objects.py:820`). Trigger: `_shape_fits`
+   (`analysis.py:1917`) caps the product of a shape, not its length, and `broadcast` recurses
+   once per dimension -> a measurement with `"dimensions": [1, 1, ... x600]` and `"init": 0`
+   passes `ddd check` and `ddd generate c` dies in `broadcast`. Evidence: `sweep-code/e11`,
+   `ddd check deep.ddd.json` -> "ok: 1 variable in 1 component are consistent"; `ddd generate c
+   deep.ddd.json -o out -t examples/templates` -> traceback ending `objects.py", line 820, in
+   <genexpr>` ... `RecursionError: maximum recursion depth exceeded`, exit 1. Verdict: CONFIRMED
+   (an implausible input, but a traceback where the conventions ask for a finding). Fix: refuse
+   a shape longer than a stated limit where `_shape_fits` weighs it, or make `broadcast`
+   iterative.
+
+2. **`changed-storage` spells a list init as a python tuple** (`src/ddd/compare.py:115`).
+   Trigger: `_describe_init` returns `repr(value)` for a nested init, which the dictionary
+   holds as tuples -> the finding reads `init: (7, 7, 7, 8) != (7, 7, 7, 7)` where the file,
+   `ddd list` and the hover spell `[7, 7, 7, 8]`. Evidence: `sweep-code/e4`, `ddd compare
+   a.ddd.json b.ddd.json` -> `b.ddd.json: warning[changed-storage]: 'Table': init: (7, 7, 7, 8)
+   != (7, 7, 7, 7)`. Verdict: CONFIRMED (verify-B's lead). Fix: spell a nested init through
+   `json.dumps` of its dumped form, as the string arm already does.
+
+3. **The build page promises an include isolation the module does not build**
+   (`docs/build_integration.rst:153-155`). Trigger: the page says the header generated for a
+   component "is the only one on its include path, so a component cannot reach a variable it
+   never declared"; `cmake/Ddd.cmake:571` puts the whole output directory on `<stem>_ddd_headers`
+   and every registered component links it -> a component may include any other component's
+   header, and `ddd_globals.h`. Evidence: `examples/cmake` configured and built under
+   `sweep-code/cmake-build`; `peek.c` (`#include "Controller.h"` and `return ValueE;`, a
+   variable `SensorHub.h` does not declare) compiled with sensor_hub's own flags, `gcc -std=gnu11
+   -Wall -Wextra -Wpedantic -Werror -I<demo>/include -I<build>/ddd/firmware.elf -c peek.c` ->
+   exit 0. Verdict: CONFIRMED (verify-C's lead). Fix: reword - the isolation is by convention;
+   or hand each component an include directory holding its own header alone.
+
+4. **The no-record log says every file is checked on its own; a file under a project is
+   checked through it** (`src/ddd/lsp/server.py:406-408`). Trigger: `collect`
+   (`lsp/diagnostics.py:121-135`) analyses a document through the project file above it, under
+   the default policy, so the whole-project findings the log says "are not reported" arrive ->
+   the log names the wrong mode. Evidence: an in-process `Server` on `examples/inconsistent`
+   with `-b` naming no build: `LOG: no ddd-build.json found: every file is checked on its own,
+   so findings that need the whole project - a missing producer, two components disagreeing -
+   are not reported. ...` followed by `DIAG: component_c.ddd.json missing-producer -
+   'MissingValue' is read by component 'ComponentC' but no component declares it as output`.
+   Verdict: CONFIRMED (verify-D's lead; the log side of P6-M10). Fix: say that a file a project
+   above it includes is checked through that project, and on its own otherwise.
+
+5. **`-q` in `addopts` plus `-q` on the command line hides the count line**
+   (`pyproject.toml:102`). Trigger: `addopts = "-q --cov ..."`; any `-q` added on the command
+   line - the review brief's own targeted recipe - runs pytest at `-qq` -> no `N passed in Xs`
+   line at all. Evidence: `python -m pytest tests/test_models.py -k shape --no-cov -q` ends at
+   `........ [100%]`; the same run without `-q` ends `8 passed, 98 deselected in 0.12s`.
+   Verdict: CONFIRMED (verify-G's lead). Fix: drop `-q` from `addopts`, or say beside it that a
+   second one silences the summary.
+
+6. **`ddd list --format json` publishes two record shapes under `variables`**
+   (`src/ddd/cli.py:946`). Trigger: `model_dump` of a `ResolvedLeaf` carries `path`, `instance`
+   and `instance_id` and no `name` - `name` is a property (`ir.py:520-528`) - while a
+   `ResolvedObject` carries `name` -> a script keying the rows on `name` drops every structured
+   member. Evidence: on `examples/structures/project.ddd.json` the rows spell `['instance',
+   'instance_id', 'kind', 'path'] -> Inlet.history` for the seven leaves and `['id', 'kind',
+   'name'] -> InletTemperature` for the two plain objects (`sweep-code/list-structures.json`).
+   Verdict: CONFIRMED (a shape angle beside P5-M14's documentation one). Fix: put `name` on
+   every row - a leaf's is its path - or state the two shapes where P5-M14 asks for the payload
+   to be documented.
+
+### Assessment
+
+The eleven passes and their verifiers covered the loader, the models, the checks and the two
+outputs line by line, and the sweep found nothing new inside any one of those areas. What was
+left sat on the seams no single pass owned: the constant vocabulary against the types header
+the shipped template emits (analysis and template), the editor's rename guard against the enum
+registry the analysis keeps (lsp and analysis), and the comparison's pairing against its own
+`reused-name` rule and against the instances the dictionary carries but never compares
+(compare and ir). None of the four Important findings is a Critical: no built-in path crashes on
+plausible input and no output is silently wrong for a project that passes its checks - the
+constant clash fails the compiler loudly, the rename is refused by the next check, and the two
+comparison gaps are wrong verdicts on a half-migrated or structured delivery rather than on
+every one. They add four Important findings to the tally and no Critical, so the review's
+verdict stands; the two comparison findings belong with P9-I2 in one fix of how structured
+variables and renames pair before 0.10.0. The Minor findings are the verifiers' leads settled
+and two small hardenings.
+
+```candidates
+S-I1 | Important | src/ddd/analysis.py:1732 | constant named like a struct member breaks ddd_types.h | constant `raw` + member `raw` -> check clean, `#define raw 4` above `uint16_t raw;`, gcc error | CONFIRMED
+S-I2 | Important | src/ddd/lsp/navigation.py:150 | rename guard blind to enums of types files | rename a variable to MODE_IDLE -> accepted, next check name-collision | CONFIRMED
+S-I3 | Important | src/ddd/compare.py:359 | reused-name misses a rename onto an unstamped freed name | B (id) renamed to A, old unstamped A gone -> two warnings, "can replace" | CONFIRMED
+S-I4 | Important | src/ddd/ir.py:687 | instances uncompared: type rename silent, storage per leaf | Sensor_t -> Sensor2_t plus volatile flip -> three changed-storage, no type finding | CONFIRMED
+S-M1 | Minor | src/ddd/models/objects.py:820 | unbounded dimension count; generate dies in broadcast | 600 dimensions of 1 with init 0 -> check ok, generate RecursionError | CONFIRMED
+S-M2 | Minor | src/ddd/compare.py:115 | changed-storage spells a list init as a python tuple | list init differs -> `init: (7, 7, 7, 8) != (7, 7, 7, 7)` | CONFIRMED
+S-M3 | Minor | docs/build_integration.rst:153 | isolation claimed; the whole output dir is the include path | sensor_hub TU includes Controller.h and reads ValueE -> compiles | CONFIRMED
+S-M4 | Minor | src/ddd/lsp/server.py:406 | no-record log denies findings the containing project reports | component under a project, no build -> log line, then missing-producer | CONFIRMED
+S-M5 | Minor | pyproject.toml:102 | -q in addopts plus -q on the command line hides the count | targeted run with -q -> no "N passed" line | CONFIRMED
+S-M6 | Minor | src/ddd/cli.py:946 | list json rows: leaves carry path, objects carry name | structures example -> seven rows without name | CONFIRMED
+```
+
+## Sweep of the documents
+
+### Scope covered
+
+Read whole, against the verified list and the code sweep: `SPEC.md` (2075 lines); every page under
+`docs/` - `getting_started`, `concept`, the nine `file_formats/*` pages, `consistency_checks`,
+`comparing_deliveries`, `plugins`, `generated_artefacts`, `templates`, `command_line_interface`,
+`build_integration`, `editor_integration`, `data_contracts`, `data_dictionary`,
+`developer_documentation`, `faq`, `acronyms`, `index` and `conf.py`; `README.md`; `CHANGELOG.md`
+(`## Unreleased` and `## 0.9.0` in full, 0.8.0 and older for links and format history);
+`editors/vscode/README.md`; the 231 distinct `description` strings of the eight `schemas/*.json`
+(extracted to `sweep-docs/schema-descriptions.txt`) with an audit of every property lacking one and
+of every closed set's `enumDescriptions`; and the `--help` of all fourteen commands and the three
+built-in `generate` artefacts (`sweep-docs/help.txt`).
+
+Ran, under `<scratchpad>/sweep-docs/`: `ddd generate all` on `examples/demo`, `structures`,
+`vocabulary` and `layout` (plus the demo with `--const-inputs`), `ddd list`, `ddd dump`,
+`ddd check`, `ddd sources`, `ddd checks` (text and json), `ddd schema all -o`, `ddd build-info`,
+`ddd artefacts`, `ddd id --assign` (on copies) and `ddd compare` in the shapes the pages claim;
+the getting-started thermostat rebuilt from the page's json blocks and generated; a fragment
+checker (`sweep-docs/fragments.py`) that looks for every c and a2l code block of every page, as
+a contiguous run of lines, in those outputs; four small projects (`sink`, `fuel`, `inj`, `sect`)
+reproducing the twelve illustrative a2l and c fragments no transcript runs (Table, Cube, Inverted,
+ValueLong, M3, Block2D, Mode_t and Level_t, EngineSpeed's `IF_DATA`, Speed/SpeedAxis/Fuel,
+SpeedAxis/InjectionTime, the `.fast_ram` and `.calib` attributes, the negative-offset `COEFFS`);
+the FAQ's ten illustrative findings rebuilt on minimal projects; the `ddd checks --format json`
+and `ddd check --format json` shapes; the stdout/stderr split; the json-syntax, Infinity and
+format-9 messages; the `--without` refusals; a helper-only, a renamed `{component}_if` and a
+subdirectory template; the six raster `cycle` spellings of `rasters.rst`; a `rasters` key inside a
+component; `m/s^2` as a unit; the demo's `ddd_globals.c` compiled with MinGW gcc and measured with
+`size -A`; a stock (`-NoProfile`) Windows PowerShell 5.1 redirection of `ddd dump` compared back;
+an in-process language server hover on `CurveA` and references from a `typename`; and
+`cmake/Ddd.cmake`, `.pre-commit-hooks.yaml`, `docker-compose.yml`, `docker/Dockerfile`,
+`editors/vscode/package.json`, `src/extension.ts`, `src/config.ts`, `src/ddd/backends/c/model.py`,
+`src/ddd/plugins.py`, `src/ddd/ir.py` and `tests/test_documentation.py` read for the names and
+numbers the pages state.
+
+Everything above matched the pages except the ten items below: every number (ten project checks,
+eight fixed, seven kinds, eleven datatypes, five templates, 23/9/4/6/14/3 variables, five record
+layouts, eight compu methods, format 8, build record format 1, nine version files), every option,
+target, property, setting, hook id and schema kind, every FAQ message, every illustrative fragment,
+the dump entries of `CurveA` and `ValveDuty`, the dictionary schema's top level, the hover block,
+and the PowerShell claim (stock 5.1 writes `FF FE`, and `ddd compare` answers `json-syntax: ... is
+not valid utf-8 (byte 0)`).
+
+### Findings
+
+#### Minor
+
+1. **The generated-artefacts page still shows the demo as it was before the string feature, in
+   three places, and the README repeats one of them** (`docs/generated_artefacts.rst:191`). The
+   page opens "Everything on this page is the output of the demonstration project shipped in
+   `examples/demo`" (`:24-25`), but the Controller group it quotes (`:195-207`: `uint8_t StateA =
+   0U;` followed directly by `volatile uint16_t ValueE = 0U;`) and the header it introduces with
+   "The header of `UserInterface` looks like this" (`:251-299`, inputs `ValueB` then `#if
+   defined(FEATURE_X)`) both predate `StateName`: the current `ddd_globals.c` carries `/** Name of
+   the current state, as text */` / `uint8_t StateName[16] = "OFF";` between `StateA` and
+   `ValueE` (`sweep-docs/demo-gen/ddd_globals.c:23-24`), and `UserInterface.h` carries `extern
+   uint8_t StateName[16];  /* produced by Controller */` between `ValueB` and the `#if`
+   (`sweep-docs/demo-gen/UserInterface.h:36`) - the
+   diffs `sweep-docs/excerpt1.txt`/`actual1.txt` and `excerpt2.txt`/`actual2.txt` differ in exactly
+   those two lines each. The measurement at `:464-465`, "`size -A ddd_globals.o` moves from
+   `.rodata 84` and `.data 2` to `.data 86`", repeated at `README.md:391-392` as "`.rodata 84 /
+   .data 2` becomes `.data 86`", was written on 2026-08-04 (`git log -S".data 2"`: `44e9351`),
+   while `StateName` reached the demo on 2026-09-10 (`e9f6382`): `.data` now holds sixteen
+   initialised bytes beside `ValueF`'s two, and the object compiled here measures `.data 32` (MinGW
+   gcc, `-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual
+   -Wstrict-prototypes`). Fix: regenerate the two excerpts from the current demo and re-measure the
+   sizes on the container's gcc, or date the measurement to the demo it was taken on.
+
+2. **The tutorial describes `ddd_types.h` as a file the thermostat does not generate**
+   (`docs/getting_started.rst:383-385`). The table says the file is "`<stdint.h>`, `<stdbool.h>`
+   and one `typedef enum` per enum conversion, included by all of the above"; the thermostat built
+   on that page has neither a `boolean` nor an enum, and its generated header (`sweep-docs/
+   thermostat/gen/ddd_types.h`) holds `#include <stdint.h>` and nothing else between its guards,
+   while `docs/generated_artefacts.rst:81-85` and `README.md:626` describe the file correctly:
+   "`<stdbool.h>` when the project declares a `boolean`, the headers of the external types in
+   use ..., one `#define` per declared constant, one `typedef enum` per enum conversion and one
+   `typedef struct` per declared structure". The reader who opens the file the tutorial just
+   generated finds a third of what the row promises and none of what it omits. Fix: reword the
+   row along the lines of the generated-artefacts table.
+
+3. **"leaf" and "instance" are used on the site before, and without, being defined**
+   (`docs/concept.rst:240-274`). The concept page's vocabulary table - "The terms below are used
+   with these meanings throughout the documentation, the diagnostics and the json schemas"
+   (`:235-236`) - lists project, component, declaration, data object, scope, conversion, producer
+   and data dictionary and stops there; it predates declared types. In the site's reading order the
+   first "leaf" is `docs/file_formats/types.rst:409`, "the member contributes **no leaf**: it does
+   not appear in `ddd list`, in the dictionary's `leaves`", then `:499` "Each leaf also joins the
+   `GROUP`" and `:516` "one set of leaves per element", and the first structured "instance" is
+   `docs/comparing_deliveries.rst:161-162`, "listed under the instance's id followed by its member
+   path"; the only definitions on the site are `docs/data_dictionary.rst:360-362`, "`types`,
+   `instances` and `leaves` describe the structured variables: the declared structures, the
+   variables instantiating one, and the member objects each instance flattens into", in the
+   reference section, whereas `SPEC.md:150-151` defines both up front. Fix: add "declared type",
+   "instance", "leaf" and "access path" to the concept table, as the specification's table has
+   them.
+
+4. **The data-dictionary reference documents four of the nine records a consumer of the dump
+   meets** (`docs/data_dictionary.rst:371-381`). The reference carries `DataDictionary`,
+   `ResolvedObject`, `ResolvedComponent` and `ComponentDeclaration`; `src/ddd/ir.py` also defines
+   `ResolvedRaster` (`:104`), `ResolvedMember` (`:250`), `ResolvedStruct` (`:314`),
+   `ResolvedInstance` (`:333`) and `ResolvedLeaf` (`:429`), which are the `rasters`, `types`,
+   `instances` and `leaves` the page's prose sends the reader to (`:355-362`: "`rasters` records
+   the declared measurement rasters ... `types`, `instances` and `leaves` describe the structured
+   variables") - so the fields of a leaf (`path`, `instance`, `instance_id`, `bits`, ...), which
+   `docs/file_formats/types.rst:409-412` says a foreign generator should read, have no field list
+   anywhere on the site and are reachable only through `ddd schema dictionary`. Fix: add the five
+   `autopydantic_model` directives.
+
+5. **The conversion `kind` is published without a description in all three schemas that carry
+   it, against the "shall" of the specification and the pages' "nothing hovers blank"**
+   (`schemas/ddd_component.schema.json`, `$defs.LinearConversion.properties.kind`). The audit of
+   every property of every published schema finds exactly twelve without a `description`:
+   `IdentityConversion.kind`, `LinearConversion.kind`, `EnumConversion.kind` and
+   `StringConversion.kind` in `ddd_component`, `ddd_types` and `ddd_dictionary` (each carries
+   `const`, `title` and `type` only). `SPEC.md:210-211` says "every authored field of it **shall**
+   carry its documentation", `docs/file_formats/index.rst:159` "every key has a `description`, so
+   nothing hovers blank", and `README.md:129` "every key explains itself on hover"; the guard in
+   `tests/test_documentation.py:943-948` exempts the field on purpose ("`kind` is exempt only
+   where it is a fixed tag with nothing behind it"), so the test, the schema and the three texts
+   disagree. The object kinds show it is cheap: `Curve.kind` hovers "A one dimensional
+   calibratable table over one axis." Fix: describe the four tags (the `StringConversion`
+   docstring already says why its `kind` is required), or narrow the three sentences to what the
+   test enforces.
+
+6. **Three places say that only `units` and `sections` have no place inside a component;
+   `rasters` is refused there too** (`SPEC.md:291-292`). The specification: "`units` and
+   `sections` are project wide vocabularies and have no place inside a component";
+   `docs/file_formats/component.rst:418-419`: "`units` and `sections` are project wide
+   vocabularies with no owner at all, so neither may appear inside a component"; the schema's
+   `Component.constants` description: "`units` and `sections` remain project wide vocabularies and
+   have no place inside a component". `docs/file_formats/rasters.rst:198-202` says the same of
+   rasters ("It has no place inside a component, for the reason the unit vocabulary and the
+   memory sections have none"), `SPEC.md:1027-1029` likewise, and the tool refuses the key the
+   same way: a component carrying `"rasters": [...]` answers `cr.ddd.json#component.rasters:
+   error[schema]: Extra inputs are not permitted`. Fix: name the three vocabularies in the three
+   sentences (`README.md:460-461` already does).
+
+7. **The plugins page lists the options a plugin's artefact takes and leaves out `--dictionary`**
+   (`docs/plugins.rst:150-152`). "selected as `ddd generate <name>`, with the common options
+   `-o`, `--dry-run` and `--force`, and the severity and format options every analysis takes,
+   `-W`, `--strict` and `--format`. A plugin's artefact takes no option of its own, and none of
+   the built-in artefacts' either" - but `ddd generate layout examples/layout/project.ddd.json -o
+   out --dictionary out/dict.json --dry-run` answers `would write .../ddd_layout.h (created)` and
+   `would write .../dict.json (created)`, as `docs/command_line_interface.rst:126` ("Every artefact
+   also takes `--dictionary FILE`") and `SPEC.md:1799` promise. A plugin author reading the page
+   that documents the api does not learn that the build's dictionary can ride along. Fix: add
+   `--dictionary` to the list.
+
+8. **Schema hover texts name Python objects the reader cannot see** (`schemas/
+   ddd_component.schema.json`, `$defs.A2lObjectOptions.properties.export`). The description of
+   `export` ends "Stated by several, the answer is yes if any of them says so - see
+   `resolve_export`", a function of `src/ddd/models`; in the dictionary schema
+   `ResolvedInstance.owner` reads "`None` only when the project is inconsistent",
+   `ResolvedMember.datatype` "`None` when it names a declared type", `.type` and `.external`
+   "`None` when ..." and `.bits` "`None` when it is not" - the document carries `null` -, and
+   `ResolvedObject.volatile` ends "that is what `DICTIONARY_FORMAT` exists to make safe", a
+   constant of `src/ddd/ir.py`. These are the texts an editor and a consumer of `ddd schema
+   dictionary` show; a neighbour of P4-M6 (`source` described as a `Path`) and P2-M7. Fix: point
+   `export` at the rule of `docs/file_formats/variable_definition.rst` ("Who asks for an
+   export"), write `null`, and drop the constant's name.
+
+9. **The tutorial's promise about check identifiers is weaker than the one the checks page and
+   the specification make** (`docs/getting_started.rst:549-551`). "the identifier is part of the
+   public interface of the tool and does not change within a major version, so a build script can
+   raise or lower this particular check ... without becoming sensitive to the wording" against
+   `docs/consistency_checks.rst:36`, "Identifiers therefore do not change once they have been
+   published", and `SPEC.md:1146-1147`, "they **shall not** change once published"; the
+   `CHANGELOG.md:7-11` preamble adds a third reading, in which the identifiers are interface a
+   release may change provided it "says here what the migration costs". A reader pinning
+   identifiers in a build script gets three different lifetimes for them. Fix: state one rule
+   (the specification's) on all three pages.
+
+10. **Two of the tool's own texts lag behind the pages that quote them as authoritative**
+    (`src/ddd/diagnostics.py:187`, the `init-invalid` entry of the registry `ddd checks` prints).
+    `ddd checks`, which `SPEC.md:1151` calls "The authoritative list", describes `init-invalid` as
+    "an initial value does not fit the datatype of the variable", while `SPEC.md:1287-1289`,
+    `docs/consistency_checks.rst:560-567` and `README.md:517` make it fire for an enumerator, for
+    the shape, and for a string init that is not printable ASCII or leaves no room for its
+    terminator; and `ddd sources --help` says "Prints one absolute path per line: the project file
+    and every file it includes however deeply" while the command also lists the plugin modules -
+    `ddd sources examples/layout/project.ddd.json` ends with
+    `C:/git/ac11/ddd/examples/plugins/ddd_layout.py`, as `docs/command_line_interface.rst:156-157`
+    and `docs/plugins.rst:36-37` say. Fix: widen the two strings; the registry description is also
+    what an editor's diagnostic tooltip may quote.
+
+### Assessment
+
+The eleven passes and their verifiers left very little on the documents: every number, option,
+identifier, target, property and setting the pages spell exists in the tool under that spelling,
+every transcript the harness does not run reproduces verbatim on a rebuilt project - the FAQ's ten
+findings, the twelve illustrative a2l and c fragments, the hover block, the PowerShell claim - and
+the schema descriptions are current down to the constants change. What the passes missed sits
+where one page quotes another's subject: the generated-artefacts page and the README still show
+the demo of 0.9.0 in three places after the string feature changed it, the tutorial describes a
+types header its own project does not produce, the concept page's vocabulary predates declared
+types so "leaf" and "instance" arrive undefined, and the dictionary reference stops at four of nine
+records; the rest are one-line drifts between the specification, a page, a schema string and a
+help text. All ten are Minor, none changes a verdict or an artefact, and none touches the review's
+verdict; they are the kind of thing a release commit that regenerates the demo excerpts and rereads
+the concept table would close in an hour.
+
+```candidates
+SD-M1 | Minor | docs/generated_artefacts.rst:191 | demo excerpts and .data numbers predate StateName | reader compares the page to a fresh demo run -> StateName missing from two excerpts, .data 2 is now 32 | CONFIRMED
+SD-M2 | Minor | docs/getting_started.rst:383 | ddd_types.h row names stdbool and enums the tutorial has not | reader opens gen/ddd_types.h -> only <stdint.h>; constants, structs, external headers unmentioned | CONFIRMED
+SD-M3 | Minor | docs/concept.rst:240 | vocabulary table lacks instance, leaf, declared type | reader meets "leaf" at types.rst:409 -> defined only at data_dictionary.rst:360 | CONFIRMED
+SD-M4 | Minor | docs/data_dictionary.rst:371 | reference documents four of nine dictionary records | consumer looks for ResolvedLeaf/Instance/Struct/Member/Raster fields -> only in the schema | CONFIRMED
+SD-M5 | Minor | schemas/ddd_component.schema.json:LinearConversion.kind | conversion kind has no description, spec says shall | editor hovers "kind": "linear" -> blank; test exempts it, pages say nothing hovers blank | CONFIRMED
+SD-M6 | Minor | SPEC.md:291 | only units and sections said to be refused in a component | reader adds rasters to a component -> refused as schema like the other two | CONFIRMED
+SD-M7 | Minor | docs/plugins.rst:150 | plugin artefact's option list omits --dictionary | ddd generate layout ... --dictionary -> accepted and written | CONFIRMED
+SD-M8 | Minor | schemas/ddd_component.schema.json:A2lObjectOptions.export | hover texts name resolve_export, None, DICTIONARY_FORMAT | editor or schema reader -> python names with no page to find them on | CONFIRMED
+SD-M9 | Minor | docs/getting_started.rst:549 | identifiers "within a major version" vs "once published" | reader pins -W identifiers -> three lifetimes promised on three pages | CONFIRMED
+SD-M10 | Minor | src/ddd/diagnostics.py:187 | ddd checks and sources --help narrower than the pages | ddd checks -> init-invalid without enumerators/shape/string; sources --help omits plugin modules | CONFIRMED
+```

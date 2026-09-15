@@ -95,12 +95,19 @@
   <h1>Source code for ddd.models.constants</h1><div class="highlight"><pre>
 <span></span><span class="sd">"""Contract for the constant vocabulary file.</span>
 
-<span class="sd">A ``constants`` file declares named integer constants, so that a size lives in one place and</span>
-<span class="sd">is shared by name.  An array dimension is commonly a named constant of the project, stated</span>
-<span class="sd">once and used by every loop that walks the array; a bare number in a description restates</span>
-<span class="sd">that constant and drifts from it silently.  With the vocabulary declared, a shape - an entry</span>
-<span class="sd">of ``dimensions``, or the ``size`` of an axis - names the constant where it would state the</span>
-<span class="sd">number, and the generated code carries the name rather than a copy of its value.</span>
+<span class="sd">A ``constants`` file declares named numbers, so that a number the project depends on lives</span>
+<span class="sd">in one place and is shared by name.  Every declared constant reaches the outputs - the c</span>
+<span class="sd">templates are handed the vocabulary to emit, the a2l writes one ``SYSTEM_CONSTANT`` each -</span>
+<span class="sd">so a gain, an offset or a base address belongs here as much as a count does.</span>
+
+<span class="sd">A size is the case the vocabulary was built for.  An array dimension is commonly a named</span>
+<span class="sd">constant of the project, stated once and used by every loop that walks the array; a bare</span>
+<span class="sd">number in a description restates that constant and drifts from it silently.  With the</span>
+<span class="sd">vocabulary declared, a shape - an entry of ``dimensions``, or the ``size`` of an axis -</span>
+<span class="sd">names the constant where it would state the number, and the generated code carries the name</span>
+<span class="sd">rather than a copy of its value.  Only that use constrains the value, and it constrains it</span>
+<span class="sd">where the shape is written: a constant a shape names has to be a whole number of at least 1,</span>
+<span class="sd">the same rule a literal dimension obeys, and a constant nothing dimensions is any number.</span>
 
 <span class="sd">The value is a literal only: an expression would put a parser and an evaluation order into a</span>
 <span class="sd">description format, and a constant cannot name another constant, for the reason a scalar</span>
@@ -109,17 +116,46 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">BeforeValidator</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileRoot</span><span class="p">,</span> <span class="n">Identifier</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_refuse_whole_number</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Keep a whole number out of the fractional arm of :data:`ConstantValue`.</span>
+
+<span class="sd">    Pydantic widens an ``int`` into a strict ``float``, so without this the whole numbers the</span>
+<span class="sd">    first arm refuses - the ones past what 64 bits hold - would land in the second instead</span>
+<span class="sd">    and come back rounded.  The file would then mean a number nobody wrote, which is the one</span>
+<span class="sd">    outcome a description format cannot have.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"a whole number is not a fractional value"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span>
+
+
+<span class="n">ConstantValue</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="o">|</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">float</span><span class="p">,</span> <span class="n">BeforeValidator</span><span class="p">(</span><span class="n">_refuse_whole_number</span><span class="p">),</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">allow_inf_nan</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+<span class="sd">"""A number written as a literal: a whole number a 64 bit target can hold, of either sign,</span>
+<span class="sd">or a finite fractional one.</span>
+
+<span class="sd">Strict on both arms, and neither silently becomes the other, so the spelling decides which</span>
+<span class="sd">it is: a description that says ``2.0`` means a fractional constant, and one that says ``2``</span>
+<span class="sd">means a whole one.  The bound on the whole arm spans signed and unsigned 64 bit alike,</span>
+<span class="sd">because either is a literal generated code can hold and nothing DDD emits counts further.</span>
+<span class="sd">"""</span>
 
 
 <div class="viewcode-block" id="ConstantDeclaration">
 <a class="viewcode-back" href="../../../data_contracts.html#ddd.models.ConstantDeclaration">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ConstantDeclaration</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""One named integer constant, declared once and named wherever a shape needs it."""</span>
+<span class="w">    </span><span class="sd">"""One named number, declared once and named wherever the project needs it."""</span>
 
     <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">use_attribute_docstrings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
@@ -130,21 +166,29 @@
 <span class="sd">    the templates receive every declared constant to emit.</span>
 <span class="sd">    """</span>
 
-    <span class="n">value</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
-<span class="w">    </span><span class="sd">"""The value, an integer of at least 1, written as a number.</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">ConstantValue</span>
+<span class="w">    </span><span class="sd">"""The value, a number: a whole number of either sign, or one written with a point.</span>
 
 <span class="sd">    A literal only: an expression would put a parser and an evaluation order into a</span>
 <span class="sd">    description format, and a constant cannot name another constant, so what cannot be</span>
-<span class="sd">    written cannot cycle.  At least 1 because the value is an array dimension, and an array</span>
-<span class="sd">    of no elements is no array.  At most what 64 bits can hold, because this value becomes a</span>
-<span class="sd">    dimension - itself bounded the same way - and no datatype DDD offers counts higher.</span>
+<span class="sd">    written cannot cycle.  How it is written settles what it is - ``2`` is a whole number</span>
+<span class="sd">    and ``2.0`` one with a fraction - because that is what the outputs carry: the generated</span>
+<span class="sd">    code emits the literal as written, so the author picks the type rather than the format.</span>
+<span class="sd">    A whole number is bounded by what a 64 bit target can express, signed or unsigned, and</span>
+<span class="sd">    a fractional one must be finite: ``inf`` and ``nan`` name nothing a description can</span>
+<span class="sd">    state, and would reach a template as those words.</span>
+
+<span class="sd">    Nothing here requires the value to be a size.  A constant that a shape names has to be</span>
+<span class="sd">    a whole number of at least 1, the same rule a dimension written as a literal obeys, but</span>
+<span class="sd">    that is checked where the shape names it - the declaration is not the place, because a</span>
+<span class="sd">    constant may be declared to be emitted and never dimension anything.</span>
 <span class="sd">    """</span>
 
     <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span>
-<span class="w">    </span><span class="sd">"""What the constant counts, e.g. ``cells of the pressure manifold``.</span>
+<span class="w">    </span><span class="sd">"""What the constant stands for, e.g. ``cells of the pressure manifold``.</span>
 
-<span class="sd">    This is where the meaning of a size is written down once, instead of being implied by</span>
-<span class="sd">    every object that happens to be dimensioned by it.</span>
+<span class="sd">    This is where the meaning of a number is written down once, instead of being implied by</span>
+<span class="sd">    every object that happens to use it.</span>
 <span class="sd">    """</span></div>
 
 

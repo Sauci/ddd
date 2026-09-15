@@ -106,8 +106,10 @@
              
   <section id="constant-vocabulary">
 <h1>Constant vocabulary<a class="headerlink" href="#constant-vocabulary" title="Link to this heading"></a></h1>
-<p>A <code class="docutils literal notranslate"><span class="pre">constants</span></code> file declares named integer constants, so that a size lives in one place and
-is shared by name. An array dimension is commonly a named constant of the c project - stated
+<p>A <code class="docutils literal notranslate"><span class="pre">constants</span></code> file declares named numbers, so that a number the project depends on lives
+in one place and is shared by name. Every declared constant reaches the outputs - the c
+templates are handed the whole vocabulary, and the a2l writes one <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code> each -
+so a gain, an offset or a count of zero belongs here as much as a size does. An array dimension is commonly a named constant of the c project - stated
 once, and used by every loop that walks the array - and a bare number in a description
 restates that constant and drifts from it silently. With the vocabulary declared, a shape
 names the constant where it would state the number, the generated c declares the array by
@@ -124,11 +126,14 @@ that name, and the a2l records the constant for the calibration tool.</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">name</span></code> is a c identifier: it reaches the generated code as an identifier of its own, so
 the length cap, <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code> and <code class="docutils literal notranslate"><span class="pre">name-collision</span></code> apply to it like to any other
-name. <code class="docutils literal notranslate"><span class="pre">value</span></code> is an integer of at least 1, written as a number and as a literal only: an
-expression would put a parser and an evaluation order into a description format, and a
-constant cannot name another constant - what cannot be written cannot cycle. <code class="docutils literal notranslate"><span class="pre">description</span></code>
-is where the meaning of a size is written down once, instead of being implied by every
-object that happens to be dimensioned by it. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a
+name. <code class="docutils literal notranslate"><span class="pre">value</span></code> is a number: a whole number of either sign that a 64 bit target can hold,
+signed or unsigned, or a finite number written with a fraction. How it is written decides
+which it is - <code class="docutils literal notranslate"><span class="pre">2</span></code> is a whole number and <code class="docutils literal notranslate"><span class="pre">2.0</span></code> is not - and the outputs carry the literal
+as written, so <code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;CELL_GAIN&quot;,</span> <span class="pre">&quot;value&quot;:</span> <span class="pre">2.0}</span></code> reaches a c header as the double
+literal <code class="docutils literal notranslate"><span class="pre">2.0</span></code>. The value is a literal only: an expression would put a parser and an
+evaluation order into a description format, and a constant cannot name another constant -
+what cannot be written cannot cycle. <code class="docutils literal notranslate"><span class="pre">description</span></code> is where the meaning of a number is
+written down once, instead of being implied by every object that happens to use it. The file is listed in the <code class="docutils literal notranslate"><span class="pre">includes</span></code> of a
 project like any other description, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">constants</span></code> prints its published
 contract.</p>
 <p>A declared constant has a second possible home, with entries of exactly this form: the
@@ -168,6 +173,16 @@ declares is refused whether or not any constants file exists, with the nearest d
 suggested, and the finding lands on the dimension entry that names it:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose component misspells PRESSURE_CELLS
 a.ddd.json#component.interface[0].definition.dimensions[0]: error[unknown-constant]: 'CellPressure' is dimensioned by 'PRESURE_CELLS', which is not a constant any file of this project declares - did you mean 'PRESSURE_CELLS'?
+1 error
+</pre></div>
+</div>
+<p>A constant a shape names has to be a whole number of at least 1 - the rule a dimension
+written as a literal obeys. The rule belongs to the use rather than to the declaration,
+because only a shape needs a length: <code class="docutils literal notranslate"><span class="pre">SPARE_CELLS</span></code> may be <code class="docutils literal notranslate"><span class="pre">0</span></code> for as long as it is only
+emitted, and naming it as a dimension is reported where the name is written, with the
+declaration dropped as it is for an unknown constant:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check p.ddd.json  # a project whose component is dimensioned by SPARE_CELLS, which is 0
+a.ddd.json#component.interface[0].definition.dimensions[0]: error[dimension-value]: 'CellPressure' is dimensioned by 'SPARE_CELLS', whose value is 0; a dimension is a whole number of at least 1
 1 error
 </pre></div>
 </div>

@@ -54,8 +54,8 @@ compiler lays them out.
 " alt="" coords="663,1970,963,2082"/>
 <area shape="rect" id="node9" title="ddd.models.constants.ConstantDeclaration
 
-One named integer constant, declared once and named wherever a shape needs it.
-" alt="" coords="728,957,897,1069"/>
+One named number, declared once and named wherever the project needs it.
+" alt="" coords="704,957,921,1069"/>
 <area shape="rect" id="node10" title="ddd.models.conversion.EnumConversion
 
 A verbal conversion table; the raw value *is* the physical value.

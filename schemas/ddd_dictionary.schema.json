@@ -91,7 +91,7 @@
     },
     "ConstantDeclaration": {
       "additionalProperties": false,
-      "description": "One named integer constant, declared once and named wherever a shape needs it.",
+      "description": "One named number, declared once and named wherever the project needs it.",
       "properties": {
         "name": {
           "description": "The name a shape writes where it would state a number: ``PRESSURE_CELLS``.\n\nAn identifier, because the name reaches the generated code as an identifier of its own;\nthe templates receive every declared constant to emit.",
@@ -102,15 +102,22 @@
           "type": "string"
         },
         "value": {
-          "description": "The value, an integer of at least 1, written as a number.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  At least 1 because the value is an array dimension, and an array\nof no elements is no array.  At most what 64 bits can hold, because this value becomes a\ndimension - itself bounded the same way - and no datatype DDD offers counts higher.",
-          "maximum": 18446744073709551615,
-          "minimum": 1,
-          "title": "Value",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 18446744073709551615,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "The value, a number: a whole number of either sign, or one written with a point.\n\nA literal only: an expression would put a parser and an evaluation order into a\ndescription format, and a constant cannot name another constant, so what cannot be\nwritten cannot cycle.  How it is written settles what it is - ``2`` is a whole number\nand ``2.0`` one with a fraction - because that is what the outputs carry: the generated\ncode emits the literal as written, so the author picks the type rather than the format.\nA whole number is bounded by what a 64 bit target can express, signed or unsigned, and\na fractional one must be finite: ``inf`` and ``nan`` name nothing a description can\nstate, and would reach a template as those words.\n\nNothing here requires the value to be a size.  A constant that a shape names has to be\na whole number of at least 1, the same rule a dimension written as a literal obeys, but\nthat is checked where the shape names it - the declaration is not the place, because a\nconstant may be declared to be emitted and never dimension anything.",
+          "title": "Value"
         },
         "description": {
           "default": "",
-          "description": "What the constant counts, e.g. ``cells of the pressure manifold``.\n\nThis is where the meaning of a size is written down once, instead of being implied by\nevery object that happens to be dimensioned by it.",
+          "description": "What the constant stands for, e.g. ``cells of the pressure manifold``.\n\nThis is where the meaning of a number is written down once, instead of being implied by\nevery object that happens to use it.",
           "title": "Description",
           "type": "string"
         }

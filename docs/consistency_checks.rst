@@ -394,6 +394,13 @@ or an a2l file that does not do what the description says - or that does not com
        :doc:`constants file <file_formats/constants>`). Like a section there is no free
        text fallback, because a name without a value is a dimension nothing can resolve.
        The nearest declared name is suggested.
+   * - ``dimension-value``
+     - error
+     - a shape names a constant whose value is no array length: zero, negative, or not a
+       whole number (see the :doc:`constants file <file_formats/constants>`). A constant
+       holds any number, because most of what a project names is emitted and dimensions
+       nothing; the rule a literal dimension obeys applies only where a shape names one,
+       and is reported there. The declaration is dropped, as for an unknown constant.
    * - ``unknown-raster``
      - error
      - a definition or a component names a measurement raster no file declares (see the

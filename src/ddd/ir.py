@@ -574,8 +574,9 @@ version of DDD, possibly years on. Stamping the format is what lets that later v
 "this file is newer than I understand" instead of misreading it or rejecting it for a
 missing field. It changes only when the shape of the document changes, not with the tool.
 
-Format 8 added the ``string`` conversion kind and the string spelling of ``init``. A format
-7 dictionary carries neither, and reads back unchanged.
+Format 8 added the ``string`` conversion kind and the string spelling of ``init``, and
+widened a constant's ``value`` from a whole number of at least 1 to any number. A format 7
+dictionary carries none of them, and reads back unchanged.
 """
 
 

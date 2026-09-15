@@ -14,6 +14,22 @@ its own.
 
 ## Unreleased
 
+* **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
+  a constant was thought of as a size; but every declared constant is emitted - a `#define`
+  through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,
+  so an offset, a gain or a count of zero was refused for no reason it had.  The value is now
+  a whole number of either sign a 64 bit target holds, or a finite number written with a
+  fraction, and the spelling decides which: `2` is whole, `2.0` is not, and a template
+  emits the literal as written.  The size rule moves to where it applies: a shape naming a
+  constant that is zero, negative or fractional is the new check `dimension-value`, an error
+  reported at the `dimensions` entry or the `size` that names it, and the declaration is
+  dropped as for `unknown-constant`.  Unlike that check it needs only the file in front of it,
+  so `--standalone` and the language server report it too.  **Migration:** none for a
+  description file - every value that was valid still is, and means the same.  A template
+  that assumed a constant is a positive integer - formatting it with an unsigned suffix, say
+  - should now expect any number.  The dumped dictionary stays format 8, whose other changes
+  are listed below: format 8 is unreleased, and a reader that only knows 7 already refuses it.
+
 * **Strings.**  A fourth conversion kind, `{"kind": "string"}`, reads a one dimensional
   `uint8` or `sint8` array as text, on a measurement, a value block, a structure member or a
   scalar type; its `init` may be written as a string, printable ASCII shorter than the

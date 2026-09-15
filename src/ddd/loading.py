@@ -276,7 +276,7 @@ class LoadedConstant:
         return self.declared.name
 
     @property
-    def value(self) -> int:
+    def value(self) -> int | float:
         return self.declared.value
 
     def location(self, suffix: str = "") -> Location:

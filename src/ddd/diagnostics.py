@@ -137,6 +137,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("unknown-constant", Severity.ERROR,
                "a shape names a constant no file of the project declares",
                needs_every_component=True),
+        _check("dimension-value", Severity.ERROR,
+               "a shape names a constant whose value is no array length"),
         _check("unknown-raster", Severity.ERROR,
                "a definition or a component names a measurement raster no file declares",
                needs_every_component=True),

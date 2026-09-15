@@ -189,7 +189,14 @@ class ConstantView:
     """
 
     name: str
-    value: int
+    value: int | float
+    """The number as the description wrote it: a whole number of either sign, or a float.
+
+    Rendered with ``{{ constant.value }}`` it is already a c literal of the type its author
+    meant - ``8``, ``-40``, ``1.5`` - so a template that suffixes it, ``U`` for unsigned say,
+    has to look at which it is first.
+    """
+
     description: str
     """Already safe to put in a comment; empty when the constant states none."""
 

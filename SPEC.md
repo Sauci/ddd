@@ -924,8 +924,8 @@ rather than a spelling of one.
 
 ### 3.9 Constant vocabulary
 
-A `constants` file declares named integer constants, so that a size lives in one place and
-is shared by name. A component **may** instead declare the constants it publishes inside
+A `constants` file declares named numbers, so that a number the project depends on lives in
+one place and is shared by name. A component **may** instead declare the constants it publishes inside
 its own description, with entries of exactly this form
 ([section 3.2](#32-software-component-description)); the standalone file is the home of
 constants shared between components. An array dimension is commonly a named constant of the C project,
@@ -950,7 +950,13 @@ tool as the root of a run it is refused, with a hint that it belongs in a projec
   apply to it. A constant is declared exactly once: every declaration of its name after
   the first, whether it appears in the same file or in another, is `duplicate-constant`,
   with a note at the first.
-- `"value"` (required): an integer of at least 1, written as a number. The value is a
+- `"value"` (required): a number, written as one - a whole number of either sign that a 64
+  bit target can hold, signed or unsigned, or a finite number written with a fraction. How
+  the number is written decides which it is: `2` is a whole number and `2.0` is not, and
+  the outputs carry the literal as written, so the author picks the type a template emits.
+  Every declared constant reaches the outputs whether or not a shape names it - one
+  `SYSTEM_CONSTANT` each in the a2l, and the whole vocabulary handed to the C templates - so
+  a gain, an offset or a count of zero belongs here as much as a size does. The value is a
   literal only: an expression would put a parser and an evaluation order into a
   description format, and a constant cannot name another constant, for the reason a scalar
   type cannot be declared in terms of a second one
@@ -961,8 +967,13 @@ A shape then names a constant where it would state a number: an entry of `dimens
 the `size` of an axis, is either an integer or the name of a declared constant
 ([section 3.3](#33-data-object-definition)), and a list mixes the two freely. Naming a
 constant that no file of the project declares is `unknown-constant`, with the nearest name
-suggested. A structure member's `dimensions` **may** name a constant as well, and the
-finding is then reported at the member ([section 3.7](#37-type-description)). A name and
+suggested. A constant a shape names **must** be a whole number of at least 1, the rule a
+dimension written as a literal obeys; naming one that is not is `dimension-value`, reported
+where the name is written. The rule is checked there rather than on the declaration because
+only that use needs it: a constant nothing dimensions is any number. Either finding drops the
+declaration, as a typename naming no type does. A structure member's `dimensions` **may**
+name a constant as well, and both findings are then reported at the member
+([section 3.7](#37-type-description)). A name and
 its value are different spellings of one size: declarations of one object **must** agree on
 the spelling (`definition-mismatch`), exactly as conversions compare as written
 ([section 3.4](#34-conversions)), because the spelling is what reaches every consumer's
@@ -1261,6 +1272,9 @@ Errors:
   schedule a raster names - carries one.
 - `unknown-constant`: a shape names a constant that no file of the project declares
   ([section 3.9](#39-constant-vocabulary)); the nearest declared name is suggested.
+- `dimension-value`: a shape names a constant whose value is no array length - zero, negative,
+  or not a whole number ([section 3.9](#39-constant-vocabulary)). A constant may hold any
+  number; one that dimensions something has to be what a literal dimension is.
 - `unknown-raster`: a definition or a component names a measurement raster no file declares
   ([section 3.10](#310-measurement-rasters)). Like a section and unlike a unit there is no
   free text fallback: an event nothing describes is a name the a2l could only write as a

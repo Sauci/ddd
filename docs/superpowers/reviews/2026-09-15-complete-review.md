@@ -1441,3 +1441,534 @@ not, and the one dangling reference left after the previous fix - an axis input 
 structured instance - still writes a name the A2L does not define. None of the four needs a
 design change; each is a few lines in one place, and the strings, constants and dictionary
 work that landed since 0.9.0 is implemented as its design says.
+
+## Pass 5: the tool interface (SPEC.md sections 3.11, 7 and 7.1)
+
+### Scope covered
+
+Read in full, with line numbers: `SPEC.md:1046-1142` (3.11), `SPEC.md:1782-1994` (7, 7.1),
+`SPEC.md:724-759` (3.6); `src/ddd/cli.py` (all 1535 lines); `src/ddd/plugins.py` (all);
+`src/ddd/build_info.py`; `cmake/Ddd.cmake` (all 676 lines); `.pre-commit-hooks.yaml`;
+`pyproject.toml`; `examples/cmake/CMakeLists.txt` and its five sources;
+`examples/plugins/ddd_layout.py`, `examples/layout/*.ddd.json`; `docs/command_line_interface.rst`,
+`docs/build_integration.rst`, `docs/plugins.rst` (all three whole); `README.md:469-479, 720-910`;
+the outlines of `tests/test_cmake.py`, `tests/test_cli.py`, `tests/test_plugins.py` and the bodies
+of `tests/test_cli.py:1689-1703, 1930-1958`; the call sites the findings needed in
+`src/ddd/diagnostics.py:257-330, 350-381, 398-523`, `src/ddd/loading.py:380-425, 835-930,
+1092-1131`, `src/ddd/backends/base.py:60-125, 170-220`, `src/ddd/backends/a2l/options.py:40-70`,
+`src/ddd/identity.py:153-183`, `src/ddd/ir.py:66-67, 127-140, 583-663`,
+`src/ddd/lsp/diagnostics.py:50-60`; `docs/consistency_checks.rst:973-1007`,
+`docs/comparing_deliveries.rst:580-590`, `docs/editor_integration.rst:100-140`;
+`previous-review.md:1249-1421` and `:1733-1806`; the forwarded items of `reports/pass-1.md`
+(Important 2, Minor 7, 8, 10), `pass-3.md` (Important 3, open question 2) and `pass-4.md`
+(Minor 10-12, the write-step strengths).
+
+Ran (everything under `scratchpad/pass-5/`; the repository was never written to, `git status`
+clean at the end): every `--help`; 220 command lines over `examples/demo`, `inconsistent`,
+`layout`, `pressure` and 60 fixtures written by `mkfix.py` - 24 plugin modules and projects
+(printing, `sys.exit`, `KeyboardInterrupt`, a `BaseException` subclass, raising at import, a
+sibling import, a mutating hook, a built-in and a foreign check identifier, a reserved name, a
+case-variant, absolute and `..` output paths, a non-backend, a non-list, a directory as module, the
+same file named twice, two files with one module name across root and sub-project, a dotted
+module, a relative spelling run from another directory, a `@dataclass` body, a compare hook that
+raises, a project model with a required setting), an encoding fixture (`°C` against `degC`, a
+lone surrogate), copies of the demo for `ddd id --assign` (ids stripped, a syntax error, a
+read-only file, a vocabulary and a project file), a copy under `sp ace/dé mo/`, a layout copy
+with a duplicate key; `PYTHONIOENCODING=cp1252` and `ascii`, stdout redirected to files, six
+commands into `| head -1`, `ddd lsp` on EOF and on one message, and one scripted server session
+over pipes. CMake: `examples/cmake` configured and built from a copy under `tree/` with the
+venv's CMake 4.4.3, Ninja 1.13.2 and MinGW gcc 13.1 (`-DDDD_EXECUTABLE` pointing at a copy of
+`ddd.exe` so it could be touched), then a rebuild after touching a component, a template, a
+helper template, the tool, the generated project file, a file outside the closure, after
+breaking a component's json and after adding `STRICT`/`SEVERITY` to the call; `ninja
+firmware_ddd_check`, `firmware_ddd_list`, `controller.ddd`; `build.ninja` read; nine small
+projects written by `mkcmk.py` (the docs' address-map recipe under `STRICT`, a partial map,
+`PROJECT` with `NAME` and a plugin, an image named `9fw-x.elf`, an image registering nothing,
+two images with and without `NO_PROPAGATE_HEADERS`, the registration refusals, a vocabulary file
+on an interface library, a description generated later, a component broken at configure time,
+a removed component followed by `ninja -t clean`), a missing and an empty `DDD_EXECUTABLE`,
+`-G "Ninja Multi-Config"`, a source and build tree under `sp ace/`;
+`python -m pytest tests/test_cmake.py --no-cov -q`: 17 passed in 73 s; `pre-commit try-repo
+C:/git/ac11/ddd ddd-id --all-files` in a scratch git repository (the environment installed from
+the checkout in 31 s). The example plugin's header compiled with gcc alone, after
+`ddd_globals.h` and after `Storage.h`, and linked with `ddd_globals.c`.
+
+### Strengths
+
+- The exit-code contract holds on every command probed: 0 / 1 / 2 exactly as `SPEC.md:1871-1889`
+  says, `sources` and `artefacts` tolerant (exit 0 with a missing include reported on stderr,
+  exit 1 only for an unreadable root), warnings alone exit 0, `--strict` promotes them, and a
+  usage error raised after the analysis prints the findings first in either format
+  (`cli.py:1460-1488`; observed for `--renames`, `--dictionary`, `-o`, a plugin hook, an unknown
+  plugin override).
+- `--format json` carries the document and nothing else on stdout for `check`, `compare`,
+  `generate`, `list`, `sources`, `artefacts`, `checks`; `dump` keeps stdout for the dictionary in
+  both formats and reports on stderr, `dump -o` leaves stdout empty and names the file with its
+  status (`cli.py:958-1009`).
+- `--without` subtracts an artefact with its options and refuses a run left with nothing
+  (`cli.py:728-752, 838-849`); `--dictionary` counts as something to write and is refused on an
+  artefact's path, its case variant and a `sub/..` alias (`cli.py:812-817`).
+- Plugin boundary: the check hooks, the factory and `generate` are guarded (`plugins.py:405-495`);
+  `sys.exit(3)` in a hook is `exit 2`, `plugin 'exiter' failed in its check hook: SystemExit(3)`;
+  a module body that raises, a name outside the grammar or reserved, a check spelled with a
+  built-in or another plugin's prefix, two modules claiming one name - across root and
+  sub-project too - are `plugin-invalid` at `project.plugins[i]`; a `.py` spelling is resolved
+  against the project file wherever the command runs from (`loading.py:847`), and a backend's
+  path outside `-o`, a `..` climb, an absolute path elsewhere and a case variant of a built-in
+  file are refused before anything is written (`base.py:96-119`).
+- The severity machinery is one object end to end: `-W` on `check`, `compare`, `generate`,
+  `list`, `dump`, `build-info`; a plugin override held provisionally and verified against the
+  loaded plugins; `--standalone` derived from the registry and overridden by an explicit `-W`.
+- The CMake module: every declared dependency retriggers the generation (component, template,
+  helper, tool, generated project file), `restat = 1` keeps `unchanged` outputs from recompiling
+  anything, a file outside the closure triggers nothing, invalid json fails the build with the
+  finding, `STRICT`/`SEVERITY` reach the generation command, the check and list targets and
+  `ddd-build.json` alike, an unknown check stops the configure with the tool's message, paths
+  with spaces are quoted throughout, the seeded `{}` map passes `STRICT`, a partial map fails it
+  with `address-missing` naming the symbols, `NAME` is sanitised (`9fw-x.elf` -> `N9fw_x.a2l`),
+  `PROJECT` ignores `NAME` with a status line and names the artefacts after the file, and every
+  refusal (non-`.ddd.json`, missing file, missing target, `PLUGINS` beside `PROJECT`, a second
+  propagating image, a missing tool, a multi-config generator) names the fix.
+- The published pre-commit hook works end to end from a git checkout: the environment installs
+  with `hatchling` and `hatch-requirements-txt` from PyPI reading `requirements.txt`, the hook is
+  handed every staged `*.ddd.json` at once (`nargs="+"`, `cli.py:271`), vocabulary and project
+  files are no-ops, a file that is not json is skipped with exit 1, and pre-commit reports
+  `files were modified by this hook`, as `.pre-commit-hooks.yaml:5-9` says.
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **A plugin that prints to stdout corrupts the `--format json` document and the dumped
+   dictionary** (`src/ddd/cli.py:1373` `dictionary = analyze(workspace, bag)` runs the hooks with
+   `sys.stdout` untouched; `:898` `files = render(dictionary, backends, args.output_dir)` runs a
+   plugin backend the same way). Trigger: a plugin whose check hook or `generate` contains a
+   `print(...)` - a debugging line left behind - under `ddd check --format json`, `ddd generate
+   ... --format json`, `ddd list --format json`, `ddd dump` or `ddd dump -o`. Outcome: stdout is
+   `NOISY-CHECK-STDOUT` followed by the document, so a job's `json.loads` fails and a
+   `ddd dump p.ddd.json > baseline.json` archives a file that is not json; `dump -o`, whose
+   stdout `SPEC.md:1870` promises empty, carries the line. Observed (fixture `p_print.py`):
+   `ddd check proj_print.ddd.json --format json` -> stdout `NOISY-CHECK-STDOUT` then `{ ... }`,
+   exit 0; `ddd dump proj_print.ddd.json -o out.json` -> stdout `NOISY-CHECK-STDOUT`. The
+   language server already takes stdout as the wire before a plugin runs
+   (`tests/test_plugins.py:2154`); the command line does not. Fix: while hooks and plugin
+   backends run, bind `sys.stdout` to `sys.stderr` (the server's arrangement), or state in
+   `docs/plugins.rst` that a hook must not write to stdout.
+
+2. **An output path that is one of the run's own input files is overwritten without a word**
+   (`src/ddd/cli.py:998` `(result,) = write([GeneratedFile(path, text)])`, `:657` `args.renames
+   .write_text(...)`, `:900` `files.append(_dictionary_file(dictionary, args.dictionary, files))`;
+   none of the three looks at `workspace.sources()`). Trigger: `ddd dump components/sensor_hub
+   .ddd.json -o components/sensor_hub.ddd.json` (a tab-completed `-o`), `ddd compare demo.ddd.json
+   demo.ddd.json --renames demo.ddd.json`, or `ddd generate c demo.ddd.json -o gen -t ...
+   --dictionary components/dict.ddd.json` into the directory an `includes` wildcard covers.
+   Outcome, observed on copies: the component description is replaced by the dictionary
+   (`wrote components/sensor_hub.ddd.json (updated)`, exit 0, the file now starts with
+   `"format": 8`); the project file is replaced by `[]` (exit 0); the next `ddd check` of the
+   demo fails with `components/dict.ddd.json: error[file-kind]: file has 'types' and 'constants'
+   and 'rasters' at the top level`. A description file is a hand-written source; `generate`
+   already refuses a path two artefacts share, but not one the project was read from. Fix:
+   before writing, refuse a `-o`, `--renames` or `--dictionary` target that resolves to a file
+   in `workspace.sources()` (and, for `--dictionary`, one inside a directory an include pattern
+   of the project matches) as a usage error naming the file.
+
+3. **A removed component's header and a plugin's artefact survive regeneration and
+   `ninja -t clean`, and stay on every component's include path** (`cmake/Ddd.cmake:553` declares
+   `OUTPUT ${generated_outputs}` - the template-named files, the a2l and the dictionary only, as
+   `:358-361` and `docs/build_integration.rst:393-397` say; nothing declares `BYPRODUCTS`, and
+   `src/ddd/backends/base.py:172-181` writes and never deletes). Trigger: drop `event_logger` from
+   `target_link_libraries(firmware.elf ...)` and rebuild. Outcome, observed (`cmk/stale`): the
+   regeneration succeeds, `DemoDevice.ddd.json` no longer lists the component, yet
+   `EventLogger.h` and the plugin's `stamp.h` remain in `ddd/firmware.elf/`, `ninja -t clean`
+   removes 16 files and leaves `Controller.h EventLogger.h SensorHub.h UserInterface.h stamp.h`
+   behind, and a translation unit `#include "EventLogger.h"` reading `ValueJ` still compiles
+   (`gcc -c ... exit 0`) against a header of a component the image no longer links - the
+   include-path isolation `docs/build_integration.rst:153-155` promises ("a component cannot
+   reach a variable it never declared") no longer holds after an incremental build, and a
+   `clean` build is not clean. Fix: let `ddd generate` own its output directory - record the
+   files it wrote (a manifest beside them) and remove on the next run those it no longer writes -
+   which also makes `ninja -t clean` followed by a build equivalent to a fresh build; or read
+   the component names off the collected descriptions at generate time and declare the headers
+   as `BYPRODUCTS`.
+
+4. **The documented address-map recipe cannot complete the two-run flow on a 64-bit host: every
+   build after the first fails** (`docs/build_integration.rst:541-556` extracts every `[BbDdGgRrSs]`
+   symbol of the image, `src/ddd/backends/a2l/options.py:59-70` refuses an address outside
+   `0 .. 0xFFFFFFFF` "whether or not DDD knows the symbol", as `docs/build_integration.rst:564-567`
+   itself says a host build "runs into first"). Trigger: `examples/cmake` plus the page's
+   `POST_BUILD` command and `AddressMap.cmake` verbatim, on the Windows/MinGW host this
+   repository is developed on (or any 64-bit Linux host). Outcome, observed (`cmk/addr`, `STRICT`):
+   first build ok with `{}`, the step writes 98 entries including `"___crt_xc_end__":
+   "0x140009018"`, the second build fails `[code=2]` with `ddd: ...addresses.json: address of
+   '___crt_xc_end__' is 5368746008, outside the range 0 .. 0xFFFFFFFF that an a2l address can
+   hold`, the third build fails the same way, and the a2l keeps `ECU_ADDRESS 0x00000000`. The
+   page calls the script "an example to adapt", but the adaptation it needs - dropping symbols
+   the dictionary never uses - is the tool's decision, not the toolchain's. Fix: in
+   `load_address_map`, range-check only the symbols `addressed_symbols(dictionary)` carries and
+   report the others in the `address-missing` note (the range refusal itself is pass 4's
+   territory); or make the recipe skip entries whose address does not fit and say so on the page.
+
+5. **A build record naming a check the language server does not know ends the server on the
+   first `didOpen`** (carried over from the 2026-09-08 review, pass 5 Important 1;
+   `src/ddd/lsp/diagnostics.py:53` `policy = SeverityPolicy.from_strings(list(info.severity),
+   strict=info.strict)` is unguarded and `src/ddd/lsp/discovery.py:56` wraps only the read of the
+   record). Trigger: a `ddd-build.json` with `"severity": ["no-such-check=ignore"]` - written by
+   a newer `ddd` in the build directory while the editor runs an older one. Outcome, observed
+   over pipes: `initialize` answered, the record logged, then exit 2 with `ddd: unknown check
+   'no-such-check'` on stderr and no `publishDiagnostics`. `SPEC.md:758` says a record the reader
+   "does not understand is one it declines rather than misreads". Fix: build the policy under
+   `try/except UnknownCheckError`, skip the record and announce it in the log as a record naming
+   a missing project is announced. (Pass 6 owns the server; recorded here because the previous
+   pass 5 raised it and it is still open.)
+
+#### Minor
+
+1. **Every long option accepts any unambiguous prefix** (`src/ddd/cli.py:146` `argparse.
+   ArgumentParser(prog="ddd", ...)`, `allow_abbrev` left at its default). Observed: `ddd check
+   controller.ddd.json --stand` -> `ok: 14 variables ...`; `ddd generate all ... --dict x.json
+   --dry-run` -> `would write x.json`. A script spelling `--dict` breaks the day a second option
+   starting with `--dict` is added, with argparse's "ambiguous option" as the only clue. Fix:
+   `allow_abbrev=False` on the parser.
+
+2. **A `BaseException` that is neither `Exception` nor `SystemExit` escapes a hook as a traceback
+   with the findings exit code, and Ctrl-C inside a hook prints a 30-line traceback**
+   (`src/ddd/plugins.py:487` `except (Exception, SystemExit) as error:`; `src/ddd/cli.py:116-126`
+   catches `UnknownCheckError`, `OSError`, `ValueError` only). Observed: a hook raising
+   `class Boom(BaseException)` -> traceback, exit 1 (`EXIT_FINDINGS`); a hook raising
+   `KeyboardInterrupt` -> traceback, exit 130, the findings gathered before it gone.
+   `asyncio.CancelledError` is such a subclass. Fix: catch `BaseException` in `_call`, re-raise
+   `KeyboardInterrupt` alone; in `main`, catch `KeyboardInterrupt` to print `ddd: interrupted`
+   and return 130, and give a last-resort `except Exception` a code distinct from 1 and 2.
+
+3. **A check hook can rewrite the resolved dictionary, and the rewrite reaches the artefacts, the
+   dumped dictionary and the comparison** (`src/ddd/plugins.py:63` hands `dictionary:
+   DataDictionary` itself; `src/ddd/ir.py:140`, `:351`, `:663` hold `extensions: dict[str,
+   dict[str, Any]]` inside frozen models). Observed (`p_mutate.py`): the hook set
+   `block["key"] = 999`, `block["added"] = True` and `dictionary.extensions["mut"] = {...}`;
+   `mut.h` written by the plugin's backend, and `--dictionary d.json`, both carry `key: 999`,
+   `added: true` and the injected project block. `docs/plugins.rst:135-140` says what a hook
+   receives and nothing about whether it may change it. Fix: hand hooks read-only views
+   (`MappingProxyType` over deep-copied blocks), or state that the dictionary a hook receives is
+   the one every later step consumes.
+
+4. **`ddd id --assign` stops at the first file it cannot write, with a bare errno, the files after
+   it untouched and no total** (`src/ddd/identity.py:182` `path.write_bytes(mark + text.encode(
+   "utf-8"))` unguarded; `src/ddd/cli.py:1016-1024` loops and prints the total after). Observed:
+   `ddd id --assign controller.ddd.json ro.ddd.json after_ro.ddd.json` (the middle one read-only)
+   -> `ddd: [Errno 13] Permission denied: 'ro.ddd.json'`, exit 2, `after_ro.ddd.json` still
+   without ids, no `wrote N ids` line. `SPEC.md:1823-1824` promises that a file that cannot be
+   parsed "is reported while the others are stamped"; one that cannot be written is not held to
+   it. Fix: catch `OSError` in `assign`, report the file like an unreadable one, continue.
+
+5. **The I/O errors of `--address-map`, `schema -o` and `build-info -o` are bare errno text that
+   names neither the option nor what was being done** (`src/ddd/backends/a2l/options.py:49`
+   `json.loads(path.read_text(encoding="utf-8"))` wraps `JSONDecodeError` only;
+   `src/ddd/cli.py:1136-1140`, `:1127-1130` write unguarded). Observed: `--address-map
+   nosuch.json` -> `ddd: [Errno 2] No such file or directory: 'nosuch.json'`; `--address-map
+   adir` -> `ddd: [Errno 13] Permission denied: 'adir'`; `ddd schema all -o afile.txt` ->
+   `ddd: [WinError 183] Cannot create a file when that file already exists: 'afile.txt'`;
+   `ddd build-info ... -o adir` -> `ddd: [Errno 13] Permission denied: 'adir'`. `compare` and
+   `generate` already say `cannot write the --renames file '...'` / `cannot write '...'`. Fix:
+   the same wrapping - `cannot read the address map '...'`, `cannot write '...'`.
+
+6. **A closed pipe is reported as a usage error** (`src/ddd/cli.py:124-126` `except (OSError,
+   ValueError) as error: print(f"ddd: {error}"...); return EXIT_USAGE`). Observed:
+   `ddd schema component | head -1` -> `ddd: [Errno 32] Broken pipe`, exit 2 (the smaller
+   outputs of `list`, `dump`, `checks` fit the pipe buffer and exit 0). Under `set -o pipefail`
+   a paging script fails on the tool's side. Fix: catch `BrokenPipeError` in `main`, redirect
+   the fds to `devnull` and return 0 (or 1) silently, as the Python docs suggest.
+
+7. **The verdict line names two identical file names** (`src/ddd/cli.py:669-673`
+   `f"{args.candidate.name} {verdict} replace {args.baseline.name}"`; the comment at `:668` chose
+   file names "because two deliveries of one project share a name" - so do two files of one
+   delivery). Observed on the shipped examples: `ddd compare examples/pressure/v1.3/pressure.ddd
+   .json examples/pressure/release/pressure.ddd.json` -> `pressure.ddd.json can replace
+   pressure.ddd.json`. Fix: print the paths as typed when the two names coincide.
+
+8. **A dumped dictionary handed to `check`, `list` or `dump` is refused with a message about
+   vocabulary files** (`src/ddd/loading.py` reports `file-kind` off the top-level keys;
+   `src/ddd/cli.py:1421-1435` `_holds_a_description` exists only on the `compare` side).
+   Observed: `ddd check v13.json` -> `error[file-extension]: 'v13.json' is a DDD description
+   file ...` and `error[file-kind]: file has 'types' and 'constants' and 'rasters' at the top
+   level; it must have exactly one`. A dump is the one json a user of the tool has at hand
+   beside a description. Fix: when the document carries `format` and `objects`, say "this is a
+   dumped dictionary; hand it to `ddd compare`".
+
+9. **`missing-plugin` sits at the candidate for both sides and says "this run has not loaded"
+   a plugin the run did load** (`src/ddd/plugins.py:389-397` adds both findings at `location`,
+   which `src/ddd/cli.py:649` makes `Location(args.candidate)`; `:638` `plugins =
+   candidate.plugins` although the baseline description's plugins were imported and ran at
+   `:632`). Observed: `ddd compare examples/layout/project.ddd.json layout.json` -> two warnings,
+   both located at `layout.json`, the first reading `the baseline was produced with plugin
+   'layout', which this run has not loaded`. Fix: locate the baseline's finding at the baseline
+   and word it "which is not among the candidate's plugins".
+
+10. **A component whose file is not valid json at configure time loses its `<target>.ddd` check
+    until the next configure** (`cmake/Ddd.cmake:165-171` `_ddd_is_component_file` answers
+    `FALSE` when `string(JSON ... GET "component")` fails, and `:243-246` then skips the file;
+    in the collected mode the file is no `CMAKE_CONFIGURE_DEPENDS`). Observed (`cmk/broken`):
+    configure with `{ broken`, fix the file, `ninja comp.ddd` -> `ninja: no work to do.`; after
+    `cmake -S ... -B ...` -> `ok: 6 variables in 1 component are consistent`. Fix: treat a file
+    that cannot be parsed as a component (the check target then reports the syntax error), or
+    add the file to `CMAKE_CONFIGURE_DEPENDS` in that case.
+
+11. **The CLI page and section 7 say `--plugin` is refused "beside a description"; the code
+    refuses it beside a project candidate only** (`docs/command_line_interface.rst:84-85`
+    "``--plugin`` refused beside a description"; `SPEC.md:1877-1878`; `src/ddd/cli.py:639-645`
+    `if args.plugin: if candidate.from_description: raise ValueError(...)`). Observed: `ddd compare
+    examples/layout/project.ddd.json layout.json --plugin examples/plugins/ddd_layout.py`
+    (description baseline, dumped candidate) -> accepted, exit 0, no `missing-plugin`; the sides
+    swapped -> `ddd: --plugin names the plugins of an archived dictionary; a project description
+    names its own`, exit 2. This settles pass 1 Minor 7: 3.11 (`SPEC.md:1136-1138`) and the code
+    agree; section 7 and the CLI page do not. Fix: "beside a project candidate" in both.
+
+12. **`docs/build_integration.rst` never says that configuring runs the project's plugins**
+    (`cmake/Ddd.cmake:98` `execute_process(COMMAND "${DDD_EXECUTABLE}" schema all --output ...
+    ${plugin_arguments})` at configure time imports every `PLUGINS` module; `:62` runs `ddd
+    sources`, which imports the plugins a `PROJECT` file names). `docs/plugins.rst:209-212` states
+    the boundary for "every ``ddd`` command" and the editor, `SPEC.md:1069-1073` and
+    `docs/editor_integration.rst:130-140` likewise, and the build page - the one a reader
+    configuring a checked-out repository follows - is silent. Fix: one sentence under
+    `PLUGINS`/`SCHEMA_DIRECTORY`: configuring imports the named plugins, as any `ddd` command
+    over the project does.
+
+13. **The pre-commit hook pins no interpreter and the page does not say it needs Python 3.12**
+    (`.pre-commit-hooks.yaml:14` `language: python` without `language_version`;
+    `pyproject.toml:14` `requires-python = ">=3.12"`; `docs/build_integration.rst:674-705`
+    silent). Trigger: a consuming project whose default `python3` is 3.11 (Ubuntu 22.04's, say):
+    `pre-commit install-hooks` fails inside pip with "requires a different Python", pointing at
+    nothing the page names. Fix: state the floor on the page, and consider
+    `minimum_pre_commit_version` / a `language_version` note in the hook definition.
+
+14. **Three json payload shapes are documented nowhere**: `ddd artefacts --format json` carries
+    `artefacts` of `{name, kind}` with `kind` in `built-in` / `plugin` and
+    `plugins_without_artefact` (`src/ddd/cli.py:1215-1232`; no hit for either key in `docs/`,
+    `README.md` or `SPEC.md`, whose `:1808-1809` says "in a note"); the entries of `ddd list
+    --format json`'s `variables` (the union of object and leaf rows, `src/ddd/cli.py:946`, `name`
+    on an object and `path` on a leaf) and `components` (`:943-945`) are named by
+    `SPEC.md:1805-1806` and shaped by nobody, the dictionary page documenting `objects` and
+    `leaves` instead; `dump -o`'s `generated` key is described in words only
+    (`docs/command_line_interface.rst:57-59`). Complements pass 1 Minor 10 (the spec side). Fix:
+    one example per payload on the CLI page.
+
+15. **The CLI page says a component "generates on its own"; `generate` has no `--standalone`**
+    (`docs/command_line_interface.rst:190-192` "A component checks, lists, dumps and generates on
+    its own"; `src/ddd/cli.py:165, 236, 258` add `--standalone` to `check`, `list`, `dump` only,
+    as `SPEC.md:1848-1850` says). Observed: `ddd generate c examples/demo/components/controller
+    .ddd.json -o x -t examples/templates` -> two `missing-producer` errors, nothing written, exit
+    1; with `--standalone` -> `unrecognized arguments`. A component with an input generates alone
+    only under `--force` or a hand-kept `-W`. Fix: reword the page, or give `generate`
+    `--standalone` (which the `<target>.ddd` target would not need).
+
+16. **An image registering no component yields an empty `ddd_globals.c` that the example's own
+    flags refuse** (`cmake/Ddd.cmake:256-257` "an empty ``includes`` list, which DDD accepts";
+    `examples/cmake/CMakeLists.txt:19` `-Wall -Wextra -Wpedantic -Werror`). Observed
+    (`cmk/empty`): `bare.ddd.json` with `"includes": []`, generation ok, then `ddd_globals.c:17:
+    error: ISO C forbids an empty translation unit [-Werror=pedantic]`, build exit 1. The same
+    mechanism as pass 4 Minor 2 (an empty header), reached through the module. Fix: the
+    definition template emits a placeholder declaration when it renders nothing.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P5 C1 | the spec denied `--standalone` and the per-component target | fixed | `SPEC.md:1848-1854`, `:1912-1914` |
+| P5 I1 | a build record naming an unknown check ends the server | still open - carried over (Important 5) | `src/ddd/lsp/diagnostics.py:53`; probe over pipes, exit 2 |
+| P5 I2 | `sources`/`artefacts` exit 0 with errors, `sources` text hides findings | fixed | `src/ddd/cli.py:1284-1287`; `SPEC.md:1884-1887`; observed on a missing include |
+| P5 I3 | plugin name grammar, reserved names, "malformed" unspecified | partly fixed: the spec states all of it (`SPEC.md:1077-1082`); `docs/plugins.rst:100` still says only "a lowercase identifier", naming neither `c`/`a2l`/`all` nor the check grammar | `docs/plugins.rst:100` |
+| P5 I4 | `ddd checks` does not mark the project-wide checks | fixed | `src/ddd/cli.py:1324-1337`; `docs/consistency_checks.rst:988-1007`; observed |
+| P5 I5 | 7.1 omits `<target>.ddd`, `DDD_A2L`, the multi-config refusal | fixed | `SPEC.md:1912-1914`, `:1972-1973`, `:1980-1981` |
+| P5 I6 | where a vocabulary file goes is stated nowhere | fixed | `SPEC.md:1906-1907`; `docs/build_integration.rst:51-70`; `cmake/Ddd.cmake:153` |
+| P5 I7 | the map's second half documented by nobody | fixed as text (`docs/build_integration.rst:507-570`), but the recipe fails the flow on a 64-bit host: Important 4 | `docs/build_integration.rst:541-556` |
+| P8 C3 | opening a file runs repository python and nothing says so | fixed on the pages named; the build page remains silent (Minor 12) | `SPEC.md:1069-1073`, `:2071-2075`; `docs/plugins.rst:209-212`; `docs/editor_integration.rst:130-140`; `editors/vscode/README.md:50-56` |
+| P8 I1 | a module runs before it is in `sys.modules` | fixed | `src/ddd/plugins.py:211-233`; probe `p_dc.py` (`@dataclass` under future annotations) -> ok |
+| P8 I2 | path clash decided on spelling, nothing keeps a backend inside `-o` | fixed | `src/ddd/backends/base.py:96-119`; probes: `..`, absolute, case variant all refused |
+| P8 I3 | template/factory exceptions escape as tracebacks with exit 1 | mostly fixed: factory and `generate` results checked (`src/ddd/plugins.py:405-481`), templates guarded (`tests/test_cli.py:537-561`); no last-resort handler in `main` (`src/ddd/cli.py:116-126`), so a `BaseException` subclass still ends in a traceback with exit 1 (Minor 2) | `src/ddd/cli.py:116-126` |
+| P8 I4 | findings discarded when a later step fails | fixed | `src/ddd/cli.py:1460-1488`; `compare ... --renames adir` prints 4 findings, then the error, exit 2 |
+| P8 I5 | `sys.exit` in a hook is a clean run | fixed | `src/ddd/plugins.py:487-495`; probe exit 2 `SystemExit(3)` |
+| P8 I6 | generation not atomic, wrong file named | fixed | `src/ddd/backends/base.py:184-219`; `cannot write 'afile.txt/ddd_globals.c'` (pass 4 verified the staging) |
+
+Minor ones of the previous pass 5, in bulk: 1 still open (`SPEC.md:1786-1788` still lists
+`--plugin` and `--renames` inside the clause that covers `ddd check --baseline`, which takes
+neither - observed `unrecognized arguments`); 2 fixed (`SPEC.md:1863-1864` "no finding at all");
+3 and 4 are the editor's (pass 6); 5 fixed (`SPEC.md:1853-1854`); 6 fixed (`SPEC.md:1963-1967`);
+7 still open (`src/ddd/cli.py:1363` returns before the `verify` at `:1370`: `ddd check
+proj_settings.ddd.json -W sett/nosuch=ignore` exits 1 on the `schema` error and never mentions
+the typo); 8 fixed (`docs/build_integration.rst:353-358`); 9 fixed (`SPEC.md:1846-1847`,
+`README.md:845-848`); 10 fixed (`docs/editor_integration.rst:104-105`, `:162`); 11 fixed
+(`docs/plugins.rst:148-151`). Of the previous pass 8's minors in this area: 2 still open (a lone
+surrogate in a unit passes `ddd check` and ends `ddd list` with exit 2 after the table header,
+`ddd dump` with exit 2 `Error serializing to JSON`; `src/ddd/cli.py:106` reconfigures without
+`errors=`); 7 documented rather than changed (`docs/plugins.rst:197-203`; a sibling `import
+helpers` still fails, the failure cache is fixed at `src/ddd/plugins.py:220`); 8 still open
+(`PROJECT` mode re-runs configure on every component edit - observed `Re-running CMake...` after
+touching `storage.ddd.json`); 9 still open (pass 4 Minor 10; see the forwarded items); 11 fixed
+(`src/ddd/cli.py:907-912` names the file).
+
+Spec gaps proven from code, previous list: closed - `--standalone`, `<target>.ddd`, `DDD_A2L`,
+multi-config, `find_program`/`DDD_EXECUTABLE`, the tool as a dependency, 3.30 for
+`ddd_add_component`, the non-`.ddd.json` refusal, `SCHEMA_DIRECTORY` beside `PROJECT`, the
+tolerant exits, `artefacts` with neither, the plugin artefact's options, `id --assign`, the
+`checks` json keys, the plugin grammar, one import per process, the unchecked `project` path of
+`build-info` (`SPEC.md:751-753`), the pre-commit hook. Still unstated: `ddd build-info` accepts
+a plugin override it cannot verify (`src/ddd/cli.py:1119`; `-W layout/nosuch=info` writes the
+record, exit 0). The server items are pass 6's.
+
+Test gaps of the previous list: closed - `sources` text with findings
+(`tests/test_cli.py:1433`), `SEVERITY` reaching the generation and the dictionary
+(`tests/test_cmake.py:471-486`). Still none in `tests/`: `STRICT` and `_ddd_check` through the
+module, `ADDRESS_MAP` (seeding, dependency, second run), `NAME` defaulting and `NAME` beside
+`PROJECT`, `DDD_A2L`, `NO_PROPAGATE_HEADERS` and the two-image refusal, `LINK_LIBRARIES`,
+`CONST_INPUTS`, `BYTE_ORDER`, `OUTPUT_DIRECTORY`, `DEPENDS`, the 3.20/3.30 messages, the `.ddd`
+target skipping a vocabulary file, `--standalone` on a project root (grep of `tests/test_cmake.py`
+finds `SEVERITY` alone among those names; `tests/test_cli.py` has no project-root `--standalone`).
+
+Forwarded items, settled from code:
+
+- Pass 1 Important 2 (`dump -o` under an error finding writes, `generate --dictionary` does not).
+  Behaviour, observed on `examples/inconsistent`: `ddd dump project.ddd.json -o inc.json` ->
+  4 errors reported, `wrote inc.json (created)`, exit 1; `ddd generate all ... --dictionary
+  d.json` -> the same 4 errors, nothing written, exit 1. The two code paths: `src/ddd/cli.py:
+  968-976` (`dump`: `resolved, bag = _analyze(...)`; `if resolved is None: ... return`; else
+  `_write_dictionary(...)` unconditionally) against `:859-861` (`generate`: `if bag.has_errors
+  and not args.force: _report(bag, args.format); return EXIT_FINDINGS` before any backend runs).
+  The asymmetry is deliberate in the comments: `:964-965` "``-o`` moves the dictionary into a
+  file, the findings and the exit code staying what they were", `:985-986` "the findings, the
+  stream they go to and the exit code of the analysis stay what they were", and `:804-806`
+  for the other side "a run that fails leaves the last dictionary describing the artefacts still
+  beside it". Only the root that cannot be read leaves the `-o` file alone (`:969-971`).
+- Pass 1 Minor 7: settled above (Minor 11) - the code refuses `--plugin` beside a project
+  *candidate* only, `src/ddd/cli.py:639-645`.
+- Pass 1 Minor 8: `cmake/Ddd.cmake:445-447` overwrites `arg_NAME` with the name inside the
+  `PROJECT` file (`_ddd_description_name(arg_NAME "${project_file}")`) and `:547` names the
+  dictionary `${arg_NAME}.dictionary.json` after that; observed `LayoutDevice.dictionary.json`
+  beside `LayoutDevice.a2l` with `NAME Ignored` given, and the status line `NAME is ignored with
+  PROJECT - the a2l and the dictionary are named after the project name inside ...`. The page
+  states it (`docs/build_integration.rst:238-239`, `:439-443`); the spec's `<NAME>` at
+  `SPEC.md:1974` is the only text that does not.
+- Pass 1 Minor 10, the shapes: the six keys of `checks` are documented
+  (`docs/consistency_checks.rst:988-1007`), `sources` is (`docs/command_line_interface.rst:322`),
+  `generated` is by example (`:38`) for `generate` and by words for `dump -o` (`:57-59`);
+  `artefacts`'s keys and the `list` entry shapes are documented nowhere (Minor 14). The build
+  record's `image` for an unnamed target is the empty string: `src/ddd/build_info.py:64` `image:
+  str = ""`, observed `"image": ""`; `SPEC.md:747` "empty" is right, `null` is not accepted. The
+  collected mode's floor: 3.30, checked at `cmake/Ddd.cmake:44` (`_ddd_require_transitive_
+  properties`, called from `ddd_add_component` at `:201` and from the collected branch at `:452`)
+  on top of the module's own 3.20 at `:32`; both are stated on the page
+  (`docs/build_integration.rst:37-38`, `:219-223`, `:236-237`) and in the module's header
+  (`:11-14`, `:28-31`); the spec states 3.30 for `ddd_add_component` (`SPEC.md:1911`) and
+  "its stated floor" for the collected mode (`:1927-1928`) without a number - the number belongs
+  there.
+- Pass 3 Important 3. The `Location(...)` sites that carry a path as typed: `src/ddd/cli.py:602`
+  `compare(baseline, resolved.dictionary, bag, location=Location(args.project))` and `:609`
+  under `check --baseline`; `:649` `location = Location(args.candidate)` for `compare` and the
+  `missing-plugin` findings; `:712` `Location(path)` for `address-missing` (the map as typed);
+  `:1391` `lambda _: Location(path)` for a hook's `locate` on a dumped candidate; and, for a
+  baseline or candidate that is a dump or cannot be read, `src/ddd/loading.py:1103` `where =
+  origin or Location(path)` with the path `:1388` passes as typed - observed `"path":
+  "nosuch.json"` for the baseline's `file-not-found` beside `"path": "C:/.../nosuch.ddd.json"`
+  for the same finding on a root. The loader resolves every description it reads (the analysis
+  findings are absolute in json), so two kinds of finding in one document follow two rules.
+  The documented contract (`docs/consistency_checks.rst:975` "an absolute, forward-slashed
+  path") is the one a reader can use; the code is wrong, not the page: build these locations
+  from `path.resolve()` (the text renderer already re-relativises against `Path.cwd()` at
+  `src/ddd/cli.py:1453-1455`, so the text output would not change). The sorting side effect is
+  confirmed: `src/ddd/diagnostics.py:354` keys on `location.path.as_posix()`, and observed with
+  `ddd compare demo.json examples/demo/components/controller.ddd.json` the candidate's six
+  `unused-output` warnings (absolute path, `C:/...`) precede `project-mismatch` and every other
+  comparison warning (`examples/...`), which is what `docs/comparing_deliveries.rst:589-590`
+  ("among the warnings it comes first") says does not happen; typed absolute, the same run
+  interleaves them the other way, so the order depends on how the candidate was spelled.
+- Pass 3 open question 2: `src/ddd/cli.py:1408` `own = DiagnosticBag(SeverityPolicy(bag.policy.
+  overrides, strict=False))` - the run's `-W` overrides reach the baseline's own analysis,
+  `--strict` does not; they are not treated alike. Observed: `ddd compare examples/pressure/v1.3/
+  pressure.ddd.json examples/pressure/release/pressure.ddd.json -W unused-output=error` -> the
+  baseline's `unused-output` carried as `error[unused-output]: in the baseline: 'ValveDuty' ...`,
+  exit 1, no verdict; the same with `--strict` -> `pressure.ddd.json can replace
+  pressure.ddd.json`, exit 0. `ddd check --baseline` behaves the same (`:600`). Whether `-W`
+  should follow `--strict` into "the baseline's warnings are its own" is the maintainer's;
+  either answer is one line at `:1408`.
+- Pass 4 Minor 10 (the example plugin's header): `examples/plugins/ddd_layout.py:255` takes
+  `sizeof(EngineHours)` and `&EngineHours` of names it never declares. It compiles after
+  `ddd_globals.h` or after `Storage.h` (gcc `-Wall -Wextra -Wpedantic`, exit 0 both, and links
+  with `ddd_globals.c`) and fails alone (`'EngineHours' undeclared`). Because a stamped object
+  may be `local` to a component, declared in that component's header alone, the one header that
+  declares every stamped object is `ddd_globals.h` - which `README.md:627` reserves "for
+  `ddd_globals.c` only" and the generated file itself says components "shall include their own
+  interface header instead". So the header is meant for a translation unit that includes
+  `ddd_globals.h` first, and nothing in `docs/plugins.rst:239-242`, the module docstring
+  (`:1-12`) or the generated header says so. Fix: emit `#include "ddd_globals.h"` (pass 4's), and
+  say in the docstring that the table is for one dedicated translation unit.
+- Pass 4 Minor 11 and 12 stand as reported; `-t nonexistent_templates` still prints `no template
+  to render in 'nonexistent_templates'` (observed). Pass 4's write-step strengths hold through
+  the CLI probes here (staged writes, `unchanged`, case-variant clashes refused).
+
+### Open questions
+
+1. Should the command line bind a hook's and a plugin backend's stdout to stderr, as the server
+   does, or is a printing plugin the plugin author's problem to be documented (Important 1)?
+   The first changes `_analyze` and `render`'s call site; the second changes `docs/plugins.rst`.
+2. Should `dump -o`, `--renames` and `--dictionary` refuse a target that is one of the run's
+   sources (Important 2)? Yes changes three sites in `cli.py`; no leaves a one-keystroke way to
+   destroy a description file.
+3. Who owns the output directory (Important 3): `ddd generate` removing what it no longer writes
+   (a manifest), or the module declaring the per-component headers as `BYPRODUCTS` from names
+   read at generate time? The first also fixes `ninja -t clean`; the second only the clean.
+4. Should `load_address_map` range-check only the symbols the a2l uses (Important 4)? Yes makes
+   the documented recipe work on every host and changes `options.py:59-61`; no keeps pass 4's
+   "refused whether or not DDD knows the symbol" and rewrites the recipe on the page.
+5. Is a comparison finding's `location.path` absolute (the page) or as typed (the code)? Settled
+   here in favour of the page; the maintainer's answer changes either `cli.py:602, 609, 649,
+   712, 1391` and `loading.py:1103` or `docs/consistency_checks.rst:975` and
+   `docs/comparing_deliveries.rst:589-590`.
+6. Should `-W` reach a description baseline's own analysis while `--strict` does not
+   (`cli.py:1408`)? The answer changes that line or `SPEC.md:1393-1396`.
+7. Should `--plugin` be refused beside a description on either side, as section 7 and the CLI
+   page say, or beside a project candidate only, as 3.11 and the code do (Minor 11)?
+
+### Test gaps
+
+- A plugin printing to stdout under `check --format json`, `generate --format json`, `dump` and
+  `dump -o` (`tests/test_plugins.py`; only the server case exists at `:2154`).
+- `dump -o`, `--renames` and `--dictionary` pointing at a file the run read
+  (`tests/test_cli.py`).
+- Removing a component from the link graph: the header survives, `ninja -t clean` leaves it,
+  and the rebuild afterwards (`tests/test_cmake.py`).
+- The documented address-map recipe on the host toolchain, and a map with an out-of-range entry
+  for a symbol the dictionary does not carry (`tests/test_cmake.py`, `tests/test_cli.py`).
+- A build record naming an unknown check under the server (`tests/test_lsp.py`; carried over).
+- `allow_abbrev`: `--stand` and `--dict` refused (`tests/test_cli.py`).
+- A hook raising a `BaseException` subclass, and `KeyboardInterrupt` reaching `main`
+  (`tests/test_plugins.py`, `tests/test_cli.py`).
+- A check hook mutating a block: what the backends and the dump see (`tests/test_plugins.py`).
+- `ddd id --assign` with an unwritable file among several (`tests/test_cli.py`).
+- A component broken at configure time and its `<target>.ddd` target after the fix
+  (`tests/test_cmake.py`).
+- An image registering no component built under `-Wpedantic -Werror` (`tests/test_cmake.py`).
+- The comparison findings' `location.path` and their text order against the candidate's own
+  findings, typed relative and absolute (`tests/test_cli.py`; pass 3's).
+- The pre-commit hook end to end (`pre-commit try-repo`) - nothing runs it;
+  `tests/test_documentation.py` reads the yaml only.
+- `STRICT` with a partial `ADDRESS_MAP`, `NAME` defaulting, `DDD_A2L`, `NO_PROPAGATE_HEADERS`,
+  `LINK_LIBRARIES`, `OUTPUT_DIRECTORY`, `DEPENDS` through the module (`tests/test_cmake.py`;
+  carried from the previous list).
+
+### Assessment
+
+The tool interface is in better shape than the previous review left it: every option, exit
+code, stream and ordering of section 7 that I exercised behaves as the spec and the reference
+page now say, the plugin boundary closed every hole the previous pass 8 opened (import
+registration, path confinement, `sys.exit`, factory and `generate` results, findings kept
+through a failing step), the CMake module regenerates on every dependency it declares and
+refuses every misuse with a message that names the fix, and the pre-commit hook installs and
+runs from a checkout. What remains is at the edges where the tool meets the world outside its
+own analysis: stdout is not the tool's alone while a plugin runs, an output path may be one of
+the run's inputs, the output directory keeps what the image no longer has, the one documented
+recipe for the second half of the two-run flow does not survive a 64-bit host, and the language
+server still dies on a record from a newer build. None of the four Important findings of this
+pass requires a design change; each is a guard or a redirection at one site, and the spec
+sentences they touch are already right.

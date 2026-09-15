@@ -1095,3 +1095,349 @@ which the spec has not yet said either way. And one contract of the reference pa
 `location.path` in json - is broken for exactly the findings a comparison produces. The rest are
 small consistencies in where a finding sits or which census a check reads, and three prose
 drifts between the docs table and the spec.
+
+## Pass 4: the generated artefacts, the address information and the dictionary (SPEC.md sections 5 and 6)
+
+### Scope covered
+
+Read in full: `SPEC.md:1508-1781`; `src/ddd/ir.py`; `src/ddd/backends/__init__.py`, `base.py`,
+`c/{__init__,backend,literals,model,options,types}.py`,
+`a2l/{__init__,backend,model,options,types}.py`, `a2l/templates/project.a2l.jinja`;
+`src/ddd/build_info.py`; the five `examples/templates/*.jinja2`;
+the dictionary reader `src/ddd/loading.py:420-467`; the checks the outputs depend on
+(`src/ddd/analysis.py:127`, `:1540-1585`, `:1648-1668`, `:1860-1885`, `:2325-2370`, `:2440-2502`,
+`:2900-2937`, `:3020-3045`, `:3085-3165`, `:3200-3225`, `:3273-3289`); the models the backends call
+(`src/ddd/models/common.py:40-160`, `:160-340`, `objects.py:1-200`, `:400-450`, `:750-870`,
+`conversion.py:30-309`, `constants.py`, `component.py:30-100`, `sections.py:1-60`);
+`src/ddd/cli.py:60-130`, `:187-260`, `:420-560`, `:677-1010`, `:1356-1490`;
+`docs/generated_artefacts.rst`, `docs/templates.rst`, `docs/data_dictionary.rst`,
+`README.md:600-725`, `CHANGELOG.md:1-90`, `docker/compile.sh`, `docker/verify_symbols.py`,
+`docs/superpowers/specs/2026-09-10-string-conversion-design.md` (whole, section 7 in detail);
+`previous-review.md:1124-1248`; the forwarded items of `reports/pass-1.md`, `pass-2.md` and
+`pass-3.md`.
+
+Ran (scratch under `scratchpad/pass-4/`): `ddd generate all ... --dictionary` on
+`examples/demo` (plain and `--const-inputs`), `examples/structures`, `examples/vocabulary`,
+`examples/layout`, `examples/pressure/release`, on `examples/demo/components/controller.ddd.json`
+alone and on `examples/inconsistent` with `--force`; `ddd dump`, `ddd dump -o` and
+`ddd schema dictionary` for each; a reproduction of `docker/compile.sh` with MinGW gcc 13.1
+(`compile.sh`: one translation unit per header including it twice, `-std=c11 -Wall -Wextra
+-Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual -Wstrict-prototypes`, link, run, `nm` against
+`docker/verify_symbols.py`) on every generated directory, the demo also with `-DFEATURE_X`; an A2L
+well-formedness checker (`a2lcheck.py`: block nesting, every reference resolved, field counts,
+number spellings, encoding) and a schema validator (`dictcheck.py`, `jsonschema`) on every A2L and
+dictionary; 28 probe projects written by `probes.py` (strings, every datatype in every shape and
+kind, structures with arrays and bits and strings, enums, constants, broadcast, descriptions with
+comment and quote injection, a2l options with sections and rasters, empty projects, names at the
+cap and differing by case, five name clashes, the axis whose input is an instance, dangling
+references under `-W unknown-reference=ignore`, float underflow, compu method sharing, four
+dimensions, limits artefacts); 30 template and write-step scenarios (path clashes including case,
+helper-only and nonexistent directories, undefined names, syntax errors, `1/0`, a per-component
+error, an include escaping the directory, `--dictionary` clashes including case and `sub/..`,
+`--dry-run --format json`, an output directory that is a file, a target that is a directory,
+stale staging files, mtimes); 12 address maps on the demo and the two-run flow; the demo with
+its components included in another order; `--byte-order big`.
+
+### Strengths
+
+- Every example and every probe that the checks admit compiles warning-free under the CI flag
+  set, links, runs, and `nm` agrees with the dictionary (`22 of 23 declared variables are
+  defined, conditional, absent : ValueG` for the demo; 23 of 23 with `-DFEATURE_X`; the same with
+  `--const-inputs`; 88 objects of 11 datatypes in 8 shapes and kinds; 80 leaves of nested
+  structures with arrays, bitfields and strings).
+- The C literals are right at every extreme probed: `(-9223372036854775807LL - 1)`,
+  `18446744073709551615ULL`, `4294967295U`, `3.4028234663852886e+38F`, `1e-07F`, `1e+308`, `-0.0`,
+  `1`/`0` for booleans, the string literal `"a\"b\\c\?d\?\?/e\?\?=f%g//h/*i*/j'k"`, a scalar init
+  broadcast over `[2][2][2]` and over a curve's and a map's axis-given shape, arrays declared by
+  a constant's name (`Cu[C_N]`) and sized by its value, `const volatile` composed on every kind.
+- Every A2L generated (5 examples, 26 probes, the single component, the forced inconsistent
+  project) passes the checker: balanced blocks, every `AXIS_PTS_REF`, input quantity, conversion,
+  layout, `COMPU_TAB_REF` and group reference defined, three-value `MATRIX_DIM` reversed
+  (`[2][3]` -> `3 2 1`), `ASCII` with `NUMBER` for calibration strings and members,
+  `UBYTE`/`SBYTE` arrays with the `ANNOTATION` for string measurements, `IF_DATA XCP` from the
+  object's raster or the component default and none without, `FORMAT`/`DISPLAY_IDENTIFIER` on
+  all three record kinds, the export closure pulling a hidden axis and its input, `GROUP`s in
+  declaration order with leaves after plain objects, `MOD_PAR` only with constants, `MSB_FIRST`
+  under `--byte-order big`.
+- Section 6 holds in every scenario: empty map silent, partial map `address-missing` naming the
+  uncovered symbols and the unused keys in a note, `--strict` writes nothing, `--force` writes and
+  exits 1, `[1]`, `1.5`, `true`, `"1e3"`, `-1`, `0x100000000` refused as usage errors with the
+  symbol named, `" 0X20 "` read, and the post-link `generate a2l` run changes only the four
+  address fields of the file the first run wrote.
+- Determinism: byte-identical output from two runs, two directories and two working
+  directories; an unchanged rerun reports `unchanged` and leaves the mtime; a stale
+  `.ddd-staging` is overwritten and removed; `--dry-run` creates not even the directory;
+  `dump -o` and `--dictionary` are byte-identical and equal to `dump`'s stdout modulo the
+  console's newline; every dictionary validates against `ddd schema dictionary` with exactly the
+  fourteen top-level keys of 5.3, format 8.
+- The write step's promises hold under failure: a template error, a clash (two templates, a
+  template against the A2L, a case variant on Windows, `--dictionary` on an artefact by another
+  spelling) or a directory in the way leaves no file and no staging file behind; the one
+  documented exception (an already-renamed update) is exactly what happens.
+- The template contract is documented completely: every attribute the c model exposes
+  (`CodeModel`, `ObjectView`, `MemberView`, `StructView`, `ComponentGroup`, `DeclarationView`,
+  `ComponentHeaderView`, `ConstantView`, `EnumView`, `SectionGroup`, `guard()`) is in
+  `docs/templates.rst:164-341`, every documented one exists, `StrictUndefined` and the helper
+  rules behave as described, and the example templates use nothing undocumented.
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **A description containing `/*` produces a header that fails the CI flag set**
+   (`src/ddd/backends/c/literals.py:132`: `return collapsed.replace("*/", "* /")`). Trigger: any
+   `description` (or `unit`, enumerator, member, structure or constant description) containing
+   `/*`, for example `"opens a comment /* inside"` -> the example templates write
+   `/** opens a comment /* inside */` and gcc reports `D.h:25:21: error: "/*" within comment
+   [-Werror=comment]` in every header and in `ddd_globals.c` (probe `descriptions`; `-Wcomment` is
+   in `-Wall`, and `-Werror` is the set `docs/generated_artefacts.rst:365-366` verifies with).
+   `docs/templates.rst:265-267` promises `.comment` is "already defused, so that a `*/` in a
+   description cannot end the comment"; the opening marker is the other half of the same
+   promise. Fix: `sanitize_comment` also replaces `/*` (and `//` is harmless but could go the
+   same way), with a test beside `tests/test_generation.py:98`.
+
+2. **Non-ASCII units and descriptions reach the 1.61 A2L as raw UTF-8 with nothing declaring
+   it** (`src/ddd/backends/a2l/model.py:659-662`: `a2l_string` escapes `\` and `"` and replaces
+   control characters, passes everything else; `SPEC.md:1613` "Files are written UTF-8"). Trigger:
+   `"unit": "°C"` - the most common non-ASCII unit - or a description with `é` -> `RAT_FUNC
+   "%8.3" "°C"` as the bytes `C2 B0`, no byte order mark (probes `descriptions`, `compu`;
+   `a2lcheck.py` flags `°`, `²`, `µ`, `é`, `Ω`, `中`). ASAP2 1.6.1 has no encoding declaration
+   (`ENCODING` arrives with 1.7, which the string design at
+   `docs/superpowers/specs/2026-09-10-string-conversion-design.md:40-42` acknowledges for the
+   string *content* it therefore restricts to ASCII), so a reader either applies its code page
+   and shows `Â°C`, or refuses the token. The backend already knows how to transliterate: the
+   method *name* for `°C` is `CM_LIN_DEGC` (`_UNIT_WORDS`, `:631-641`) while the unit *string*
+   beside it is not. Unconfirmed against a calibration tool - opening the probe's A2L in CANape
+   would confirm which of the two outcomes it is. Fix: decide the policy (transliterate the
+   quoted strings with the same table, write a BOM, or report an `a2l-unrepresentable`-style
+   warning for non-ASCII text) and say it in 5.2.
+
+3. **Derived limits are written as the binary product, so an A2L upper limit can fall below the
+   physical value of the datatype's own maximum** (`src/ddd/models/conversion.py:279-281`:
+   `low = conversion.to_physical(raw_min)` ... in double arithmetic;
+   `src/ddd/backends/a2l/model.py:372-373` and `:397-398`: `format_number(entry.limits.min)`).
+   Trigger: `uint8` under `{"factor": 0.03}` with no `limits` -> `UBYTE CM_LIN_U 0 0 0
+   7.6499999999999995` (probe `limits-verdict`), `sint16` under `0.7` -> `22936.899999999998`,
+   `sint16` under `0.1` -> `3276.7000000000003` (`examples/layout` itself:
+   `LayoutDevice.a2l:42` `SWORD CM_LIN_DEGC 0 0 -3276.8 3276.7000000000003`), an `sint64` under
+   `{"factor": 1}` -> `-9.223372036854776e+18 9.223372036854776e+18`, one past the raw range. The
+   dictionary carries the same numbers (`"max": 3276.7000000000003`). A calibration tool that
+   enforces the limits then refuses the physical value of raw 255 (`7.65`), and the engineer
+   reading the file sees a limit that is not the one the description implies. The tool itself
+   knows the arithmetic is approximate: `ddd check` accepts a stated `max: 7.65` against the
+   derived `7.6499999999999995` only through `rel_tol=1e-9` (`src/ddd/analysis.py:3284-3289`),
+   and a reading is rounded to 12 significant digits for exactly this reason
+   (`conversion.py:299-306`), but the limit written to the file and the dump is not. Fix: round
+   the derived physical range the way readings are rounded (or compute it from the decimal
+   spelling), in `physical_range`, so every consumer gets `7.65`.
+
+4. **An axis whose `input` names a structured measurement instance binds the A2L to a name that
+   has no record** (carried over from pass 3 Important 1, confirmed from the backend:
+   `src/ddd/backends/a2l/model.py:412` `input_quantity=axis.references.get("input") or
+   NO_INPUT_QUANTITY,` and `:425`, written verbatim; `_resolve_exported`, `:312-323`, pulls only
+   what `by_name` - the plain objects - holds, so the instance is never a record). Trigger (probe
+   `axis-input-instance`): structure `S_t {a}`, instance `Inst`, axis `Cx` with `"input":
+   "Inst"`, a curve over `Cx` -> `ddd check` is clean, and the A2L carries `AXIS_PTS Cx ...
+   0x00000000 Inst RL_AXIS_UWORD ...` and `COM_AXIS Inst NO_COMPU_METHOD 2 0 65535` while the
+   only measurement is `Inst.a` (`a2lcheck.py`: "AXIS_PTS Cx input: references MEASUREMENT
+   'Inst', which is not defined"). What a tool sees is an unresolved input quantity: the ASAP2
+   checkers report it, and a tool either drops the reference or refuses the module - the outcome
+   `SPEC.md:1698-1701` argues the closure exists to prevent. Fix: pass 3's (refuse a structured
+   target of `input` as `reference-kind`); in the backend, a defensive fallback to
+   `NO_INPUT_QUANTITY` when the name is not in `self._by_name`.
+
+#### Minor
+
+1. **A runtime error inside a helper template is reported at the helper's line under the
+   importing template's name** (`src/ddd/backends/base.py:294` `where = f"template
+   '{template_name}'"`, `:311-317` `_template_line` takes the deepest jinja frame's line only).
+   Trigger: `_h.jinja2` with `{{ none.x }}` on its line 4, imported and called from line 6 of
+   `bad.h.jinja2` -> `ddd: cannot render template 'bad.h.jinja2', line 4: 'None' has no attribute
+   'x'`; line 4 of `bad.h.jinja2` is blank. Fix: read the template name off the same frame
+   (`f_globals["__jinja_template__"].name` or `f_code.co_filename`) and name it when it differs.
+
+2. **The example type header, and every header of an object-less project, is an empty
+   translation unit under `-Wpedantic -Werror`** (`examples/templates/ddd_types.h.jinja2:6-11`
+   includes `<stdint.h>` only when an integer datatype exists; `docker/compile.sh:67-69`
+   compiles every header alone). Trigger: a project whose objects are all `float32`/`float64`
+   (probe `float-underflow`), or a constants-only or empty component (`onlyconstants`,
+   `noobjects`) -> `tu_ddd_types.c:4: error: ISO C forbids an empty translation unit
+   [-Werror=pedantic]`, and for the empty project `ddd_globals.c` fails the same way. The
+   shipped verification therefore fails on a legitimate float-only project. Fix: have the
+   example type header always include `<stdint.h>` (or `<stddef.h>`), or give the harness's
+   translation units one declaration.
+
+3. **`float32` init below the subnormal range still compiles to an error** (previous review
+   Minor 2, still open; `src/ddd/analysis.py:2358` checks magnitude against `raw_max` only).
+   Trigger: `"init": 1e-50` on a `float32` -> no finding, `float F32Tiny = 1e-50F;`, gcc `error:
+   floating constant truncated to zero [-Werror=overflow]` (probe `float-underflow`; `1e-40`, a
+   denormal, compiles). Fix: `init-invalid` when `struct.pack("f", value)` rounds a non-zero
+   value to zero.
+
+4. **A `#define` of an extreme whole constant is not the literal its author meant**
+   (`src/ddd/backends/c/model.py:195-197` "it is already a c literal of the type its author
+   meant"; `examples/templates/ddd_types.h.jinja2:23`). Trigger: `"value":
+   -9223372036854775808` or `18446744073709551615` (both accepted since constants hold any
+   number) -> `#define C_I64MIN -9223372036854775808`, `#define C_U64MAX 18446744073709551615`;
+   used in an expression gcc says `warning: integer constant is so large that it is unsigned`
+   (probe `constants`, `use_constants.c:2:39` and `:2:72`), and the first is the unsigned
+   `9223372036854775808` negated rather than `INT64_MIN` - the very case `c_literal`
+   (`literals.py:31-36`) spells out for an init. Fix: offer a `literal` (or `c_literal`)
+   property on `ConstantView` built by `c_literal`'s rules, and temper the docstring.
+
+5. **A scalar `init` is carried unexpanded although the field says "nested to match shape"**
+   (`src/ddd/ir.py:187-189`; previous review pass 7 design note 5, unchanged). Evidence: the
+   demo's `ValueB` dumps as `"init": 0` with `"shape": [4]` while `ValueK` dumps as a nested
+   list; `src/ddd/backends/c/literals.py:87` broadcasts it (`broadcast(entry.init,
+   entry.shape)`). `SPEC.md:1745` lists `init` without saying which; a third-party generator
+   reading the dictionary has to know to broadcast. Fix: say it in 5.3 and in the docstring (or
+   normalise in the analysis). The other half of that note also stands: `leaves` grows with
+   every element of an array of structures (80 leaves for three instances in probe `structs`).
+
+6. **`ResolvedComponent.source` docstring says "Path of the description file"** (`src/ddd/ir.py:98`;
+   previous Minor 6, still open). The dump carries the file name (`"source":
+   "controller.ddd.json"`, `"event_logger.ddd.json"` for a file two directories down), which is
+   what keeps the banner machine-independent. Fix: "file name".
+
+7. **The container transcript in the docs counts the demo before the strings landed**
+   (`docs/generated_artefacts.rst:399-402`: `20 of 21 declared variables are defined` /
+   `21 of 21`). The demo now has 22 objects and one instance: `compile.sh` prints `22 of 23`
+   and `23 of 23`. Fix: update the transcript (it is outside `tests/test_transcripts.py`).
+
+8. **`_UNIT_WORDS` transliterates `°`, `µ`, `Ω` and `%` but not `²` and `³`**
+   (`src/ddd/backends/a2l/model.py:631-641`). Trigger: `"unit": "m/s²"` -> method
+   `CM_LIN_M_PER_S`, the same name `m/s` would get, so whichever is met second becomes
+   `CM_LIN_M_PER_S_2` (probe `compu`: `m/s^2` -> `CM_LIN_M_PER_S2`, `m/s²` -> `CM_LIN_M_PER_S`,
+   `m per s` -> `CM_LIN_M_PER_S_2`). Deterministic, but the readable name the docs promise
+   (`docs/generated_artefacts.rst:790-792`) is lost for the spelling most people type. Fix: add
+   `"²": "2"`, `"³": "3"`.
+
+9. **5.2 says "`COMPU_VTAB` per enum"; a table is written only for an enum some record uses**
+   (`SPEC.md:1637`, `docs/generated_artefacts.rst:682-683` "one per enum conversion";
+   `src/ddd/backends/a2l/model.py:739-750` creates the table from `reference()`). Evidence:
+   `examples/structures` dumps `SensorMode_t` under `enums`, and `StructuredDevice.a2l` has no
+   `COMPU_VTAB` because its only user is a `bits` member. Right behaviour; the sentence should
+   say "per enum a record refers to".
+
+10. **The example plugin's header does not compile on its own**
+    (`examples/plugins/ddd_layout.py:255` `sizeof({entry.name}), &{entry.name}` without any
+    include of a declaration, `:261`).
+    Trigger: `compile.sh` on `examples/layout` -> `ddd_layout.h:18:23: error: 'EngineHours'
+    undeclared here`. `docker/compile.sh` accepts any project and compiles every header alone,
+    so the shipped example fails the shipped harness. Fix: emit `#include "ddd_globals.h"` (or
+    document that the header is to be included after a component header).
+
+11. **Windows file-name traps are not anticipated for a generated header**
+    (`src/ddd/analysis.py:1648-1668` checks component names for case only). Two mechanisms,
+    both unconfirmed here: a component
+    named `Aux`, `Con`, `Nul`, `Prn`, `Com1`..`Com9` or `Lpt1`..`Lpt9` asks for a file Windows 10
+    cannot create (`Aux.h` is a device name; this Windows 11 build creates it, so only an older
+    Windows would confirm it); and a 128-character component name in a build directory a hundred
+    characters deep exceeds `MAX_PATH` without long-path support - observed: `ddd: cannot write
+    '.../Cyyy...yyy.h': No such file or directory` (277 characters, probe `names`), the run
+    rolled back cleanly. Both end as usage errors, not crashes; the second message could say
+    the path is too long.
+
+12. **A nonexistent or non-directory `-t` is reported as an empty one** (previous Minor 3,
+    still open; `src/ddd/backends/c/backend.py:94-101`): `-t does-not-exist` and `-t
+    examples/templates/_macros.jinja2` both print `no template to render in ...`.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| I1 | dangling references reach both artefacts once `unknown-reference` is ignored | fixed for objects: they leave the dictionary with `incomplete-project` (probe `dangling`: no record, no definition); the verbatim `input` remains and is this pass's Important 4 for a structured target | `src/ddd/analysis.py`, `src/ddd/backends/a2l/model.py:412`, `:425` |
+| I2 | `COMPU_METHOD` sharing key omits the display format in the spec | fixed | `SPEC.md:1633-1637`, `:1675-1683` |
+| I3 | export closure: an axis exported in its own right pulls its input | fixed | `SPEC.md:1698-1701` |
+| I4 | the display-format rule of 5.2 does not describe what is emitted | fixed | `SPEC.md:1688-1693` |
+| I5 | JSON `true`/`false` accepted as an integer init | consciously left (brief) | `src/ddd/models/objects.py:33` |
+| I6 | A2L file name and output directory not in 5.2 | fixed | `SPEC.md:1660-1661` |
+| I7 | docs name `ddd list --format json` for the symbol check | fixed | `docs/generated_artefacts.rst:396` |
+
+Minor: 1 fixed (`base.py:116` "rename the component or the template"), 4 fixed (`cli.py:244-247`),
+5 fixed (`README.md:626`), 7 fixed (`SPEC.md:1764` "JSON integer"); 2, 3 and 6 still open (this
+pass's Minor 3, 12 and 6).
+
+Spec gaps proven from code, previous list: closed - the A2L file name and `-o` (`SPEC.md:1660`),
+the record order inside `MODULE` and leaves after plain objects (`:1652-1658`), what a `GROUP`
+references (`:1643-1647`), the method key and which collision keeps the bare name (`:1675-1683`),
+the base datatype of an enum-converted object (`:1559-1561`), declaration order in a component
+header versus name order in the definition file (`:1604-1608`), `<unresolved>` (`:1608-1610`),
+`address-missing` in section 6 (`:1771-1776`), the default format on the method (`:1691-1693`),
+`boolean` under a linear conversion (`:1689-1690`), `MaxDiff 0`, `DIRECT` and `INDEX_INCR`
+(`:1630-1631`, `:1687-1688`), control characters in strings (`:1694-1695`). Still unstated: the
+address map's whitespace stripping and `-0x` (`a2l/options.py:73-74`), the fallback of the
+`HEADER`/`PROJECT`/`MODULE` text to the project name (`a2l/model.py:285`), `--dry-run` creating no
+directory, the "no template" message for a nonexistent directory.
+
+Test gaps of the previous list: `MOD_COMMON` `ALIGNMENT_*`, `HEADER` with `PROJECT_NO`/`VERSION`,
+the `_2` suffix, `boolean` records, the axis-input dangling case and the `float32` underflow
+are still untested (`grep` finds none of them in `tests/`); `BYTE_ORDER` with `MSB_FIRST` is
+covered (`tests/test_a2l.py`), and `tests/test_cli.py` now reads `dump`'s stderr.
+
+Forwarded items, settled from code: pass 1 Minor 4 and pass 2 Minor 4 - constants are not
+carried "as written" (`SPEC.md:956`): `1e3` becomes `#define C_1E3 1000.0` and `SYSTEM_CONSTANT
+"C_1E3" "1000.0"` (`a2l/model.py:291` `value=str(entry.value)`, the template's `{{ constant.value
+}}`), `2.5` and `-0.0` stay, so the outputs carry Python's shortest round-trip spelling of the
+parsed number and keep only its type. Pass 1 Minor 6 - a string's `init` is dumped as the JSON
+string as written (`"init": "OFF"`, `"conversion": {"kind": "string"}`), an integer or list init
+on a string object as numbers (`ListInit` dumps `[72, 105, 0, 0]` and still becomes an `ASCII`
+record). Pass 1 Minor 10 - `references` carries `axis` for a curve, `x_axis` and `y_axis` for a
+map, `input` for an axis and nothing else (`ir.py:212-213` says "keyed by field name"); a leaf's
+`a2l.export` is the instance's and the member's answers folded into one boolean
+(`analysis.py:2912`, `_carries` reads only it); the `owner` of an unowned object is `null` in the
+dictionary and `<unresolved>` in the c (`ir.py:215`, `c/model.py:523`). Pass 2 Important 1 -
+a nested quoted number reaches the outputs as the number the loader read (`{ 1U, 2U }`); the
+outputs add nothing to that finding. Pass 3 Important 1 - confirmed above (Important 4).
+
+### Open questions
+
+1. Which encoding policy the 1.61 A2L should have for non-ASCII units and descriptions
+   (Important 2): transliterating the quoted strings with the `_UNIT_WORDS` table, writing a
+   BOM, or a warning. The answer decides whether `°C` may appear in a description file of a
+   project that generates an A2L.
+2. Whether derived limits should be rounded to 12 significant digits like readings or computed
+   from the decimal spelling (Important 3); either changes the dictionary of every project with a
+   decimal factor and therefore every archived baseline's `changed-interface` verdict on limits.
+3. Whether the shipped verification (`docker/compile.sh` and the example templates) is meant to
+   hold for a float-only or object-less project (Minor 2), and for the example plugin (Minor 10).
+4. Whether `ConstantView` should offer a C literal (Minor 4) now that constants hold any number,
+   or the template contract should say the value is the bare number.
+
+### Test gaps
+
+- A description, unit or enumerator text containing `/*` renders a comment gcc accepts
+  (`tests/test_generation.py`, beside the `*/` case at line 98).
+- A non-ASCII unit in the A2L, whatever the policy becomes (`tests/test_a2l.py`).
+- The spelling of a derived limit under a decimal factor (`7.65`, not `7.6499999999999995`) in
+  the A2L and the dictionary (`tests/test_a2l.py`, `tests/test_analysis.py`).
+- An axis whose `input` is a structured instance (`tests/test_analysis.py`, `tests/test_a2l.py`).
+- A helper template raising: the message names the helper (`tests/test_generation.py`).
+- The compile harness on a float-only and on an empty project (`tests/test_cmake.py` or the
+  container target).
+- `MOD_COMMON` alignments, `HEADER` fields, the `_2` suffix on a colliding method name, a
+  `boolean` measurement and characteristic, and `float32` underflow - carried from the previous
+  list (`tests/test_a2l.py`, `tests/test_generation.py`).
+- `--dictionary` refused for a case variant of an artefact path, and `render`'s clash on a
+  case variant of a `{component}` file (`tests/test_cli.py`, `tests/test_backends.py`; a
+  `WindowsPath`-only behaviour, so the test has to be platform-aware).
+
+### Assessment
+
+Sections 5 and 6 hold up under everything that could be compiled or checked: five examples and
+twenty-six probes covering every datatype, shape, kind, conversion and structure form compile
+warning-free under the CI flag set and link to exactly the symbols the dictionary promises,
+every A2L is well-formed with every reference resolved, the address map behaves as section 6
+says in twelve variants, the dictionary validates and round-trips, and generation is
+deterministic to the byte with a write step that fails cleanly. The defects are at the edges of
+text and arithmetic rather than in the mapping: a `/*` in a description breaks the compile that
+`*/` was defused for, non-ASCII text reaches a format that cannot declare its encoding, derived
+limits carry binary artefacts that the tool's own check knows to tolerate but the file does
+not, and the one dangling reference left after the previous fix - an axis input naming a
+structured instance - still writes a name the A2L does not define. None of the four needs a
+design change; each is a few lines in one place, and the strings, constants and dictionary
+work that landed since 0.9.0 is implemented as its design says.

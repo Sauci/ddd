@@ -2285,3 +2285,374 @@ showing and, through the candidate comparison, adds three wrong `missing-produce
 top. Add the rename computed over a project a file of which did not load, the carried-over exit
 on an unknown check, the enum rename box and the doubled findings of two records, and the list
 is six Important, all reproduced over pipes with transcripts, each with a one-line fix.
+
+## Pass 7: the remaining documentation, the repository machinery and release readiness
+
+### Scope covered
+
+Read in full, with line numbers: `docs/getting_started.rst`, `docs/concept.rst`, `docs/faq.rst`,
+`docs/data_contracts.rst` (as a page), `docs/developer_documentation.rst`, `docs/acronyms.rst`,
+`docs/index.rst`, `docs/conf.py`, `docs/_static/css/custom.css`, `docs/_static/js/versions.js`,
+`docs/_templates/versions.html`; `README.md` and `CHANGELOG.md` whole; `LICENSE`; `pyproject.toml`;
+the three `requirements*.txt`; `.github/workflows/ci.yml`, `docs.yml`, `publish.yml` (the
+`versions.json` writer read as Python); `docker/Dockerfile`, `docker/compile.sh`,
+`docker/verify_symbols.py`, `docker-compose.yml`; `.gitattributes`, `.gitignore`, `.dockerignore`,
+`.pre-commit-hooks.yaml`; the tree under `examples/` and where each file is referenced; the status
+lines, section 2 and the deferred lists of the five `docs/superpowers/specs/*.md`;
+`assets/logo/README.md`; `src/ddd/__init__.py`; `editors/vscode/package.json`;
+`tests/test_documentation.py` and `tests/test_transcripts.py` in full, `tests/test_backends.py`
+1-125; `SPEC.md` section 2; `git log v0.9.0..master` and the diff of `src/ddd/ir.py`,
+`src/ddd/backends/c/model.py`, `src/ddd/cli.py` (the argparse additions) and
+`schemas/ddd_dictionary.schema.json`; `previous-review.md:1422-1564`; the six reports of this
+review for what they say about `CHANGELOG.md`.
+
+Ran (scratch directory `scratchpad/pass-7/`; this pass was started once before and interrupted,
+and the runs of that attempt - `build.log`, `tutorial.sh`/`tutorial.log`, `faq_transcripts.py`/
+`.log`, `linkcheck.sh`/`.log` - were reused after reading their scripts; everything else below is
+this attempt's):
+
+- `python -m build --outdir dist` from a fresh venv: `ddd_tool-0.9.0.tar.gz` (201 files) and
+  `ddd_tool-0.9.0-py3-none-any.whl` (59 files); both listed against `pyproject.toml:70-96`; the
+  wheel compared file for file with the 0.9.0 wheel on PyPI (same 59 names).
+- The wheel installed into a fresh venv and the whole getting-started tutorial run from a
+  directory outside the repository (`tutorial.log`), then `ddd check` on the nine example
+  projects, `ddd compare` on the pressure deliveries, `ddd list` on the demo, `ddd schema all`.
+- The sdist unpacked, `pip install -e ".[dev]"` from inside it, `python -m pytest` with MinGW gcc
+  on the PATH (`sdist_suite_full.log`): **2284 passed, 1 failed** (the known symlink test),
+  **coverage 100.00%** (6514 statements, 1938 branches), 10 min 26 s in the cold venv.
+- `pip index versions ddd-tool`: 0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.0.
+- `sphinx-build -b linkcheck` with `JAVA`/`PLANTUML_JAR` set (`linkcheck.log`), the three links
+  it called broken re-fetched with `curl`; `gh api` on the environments, the Pages configuration,
+  the releases and the last eight runs on master; `https://sauci.github.io/ddd/versions.json` and
+  the root redirect fetched.
+- The FAQ and data-contracts transcripts the transcript test cannot run, reproduced on files
+  written for the purpose (`faq_transcripts.log`, `mine/faq1`, `mine/axis`); the changelog's
+  behaviours exercised (`mine/cl`: `dump -o` three ways, `--dictionary`, `--standalone` on
+  `list`/`dump`, constants `2.0`/`-3`/`0`/`0.5` and `dimension-value` under `--standalone`, a
+  quoted `"12"` init); `docker/compile.sh` run with MinGW gcc on a copy whose only edit is the
+  path of `verify_symbols.py`, plain and with `CDEFS=-DFEATURE_X`.
+- `sphinx-build -M latex` produced `ddd.tex` (earlier attempt); no LaTeX distribution here, so
+  `latexpdf` is unconfirmed.
+
+### Strengths
+
+- What would be released installs and works: the wheel carries `ddd/cmake/Ddd.cmake` and the five
+  templates, `ddd cmake-dir` and `ddd templates-dir` find them after a clean install, and the
+  tutorial reproduced byte for byte from outside the repository - every command, the exit codes
+  0/1/2, the six `created` then `unchanged` lines, the two a2l excerpts, `--const-inputs`, the
+  refusal after the edit and `--force` writing six files at exit 1.
+- The sdist is now self-contained: its suite runs to the same result as the checkout's (2284
+  passed, the coverage gate met), it carries `assets/`, `editors/vscode/`, the workflows and the
+  hook definition, and not `docs/superpowers/`.
+- The transcripts the test cannot reach hold too: twelve FAQ and data-contracts scenarios
+  reproduce the page's lines (the only extra lines are `missing-id` infos on files written
+  without ids), including the `SpeedAxis`/`InjectionTime` a2l excerpt and the "1 variable in 2
+  components" wording.
+- Every `examples/` path and every `:doc:` target quoted on the pages exists; every example file
+  is bound to its schema; the nine example projects do what their pages say (demo 23/4,
+  inconsistent 4 errors 1 warning, layout with its plugin 3/1, structures 9/2, vocabulary 4/1,
+  pressure release->work 2 errors 1 warning 1 info, "cannot replace").
+- The changelog entries exercised describe the tool: `dump -o` leaves an unchanged file and a
+  file of an unreadable project alone and names the file in the json report, `--dictionary` on an
+  artefact's path is refused, `list`/`dump --standalone` lift `unknown-extension`, a constant
+  `2.0` reaches `#define GAIN 2.0` and `SYSTEM_CONSTANT "GAIN" "2.0"`, `dimension-value` is
+  reported at `dimensions[0]` and at `size` with `--standalone`, `"12"` is `init-invalid`. The
+  format history is consistent: 4 (0.5.0), 5 (0.7.0), 6 and 7 (0.8.0), 8 unreleased,
+  `DICTIONARY_FORMAT = 8`.
+- The release machinery is in the state the developer page describes: the site serves
+  `versions.json` with `stable: v0.9.0` and the root redirect, Pages is `legacy` from `gh-pages`
+  `/`, every release carries its `ddd-<version>.vsix`, the version is spelled in exactly the nine
+  files the page enumerates, and CI and Documentation are green on master today.
+- `docker/compile.sh` compiles, links and verifies the demo with MinGW gcc in both variants
+  ("22 of 23 declared variables are defined", "23 of 23"); no external link of the documentation
+  is broken (three `linkcheck` failures are this machine's certificate chain - all three answer
+  200/302 to `curl -k`; the marketplace `manage` page redirects to a sign-in, as expected).
+
+### Issues
+
+#### Critical
+
+None found.
+
+#### Important
+
+1. **`workflow_dispatch` can upload to PyPI from any ref with no tag, release or environment
+   check** (`.github/workflows/publish.yml:9-15`, `:131`). Trigger: a maintainer runs Publish with
+   `target: pypi` on a branch -> `test`, `build` and `publish-pypi` run, the tag check is skipped
+   (`:52` `if: github.event_name == 'release'`), and whatever `pyproject.toml` says is uploaded,
+   immutably, with no documentation directory (`docs.yml` publishes only `latest` on dispatch),
+   no `.vsix` (`:83` `if: github.event_name == 'release'`) and no tag. Nothing outside the file
+   stops it either: `gh api repos/Sauci/ddd/environments` reports `deployment_branch_policy: null`
+   for `pypi` and `testpypi`. Evidence: `if: github.event_name == 'release' || inputs.target ==
+   'pypi'`. Fix: drop `pypi` from the dispatch choices (the comment at `:3-5` calls dispatch the
+   TestPyPI dry run) or gate `publish-pypi` on `startsWith(github.ref, 'refs/tags/v')`, and add a
+   `v*` tag rule to the `pypi` environment.
+
+2. **A prerelease tag becomes the site's "stable" version and the root redirect**
+   (`.github/workflows/docs.yml:167-182`). Trigger: a release tagged `v0.10.0rc1` (which
+   `publish.yml` accepts once `pyproject.toml` says `0.10.0rc1`, and which `release: types:
+   [published]` fires for whether or not it is flagged pre-release) -> `order()` returns
+   `((0, 10, 0), False, "rc1")`, which sorts above every `(0, 9, 0, ...)`, so `stable =
+   tags[0]` is `v0.10.0rc1`, `index.html` redirects there and the menu labels it "(stable)".
+   Evidence: `return (numbers, match.group(2) == "", match.group(2))` and `stable = tags[0] if
+   tags else "latest"`; the docstring promises only that a prerelease sorts "behind the release
+   it leads to", which holds, but not behind the last final release. Fix: choose `stable` as the
+   newest tag whose suffix is empty (or skip a release whose `github.event.release.prerelease`
+   is true), keeping the prerelease in `versions`.
+
+3. **Every support pointer names a disabled issue tracker** (`README.md:45-46` "problems belong
+   in the [issue tracker](https://github.com/Sauci/ddd/issues)"; `pyproject.toml:37` `Issues =
+   ...`, which PyPI shows in the sidebar; `editors/vscode/package.json:15-18` `bugs` and `qna`).
+   Trigger: a user of the official release follows any of them -> `gh issue list` answers "the
+   'Sauci/ddd' repository has disabled issues" and the API reports `has_issues: false`; there is
+   no way to report anything. Fix: enable issues before tagging 0.10.0, or point the three at
+   where problems should go.
+
+4. **The FAQ says an array has no bound; the tool caps it** (`docs/faq.rst:609-611` "There is
+   no bound: a dimension is any integer of at least one ... and DDD caps neither the number of
+   dimensions nor their product"). Trigger: a reader sizes a buffer by the page -> `ddd check`
+   on `"dimensions": [10000001]` prints `error[schema]: 'Huge' has 10000001 elements; DDD
+   carries at most 10000000` (run here), and a structure over 100 000 leaves is refused the same
+   way; the caps are 0.9.0's own entry (`CHANGELOG.md:159-177`). Fix: state the four caps and
+   that a shape past one is `schema` where it is written.
+
+5. **"Nothing in the suite skips" is false by the page's own criterion**
+   (`docs/developer_documentation.rst:301-304` "A test that skips when a tool is absent reports
+   success without having run"; `tests/test_plugins.py:1972-1984` `if os.name != "nt":
+   pytest.skip("directory junctions are a windows feature")`, then two more `pytest.skip` when
+   `mklink` cannot run or the junction is not created). Trigger: every ubuntu cell of the CI
+   matrix -> `test_a_junctioned_output_directory_is_reported_as_typed` is reported skipped and
+   the junction path of the output-directory resolution (`CHANGELOG.md:419-436`) is exercised on
+   Windows only, while the page tells a reader that every cell runs everything. Fix: run the case
+   through a symlink where junctions do not exist, or amend the page and add the test it implies
+   (no `pytest.skip`/`skipif` under `tests/`).
+
+#### Minor
+
+1. **The README's compile transcript is two objects stale** (`README.md:889-896` "20 of 21
+   declared variables are defined ... 21 of 21"). `docker/verify_symbols.py` over today's demo
+   prints `22 of 23 declared variables are defined` and `23 of 23` (run here, both variants): the
+   demo gained `SoftwareLabel` and `StateName` with the strings. No test pins this block - it is
+   not a `$ ddd` command. Fix: update the two counts.
+
+2. **Developer page sentences the repository contradicts.** `:298-299` "The suite runs in a few
+   seconds, so there is no reason to run anything less than all of it" - the baseline is 2 min
+   22 s in the checkout and 10 min in a cold venv, and the line above it recommends `--no-cov`.
+   `:336-337` "ci.yml runs exactly the commands above" - it also runs the extension job
+   (`ci.yml:66-98`: `npm ci`, `npm test`, `npm run package`, an artifact), which the CI section
+   never mentions; `:346` "Each job installs the project with pip install -e ".[dev]"" - the
+   extension job installs `pip install -e .` (`ci.yml:84`). The layer table and "Three smaller
+   modules" (`:16-62`) never name `src/ddd/lsp/` (nine modules in the wheel), `identity.py` or
+   `build_info.py`, so the page that is the project's CLAUDE.md describes an architecture
+   without its language server. Fix: three sentences and three table rows.
+
+3. **The lock-file claim is unverified and nothing pins the lock's version**
+   (`docs/developer_documentation.rst:510-513` "`npm ci` refuses a lock file out of step with its
+   manifest, so a bump that edits only the manifest fails the extension job rather than a
+   test"). `npm ci` validates the dependency specs of `package.json` against the lock, not the
+   root package's `version` - unconfirmed here (no `npm` on this machine; run `npm ci` in
+   `editors/vscode` with the manifest at `0.10.0` and the lock at `0.9.0`). Either way
+   `tests/test_documentation.py:579-585` pins `package.json` only, so `package-lock.json:3` and
+   `:9` can ship at 0.9.0 inside a 0.10.0 release. Fix: assert both lock entries equal
+   `__version__` beside the manifest test.
+
+4. **The environment paragraph describes a rule the repository does not carry** (carried over
+   from the previous review's Minor 8; `docs/developer_documentation.rst:521-528` "GitHub creates
+   an environment with its deployments restricted to the default branch ... choose Selected
+   branches and tags ... add a tag rule for v*"). `gh api` reports `deployment_branch_policy:
+   null` for `pypi` and `testpypi`, v0.9.0 deployed from its tag with that setting, and a leftover
+   `github-pages` environment from the `deploy-pages` era still carries a branch policy although
+   `docs.yml:238-239` says that environment is gone. Fix: describe the state that exists, or
+   create the tag rule (which also closes Important 1) and keep the paragraph.
+
+5. **Four of the five design records carry a stale status line** (`docs/superpowers/specs/`):
+   `2026-09-02-xcp-measurement-rasters-design.md:4` "design approved, not implemented" (shipped in
+   0.7.0); `2026-09-04-plugins-design.md:4` "approved design, not yet implemented" (0.8.0), and its
+   `:445` still defers "Plugin backends under `all`", which 0.9.0 shipped;
+   `2026-09-05-plugins-in-the-build-design.md:4` the same (0.9.0), and its `:36-37` says running
+   CMake in CI is out of scope "held to the specification by text pins" while `tests/test_cmake.py`
+   builds the module in every CI cell; `2026-09-10-string-conversion-design.md:4` "design
+   approved, not implemented" (PR #29). Only `2026-09-03-object-identity-design.md:4` is current.
+   Fix: one status line each, and strike the shipped deferral.
+
+6. **Changelog wording that the release commit must touch, and two gaps.** `CHANGELOG.md:31`
+   "format 8 is unreleased, and a reader that only knows 7 already refuses it" stops being true
+   the moment `## Unreleased` becomes `## 0.10.0` (the one "unreleased" left outside the heading).
+   The "Strings" entry (`:33-47`) says nothing about the comparison of a string `init` between
+   deliveries, although `src/ddd/compare.py` changed for it (`c2b2ce8`) and pass 3's P3-I2 found
+   the rule wrong; its "a quoted number as an init ... is now text, refused" is contradicted for
+   the nested case by P2-I1, and the constants entry's "a template emits the literal as written"
+   by P2-M4 (`2.50` -> `2.5`). `README.md:42-44` still defines the public interface without the
+   address map, the dumped dictionary, the `--renames` file and `ddd-build.json` that
+   `CHANGELOG.md:7-13` now names (the previous review's Minor 6, half applied), and
+   `README.md:933` counts "Four more suites" where `docs/developer_documentation.rst:267` counts
+   five. Fix: reword `:31` in the release commit, add a sentence to the strings entry, align the
+   README sentence.
+
+7. **Supply-chain hygiene.** Every action is pinned by major tag only (`ci.yml:35-36,79,95`,
+   `docs.yml:45-46,66,138`, `publish.yml:24-25,36-37,63,88,92,121,125,139,143`), and the two jobs
+   that hold the OIDC token use `pypa/gh-action-pypi-publish@release/v1`, a moving branch
+   (`publish.yml:125,143`); `publish.yml:40` installs `pip build twine` unpinned at release time and
+   `editors/vscode/package.json:74` runs `npx --yes @vscode/vsce package`, fetching whatever
+   `vsce` is current on the day; `requirements-dev.txt:1-13` carries lower bounds only, so a new
+   `ruff` (`ruff format --check` is a gate, `ci.yml:63`) or `mypy` release can turn the lint job
+   red on a release day; there is no `.github/dependabot.yml`. `ci.yml:95` uses
+   `actions/upload-artifact@v5` while `docs.yml:66` and `publish.yml:63` use `@v7`. Concrete
+   risk: a compromised or broken tag reaches the token-holding job unreviewed, and a release is
+   blocked by a tool nobody upgraded. Fix: pin by commit sha with a dependabot config for
+   `github-actions`, `pip` and `npm`, and cap `ruff`/`mypy` to a minor.
+
+8. **The extension is built and released on Node 20, end of life since 2026-04-30**
+   (`ci.yml:79-81`, `publish.yml:92-94` `node-version: "20"`; `editors/vscode/package.json:81`
+   `@types/node ^20.11.0`; the Node.js schedule gives v20 `end: 2026-04-30`, v22 2027-04-30). Risk:
+   the release's `.vsix` is packaged on a runtime without security fixes, and `setup-node` may
+   stop offering it. Fix: 22 or 24, and the matching `@types/node`.
+
+9. **The container's edges.** `docs/conf.py:97-99` says plantuml is called "through the jar the
+   documentation image ships at /plantuml.jar" - `docker/Dockerfile:38` installs the apt
+   `plantuml` launcher and ships no jar, so the default path never exists and the fallback at
+   `:102` is what the image runs (harmless, stale). `docker/compile.sh:53` runs `ddd dump
+   --format json` after `ddd generate` although `generate --dictionary` now writes the same
+   dictionary in the same write (`CHANGELOG.md:68-76`), and the `--format json` empty report
+   lands in the log as a JSON block after the `wrote` lines (seen in the run here).
+   `.dockerignore:1-12` leaves `node_modules/`, `htmlcov/`, `.coverage` (467 KB here), `*.vsix`,
+   `docs/_build/`, `editors/vscode/out/` and `docs/superpowers/*.pdf` (3.5 MB) in the build
+   context. `docker-compose.yml:90-95` reinstalls `.[docs]` on every `docs` run. No workflow
+   builds the image, which is how it broke unnoticed before (`CHANGELOG.md:658-663`). Fix: the
+   comment, `--dictionary`, seven ignore lines, and a `docker build` job or a note that it is
+   unguarded.
+
+10. **Acronyms the pages use and the acronyms page lacks** (`docs/acronyms.rst:13-85`): ASCII
+    (`docs/consistency_checks.rst:566`), RAM (`:382`), ROM and NVM
+    (`docs/file_formats/sections.rst:5`), WSL (`docs/build_integration.rst:588`), GCC
+    (`docs/faq.rst:366`), MISRA (`docs/templates.rst:34`), IEEE 754
+    (`docs/file_formats/variable_definition.rst:232`), ARXML (`docs/concept.rst:541`), OIDC
+    (`docs/developer_documentation.rst:452`), UTF-16 (`docs/comparing_deliveries.rst:99`), ISO
+    (`docs/templates.rst:288`), MSVC (`docs/build_integration.rst:120`), AUTOSAR
+    (`docs/templates.rst:290`), VSIX (`docs/developer_documentation.rst:536`), API (`:451`), NaN
+    (`docs/data_contracts.rst:133`). Also `docs/conf.py:74-77` counts "twenty-six models" where
+    `docs/data_contracts.rst` renders thirty-one. The concept page's vocabulary and the acronyms
+    page agree with `SPEC.md` section 2 (checked term by term).
+
+11. **The README's relative links are the index page's** (`pyproject.toml:13` `readme =
+    "README.md"`): `SPEC.md`, `LICENSE`, `CHANGELOG.md`, `src/ddd/ir.py`, `cmake/Ddd.cmake`,
+    `examples/...`, `tests/...`, `editors/vscode`, `docker/...` and the `#cmake-integration`
+    anchors resolve on GitHub and not on `pypi.org/project/ddd-tool/`, where `readme_renderer`
+    leaves them as written; the logo alone uses an absolute url for exactly that reason
+    (`assets/logo/README.md:52`). Unconfirmed - PyPI answered `curl` with a bot challenge; open
+    the project page and click `SPEC.md`. Fix: absolute `github.com/Sauci/ddd/blob/master/...`
+    links, or a `readme` written for the index.
+
+### Status of the 2026-09-08 findings in this area
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P6 Important 1 | README says `NO_PROPAGATE_HEADERS` on the second call only | fixed | `README.md:830-838` "to **both** calls" |
+| P6 Important 2 | sdist ships tests and docs that cannot run from it | fixed | `pyproject.toml:70-96`; suite from the sdist: 2284 passed, coverage 100% |
+| P6 Important 3 | data_contracts renders 21 of 31 models | fixed | `docs/data_contracts.rst:236-348` (the new `StringConversion` gap is pass 2's P2-M3) |
+| P6 Minor 1-5, 7, 9-11 | FAQ address-map count, "same two overrides", README `--without`/`TEMPLATES`, `BUILT_IN_GENERATED`/`base.py` docstring, two superseding entries, version files unlisted, Dockerfile double install, demo description, transcript suite unnamed | fixed | `docs/faq.rst:90,511`; `README.md:673-679,900`; `docs/developer_documentation.rst:176-191,505-519,278-284`; `src/ddd/backends/base.py:6-9`; `CHANGELOG.md:363-370`; `docker/Dockerfile:49-53`; `examples/demo/demo.ddd.json:5` |
+| P6 Minor 6 | changelog header narrower than what it treats as interface | partly fixed | `CHANGELOG.md:7-13` extended; `README.md:42-44` not (Minor 6 here) |
+| P6 Minor 8 | environment rule the repository does not carry | still open, carried over | Minor 4 here; `deployment_branch_policy: null` |
+| P6 follow-ups | stale status lines in the design records | still open, carried over | Minor 5 here |
+
+### Open questions
+
+- Is 0.10.0 `Development Status :: 5 - Production/Stable` (`pyproject.toml:19` says `4 - Beta`)?
+  The answer changes one classifier in the release commit and what "official" means on the index.
+- Does the official release claim Python 3.14 (`pyproject.toml:23-24`, `ci.yml:32`; 3.14 shipped
+  2025-10)? `tests/test_documentation.py:1470-1488` holds the matrix and the classifiers
+  together, so the answer is two lines or none.
+- Is the 0.10.0 GitHub release a full release? All five so far are flagged pre-release
+  (`gh release list`), and nothing in the workflows reads the flag; the answer changes the
+  release page and, if Important 2 is fixed by reading the flag, which release the site calls
+  stable.
+- Where should problems go (Important 3): enable issues, or replace the three urls?
+- Does `workflow_dispatch` keep a `pypi` target at all (Important 1)?
+- Which Node for the extension jobs (Minor 8)?
+
+### Release checklist
+
+Ordered; each step names the file and line the 0.10.0 release commit or the maintainer touches.
+
+1. Land the fixes this review decides on first - at least Important 3 (a support channel that
+   exists), Important 4 (the FAQ), Minor 6's `CHANGELOG.md:31`, and Important 1 if the `pypi`
+   dispatch target goes - so that the release commit is a version bump only, as `release/0.9.0`
+   was (9 files, 19 lines).
+2. Dry run: Actions -> Publish -> Run workflow, `target: testpypi`, on master
+   (`.github/workflows/publish.yml:9-15`, `:111-127`); it exercises `test`, `build`, `twine check
+   --strict` and the TestPyPI trusted publisher (`docs/developer_documentation.rst:457-497`).
+3. The release commit, on a `release/0.10.0` branch:
+   - `src/ddd/__init__.py:16` `__version__ = "0.10.0"` (where `docs/conf.py:13` and every banner
+     take it from);
+   - `pyproject.toml:11` `version = "0.10.0"` (what the tag is checked against,
+     `publish.yml:51-60`);
+   - `editors/vscode/package.json:5`;
+   - `editors/vscode/package-lock.json:3` and `:9`;
+   - `README.md:54` the wheel file name;
+   - `docs/getting_started.rst:29` (wheel name), `:39` (`ddd --version`, pinned by
+     `tests/test_transcripts.py`), `:57` (shown, not run), `:399`, `:433`, `:466` (banners);
+   - `docs/generated_artefacts.rst:134`, `:516`, `:603`, `:610`;
+   - `docs/faq.rst:576`;
+   - `docs/templates.rst:180`;
+   - `CHANGELOG.md:15` `## Unreleased` -> `## 0.10.0` (the older headings carry no date) and
+     `CHANGELOG.md:31` reworded (Minor 6);
+   - if decided: `pyproject.toml:19` (Development Status), `pyproject.toml:23-24` with
+     `ci.yml:32` (3.14).
+   Tests that fail on a half-done bump: `tests/test_documentation.py:573-577` (`pyproject.toml`),
+   `:579-585` (`package.json`), `tests/test_transcripts.py` on `docs/getting_started.rst:38-39`.
+   Nothing pins the lock file, the two wheel names, the seven banners, `:57` or the changelog -
+   walk them by hand (`docs/developer_documentation.rst:505-519`), then `ruff check .`,
+   `ruff format --check .`, `mypy`, `python -m pytest`, `sphinx-build -b html docs out -W
+   --keep-going`, `PYTHONPATH=src python -m ddd --version` -> `ddd 0.10.0`, `python -m build` ->
+   `ddd_tool-0.10.0.tar.gz` and `ddd_tool-0.10.0-py3-none-any.whl`.
+4. Pull request, merge into master; wait for CI (four matrix cells, lint, extension) and
+   Documentation (which deploys `latest`, `docs.yml:78`) to be green on the merge commit.
+5. Create the GitHub release on that commit with tag `v0.10.0` - exactly `v` plus
+   `pyproject.toml:11`, or `publish.yml:55-59` stops before anything is uploaded - and the
+   changelog section as notes; decide the pre-release flag (open question). Publishing it runs
+   `publish.yml` (`test` -> `build` -> tag check -> `twine check` -> `publish-pypi` through the
+   `pypi` environment's trusted publisher; `extension` -> `ddd-0.10.0.vsix` uploaded with
+   `--clobber`, `:106-109`) and `docs.yml` (`site/v0.10.0`, `versions.json` with `stable:
+   v0.10.0`, the root redirect, then the read-back, `docs.yml:265-290`).
+6. Verify from outside: `pip index versions ddd-tool` lists 0.10.0 and a fresh venv's
+   `pip install ddd-tool==0.10.0` answers `ddd 0.10.0`; `https://sauci.github.io/ddd/versions.json`
+   says `"stable": "v0.10.0"` and `https://sauci.github.io/ddd/v0.10.0/` answers 200; the release
+   carries `ddd-0.10.0.vsix`; both workflow runs are green.
+7. If a job fails after the PyPI upload, re-run the failed jobs - the `.vsix` upload clobbers and
+   the docs deploy rewrites `site/v0.10.0` - but the index upload cannot be redone: a wrong
+   artefact on PyPI means 0.10.1. If the tag check fails, delete the release and the tag and
+   re-create them (`publish.yml:56-58`).
+8. Afterwards: a new `## Unreleased` heading with the first change; the pypi.org publisher needs
+   no change (0.9.0 already uploaded through it).
+
+### Test gaps
+
+- `tests/test_documentation.py` (`TestPackaging`): the two version fields of
+  `editors/vscode/package-lock.json`; the wheel file name in `README.md:54` and
+  `docs/getting_started.rst:29` and the seven banners as `__version__`; the README's
+  `== symbols` counts (Minor 1) - derivable by running `docker/verify_symbols.py`'s `main` over
+  the demo dump and the object names of `ddd_globals.c`.
+- `tests/test_documentation.py`: the convention "nothing in the suite skips" (no `pytest.skip`,
+  `skipif`, `importorskip` or `xfail` under `tests/`), which would have caught Important 5.
+- `tests/test_backends.py` (`TestLayering`): `compare.py`, `identity.py`, `build_info.py`,
+  `cli.py` and `src/ddd/lsp/` sit outside the import-graph guard, so the language server
+  importing a backend, or `compare.py` importing the loader, would pass.
+- `docs.yml`'s `order()`/`stable` (`docs.yml:167-182`) has no test at all - it is Python inside
+  a heredoc; extracting it to `docker/` or a `tools/` script would let
+  `tests/test_documentation.py` pin the prerelease and hotfix orderings (Important 2).
+- No workflow builds `docker/Dockerfile` (Minor 9); `tests/test_cmake.py` covers the module but
+  nothing covers the image, `compile.sh` or `verify_symbols.py` in CI.
+
+### Assessment
+
+The release path is sound where it has been exercised: the wheel and the sdist build and install,
+the tutorial reproduces from outside the repository, the sdist runs its own suite through the
+coverage gate, the site and the index are in the state the pages describe, and the changelog's
+entries say what the code does. What would make the first official release publish something
+wrong sits at the edges nobody has walked yet: a dispatch path that uploads to PyPI unchecked, a
+version sort that would crown a release candidate, and three support links pointing at a tracker
+that is switched off - each a small change, and each best made before the tag. The developer
+page, which is the project's own rulebook, has drifted in a handful of sentences (the suite
+skips, runs for minutes, has an extension job and a language server), the FAQ still promises
+unbounded arrays two releases after the caps, and the release commit has nine files and one
+changelog sentence to touch with only three of them under test.

@@ -4191,3 +4191,457 @@ different reason, and the comparison-table guard cannot see the four fields a le
 helpers spelled five times, and nine order pins - not a few hundred - that depend on the
 analysis schedule. The consolidated list above is 53 gaps, most of them the unpinned location
 of a finding, which is the dimension the half pins least and the one an editor relies on.
+
+## Pass 11b: the test suite, part B (cli, lsp, plugins, backends, generation, a2l, external, cmake, documentation, transcripts)
+
+### Scope covered
+
+Read in full, with line numbers: `tests/conftest.py` (again), `tests/test_cli.py` (2617 lines),
+`tests/test_lsp.py` (4476), `tests/test_plugins.py` (2283), `tests/test_backends.py`,
+`tests/test_generation.py`, `tests/test_a2l.py`, `tests/test_example_plugin.py`,
+`tests/test_external.py` (the file neither half's list named), `tests/test_cmake.py`,
+`tests/test_documentation.py` (1672), `tests/test_transcripts.py`,
+`editors/vscode/src/config.test.ts`, `launch.test.ts`, `config.ts`, `extension.ts` - 1391 of the
+2285 collected tests (61 %). To judge what they pin: `src/ddd/cli.py` in full, `src/ddd/plugins.py`
+in full, `src/ddd/backends/base.py` in full, `src/ddd/lsp/server.py` in full, `lsp/discovery.py`,
+`build_info.py`; `.github/workflows/ci.yml`; `editors/vscode/package.json` (scripts);
+`pyproject.toml:98-116`; `docs/developer_documentation.rst`; the four fix plans the task names;
+`reports/pass-11a.md` in full and its outputs; the "Test gaps" of passes 4, 5, 6, 7 and 10; the
+previous review's periphery test review at `previous-review.md:1822-1834`, and pass 6's
+Important 1 (`reports/pass-6.md:95-106, 257-260`).
+
+Ran (outputs under `scratchpad/pass-11b/`; nothing in the repository was edited - `git status
+--short --ignored examples tests` afterwards lists only `__pycache__`):
+
+- Every file of the half alone, `-o addopts= -p no:cacheprovider` (`alone-*.txt`): all pass;
+  `test_lsp.py` carries only the known symlink failure. Times: cli 3.6 s, lsp 3.5, plugins 3.7,
+  backends 0.6, generation 1.9, a2l 2.1, example_plugin 0.5, external 0.9, cmake 50.4 (73 s in
+  pass 5's run), documentation 4.8, transcripts 5.9: 78 s for the half alone.
+- The ten files without `test_cmake.py` in one run under `--cov=ddd --cov-branch
+  --cov-report=term-missing --durations=30`, the data file redirected into the scratch directory
+  (`half-coverage-periphery.txt`): 1373 passed plus the known failure in 42.8 s.
+- Two experiments on a copy of `src/` imported through `-o pythonpath=<copy>` (verified with a
+  probe test that the copy is what pytest imports, `exp-nopublish/test_which.py`): `refresh`
+  without its `_publish` loop (`exp-nopublish/`), and `serve()` dropping its build directories
+  with `_builds_now` calling `discover(root)` (`exp-nob/`, with an unpatched control copy).
+- `exp-empty/`: what pytest does with an empty parameter set. `transcripts_map.py`: every `$ ddd`
+  command of every page with the mode the harness gives it. `ddd check examples/demo/demo.ddd.json`
+  with and without `--strict`. A grep of the four plans for the tests they name against `tests/`.
+
+### Strengths
+
+- The half is order independent: each file passes alone, and the classes touching process state
+  restore it - `monkeypatch.chdir` at twelve sites, `syspath_prepend` with the module popped from
+  `sys.modules` in a `finally` (`tests/test_plugins.py:202-329`), `setitem(sys.modules, ...)`
+  (`:355-364`), `sys.stdin`/`sys.stdout` replaced through `monkeypatch`
+  (`tests/test_lsp.py:3601-3613`, `tests/test_plugins.py:2154-2210`). `main()`'s stream reconfiguration is harmless on every
+  replacement: `_write_utf8` reads `getattr(stream, "reconfigure", None)` (`src/ddd/cli.py:103`).
+  Plugin modules are cached under a digest of their resolved path (`src/ddd/plugins.py:200-201`),
+  so a `tag_plugin.py` under one `tmp_path` never answers for another.
+- Nothing writes into the repository. The transcripts copy `examples/` into `tmp_path`
+  (`tests/test_transcripts.py:415`) and chdir there (`:292`); `id --assign` runs on `tree` copies
+  (`tests/test_cli.py:2299-2581`); the cmake tests configure the shipped example out of source
+  into `tmp_path` (`tests/test_cmake.py:113`).
+- The server harness is in-process and deterministic: `Server(BytesIO, BytesIO, root).run()` - no
+  pipes, no sleeps, no polling, no timeouts; a server crash is a Python exception in the test, a
+  corrupt frame is a return code (`tests/test_lsp.py:3548-3560`). The two mtime tests stamp a
+  sentinel ten seconds in the past rather than reading the clock (`tests/test_cli.py:322-327`,
+  `tests/test_generation.py:242-247`). No test needs the network; the shell (`bash`) and the
+  build tools are asserted present rather than skipped over (`tests/test_transcripts.py:311-312`,
+  `tests/test_cmake.py:487-490`).
+- The buffer store the previous review found untested is tested: eight server tests send a
+  `didOpen` or `didChange` text that differs from the disk (`tests/test_lsp.py:3615, 3688, 3754,
+  3817, 3881, 3959, 4128, 4193`), and the rename edits are keyed by the exact uri string the
+  client sent (`:3679-3686`, `:4082`).
+- The four plans' promised periphery tests exist and pin what the plans say: the six of
+  `2026-09-08-cli-reports-before-writing.md` (`tests/test_cli.py:1689-1956`), the buffer,
+  version and trust tests of `2026-09-08-lsp-windows-uris-buffers-trust.md` (`tests/test_lsp.py:172,
+  2856, 3615, 3688, 4019, 4257`; `tests/test_documentation.py:769-799`), every task of
+  `2026-09-09-plugin-boundary.md` (`tests/test_plugins.py:225-242, 455-479, 637-652, 1261-1333,
+  1644-1794, 1796-1866`; `tests/test_cli.py:537-561, 1772-1794`; `tests/test_generation.py:263-340`)
+  and tasks 1-2 of `2026-09-09-listing-commands.md` (`tests/test_cli.py:1273-1370, 1433-1465`).
+  Two deviations are pinned deliberately and say why: a drifted buffer refuses the whole rename
+  rather than being skipped (`tests/test_lsp.py:3817-3958`, the plan's `:434-471`), and the
+  staging suffix is `.ddd-staging` rather than the plan's `.tmp`
+  (`tests/test_generation.py:263-275`).
+- The documentation guards that count things have positive controls where a regex could go
+  quiet: `assert counts` (`tests/test_documentation.py:174`), `len(enumerations) == 1` (`:188`),
+  `assert row is not None` (`:254`), `assert listed is not None` (`:315, 320, 330, 337, 1484`),
+  `assert conversions` (`:912`), `assert bound` (`:1427`); the committed schemas are compared
+  byte for byte with `schema_text` (`:1389-1398`) and the transcripts re-run 81 documented
+  commands through the tool itself.
+- Coverage is honest for the half: with the ten periphery files alone `plugins.py`, `build_info.py`
+  and `discovery.py` are at 100 %, `cli.py` at 99 % (the misses are `compare --format json` on
+  success `:667->674`, a baseline that does not resolve `:601->611` and `cmake-dir` without the
+  module `:1168-1169`, all reached by the core half), `lsp/server.py` at 99 % (the constant hover
+  `:470-475`, pinned from `tests/test_constants.py`), `backends/base.py` at 99 % (`:272`, a
+  template without a trailing newline). Every guard of `plugins.py` has the test that fires it
+  (the list is in the gap table below), every write status and failure of `base.py` has one
+  (`tests/test_generation.py:227-376`), and every request handler of `server.py` is reached
+  through the protocol.
+
+### Issues
+
+#### Critical
+
+None.
+
+#### Important
+
+1. **The server tests compare published and answered uris by file name or resolved path, so the
+   server publishing under its own spelling - the defect pass 6 confirmed live - keeps every test
+   green** (`tests/test_lsp.py:65`, `uri_to_path(message["params"]["uri"]).name:
+   message["params"]["diagnostics"]`; `:2905-2909`, `uri_to_path(m["params"]["uri"]).resolve()
+   ... == [path.resolve()]`). Trigger: a client opens `file:///c%3A/...` (VS Code on Windows), a
+   junction, a `subst` drive or a case variant; the server publishes `path.as_uri()`
+   (`src/ddd/lsp/server.py:625`) and answers edits under it (pass 6 Important 1, observed with
+   `p7_subst_live.txt`). Outcome: the seven `published()` call sites (`:2903, 3048, 3054, 3068,
+   3104, 3140, 3147`) and the answer checks at `:3208, 3222, 3319, 3416, 3512, 2005, 1936, 2383`
+   cannot fail on it; the one test sending the client's spelling resolves both sides before
+   comparing, and on posix its `re.sub` (`:2876-2878`) finds no drive, so the CI ubuntu cells
+   never send `%3A` at the server level at all. Fix: key `published()` by the uri string; in
+   `:2856` assert the publication for the opened file carries `spelled` (with pass 6's fix); compare
+   the `changes` keys at `:3319` and `:3416` as strings, as `:3679-3686` and `:4082` already do.
+2. **`-b` is accepted by two tests and used by none: a server that drops its build directories
+   passes the suite** (`tests/test_lsp.py:3613`, `assert main(["lsp", "-b", str(tmp_path)]) ==
+   EXIT_OK` on an empty stdin, so the loop returns before anything is discovered;
+   `editors/vscode/src/launch.test.ts:49-54` sends `initialize` and `exit`). Trigger: `serve()`
+   (`src/ddd/lsp/server.py:640`) or `_builds_now` (`:325`) losing the argument in a refactor.
+   Outcome: the extension's only setting, `ddd.buildDirectories`, stops reaching discovery and
+   nothing fails - `Server(..., build_directories=...)` is constructed by no test, and the only
+   pin is `build_files(tmp_path, [elsewhere])` at the function level (`:309-313`). Evidence: a copy
+   of the package with `serve()` passing `build_directories=()` and `_builds_now` calling
+   `discover(root)` passes `test_lsp.py`, `test_cli.py`, `test_plugins.py`, `test_external.py` and
+   `test_constants.py` (736 passed; the four failures are the copy's missing `cmake/` and
+   `examples/`, identical on the unpatched control - `exp-nob/failures.txt`). Fix: a `TestServer`
+   test with a record under `tmp_path / "elsewhere"` and no `build/`, opening a component through
+   `Server(..., root=tmp_path, build_directories=[elsewhere])` and asserting the project's
+   findings are published; and `main(["lsp", "-b", ...])` fed a framed `didOpen` instead of an
+   empty stream.
+
+#### Minor
+
+1. **`test_strict_promotes_warnings` proves nothing about `--strict`** (`tests/test_cli.py:128-130`,
+   `assert main(["check", str(DEMO), "--strict"]) == EXIT_OK`). The demo's bag is empty -
+   `ddd check examples/demo/demo.ddd.json` prints `ok: 23 variables in 4 components are
+   consistent` with and without the flag - so the test passes with the promotion deleted; the
+   promotion is pinned only through `address-missing` under `generate` (`:859-875`) and a plugin
+   check (`tests/test_plugins.py:1197`), never for a warning of the analysis under `check`. Fix: a
+   fixture carrying `unused-output`, `--strict` -> `EXIT_FINDINGS`.
+2. **`test_saving_refreshes_as_opening_does` asserts that something was sent**
+   (`tests/test_lsp.py:3154`, `assert sent(writer)`). The `window/logMessage` `_announce` writes
+   satisfies it: with the `_publish` loop removed from `refresh` the test passes while `:3032`,
+   `:3063` and `:3123` fail (`exp-nopublish/`). The dispatch is pinned, the publication on save is
+   not. Fix: `assert published(writer)["component_b.ddd.json"]`.
+3. **Three uri tests silently prove less on posix** (`tests/test_lsp.py:185`, `if os.name ==
+   "nt":`; `:196` and `:203`, the expected value is `server_module.url2pathname(...)` - the
+   function under test's own fallback, so on posix both spellings decode alike and nothing is
+   pinned; `:2876`, no drive to respell). Fix: assert the decoded posix form
+   (`decoded.as_posix().lower().endswith("c:/git/x/a.ddd.json")`), which holds on both platforms.
+4. **Five documentation guards pass vacuously when their regex or walker matches nothing**
+   (`tests/test_documentation.py:232`, `for word in counted:`; `:245`; `:488` and `:507` over
+   `spec_links()`; `:746` over `read`; `:967` over `enumerations_in(...)`). Each phrase exists
+   today - nine pages count the fixed checks, one counts the description kinds, the SPEC has
+   internal links - and a rewording of any of them turns the guard off without a red test, which
+   is how `:222` says the first one went stale. Fix: `assert counted`, `assert spec_links()`,
+   `assert read`, `assert enumerations` at module level, or a floor.
+5. **The transcript suite degrades to two skipped tests, not two failures, if nothing is found**
+   (`tests/test_transcripts.py:389-393` and `:406-410`, parametrized over `SHOWN` and `RUNS`
+   computed at import). pytest marks an empty parameter set as a skip ("got empty parameter set",
+   `exp-empty/`), so a drift of `SHELL` (`:68`) or of the pages' prompt spelling silences the
+   strongest documentation guard, and the "nothing skips" convention has no guard (pass 7). Fix:
+   `assert SHOWN and any(RUNS.values())` beside `RUNS` at `:373`.
+6. **`test_the_command_list_is_what_the_spec_promises` reads no SPEC, and commands are checked
+   in the README only** (`tests/test_documentation.py:264-280`, a literal set; `:260-262`, README
+   only) while `docs/developer_documentation.rst:274-276` says "every command ... is named in
+   `README.md` and in `SPEC.md`". All fourteen are in the SPEC today. Fix: parametrize
+   `commands()` against `SPEC` as `TestConcepts` does, and rename the set test for what it is - a
+   change detector on the parser.
+7. **A stale docstring and a no-op line** (`tests/test_cli.py:2393-2394`, "`write_tree` writes
+   through a text-mode file handle with no explicit `newline`"): `tests/conftest.py:79` passes
+   `newline=""`, so the fixture never carries crlf and the replace at `:2401` does nothing. Fix:
+   drop the sentence and the replace.
+8. **A test asserting on a spy's keyword argument rather than on the bytes**
+   (`tests/test_cli.py:2547-2559`, `monkeypatch.setattr(Path, "write_text", spy)` ...
+   `assert written["renames.json"] == ""`). Fix: `assert b"\r\n" not in renames.read_bytes()`,
+   which is real on Windows and needs no mock.
+9. **Nine copies of one fixture** (`tests/test_plugins.py:1625-1866`: each test of `TestGenerate`
+   re-spells `write_plugin(tree / "tools", source=...)`, the same `write_tree` and the same
+   `arguments`, differing only in the plugin source and the expected line). Fix: a helper
+   `generated(tree, source, *extra) -> tuple[int, str]`.
+10. **`test_a_project_with_errors_generates_nothing` asserts the exit code only**
+    (`tests/test_plugins.py:2062-2066`, `assert main(arguments) == EXIT_FINDINGS`). Fix:
+    `assert not (tree / "out").exists()`, as `tests/test_cli.py:391-397` does for the built-ins.
+11. **A redundant pragma** (`src/ddd/cli.py:104`, `if reconfigure is not None:  # pragma: no
+    branch - absent only on a replaced stream`): `tests/test_lsp.py:3606-3613` replaces
+    `sys.stdout` with a `Stream` holding only `.buffer` and calls `main(["lsp", ...])`, so the
+    branch the pragma excludes is executed by the suite. Fix: drop it (11a Minor 9's twin).
+12. **A second import of helpers from the LSP test module** (`tests/test_external.py:516`, `from
+    test_lsp import build_record, framed, sent`; 11a Minor 6 found `tests/test_constants.py:1163`).
+    Fix: the three helpers in `conftest.py`.
+13. **The tools check names no C compiler** (`tests/test_cmake.py:487-490` parametrizes `CMAKE`,
+    `NINJA` and `DDD`; `compiler()` at `:42-46` picks `gcc` when `cl` is absent and otherwise
+    leaves it to cmake). On a machine with neither, the first `configure()` fails inside its
+    assertion with cmake's whole output rather than the one line `:488-489` promises. Fix: assert
+    `shutil.which("cl") or shutil.which("gcc")` in the same test.
+14. **Runtime that a fixture would halve** (`tests/test_cmake.py`: fourteen tests each configure
+    and build a fresh tree, 50 s alone here and 53 s of the full run's 142 s; `TestTheDictionary`'s
+    five and `TestACollectedProjectWithPlugins`' four write identical trees; `:424-434` runs
+    `ddd dump` in a subprocess where `main()` under `monkeypatch.chdir` would do).
+    `tests/test_documentation.py:1436-1439` builds a validator per example file
+    (`jsonschema.validate(document, schema)`; 2.4-5.6 s, the slowest test outside cmake) where one
+    `Draft202012Validator` per schema would do; `getting_started.rst` runs eleven bash
+    subprocesses (3.7 s). Bounded: a class-scoped configure for the two classes and a cached
+    validator take 20-30 s off the suite.
+15. **`compared()` discards the exit code** (`tests/test_example_plugin.py:38-41`,
+    `main(["compare", before, after, "-W", "missing-id=ignore"])` unasserted): the eleven
+    between-deliveries tests pin messages only, so a `layout/*` error reaching `EXIT_FINDINGS`
+    under `compare` is pinned nowhere (only `check`, at `:63`). Fix: return and assert the code.
+16. **The extension's launch test pins the lenient exit and depends on whatever `ddd` the PATH
+    holds** (`editors/vscode/src/launch.test.ts:32-37`, `exit` without `shutdown`,
+    `assert.equal(code, 0, ...)` - the code pass 6 Minor 3 wants to be 1; `:29`,
+    `spawn(settings.executable, ...)` with
+    no `PYTHONPATH`, so locally another installed `ddd` passes it; CI installs the tree editable,
+    `ci.yml:84`). A missing executable is an unhandled `error` event (loud); a server that never
+    exits hangs the test, `node:test` setting no timeout. Fix: send `shutdown`, assert the code
+    the protocol asks for once Minor 3 is decided, and put a timeout on `handshake`.
+
+### Status of the 2026-09-08 findings in this area
+
+The previous review's periphery test review (`previous-review.md:1822-1834`):
+
+| id | finding (one line) | status | where |
+| --- | --- | --- | --- |
+| P8 test review 1a | `test_lsp.py:152-168` send `as_uri()` only; the `%3A` spelling is never sent | fixed for `uri_to_path` (`tests/test_lsp.py:172-188`) and sent to the server (`:2856-2909`); the server test resolves both sides - Important 1 | `tests/test_lsp.py:172, 2856` |
+| P8 test review 1b | `launch.test.ts` opens no document | still open, carried | `editors/vscode/src/launch.test.ts:27-40` |
+| P8 test review 2 | `didOpen` without `text`; no buffer differing from the disk | fixed | `tests/test_lsp.py:3615-4255` |
+| P8 test review 3 | raising `generate` only; no factory returning a non-backend or a non-list; no dataclass or forward-reference plugin; sibling import; identical spellings at `test_backends.py:234` | fixed except the sibling import, consciously unsupported (plan task 6) | `tests/test_plugins.py:1644-1794, 237-242, 637-652`; `tests/test_backends.py:255-295` |
+| P8 test review 4 | `test_cli.py:1371-1391` asserts the message, not that nothing was written; no `--renames` write failure, non-jinja template, hook calling `sys.exit` | partly: the directory-is-a-file test still asserts the message only (`:1634-1654`) while a blocked file target pins nothing written (`:1772-1794`); the three tests exist | `tests/test_cli.py:1704-1722, 537-561`; `tests/test_plugins.py:1261-1280` |
+| P8 test review 5 | `TestGenerate::test_json_output` checks statuses only | still open, carried (gap 15) | `tests/test_cli.py:901-917` |
+| P8 test review 6 | `test_cmake.py` never exercises `ADDRESS_MAP`, `SEVERITY`/`STRICT`, `NO_PROPAGATE_HEADERS`, `LINK_LIBRARIES`, `DEPENDS`, `BYTE_ORDER`, `<stem>_ddd_check`, a failing `<target>.ddd` | partly: `SEVERITY` (`tests/test_cmake.py:471-484`); the rest still open (gaps 37-38) | `tests/test_cmake.py:121` builds `sensor_hub.ddd` for a passing component only |
+| P8 test review 7 | `test_example_plugin.py:284-298` never compiles `ddd_layout.h` | still open (gap 50) | `tests/test_example_plugin.py:283-297` |
+| P8 test review 8 | `test_transcripts.py` depends on `bash` and on the installed `ddd` matching the tree | unchanged, verified: the venv's `ddd.exe` imports the tree through the editable `.pth` (`_editable_impl_ddd_tool.pth` -> `src`) and `PYTHONPATH=src` puts it first either way; `site-packages/ddd/` holds only the force-included `cmake/` and `templates/` | `tests/test_transcripts.py:81, 314-320` |
+| P8 test review 9 | incidental pins: the whole `list --format json` payload; action titles word for word | unchanged: the payload is documented as the published shape (`tests/test_cli.py:1044-1046`); the titles are still pinned verbatim at eleven sites (`tests/test_lsp.py:2123, 2149, 2355-2358, 2411-2413, 2430-2433, 2462, 2520-2524, 2546-2548, 2623-2626, 2664-2673, 2726-2729`) - they are the fix menu a reader sees, so acceptable | |
+
+Of this review's own periphery findings, pass 7 Important 5 (the three `pytest.skip` at
+`tests/test_plugins.py:1973-1984`) is still the only skip in the suite, and pass 6 Important 1 is
+the defect behind Important 1 above.
+
+### Open questions
+
+1. Under which spelling is a finding on an opened file published - the client's (pass 6's proposed
+   fix) or `as_uri()` for every file? Important 1's test change follows the answer; until it is
+   made, the suite cannot tell the two apart.
+2. Should `TestSymlinkedWorkspace` use a junction (`_winapi.CreateJunction`) so that it runs on
+   every Windows account (pass 6 asked)? The answer decides whether the local baseline stays
+   "1 failed" for anybody without `SeCreateSymbolicLinkPrivilege`, and whether the assertion grows
+   from the component count (`tests/test_lsp.py:4381`) to the publication.
+3. The transcript follow-up, quantified: 51 of the 166 `$ ddd` commands on nine pages run in
+   silence (`types.rst` 14 of 17, `faq.rst` 14 of 22, `file_formats/component.rst` 7 of 11,
+   `project.rst` 6 of 9, `file_formats/index.rst` 5 of 6, `consistency_checks.rst` 3,
+   `data_dictionary.rst` 1, `generated_artefacts.rst` 1), and only 3 of the 81 runs pin an exit
+   status. Is that the
+   state 0.10.0 ships with, or should the harness report the unrun count per page so the number
+   stays visible?
+4. Does `-b` deserve the end-to-end test through the extension (Important 2)? `launch.test.ts`
+   sending a `didOpen` under a configured build directory would answer both this and the carried
+   "opens no document".
+
+### Test gaps
+
+Pinned exit paths per command, from reading every test of the half against `src/ddd/cli.py`
+(the test that pins it, or "unpinned"):
+
+| command | pinned | unpinned |
+| --- | --- | --- |
+| `check` | clean, errors, warnings only, json, `--baseline` (three ways), `-W` refusals, `file-not-found`, `--standalone`, a plugin override after loading, the standalone floor (`tests/test_cli.py:30-197, 1568-1631, 1883-1956`) | `--strict` promoting an analysis warning (Minor 1) |
+| `compare` | verdicts, `--renames` (written, unwritable, line endings), `--plugin` (dumps, refused beside a description, verified), `missing-plugin`, BOM baseline, json on failure (`tests/test_cli.py:1704-1881, 2465-2559`; `tests/test_plugins.py:1438-1553`) | `--format json` on success only through the core half (`cli.py:667->674`) |
+| `generate` | every artefact, `--without` and its refusals, templates (required, naming, four error shapes), `--force`, `--dry-run`, the address map (seven cases), `--dictionary` (nine), the write failures with findings first, plugin artefacts and their refusals (`tests/test_cli.py:199-930, 1689-1862, 2203-2296`; `tests/test_plugins.py:396-479, 1611-2107`) | json `summary` on a clean run (gap 15) |
+| `list`, `dump` | table, pinned payload, `-o` (nine cases), `--standalone`, the hook failure with an empty stdout (`tests/test_cli.py:1049-1176, 2047-2200, 1908-1928`) | `dump -o .` (gap 21) |
+| `id`, `schema`, `build-info`, `checks`, `cmake-dir`, `templates-dir`, `artefacts`, `sources`, `--version` | every return path (`tests/test_cli.py:1179-1372, 1399-1565, 1959-2044, 2299-2581`; `tests/test_plugins.py:1080-1136, 2110-2127`) | `cmake-dir` without the module only through the core half (`cli.py:1168-1169`); `id --assign` with one unwritable file among several (gap 18) |
+| `lsp` | exit 0 on an empty stream (`tests/test_lsp.py:3601-3613`); framing exit 1 through `Server.run` (`:3548-3560`) | `-b` reaching discovery (Important 2) |
+
+Every guard of `src/ddd/plugins.py` has the test that fires it: the name pattern and the built-in
+names (`tests/test_plugins.py:160-163, 2265-2269`), the check spelling and the double
+registration (`:165-173`), not found by path and by module (`:212-218`), import failures of three
+kinds and their cache (`:220-329`), no `PLUGIN` and the wrong type (`:331-339`), `resolve_blocks`
+(`:688-724, 2272-2283`), `settings_of` (`:1402-1410`), `guarding_plugin_model` (`:1336-1399`),
+`_call` for `SystemExit` and `KeyboardInterrupt` (`:1298-1333`), `backend_of` (`:1644-1717`),
+`_GuardedBackend.generate` (`:1719-1794`), `missing-plugin` (`:1458-1471`). Every write status and
+failure of `backends/base.py` likewise (`tests/test_generation.py:227-376`), and every handler of
+`lsp/server.py` (`tests/test_lsp.py:2853-4271`). What no test pins, found in this pass (the
+consolidated list carries them with the earlier passes' items):
+
+- `tests/test_lsp.py`: findings are read from the disk when the open buffer differs (the promise
+  at `:3616-3617`; every buffer test asks for a rename or an action, none publishes); `-b DIR`
+  through `Server(build_directories=...)` and through `main` with a framed stdin; a `didSave` that
+  publishes; the `%3A` spelling on posix.
+- `tests/test_cli.py`: `--strict` promoting a warning of the analysis under `check`.
+- `tests/test_plugins.py`: `generate <plugin>` on a project with errors writes nothing.
+- `tests/test_documentation.py`: every command named in `SPEC.md`; a positive control on the five
+  vacuous guards; the transcripts' parameter sets non-empty.
+- `tests/test_example_plugin.py`: the exit code of `compare` on a `layout/*` error.
+- `editors/vscode/src/launch.test.ts`: a timeout; a `didOpen` under a configured build directory.
+
+### Consolidated test gaps (periphery and guards)
+
+Passes 4 (generation and a2l), 5, 6, 7 and 10, the previous review's periphery items, 11a's items
+that belong to these files, and this pass, merged per file and deduplicated; each grepped for an
+existing test. Dropped as already pinned: a factory returning a non-backend or `generate` a
+non-list (previous review) - `tests/test_plugins.py:1644-1794`; a `--renames` file that cannot be
+written, a template raising a bare exception, a hook calling `sys.exit` (previous review) -
+`tests/test_cli.py:1704-1722, 537-561`, `tests/test_plugins.py:1261-1280`; a dotdot alias and a bare
+relative path claiming a built-in file (previous review) - `tests/test_backends.py:255-295`; a
+dataclass plugin under `from __future__ import annotations` (previous review) -
+`tests/test_plugins.py:637-652`; `SEVERITY` reaching the record and the dictionary (previous
+review) - `tests/test_cmake.py:471-484`; a hook raising `KeyboardInterrupt` (pass 5, the hook side)
+- `tests/test_plugins.py:1302-1313`; a rename *to* an enum or enumerator name (pass 6, half of it) -
+`tests/test_lsp.py:2063-2064`; a description containing `*/` (pass 4's neighbour) -
+`tests/test_generation.py:96-98`.
+
+`tests/test_lsp.py`
+
+1. The published uri equals the client's spelling for a file opened under `%3A`, a junction, a
+   `subst` drive or a case variant, and the file is not its own candidate (pass 6 Important 1 and
+   2; Important 1 here).
+2. `-b DIR` reaching `discover` through `Server(build_directories=...)` and through
+   `main(["lsp", "-b", ...])` with a framed `didOpen` (Important 2 here).
+3. Findings published from the disk while the open buffer differs (this pass).
+4. A project file opened with no build record; a component opened first, then the project file:
+   what is published and withdrawn (pass 6).
+5. Two records covering one file: what is published for it (pass 6; `:3438-3467` covers the rename
+   only).
+6. A record naming an unknown check, and one with a malformed entry (pass 5, pass 6, carried;
+   `severity=[...]` names known checks only at `:454, 3044, 3136`).
+7. A rename and a quick fix while a file of the project failed to load (pass 6).
+8. F2 *from* an enum name and an enumerator; a `size`/`typename`/`name` key inside an
+   `extensions` block under hover and rename (pass 6).
+9. `codeAction` with `context: null`; `initialize` with a folder lacking `uri`; a request before
+   `initialize` and after `shutdown`; `initialize` twice (pass 6 Minor 1, 2, 4).
+10. A junction loop, or any junction, under `build/` (pass 6, Windows).
+11. `TestSymlinkedWorkspace` through a junction, asserting the publication (pass 6; open
+    question 2).
+12. A `didSave` that publishes (Minor 2 here); the `%3A` server test on posix (Minor 3 here).
+13. A document nested 600 levels through `Document(text)` (pass 8 Important 1; 11a's item 52,
+    shared).
+
+`tests/test_cli.py`
+
+14. `--strict` promoting a warning of the analysis under `check` (Minor 1 here).
+15. `generate --format json` on a clean run: `diagnostics`, `summary`, and stdout carrying nothing
+    but the document (previous review; `:901-917` pins statuses only).
+16. `allow_abbrev`: `--stand` and `--dict` refused (pass 5; `ArgumentParser(prog="ddd", ...)` at
+    `src/ddd/cli.py:146` leaves the default).
+17. `dump -o`, `--renames` and `--dictionary` pointing at a file the run read (pass 5).
+18. `ddd id --assign` with an unwritable file among several (pass 5).
+19. `KeyboardInterrupt` reaching `main` (pass 5).
+20. The comparison findings' `location.path` and their text order against the candidate's own
+    findings, typed relative and absolute (pass 3 through pass 5).
+21. `dump -o .` and `--dictionary .`; a wide-character unit in the table; `compare -W` on a check
+    only the baseline's plugin registers (pass 10 Minor 7, 9, 10).
+22. The interleaving of `list`'s table and findings in one buffer (pass 10 Minor 8; the transcript
+    harness merges the streams in call order at `tests/test_transcripts.py:296-299` and cannot see
+    it).
+23. `--dictionary` refused for a case variant of an artefact path; `render`'s clash on a case
+    variant of a `{component}` file (pass 4; `WindowsPath` only, so platform-aware).
+24. The documented address-map recipe on the host toolchain; a map entry out of range for a symbol
+    the dictionary does not carry (pass 5).
+25. `-W x=error` reaching a description baseline (pass 3; 11a's item 46, shared).
+26. A document nested 600 levels through `ddd id --assign` (pass 8 Important 1; 11a's item 52).
+
+`tests/test_plugins.py`
+
+27. A plugin printing to stdout under `check --format json`, `generate --format json`, `dump` and
+    `dump -o` (pass 5; only the server case at `:2154-2210`).
+28. A check hook mutating a block: what the backends and the dump see (pass 5).
+29. `generate <plugin>` with errors writes nothing (Minor 10 here).
+30. The junction test running on every platform, or the convention amended (pass 7 Important 5).
+
+`tests/test_backends.py`
+
+31. The import-graph guard over `compare.py`, `identity.py`, `build_info.py`, `cli.py` and
+    `src/ddd/lsp/` (pass 7); and a backend importing `ddd.cli` or `ddd.plugins` (`:81-85` forbids
+    `ddd.loading` and `ddd.analysis` only).
+32. A bound on `build_code_model` and on the a2l model, linear in objects; a diamond of
+    external-only structures rendered (pass 10 Minor 1, 2, 4).
+
+`tests/test_generation.py`
+
+33. A description, unit or enumerator text containing `/*` (pass 4).
+34. A helper template (`_x.jinja2`) raising: the message names the helper (pass 4).
+35. `MOD_COMMON` alignments, `HEADER` fields, the `_2` suffix on a colliding method name, a
+    `boolean` measurement and characteristic, `float32` underflow (pass 4, carried; none in
+    `tests/test_a2l.py` by grep).
+
+`tests/test_a2l.py`
+
+36. A non-ASCII unit; the spelling of a derived limit under a decimal factor (`7.65`); an axis
+    whose `input` is a structured instance (pass 4; the analysis side is 11a's item 20).
+37. An address map with a byte order mark, underscores, non-ASCII digits and a repeated key
+    (pass 10 Minor 5, 6; `:171-187` cover hex, decimal and the refusals).
+
+`tests/test_cmake.py`
+
+38. A failing `<target>.ddd` component target; a component broken at configure time and its
+    target after the fix (pass 5, previous review; `:121` builds `sensor_hub.ddd` for a passing
+    component only).
+39. `STRICT`, `ADDRESS_MAP` (the seeded map and the two-run flow), `BYTE_ORDER`,
+    `NO_PROPAGATE_HEADERS`, `LINK_LIBRARIES`, `DEPENDS`, `OUTPUT_DIRECTORY`, `NAME` defaulting,
+    `DDD_A2L`, `<stem>_ddd_check` (pass 5, previous review).
+40. Removing a component from the link graph: the header survives, `ninja -t clean` leaves it,
+    the rebuild afterwards (pass 5).
+41. An image registering no component under `-Wpedantic -Werror`; the compile harness on a
+    float-only and on an empty project (pass 4, pass 5).
+42. A source directory whose name carries `[` under the collected mode; a keyword without a value
+    (`ADDRESS_MAP ${UNSET}`); a `DDD_EXECUTABLE` of another release (pass 10).
+43. The pre-commit hook end to end (`pre-commit try-repo`) (pass 5; `TestPreCommitHook` reads the
+    yaml only).
+44. The C compiler among the tools said to exist (Minor 13 here).
+
+`tests/test_documentation.py`
+
+45. The two version fields of `editors/vscode/package-lock.json`; the wheel file name in
+    `README.md:54` and `docs/getting_started.rst:29`; the seven banners as `__version__`; the
+    README's `== symbols` counts (pass 7).
+46. "Nothing in the suite skips": no `pytest.skip`, `skipif`, `importorskip` or `xfail` under
+    `tests/` (pass 7).
+47. Every command named in `SPEC.md`, and positive controls on the five vacuous guards (Minor 4
+    and 6 here).
+48. `docs.yml`'s `order()`/`stable` orderings (pass 7 Important 2).
+49. Nothing builds `docker/Dockerfile`, `compile.sh` or `verify_symbols.py` in CI (pass 7 Minor 9).
+
+`tests/test_transcripts.py`
+
+50. A positive control on `SHOWN` and `RUNS` (Minor 5 here).
+51. The 51 commands on nine pages that run in silence, and `echo $?` pins for more than 3 of the
+    81 runs (the maintainer's follow-up; open question 3).
+
+`tests/test_example_plugin.py`
+
+52. `ddd_layout.h` compiled (previous review Minor 9; `:283-297` asserts substrings).
+53. The exit code of `compare` on a `layout/*` error (Minor 15 here).
+
+`editors/vscode/src/launch.test.ts`
+
+54. A `didOpen`, and a configured build directory reaching discovery (previous review; Important 2
+    here); a timeout on the handshake (Minor 16 here).
+
+### Assessment
+
+The periphery half of the suite is what the developer page says it is: order independent,
+writing nowhere but `tmp_path`, in-process and deterministic where the server is concerned, and
+behavioural in its assertions - exit codes, files on disk, bytes of an a2l, the frames a client
+would read back. The four fix plans' promised tests all exist, two of them pinning a deliberately
+stronger contract than the plan wrote. Coverage is honest: the guards of `plugins.py` and the
+write-step statuses of `base.py` each have the test that fires them, and the half alone leaves
+only lines the core half reaches. Two things would pass with a real defect behind them: the
+server tests compare uris by file name or resolved path, which is exactly why pass 6's
+publication defect never turned a test red, and `-b` - the extension's one setting - is accepted
+by two tests and used by none, so a server dropping its build directories passes 736 tests. The
+rest is hygiene: a no-op `--strict` test, an assertion satisfied by a log line, three
+platform-vacuous checks, five documentation guards and one transcript suite that go quiet rather
+than red when their regex finds nothing, a stale docstring, a spy where the bytes would do, nine
+copies of a fixture, and a cmake file that spends a third of the suite's time configuring the same
+tree fourteen times. The consolidated list is 54 gaps, most of them carried from passes 5, 6 and
+7 and verified still open; the two that matter most are the ones the two Important findings would
+close.

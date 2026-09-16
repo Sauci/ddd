@@ -606,6 +606,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   was the whole answer.  A place that holds what failed is now reported only where nothing
   under it is, so the finding sits on the element that is wrong.
 
+  *A finding under a definition names the key it is about.*  A definition is a tagged union,
+  and the reader lost the document on the tag: every segment below it was then judged by its
+  spelling alone, so a malformed `extensions` block whose plugin is named with punctuation,
+  or named after one of the variants - `map`, `axis`, `enum`, `string`, `linear` and `curve`
+  are all legal plugin names - was reported at `definition.extensions` with the key gone, and
+  the editor underlined the whole block.  Two such blocks in one definition, or in one
+  project, were even one finding: the reader fixed the first, ran again and met the second.
+  Each now names its key and is counted apart.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object

@@ -1286,12 +1286,20 @@ def _place(loc: tuple[int | str, ...], document: Any = None) -> tuple[int | str,
     reached so far, or an index into the list reached so far, is part of the path however it
     is spelled - ``my-plugin`` is a key, not a branch tag - and only a segment the document
     does not have is judged by its shape.
+
+    The walk stays where it was on a segment the document does not have, rather than
+    following it into nothing: a tag is not a step down the document, and a definition is a
+    tagged union, so dropping the document on the first one left every key below it judged
+    by shape alone - a punctuated plugin name under ``extensions``, or one spelled like
+    another variant of that union, was taken for a tag of its own and the finding lost the
+    key it was about.
     """
     parts: list[int | str] = []
     node = document
     for item in loc:
         present, child = _child(node, item)
-        node = child
+        if present:
+            node = child
         if not present and (item in _UNION_TAGS or _is_branch_tag(item)):
             # pydantic reports the selected variant of a tagged union as a path segment,
             # and the tried branch of a plain one the same way;

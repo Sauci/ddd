@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from conftest import (
     checks,
     component,
@@ -506,3 +508,53 @@ class TestPointersWithPunctuation:
         bag = DiagnosticBag()
         load_workspace(tree / "project.ddd.json", bag)
         assert "project.ddd.json#project.extensions.my-plugin: error[schema]" in messages(bag)
+
+    @staticmethod
+    def _under_a_definition(tree: Path, extensions: dict[str, Any]) -> DiagnosticBag:
+        write_tree(
+            tree,
+            {"a.ddd.json": component("A", declare("local", "X", extensions=extensions))},
+        )
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        return bag
+
+    @pytest.mark.parametrize("name", ["my-plugin", "map", "axis", "enum", "string", "linear"])
+    def test_a_key_below_a_union_tag_is_named_in_the_pointer(self, tree: Path, name: str) -> None:
+        """A definition is a tagged union and pydantic reports the tag it chose as a path
+        segment. The walk steps over the tag; losing the document with it left every key
+        below judged by shape alone, so a punctuated one - or one spelled like another
+        variant, all of them legal plugin names - was dropped and the editor underlined the
+        whole block."""
+        bag = self._under_a_definition(tree, {name: 1})
+        assert f"definition.extensions.{name}: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_malformed_blocks_in_one_definition_are_two_findings(self, tree: Path) -> None:
+        """One finding per place, and these are two places: the reader who fixes the first
+        used to run again to meet the second."""
+        bag = self._under_a_definition(tree, {"a-b": 1, "c-d": 2})
+        assert len(bag) == 2, messages(bag)
+        assert "definition.extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "definition.extensions.c-d: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_blocks_named_after_variants_are_two_findings(self, tree: Path) -> None:
+        bag = self._under_a_definition(tree, {"map": [1], "axis": [2]})
+        assert len(bag) == 2, messages(bag)
+        assert "definition.extensions.map: error[schema]" in messages(bag), messages(bag)
+        assert "definition.extensions.axis: error[schema]" in messages(bag), messages(bag)
+
+    def test_two_plainly_named_blocks_are_still_two_findings(self, tree: Path) -> None:
+        """The control: a key nothing mistakes for a tag was reported twice all along."""
+        bag = self._under_a_definition(tree, {"aa": 1, "bb": 2})
+        assert len(bag) == 2, messages(bag)
+
+    def test_two_malformed_blocks_on_the_project_are_two_findings(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {"project.ddd.json": {"project": {"name": "P", "extensions": {"a-b": 1, "c-d": 2}}}},
+        )
+        bag = DiagnosticBag()
+        load_workspace(tree / "project.ddd.json", bag)
+        assert len(bag) == 2, messages(bag)
+        assert "project.extensions.a-b: error[schema]" in messages(bag), messages(bag)
+        assert "project.extensions.c-d: error[schema]" in messages(bag), messages(bag)

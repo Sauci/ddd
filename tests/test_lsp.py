@@ -31,6 +31,7 @@ from ddd.lsp.protocol import (
     METHOD_NOT_FOUND,
     PARSE_ERROR,
     REQUEST_FAILED,
+    SERVER_NOT_INITIALIZED,
     MessageError,
     ProtocolError,
     error,
@@ -50,6 +51,22 @@ def framed(*messages: dict[str, Any]) -> io.BytesIO:
         write_message(stream, message)
     stream.seek(0)
     return stream
+
+
+def session(*messages: dict[str, Any]) -> io.BytesIO:
+    """A whole conversation: the handshake a client opens with, then these messages.
+
+    The server refuses anything that arrives before ``initialize`` - the protocol reserves a
+    code for exactly that - so a test that means to exercise a request says hello first, as
+    every client does. Empty ``params`` leaves the workspace folder the server was constructed
+    with in place, which is the one these tests set up.
+    """
+    return framed({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}, *messages)
+
+
+def answered(stream: io.BytesIO) -> list[dict[str, Any]]:
+    """What the server said in answer to everything after the handshake."""
+    return sent(stream)[1:]
 
 
 def raw_frame(body: bytes) -> bytes:
@@ -3130,13 +3147,13 @@ class TestServer:
         off the screen until somebody restarted the server.
         """
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover"},
             {"jsonrpc": "2.0", "id": 8, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
         assert answers[7]["error"]["code"] == INVALID_PARAMS
         # And the conversation went on: the request after it was answered normally.
         assert answers[8]["result"] is None
@@ -3144,13 +3161,13 @@ class TestServer:
     def test_a_notification_without_params_is_survived_too(self, tmp_path: Path) -> None:
         """A notification gets no reply by definition, so the only thing to prove is the loop."""
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "method": "textDocument/didOpen"},
             {"jsonrpc": "2.0", "id": 9, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        assert any(message.get("id") == 9 for message in sent(writer))
+        assert any(message.get("id") == 9 for message in answered(writer))
 
     def test_repeating_a_request_does_no_more_reading_than_asking_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -3186,7 +3203,7 @@ class TestServer:
 
         def reads(*requests: dict[str, Any]) -> int:
             loads.clear()
-            Server(framed(*requests), io.BytesIO(), root=tmp_path).run()
+            Server(session(*requests), io.BytesIO(), root=tmp_path).run()
             return len(loads)
 
         once = reads(asked)
@@ -3224,7 +3241,7 @@ class TestServer:
             )
             for name in ("a.ddd.json", "b.ddd.json")
         ]
-        Server(framed(*asked), io.BytesIO(), root=tmp_path).run()
+        Server(session(*asked), io.BytesIO(), root=tmp_path).run()
         assert len(walks) == 1
 
     def test_a_save_picks_up_what_changed_on_disk(self, tmp_path: Path) -> None:
@@ -3263,7 +3280,7 @@ class TestServer:
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
         opened = INCONSISTENT.parent / "component_b.ddd.json"
-        Server(framed(self.opened(opened)), writer, root=tmp_path).run()
+        Server(session(self.opened(opened)), writer, root=tmp_path).run()
         drawn = published(writer)
         beside = INCONSISTENT.parent / "component_c.ddd.json"
         assert drawn[opened.as_uri()][0]["code"] == "multiple-producers"
@@ -3355,19 +3372,19 @@ class TestServer:
         build_record(tmp_path, INCONSISTENT)
         writer = io.BytesIO()
         saved = dict(self.opened(INCONSISTENT), method="textDocument/didSave")
-        Server(framed(saved), writer, root=tmp_path).run()
-        assert sent(writer)
+        Server(session(saved), writer, root=tmp_path).run()
+        assert answered(writer)
 
     def test_shutdown_is_answered_and_exit_ends_the_loop(self, tmp_path: Path) -> None:
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {"jsonrpc": "2.0", "id": 4, "method": "shutdown"},
             {"jsonrpc": "2.0", "method": "exit"},
             {"jsonrpc": "2.0", "id": 5, "method": "initialize", "params": {}},
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
         # Only the shutdown was answered: nothing after exit is read.
-        assert [message["id"] for message in sent(writer)] == [4]
+        assert [message["id"] for message in answered(writer)] == [4]
 
     def navigation_request(self, method: str, path: Path, position: dict[str, int]) -> dict:
         return {
@@ -3404,11 +3421,11 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/definition", consumer, position)),
+            session(self.navigation_request("textDocument/definition", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (found,) = answer["result"]
         assert found["uri"] == (tmp_path / "a.ddd.json").as_uri()
 
@@ -3419,11 +3436,11 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/references", consumer, position)),
+            session(self.navigation_request("textDocument/references", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert {found["uri"] for found in answer["result"]} == {
             (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
         }
@@ -3432,11 +3449,11 @@ class TestServer:
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/hover", path, position)),
+            session(self.navigation_request("textDocument/hover", path, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         return answer["result"]
 
     def test_hover_answers_with_markdown(self, tmp_path: Path) -> None:
@@ -3481,13 +3498,13 @@ class TestServer:
         lonely = tmp_path / "gone.ddd.json"
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.navigation_request("textDocument/hover", lonely, {"line": 0, "character": 0})
             ),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"] is None
 
     def test_it_offers_to_rename(self, tmp_path: Path) -> None:
@@ -3513,13 +3530,13 @@ class TestServer:
         consumer = self.shared_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
             ),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert set(answer["result"]["changes"]) == {
             (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
         }
@@ -3530,11 +3547,11 @@ class TestServer:
         consumer = self.shared_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(self.rename_request(consumer, "component.interface[0].definition.name", "int")),
+            session(self.rename_request(consumer, "component.interface[0].definition.name", "int")),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert "reserved" in answer["error"]["message"]
 
     def half_read_workspace(self, tmp_path: Path) -> Path:
@@ -3560,13 +3577,13 @@ class TestServer:
         consumer = self.half_read_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.rename_request(consumer, "component.interface[0].definition.name", "Renamed")
             ),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["error"]["code"] == REQUEST_FAILED
         assert "a.ddd.json" in answer["error"]["message"]
 
@@ -3582,7 +3599,7 @@ class TestServer:
         )
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 {
                     "jsonrpc": "2.0",
                     "id": 13,
@@ -3597,7 +3614,7 @@ class TestServer:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["error"]["code"] == REQUEST_FAILED
         assert "a.ddd.json" in answer["error"]["message"]
 
@@ -3608,11 +3625,11 @@ class TestServer:
         )["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            session(self.navigation_request("textDocument/prepareRename", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"]["placeholder"] == "Shared"
 
     def vocabulary_workspace(self, tmp_path: Path) -> Path:
@@ -3664,11 +3681,11 @@ class TestServer:
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", path, position)),
+            session(self.navigation_request("textDocument/prepareRename", path, position)),
             writer,
             root=base,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"]["placeholder"] == placeholder
 
     def test_renaming_a_type_rewrites_its_declaration_and_every_typename(
@@ -3677,11 +3694,11 @@ class TestServer:
         base = self.vocabulary_workspace(tmp_path)
         writer = io.BytesIO()
         Server(
-            framed(self.rename_request(base / "types.ddd.json", "types[0].name", "Probe_t")),
+            session(self.rename_request(base / "types.ddd.json", "types[0].name", "Probe_t")),
             writer,
             root=base,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert set(answer["result"]["changes"]) == {
             (base / name).as_uri() for name in ("types.ddd.json", "a.ddd.json")
         }
@@ -3698,11 +3715,11 @@ class TestServer:
         position = Document(consumer.read_text(encoding="utf-8")).range_of(pointer)["start"]
         writer = io.BytesIO()
         Server(
-            framed(self.navigation_request("textDocument/prepareRename", consumer, position)),
+            session(self.navigation_request("textDocument/prepareRename", consumer, position)),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"] is None
 
     def test_a_file_in_two_projects_is_edited_once(self, tmp_path: Path) -> None:
@@ -3724,7 +3741,7 @@ class TestServer:
             )
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 self.rename_request(
                     tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Other"
                 )
@@ -3732,7 +3749,7 @@ class TestServer:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (edits,) = answer["result"]["changes"].values()
         assert len(edits) == 1
 
@@ -3760,7 +3777,7 @@ class TestServer:
         )
         writer = io.BytesIO()
         Server(
-            framed(
+            session(
                 {
                     "jsonrpc": "2.0",
                     "id": 13,
@@ -3775,7 +3792,7 @@ class TestServer:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         (action,) = answer["result"]
         assert "Apply this unit" in action["title"]
         assert list(action["edit"]["changes"]) == [(tmp_path / "b.ddd.json").as_uri()]
@@ -3791,9 +3808,9 @@ class TestServer:
             self.navigation_request("textDocument/hover", consumer, position)
         ).getvalue()
         writer = io.BytesIO()
-        stream = io.BytesIO(raw_frame(b"{ not json") + follow_up)
+        stream = io.BytesIO(session().getvalue() + raw_frame(b"{ not json") + follow_up)
         assert Server(stream, writer, root=tmp_path).run() == 0
-        refusal, answer = sent(writer)
+        refusal, answer = answered(writer)
         assert refusal["error"]["code"] == PARSE_ERROR
         assert refusal["id"] is None
         assert "**Shared**" in answer["result"]["contents"]["value"]
@@ -3807,9 +3824,11 @@ class TestServer:
             self.navigation_request("textDocument/hover", consumer, position)
         ).getvalue()
         writer = io.BytesIO()
-        stream = io.BytesIO(raw_frame(b'[{"jsonrpc": "2.0", "id": 1}]') + follow_up)
+        stream = io.BytesIO(
+            session().getvalue() + raw_frame(b'[{"jsonrpc": "2.0", "id": 1}]') + follow_up
+        )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        refusal, answer = sent(writer)
+        refusal, answer = answered(writer)
         assert refusal["error"]["code"] == INVALID_REQUEST
         assert refusal["id"] is None
         assert answer["result"] is not None
@@ -3832,22 +3851,22 @@ class TestServer:
         """A client still waiting for an answer looks exactly like a server that has died."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "id": 9, "method": "textDocument/completion"}),
+            session({"jsonrpc": "2.0", "id": 9, "method": "textDocument/completion"}),
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["error"]["code"] == METHOD_NOT_FOUND
 
     def test_a_notification_it_does_not_know_is_simply_ignored(self, tmp_path: Path) -> None:
         """``didClose`` is now one the server knows; ``willSave`` still is not."""
         writer = io.BytesIO()
         Server(
-            framed({"jsonrpc": "2.0", "method": "textDocument/willSave", "params": {}}),
+            session({"jsonrpc": "2.0", "method": "textDocument/willSave", "params": {}}),
             writer,
             root=tmp_path,
         ).run()
-        assert sent(writer) == []
+        assert answered(writer) == []
 
     @pytest.mark.parametrize("key", ["workspaceFolders", "rootUri"])
     def test_the_workspace_root_is_taken_from_either_spelling(
@@ -4739,7 +4758,7 @@ class TestTheClientsSpelling:
             "component.interface[1].definition.name"
         )["start"]
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {
                 "jsonrpc": "2.0",
                 "method": "textDocument/didOpen",
@@ -4757,7 +4776,7 @@ class TestTheClientsSpelling:
             },
         )
         Server(stream, writer, root=link).run()
-        answer = next(message for message in sent(writer) if message.get("id") == 3)
+        answer = next(message for message in answered(writer) if message.get("id") == 3)
         assert list(answer["result"]["changes"]) == [opened.as_uri()]
 
 
@@ -4835,7 +4854,7 @@ class TestWhatAReconcileActionSettles:
         reported = [{"code": "definition-mismatch"}, {"code": "storage-mismatch"}]
         writer = io.BytesIO()
         server_module.Server(
-            framed(
+            session(
                 {
                     "jsonrpc": "2.0",
                     "id": 14,
@@ -4850,7 +4869,7 @@ class TestWhatAReconcileActionSettles:
             writer,
             root=tmp_path,
         ).run()
-        (answer,) = sent(writer)
+        (answer,) = answered(writer)
         assert answer["result"], "the unit disagreement is still offered a fix"
         for action in answer["result"]:
             assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
@@ -4876,7 +4895,7 @@ class TestMessagesTheClientGetsWrong:
         """``params.get("context", {})`` defends against the key being absent and not against
         it being there and null, which is what a client sending no diagnostics may write."""
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {
                 "jsonrpc": "2.0",
                 "id": 11,
@@ -4893,7 +4912,7 @@ class TestMessagesTheClientGetsWrong:
             *self.shutdown(),
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
-        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
         assert answers[11]["error"]["code"] == INVALID_PARAMS
         assert answers[99]["result"] is None
 
@@ -4901,7 +4920,11 @@ class TestMessagesTheClientGetsWrong:
         self, tmp_path: Path
     ) -> None:
         """``initialize`` is the first message of every session: ending on it means the client
-        never gets a capabilities answer and the server dies before it has served anything."""
+        never gets a capabilities answer and the server dies before it has served anything.
+
+        A refused handshake leaves the session unopened rather than half open, so the client
+        may send a well formed one and be served from there.
+        """
         writer = io.BytesIO()
         stream = framed(
             {
@@ -4910,11 +4933,13 @@ class TestMessagesTheClientGetsWrong:
                 "method": "initialize",
                 "params": {"workspaceFolders": [{"name": "x"}]},
             },
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {}},
             *self.shutdown(),
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
         answers = {message["id"]: message for message in sent(writer) if "id" in message}
         assert answers[1]["error"]["code"] == INVALID_PARAMS
+        assert answers[2]["result"]["serverInfo"]["name"] == "ddd"
         assert answers[99]["result"] is None
 
     def test_a_notification_the_server_cannot_read_is_answered_with_nothing(
@@ -4926,9 +4951,9 @@ class TestMessagesTheClientGetsWrong:
         the output channel as an error the reader has no message to act on.
         """
         writer = io.BytesIO()
-        stream = framed({"jsonrpc": "2.0", "method": "textDocument/didOpen"}, *self.shutdown())
+        stream = session({"jsonrpc": "2.0", "method": "textDocument/didOpen"}, *self.shutdown())
         assert Server(stream, writer, root=tmp_path).run() == 0
-        assert [message for message in sent(writer) if "error" in message] == []
+        assert [message for message in answered(writer) if "error" in message] == []
 
     def test_a_document_under_another_scheme_is_refused_rather_than_made_relative(
         self, tmp_path: Path
@@ -4937,7 +4962,7 @@ class TestMessagesTheClientGetsWrong:
         phantom file under the server's working directory that a finding is then published
         for. Nothing on disk is nothing this server can say anything about."""
         writer = io.BytesIO()
-        stream = framed(
+        stream = session(
             {
                 "jsonrpc": "2.0",
                 "method": "textDocument/didOpen",
@@ -4963,7 +4988,146 @@ class TestMessagesTheClientGetsWrong:
         )
         assert Server(stream, writer, root=tmp_path).run() == 0
         assert published(writer) == {}
-        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
         assert answers[12]["error"]["code"] == INVALID_PARAMS
         assert "untitled:Untitled-1" in answers[12]["error"]["message"]
         assert answers[99]["result"] is None
+
+
+class TestTheLifecycle:
+    """When the server is willing to serve, and what it says when it is not.
+
+    The protocol puts a beginning and an end on the conversation and says what happens outside
+    them, for a reason a diagnostics server feels as much as any other: a request served before
+    `initialize` is served against workspace folders the client has not sent yet, and one
+    served after `shutdown` is work done for a client that has stopped listening.
+    """
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def published_for(self, root: Path) -> dict[str, list[dict[str, Any]]]:
+        """What the same open publishes when it arrives in the order the protocol asks for."""
+        writer = io.BytesIO()
+        Server(
+            framed(
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                self.opened(root / "a.ddd.json"),
+            ),
+            writer,
+            root=root,
+        ).run()
+        return published(writer)
+
+    def hover(self, path: Path, request_id: int) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def test_exiting_without_shutting_down_first_is_not_a_clean_exit(self, tmp_path: Path) -> None:
+        """The protocol says so in as many words, and it is the one thing an exit code can
+        tell the client: a server told to stop without being told to wind down stopped for a
+        reason nobody planned, and a client that restarts it is right to."""
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, io.BytesIO(), root=tmp_path).run() == 1
+
+    def test_exiting_after_shutting_down_is_a_clean_exit(self, tmp_path: Path) -> None:
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, io.BytesIO(), root=tmp_path).run() == 0
+
+    def test_a_request_before_initialize_is_refused_and_the_session_goes_on(
+        self, tmp_path: Path
+    ) -> None:
+        """-32002 is the code the protocol reserves for exactly this, and the conversation
+        proceeds normally the moment the client does send its `initialize`."""
+        writer = io.BytesIO()
+        stream = framed(
+            self.hover(tmp_path / "a.ddd.json", 7),
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[7]["error"]["code"] == SERVER_NOT_INITIALIZED
+        assert answers[1]["result"]["serverInfo"]["name"] == "ddd"
+
+    def test_a_notification_before_initialize_is_dropped(self, tmp_path: Path) -> None:
+        """A notification never gets an answer, so the only thing to do with one that arrives
+        too early is nothing - and the file is not analysed against a workspace the client has
+        not described yet."""
+        (tmp_path / "a.ddd.json").write_text('{"nope": 1}', encoding="utf-8")
+        assert self.published_for(tmp_path), "the control: opened in order this file lights up"
+        writer = io.BytesIO()
+        stream = framed(
+            self.opened(tmp_path / "a.ddd.json"),
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+
+    def test_a_request_after_shutdown_is_refused(self, tmp_path: Path) -> None:
+        """The client has said it wants nothing more; anything it sends after that is a bug on
+        its side, and serving it is work for a reader who has closed the window."""
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            self.hover(tmp_path / "a.ddd.json", 8),
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[8]["error"]["code"] == INVALID_REQUEST
+
+    def test_a_notification_after_shutdown_is_dropped(self, tmp_path: Path) -> None:
+        (tmp_path / "a.ddd.json").write_text('{"nope": 1}', encoding="utf-8")
+        assert self.published_for(tmp_path), "the control: opened in order this file lights up"
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            self.opened(tmp_path / "a.ddd.json"),
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert published(writer) == {}
+
+    def test_initializing_twice_is_refused(self, tmp_path: Path) -> None:
+        """The second one would re-point the workspace folders under every answer already
+        given, so the protocol makes it an invalid request rather than a second beginning."""
+        writer = io.BytesIO()
+        stream = framed(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        answers = {message["id"]: message for message in sent(writer) if "id" in message}
+        assert answers[1]["result"]["serverInfo"]["name"] == "ddd"
+        assert answers[2]["error"]["code"] == INVALID_REQUEST
+
+    def test_exit_without_initialize_still_exits(self, tmp_path: Path) -> None:
+        """A client that gave up before saying hello still gets a server that goes away; the
+        protocol names this case so that such a server is not left running."""
+        assert Server(framed({"jsonrpc": "2.0", "method": "exit"}), io.BytesIO()).run() == 1

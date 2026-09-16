@@ -513,7 +513,7 @@ class TestTheEditor:
     def served(self, tree: Path, path: Path, pointer: str) -> Any:
         from ddd.lsp.ranges import Document
         from ddd.lsp.server import Server
-        from test_lsp import build_record, framed, sent
+        from test_lsp import answered, build_record, session
 
         build_record(tree, tree / "p.ddd.json")
         position = Document(path.read_text(encoding="utf-8")).range_of(pointer)["start"]
@@ -524,8 +524,8 @@ class TestTheEditor:
             "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
         }
         writer = io.BytesIO()
-        Server(framed(request), writer, root=tree).run()
-        (answer,) = sent(writer)
+        Server(session(request), writer, root=tree).run()
+        (answer,) = answered(writer)
         return answer["result"]
 
     def test_hover_on_the_entry_shows_the_name_and_the_header(self, tree: Path) -> None:

@@ -122,6 +122,14 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 """The json-rpc code for a request naming a method the server does not implement."""
 
+SERVER_NOT_INITIALIZED = -32002
+"""The language protocol's code for a request that arrived before ``initialize`` did.
+
+Its own code rather than an invalid request, and the distinction is the client's to act on:
+this one says "ask me again once you have told me what the workspace is", where every other
+refusal says the request itself was wrong.
+"""
+
 INVALID_PARAMS = -32602
 """The json-rpc code for a request whose parameters are not the shape the method takes.
 

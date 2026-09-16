@@ -54,8 +54,10 @@ from ddd.lsp.navigation import (
 )
 from ddd.lsp.protocol import (
     INVALID_PARAMS,
+    INVALID_REQUEST,
     METHOD_NOT_FOUND,
     REQUEST_FAILED,
+    SERVER_NOT_INITIALIZED,
     MessageError,
     ProtocolError,
     error,
@@ -200,6 +202,23 @@ class Server:
         self._versioned_edits = False
         """Whether the client takes ``documentChanges``, which carry the version an edit is for."""
 
+        self._initialised = False
+        """Whether the client has said what the workspace is, which it does exactly once.
+
+        Before it has, nothing it asks can be answered against the right folders: the roots
+        are still this process's defaults, so a hover would be resolved through whatever
+        project happens to sit above the working directory. The protocol gives that refusal
+        its own code, and gives the client the obligation to ask again after ``initialize``.
+        """
+
+        self._shutting_down = False
+        """Whether the client has asked the server to wind down.
+
+        After it has, the client has stopped reading answers, so serving a request is work for
+        nobody - and the exit code says which of the two ways the run ended: the planned one,
+        or a stop nobody asked to prepare.
+        """
+
         self._spelled: dict[Path, str] = {}
         """Resolved path -> the uri the client used for it, for every document it opened.
 
@@ -248,19 +267,58 @@ class Server:
                     write_message(self.writer, error(message["id"], fault.code, str(fault)))
                 continue
             if not keep_going:
-                return 0
+                # An exit that was prepared for is a clean end and anything else is not, which
+                # is the one thing an exit code can tell a client that is watching the process.
+                return 0 if self._shutting_down else 1
+
+    def _out_of_turn(self, method: Any) -> tuple[int, str] | None:
+        """Why this message may not be acted on where the conversation has got to.
+
+        The protocol puts a beginning and an end on a session and says what happens outside
+        them, and both halves matter here rather than being ceremony. Before ``initialize``
+        the workspace folders are this process's defaults, so an answer given then is an
+        answer about the wrong project; after ``shutdown`` the client has stopped listening,
+        so an answer is work done for nobody. ``exit`` is outside all of it - a client that
+        gave up before saying hello still gets a server that goes away.
+        """
+        if not self._initialised:
+            if method == "initialize":
+                return None
+            return (
+                SERVER_NOT_INITIALIZED,
+                f"'{method}' arrived before 'initialize'; the server does not know what the "
+                f"workspace is yet, so ask again once it has answered",
+            )
+        if method == "initialize":
+            return (INVALID_REQUEST, "this session is already initialized")
+        if self._shutting_down:
+            return (
+                INVALID_REQUEST,
+                f"'{method}' arrived after 'shutdown'; this session is winding down and takes "
+                f"nothing further",
+            )
+        return None
 
     def _handle(self, message: dict[str, Any]) -> bool:
         """Act on one message; ``False`` means the client asked the server to exit."""
         method = message.get("method")
         request_id = message.get("id")
+        if method == "exit":
+            return False
+        refusal = self._out_of_turn(method)
+        if refusal is not None:
+            # A notification gets nothing, here as everywhere else; the protocol names the
+            # dropping of an early one outright.
+            if request_id is not None:
+                write_message(self.writer, error(request_id, *refusal))
+            return True
         if method == "initialize":
             self._initialise(message.get("params") or {})
+            self._initialised = True
             write_message(self.writer, response(request_id, self._capabilities()))
         elif method == "shutdown":
+            self._shutting_down = True
             write_message(self.writer, response(request_id, None))
-        elif method == "exit":
-            return False
         elif method == _DID_OPEN:
             self._remember(message)
             self.refresh(self._opened(message))

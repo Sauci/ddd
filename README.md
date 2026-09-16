@@ -279,7 +279,8 @@ this repository, so cloning it is enough to see the effect.
 `includes` lists components **or other projects**, and the types, units, sections,
 constants and rasters files below; the kind of each file is detected from its content.
 Paths are relative to the file that contains them, `*`, `?`, `[...]` and `**` wildcards are
-expanded, and a file reached over two different paths is loaded once.  Include cycles are
+expanded - an entry that names an existing file being that file, whatever characters are in
+its name - and a file reached over two different paths is loaded once.  Include cycles are
 reported instead of hanging.
 
 `plugins` names the python modules the project extends itself with, and `extensions` holds
@@ -651,7 +652,10 @@ extension, a name starting with `_` is a helper that renders nothing on its own,
 containing `{component}` renders once per component.  Renaming a template renames its output.
 
 With the example templates, `ddd generate all -o DIR -t DIR` writes - and rewrites only what
-actually changed, so unchanged output does not trigger a rebuild:
+actually changed, so unchanged output does not trigger a rebuild.  A run owns the directory
+it writes into: it records its own files in `.ddd-manifest.json` beside them and removes, on
+the next run, those it no longer writes - a component that leaves the project takes its header
+with it, and nothing the tool did not write is ever touched.
 
 | file | from | content |
 | --- | --- | --- |

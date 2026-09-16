@@ -813,8 +813,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,
   so an offset, a gain or a count of zero was refused for no reason it had.  The value is now
   a whole number of either sign a 64 bit target holds, or a finite number written with a
-  fraction, and the spelling decides which: `2` is whole, `2.0` is not, and a template
-  emits the literal as written.  The size rule moves to where it applies: a shape naming a
+  fraction, and the spelling decides which: `2` is whole, anything with a point or an
+  exponent is not, and a template emits the number in its shortest spelling that reads back
+  as the same one - `2.50` as `2.5`, `1e3` as `1000.0` - which keeps the type the author
+  picked and not the format.  The size rule moves to where it applies: a shape naming a
   constant that is zero, negative or fractional is the new check `dimension-value`, an error
   reported at the `dimensions` entry or the `size` that names it, and the declaration is
   dropped as for `unknown-constant`.  Unlike that check it needs only the file in front of it,

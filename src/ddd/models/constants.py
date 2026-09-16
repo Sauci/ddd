@@ -74,9 +74,12 @@ class ConstantDeclaration(BaseModel):
 
     A literal only: an expression would put a parser and an evaluation order into a
     description format, and a constant cannot name another constant, so what cannot be
-    written cannot cycle.  How it is written settles what it is - ``2`` is a whole number
-    and ``2.0`` one with a fraction - because that is what the outputs carry: the generated
-    code emits the literal as written, so the author picks the type rather than the format.
+    written cannot cycle.  How it is written settles what it is - ``2`` is a whole number,
+    and anything carrying a point or an exponent is fractional, so ``2.0`` and ``1e3`` both
+    are - because that is what the author is picking: the type, not the format.  The
+    outputs carry the number in its shortest spelling that reads back as the same number, a
+    whole number without a point and any other with a point or an exponent, so ``2.50``
+    reaches the generated code as ``2.5`` and ``1e3`` as ``1000.0``.
     A whole number is bounded by what a 64 bit target can express, signed or unsigned, and
     a fractional one must be finite: ``inf`` and ``nan`` name nothing a description can
     state, and would reach a template as those words.

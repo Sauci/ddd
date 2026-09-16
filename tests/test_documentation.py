@@ -2365,6 +2365,24 @@ off instead; these are the keys it hangs off.
 """
 
 
+REFUSED_BUT_NOT_BY_A_CONSTRAINT = [
+    ("types", "ExternalType", "header", "no whitespace"),
+    ("component", "ExternalType", "header", "no whitespace"),
+    ("rasters", "RasterDeclaration", "cycle", "1 to 255 times a decade"),
+    ("component", "EnumConversion", "enumerators", "may not carry the same name"),
+    ("component", "Measurement", "unit", "Refused beside a ``string``"),
+    ("component", "Measurement", "limits", "Refused beside a ``string``"),
+    ("component", "A2lObjectOptions", "format", "Refused beside a ``string``"),
+]
+"""Four rules the loader enforces in python, with the phrase each description carries.
+
+An editor bound to the schema accepts what the loader then refuses - a header spelled
+``"a b.h"``, a ``cycle`` of ``1234ms``, one enumerator name twice, a ``unit`` beside a
+string - so the description of the key says the rule, which is what the file formats index
+promises a reader of a key that no constraint can express.
+"""
+
+
 class TestTheRuleAJsonSchemaCannotCarry:
     @pytest.mark.parametrize(("kind", "model", "key"), WHOLE_NUMBER_KEYS)
     def test_a_strict_integer_key_says_it_is_written_without_a_point(
@@ -2372,3 +2390,10 @@ class TestTheRuleAJsonSchemaCannotCarry:
     ) -> None:
         described = published(kind)["$defs"][model]["properties"][key]["description"]
         assert "without a decimal point" in described, described
+
+    @pytest.mark.parametrize(("kind", "model", "key", "phrase"), REFUSED_BUT_NOT_BY_A_CONSTRAINT)
+    def test_a_key_the_loader_polices_says_what_it_refuses(
+        self, kind: str, model: str, key: str, phrase: str
+    ) -> None:
+        described = published(kind)["$defs"][model]["properties"][key]["description"]
+        assert phrase in described, described

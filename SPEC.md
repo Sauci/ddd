@@ -999,8 +999,12 @@ tool as the root of a run it is refused, with a hint that it belongs in a projec
   with a note at the first.
 - `"value"` (required): a number, written as one - a whole number of either sign that a 64
   bit target can hold, signed or unsigned, or a finite number written with a fraction. How
-  the number is written decides which it is: `2` is a whole number and `2.0` is not, and
-  the outputs carry the literal as written, so the author picks the type a template emits.
+  the number is written decides which it is: `2` is a whole number, and anything carrying a
+  decimal point or an exponent is fractional, so `2.0` and `1e3` both are - which is why a
+  shape naming `1e1` is `dimension-value`. What the outputs carry is the number in its
+  shortest spelling that reads back as the same number, a whole number without a point and
+  any other with a point or an exponent: `2.50` reaches the C and the A2L as `2.5` and `1e3`
+  as `1000.0`. So the author picks the type a template emits, not its format.
   Every declared constant reaches the outputs whether or not a shape names it - one
   `SYSTEM_CONSTANT` each in the a2l, and the whole vocabulary handed to the C templates - so
   a gain, an offset or a count of zero belongs here as much as a size does. The value is a

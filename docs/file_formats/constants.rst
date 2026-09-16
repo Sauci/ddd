@@ -25,9 +25,12 @@ that name, and the a2l records the constant for the calibration tool.
 the length cap, ``reserved-identifier`` and ``name-collision`` apply to it like to any other
 name. ``value`` is a number: a whole number of either sign that a 64 bit target can hold,
 signed or unsigned, or a finite number written with a fraction. How it is written decides
-which it is - ``2`` is a whole number and ``2.0`` is not - and the outputs carry the literal
-as written, so ``{"name": "CELL_GAIN", "value": 2.0}`` reaches a c header as the double
-literal ``2.0``. The value is a literal only: an expression would put a parser and an
+which it is - ``2`` is a whole number, and anything carrying a point or an exponent is
+fractional, so ``2.0`` and ``1e3`` both are. The outputs carry the number in its shortest
+spelling that reads back as the same number - a whole number without a point, any other with
+a point or an exponent - so ``{"name": "CELL_GAIN", "value": 2.50}`` reaches a c header as
+the double literal ``2.5``, and ``1e3`` as ``1000.0``. The type survives the trip even where
+the spelling does not: a value written with a point is emitted with one. The value is a literal only: an expression would put a parser and an
 evaluation order into a description format, and a constant cannot name another constant -
 what cannot be written cannot cycle. ``description`` is where the meaning of a number is
 written down once, instead of being implied by every object that happens to use it. The file is listed in the ``includes`` of a

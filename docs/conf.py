@@ -73,7 +73,7 @@ latex_elements = {
 autosummary_generate = True
 # Only the class docstring. With "both", every pydantic model would also carry the inherited
 # ``BaseModel.__init__`` docstring - three paragraphs of "create a new model by parsing and
-# validating input data", repeated under all thirty-five models, one of them containing a
+# validating input data", repeated under all thirty-six models, one of them containing a
 # markdown link that reStructuredText renders verbatim.
 autoclass_content = "class"
 add_module_names = False

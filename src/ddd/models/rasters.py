@@ -95,7 +95,9 @@ class RasterDeclaration(BaseModel):
     cycle: str | None = None
     """The period, written as an integer and a unit: ``100us``, ``10ms``, ``1s``.
 
-    No space and no fractional part - write ``1500us`` rather than ``1.5ms``. Left out, the
+    No space and no fractional part - write ``1500us`` rather than ``1.5ms``. The period is
+    one XCP can carry, that is a count of 1 to 255 times a decade from ``1ns`` to ``1s``, so
+    ``1500us`` is a period and ``1234ms`` is not. Left out, the
     event is not cyclic: crank synchronous, on change, on demand. That is a real kind of
     raster rather than an omission, which is why the key has no derived default.
     """

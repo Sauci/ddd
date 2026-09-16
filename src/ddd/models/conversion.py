@@ -180,7 +180,14 @@ class EnumConversion(_Frozen):
     enumerators: Annotated[
         tuple[Enumerator, ...], Field(min_length=1, json_schema_extra=_publish_mapping_form)
     ]
-    """The named values, either as objects or as a ``{"NAME": value}`` mapping."""
+    """The named values, either as objects or as a ``{"NAME": value}`` mapping.
+
+    Two of them may not carry the same name, which the mapping form cannot express twice and
+    the list form can: the generated enumeration would not compile, and a calibration tool
+    reading the generated table of labels would have two answers for one. Two names sharing a
+    *value* is a different matter - it is the C idiom for an alias, reported as
+    ``enum-duplicate-value`` rather than refused.
+    """
 
     @model_validator(mode="before")
     @classmethod

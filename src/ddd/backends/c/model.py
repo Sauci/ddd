@@ -191,7 +191,12 @@ class ConstantView:
 
     name: str
     value: int | float
-    """The number as the description wrote it: a whole number of either sign, or a float.
+    """The number the description wrote, as a whole number of either sign or as a float.
+
+    The value, not the spelling: ``2.50`` arrives here as ``2.5`` and ``1e3`` as ``1000.0``,
+    since what a description states is a number and what jinja renders is its shortest
+    spelling that reads back as the same one. What the spelling did settle is the type, a
+    point or an exponent making the value fractional.
 
     Rendered with ``{{ constant.value }}`` it is the number and nothing else - ``8``,
     ``-40``, ``1.5`` - which is what a template wants that does its own formatting, a

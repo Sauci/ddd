@@ -478,8 +478,9 @@ project's `includes` like a component and each with its own page in the document
   running software can write it, the alignment it guarantees - and a definition places its
   object with `section`
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/sections.html));
-* a **constants** file declares named integer constants, and a shape names one where it
-  would state a number - `"dimensions": ["PRESSURE_CELLS"]` - so a size lives in one place,
+* a **constants** file declares named numbers - whole or fractional, of either sign - and a
+  shape names one holding a whole number of at least 1 where it would state a size -
+  `"dimensions": ["PRESSURE_CELLS"]` - so that size lives in one place,
   the generated c declares the array by the name, and the a2l records it as a
   `SYSTEM_CONSTANT`
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/constants.html));

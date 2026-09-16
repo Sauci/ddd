@@ -29,7 +29,7 @@
             }
           ],
           "default": null,
-          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.",
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display.",
           "title": "Format"
         },
         "display_identifier": {
@@ -126,7 +126,7 @@
               "type": "object"
             }
           ],
-          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.",
+          "description": "The named values, either as objects or as a ``{\"NAME\": value}`` mapping.\n\nTwo of them may not carry the same name, which the mapping form cannot express twice and\nthe list form can: the generated enumeration would not compile, and a calibration tool\nreading the generated table of labels would have two answers for one. Two names sharing a\n*value* is a different matter - it is the C idiom for an alias, reported as\n``enum-duplicate-value`` rather than refused.",
           "title": "Enumerators"
         }
       },
@@ -195,7 +195,7 @@
           "type": "string"
         },
         "header": {
-          "description": "The header that defines the type, spelled the way the generated inclusion writes it.\n\n``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form; a subdirectory\npath such as ``drivers/status.h`` is allowed in either.",
+          "description": "The header that defines the type, spelled the way the generated inclusion writes it.\n\n``my_driver.h`` for the quoted form, ``<os_types.h>`` for the angle form; a subdirectory\npath such as ``drivers/status.h`` is allowed in either. The spelling is written out\nexactly as it stands, so one that would unbalance the line is refused here rather than\nhanded to a compiler: no whitespace, no quote of its own - the quoted form is written\nbare - and, for the angle form, exactly one pair of angle brackets wrapping the whole\nname.",
           "minLength": 1,
           "title": "Header",
           "type": "string"

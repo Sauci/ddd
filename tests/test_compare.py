@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -11,11 +12,11 @@ import pytest
 from conftest import DEMO, checks, component, declare, messages, project, write_tree
 from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
-from ddd.compare import compare
+from ddd.compare import _MOST_CANDIDATES, compare
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
-from ddd.ir import DataDictionary
+from ddd.ir import DataDictionary, ResolvedObject
 from ddd.loading import load_workspace
-from ddd.models import Limits
+from ddd.models import Datatype, IdentityConversion, Limits, ObjectKind
 
 
 def resolve(base: Path, root: str) -> DataDictionary:
@@ -1531,6 +1532,183 @@ def test_a_storage_only_difference_is_not_offered_as_a_lost_identity(tree):
     findings = [diagnostic for diagnostic in bag if diagnostic.check == "removed-unused-object"]
     assert len(findings) == 1, messages(bag)
     assert findings[0].notes == (), messages(bag)
+
+
+class TestTheLostIdentityNoteIsBounded:
+    """The note is advisory, and it used to cost more than the comparison it annotates.
+
+    It asks of every removal which additions are identical to it, and the additions were
+    grouped on ``kind``, ``datatype`` and ``unit`` alone - so a naming-convention sweep on a
+    project that has no ids yet, which is exactly what ``--renames`` exists for, put every
+    object in one bucket and ran the whole field comparison between every removal and every
+    addition. Ten seconds at 5 300 objects, and no answer at all at 53 000.
+
+    Two halves, and both are load bearing: the bucket now keys on everything hashable the
+    note compares, so a bucket holds genuine candidates rather than everything of one
+    datatype; and a bucket past a small bound is given up on, because the note names a
+    candidate only when there is exactly one and a crowd of identical additions was never
+    going to produce one.
+    """
+
+    def sweep(self, count: int) -> tuple[DataDictionary, DataDictionary]:
+        """Two deliveries of ``count`` objects, every one of them renamed and none of them
+        carrying an id - the project that has not adopted ids renaming everything at once."""
+
+        def objects(prefix: str) -> tuple[ResolvedObject, ...]:
+            return tuple(
+                ResolvedObject(
+                    name=f"{prefix}V{number}",
+                    kind=ObjectKind.MEASUREMENT,
+                    datatype=Datatype.UINT8,
+                    conversion=IdentityConversion(),
+                    limits=Limits(min=0, max=255),
+                )
+                for number in range(count)
+            )
+
+        return (
+            DataDictionary(name="P", objects=objects("")),
+            DataDictionary(name="P", objects=objects("x_")),
+        )
+
+    def test_a_sweep_of_five_thousand_renamed_objects_compares_in_seconds(self) -> None:
+        """The measurement the finding is: 5 000 objects took about three minutes.
+
+        The bound is generous - the comparison is a tenth of a second here - because what is
+        being asserted is that the work is no longer quadratic, and a slower machine may take
+        several times as long without that having changed.
+        """
+        baseline, candidate = self.sweep(5000)
+        bag = DiagnosticBag()
+        start = time.perf_counter()
+        compare(baseline, candidate, bag)
+        elapsed = time.perf_counter() - start
+        assert elapsed < 5.0, f"the sweep took {elapsed:.1f} s"
+        assert len(list(bag)) == 10000, "every object removed and every object added"
+
+    def test_a_removal_with_one_candidate_is_still_offered_it(self, tree: Path) -> None:
+        """The note has to survive the bucketing on an object that fills every keyed field:
+        an enum conversion (whose identity is not a plain value), an array shape, an init, a
+        section, a raster and a reference. Keying on any of them wrongly - spelling one of
+        them into the key in a form that does not compare the way the field does - would file
+        the removal and its one candidate in different buckets and lose the note silently.
+        """
+        for delivery, name in (("before", "FiltGain"), ("after", "FilterGain")):
+            write_tree(
+                tree,
+                {
+                    f"{delivery}.ddd.json": project(
+                        "P", f"{delivery}-r.ddd.json", f"{delivery}-a.ddd.json"
+                    ),
+                    f"{delivery}-r.ddd.json": {
+                        "rasters": [{"raster": "10ms", "event": 0, "cycle": "10ms"}]
+                    },
+                    f"{delivery}-a.ddd.json": component(
+                        "A",
+                        declare("local", "Ax", "uint16", kind="axis", size=3),
+                        declare(
+                            "local",
+                            name,
+                            "uint8",
+                            kind="curve",
+                            axis="Ax",
+                            raster="10ms",
+                            init=[1, 2, 3],
+                            conversion={"kind": "enum", "name": "Mode_t", "enumerators": {"A": 1}},
+                        ),
+                    ),
+                },
+            )
+        bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes, messages(bag)
+        note_text, _ = findings[0].notes[0]
+        assert note_text.startswith("'FilterGain' was added with an identical interface")
+
+    def test_a_member_is_offered_a_candidate_under_a_differently_stored_variable(
+        self, tree: Path
+    ) -> None:
+        """A leaf is compared without the fields it only carries because its variable does,
+        so the bucket it is looked up in must leave them out too. ``Outlet`` is volatile where
+        ``Inlet`` was not, which is a property of the variable and nothing the member states:
+        the members themselves are identical, and ``Outlet.a`` is the candidate for the lost
+        identity of ``Inlet.a``.
+        """
+        for delivery, variable, volatile in (("before", "Inlet", False), ("after", "Outlet", True)):
+            write_tree(
+                tree,
+                {
+                    f"{delivery}.ddd.json": project(
+                        "P", f"{delivery}-t.ddd.json", f"{delivery}-a.ddd.json"
+                    ),
+                    f"{delivery}-t.ddd.json": {
+                        "types": [
+                            {
+                                "type": "struct",
+                                "name": "S_t",
+                                "members": [
+                                    {
+                                        "name": "a",
+                                        "member": "value",
+                                        "datatype": "uint8",
+                                        "conversion": {"kind": "identity"},
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    f"{delivery}-a.ddd.json": component(
+                        "A",
+                        declare("local", variable, typename="S_t", volatile=volatile),
+                    ),
+                },
+            )
+        bag = verdict(resolve(tree, "before.ddd.json"), resolve(tree, "after.ddd.json"))
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes, messages(bag)
+        note_text, _ = findings[0].notes[0]
+        assert note_text.startswith("'Outlet.a' was added with an identical interface")
+
+    def test_a_crowded_bucket_is_given_up_on(self, tree: Path) -> None:
+        """What the bound buys, on the one input the key cannot separate.
+
+        Every one of these curves agrees on every hashable field the note compares - kind,
+        datatype, unit, conversion, shape, init, locality, storage and the *names* of its
+        reference fields - and they are told apart only by which axis each one resolves to,
+        which no key can hold. Exactly one of them would match, so without the bound the note
+        would be earned at the price of the full comparison against all of them; past the
+        bound the note is simply not offered.
+        """
+        wanted = _MOST_CANDIDATES + 1
+        before = one_component(
+            tree,
+            "before",
+            declare("local", "Ax", "uint16", kind="axis", size=3),
+            declare("local", "Ay", "uint16", kind="axis", size=3),
+            declare("local", "C", "uint8", kind="curve", axis="Ax"),
+        )
+        after = one_component(
+            tree,
+            "after",
+            declare("local", "Ax", "uint16", kind="axis", size=3),
+            declare("local", "Ay", "uint16", kind="axis", size=3),
+            *[
+                declare(
+                    "local",
+                    f"D{number}",
+                    "uint8",
+                    kind="curve",
+                    axis="Ax" if number == 0 else "Ay",
+                )
+                for number in range(wanted)
+            ],
+        )
+        bag = verdict(before, after)
+        findings = [entry for entry in bag if entry.check == "removed-unused-object"]
+        assert len(findings) == 1, messages(bag)
+        assert findings[0].notes == (), messages(bag)
 
 
 def test_the_renames_file_lists_the_pairs_a_dataset_needs(tree, tmp_path):

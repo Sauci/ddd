@@ -586,27 +586,85 @@ def _compare_layouts(
             )
 
 
-def _by_discriminators(
-    added: Sequence[Comparable],
-) -> dict[tuple[str, str, str], list[Comparable]]:
-    """The additions grouped by the three cheapest fields a candidate must agree on.
+_MOST_CANDIDATES = 8
+"""How many additions one bucket may hold before :func:`_lost_identity_note` gives up on it.
 
-    This is a filter, not a complexity fix, and should not be read as one.
+The note names a candidate only when exactly one addition is identical to the removal, so a
+bucket - whose entries already agree on every hashable field the note compares - holding a
+crowd of them was almost never going to produce one. What the bound actually buys is the
+guarantee the key alone cannot give: whatever a delivery does, the work per removal is
+bounded, so the note can no longer cost more than the comparison it annotates. Small enough
+that a bucket at the limit is a handful of comparisons, large enough that the couple of
+plausible candidates a real rename produces are all still weighed.
+"""
+
+
+def _hashable(value: object) -> object:
+    """A compared value as something a dict key can hold, without changing what equals what.
+
+    Every value a field table yields is hashable except the conversion, which
+    :func:`~ddd.models.conversion.conversion_identity` renders as a dumped mapping for
+    everything but an enum. Turned into its sorted items rather than into text, because the
+    key has to agree with ``!=`` exactly: ``{"factor": 1}`` and ``{"factor": 1.0}`` are one
+    conversion, and any spelling that told them apart would file a removal and its candidate
+    in different buckets and lose the note with nothing said.
+    """
+    if isinstance(value, dict):
+        return tuple(sorted(value.items()))
+    return value
+
+
+def _bucket_key(entry: Comparable, *, of_a_leaf: bool) -> tuple[object, ...]:
+    """Everything hashable :func:`_lost_identity_note` compares, as one key.
+
+    Read out of the field tables themselves rather than listed again, so that a field added to
+    a table is in the key the day it is added - a key that had fallen behind its table would
+    not fail anything, it would quietly stop offering notes that are still earned.
+
+    The *deferred* interface table is the one to key on: it compares a dimension by its value
+    where the other compares the (spelling, value) pair, and which of the two a pair gets
+    depends on whether both sides record spellings. Equal pairs imply equal values, so the
+    value is the half that is necessary under either table, and keying on the pair would
+    separate a format 3 baseline from the candidate it is deferring to.
+
+    ``references`` is not in either table - a referent is not a property of the entry alone,
+    which is why the note compares it through :func:`_compare_references` - but the *names* of
+    the reference fields are, and two entries whose keys differ can never be the same object.
+
+    ``of_a_leaf`` is asked rather than read off the entry because it is the *removal* that
+    decides which table the note runs (a leaf is compared without the fields it carries only
+    because its variable does), and an addition has to be filed under both readings so that a
+    removal of either sort finds it.
+    """
+    interface = _DEFERRED_LEAF_INTERFACE_FIELDS if of_a_leaf else _DEFERRED_INTERFACE_FIELDS
+    storage = _LEAF_STORAGE_FIELDS if of_a_leaf else _STORAGE_FIELDS
+    return (
+        of_a_leaf,
+        *(_hashable(field.value(entry)) for field in (*interface, *storage)),
+        tuple(sorted(entry.references)),
+    )
+
+
+def _by_discriminators(added: Sequence[Comparable]) -> dict[tuple[object, ...], list[Comparable]]:
+    """The additions grouped by everything hashable a candidate must agree on.
+
     :func:`_lost_identity_note` asks of every removal which additions are identical to it, and
     answering that by walking every addition for every removal is quadratic - each step running
-    two field tables and a referent comparison. ``kind``, ``datatype`` and ``unit`` are compared
-    fields, so an addition that disagrees on any of them can never be a candidate: grouping on
-    them lets a removal look only at its own bucket. The exact check still decides; this only
-    stops it being asked a question whose answer is already known.
+    two field tables and a referent comparison. Grouping on three cheap fields was a filter and
+    not a complexity fix: a naming-convention sweep over a project that has no ids yet, which is
+    the migration ``--renames`` exists for, renames every object at once and puts every
+    measurement of one datatype in one bucket. 5 300 objects took ten seconds and 53 000 took
+    longer than anybody waits.
 
-    A delivery whose objects all share those three lands in one bucket and gains nothing. That
-    is the honest limit of it, and it is left there: no such delivery has been seen, the note is
-    advisory, and encoding every compared value into a key instead would have to survive ``init``
-    being an unhashable nested list and a field table that is chosen per pair.
+    Keying on the whole of what is comparable without resolving a referent leaves a bucket
+    holding genuine candidates, and :data:`_MOST_CANDIDATES` bounds what is left. Each addition
+    is filed twice, once under each reading of the tables, because whether the member fields
+    count is the removal's question and not the addition's.
     """
-    buckets: dict[tuple[str, str, str], list[Comparable]] = {}
+    buckets: dict[tuple[object, ...], list[Comparable]] = {}
     for new in added:
-        buckets.setdefault((new.kind.value, new.datatype.value, new.unit), []).append(new)
+        for of_a_leaf in (False, True):
+            buckets.setdefault(_bucket_key(new, of_a_leaf=of_a_leaf), []).append(new)
     return buckets
 
 
@@ -636,7 +694,11 @@ def _lost_identity_note(
     there the name never changed at all, so there is no rename to hypothesise: ``reused-name``
     already says exactly what happened, and this note would only contradict it right beside
     the highest-severity finding the whole feature produces.
+
+    A crowded bucket is given up on rather than worked through: see :data:`_MOST_CANDIDATES`.
     """
+    if len(candidates) > _MOST_CANDIDATES:
+        return []
     same = [
         new
         for new in candidates
@@ -660,11 +722,11 @@ def _report_removal(
     old: Comparable,
     bag: DiagnosticBag,
     location: Location | None,
-    candidates: Mapping[tuple[str, str, str], Sequence[Comparable]],
+    candidates: Mapping[tuple[object, ...], Sequence[Comparable]],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
 ) -> None:
-    bucket = candidates.get((old.kind.value, old.datatype.value, old.unit), ())
+    bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
     notes = _lost_identity_note(old, bucket, was, now)
     if old.consumers:
         bag.add(

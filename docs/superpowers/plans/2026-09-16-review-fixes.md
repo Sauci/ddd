@@ -419,6 +419,27 @@ Every sentence the review found wrong that an earlier branch did not already cor
 
 ---
 
+## Left open by the implementers
+
+Recorded as each branch landed, so that nothing is lost between a task and the release notes.
+
+- **An instance's `a2l` is not compared** (branch 4 task 4, `S-I4`). The five other
+  variable-level fields moved to the instance; `a2l` did not, because the analysis folds an
+  instance's `export` into every leaf and its `format` and `display_identifier` reach no record
+  at all. So flipping a variable's `a2l.export` is still one `changed-a2l` per member, and
+  changing its `display_identifier` is no finding. Separating the two halves needs a dictionary
+  format change, which no decision of this plan covers. The pages say what the code does.
+- **A structure member's dimension count is not capped** (branch 3 task 5, `S-M1`). The cap of 64
+  dimensions is on a declaration's own shape, where the `RecursionError` was; a member with 600
+  dimensions produces no traceback, only an unbounded shape, so the asymmetry is left for a
+  decision rather than fixed by guesswork.
+- **`1.0` on a boolean is accepted** where `1.0` on `uint8` is refused (branch 4 task 7,
+  `P9-M9`'s second half). Refusing it is a behaviour change no decision covers.
+- **The `.rodata` / `.data` measurement of the artefacts page was not re-measured** (branch 3 task
+  7): `docker compose` cannot run on the machine the fixes were written on and MinGW emits PE
+  sections, so the page now says what was measured and when rather than quoting a number nobody
+  can reproduce.
+
 ## Self-review
 
 **Coverage.** Every id of the review's verified list is named in exactly one branch above,

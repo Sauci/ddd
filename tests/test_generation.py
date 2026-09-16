@@ -97,6 +97,27 @@ class TestGlobalDefinitionFile:
         files = generate(tree, simple(declare("local", "A", description="a */ b")))
         assert "/** a * / b */" in files["ddd_globals.c"]
 
+    def test_comment_start_marker_is_escaped(self, tree: Path) -> None:
+        """``/*`` inside a comment is an error under the flag set the repository compiles with.
+
+        ``-Wcomment`` is in ``-Wall`` and reports ``"/*" within comment``; with ``-Werror``
+        beside it, one description ending up in every header and in the definition file takes
+        the whole build down. The end marker was already defused for the other half of the
+        same reason.
+        """
+        files = generate(tree, simple(declare("local", "A", description="opens /* inside")))
+        assert "/** opens / * inside */" in files["ddd_globals.c"]
+        assert "/*" not in files["ddd_globals.c"].split("/** opens", 1)[1].split("*/", 1)[0]
+
+    def test_overlapping_markers_leave_neither_behind(self, tree: Path) -> None:
+        """``/*/`` is both markers over one ``*``; defusing either one alone re-forms the other."""
+        files = generate(tree, simple(declare("local", "A", description="a /*/ b")))
+        assert "/** a / * / b */" in files["ddd_globals.c"]
+
+    def test_a_unit_is_defused_like_a_description(self, tree: Path) -> None:
+        files = generate(tree, simple(declare("local", "A", description="Rate", unit="/*")))
+        assert "/** Rate [/ *] */" in files["ddd_globals.c"]
+
     def test_variables_are_grouped_by_owning_component(self, tree: Path) -> None:
         files = generate(
             tree,

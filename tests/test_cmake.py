@@ -310,6 +310,82 @@ ddd_generate(img
         assert '#include "vendor_types.h"' in types
 
 
+OPENS_A_COMMENT = "opens a comment /* inside"
+"""The one piece of prose that turns every generated comment into a build failure.
+
+``-Wcomment`` is in ``-Wall`` and reports ``"/*" within comment``; with ``-Werror`` beside it -
+the set ``docker/compile.sh`` and ``docs/generated_artefacts.rst`` verify the generated code
+with - a single description carrying it stops the build in the definition file and in every
+header that repeats it. Nothing shipped carries one, so only a project written here can prove
+the escape."""
+
+
+class TestGeneratedCommentsUnderTheVerifiedWarningSet:
+    """The generated code compiled the way the repository says it verifies it."""
+
+    def write(self, tmp_path: Path) -> None:
+        described = {
+            "component": {
+                "name": "Store",
+                "description": OPENS_A_COMMENT,
+                "constants": [{"name": "STORE_CELLS", "value": 4, "description": OPENS_A_COMMENT}],
+                "interface": [
+                    {
+                        "scope": "local",
+                        "definition": {
+                            "name": "StoreValue",
+                            "kind": "measurement",
+                            "description": OPENS_A_COMMENT,
+                            "unit": OPENS_A_COMMENT,
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                            "volatile": False,
+                        },
+                    }
+                ],
+            }
+        }
+        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "store.c").write_text('#include "Store.h"\n', encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Comments LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wcast-qual
+                        -Wstrict-prototypes)
+else()
+    add_compile_options(/W4 /WX)
+endif()
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME CommentDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+
+    def test_a_description_that_opens_a_comment_compiles(self, tmp_path: Path) -> None:
+        """A description, a unit, a component and a constant, each carrying ``/*``.
+
+        The definition file, the shared header, the types header and the component's own
+        header all repeat the same prose, so the compiler answers for every template the
+        examples ship rather than for the one the assertion below reads.
+        """
+        self.write(tmp_path)
+        configure(tmp_path, tmp_path / "build")
+        build(tmp_path / "build")
+        generated = tmp_path / "build" / "ddd" / "img"
+        assert "/ * inside" in (generated / "ddd_globals.c").read_text(encoding="utf-8")
+
+
 class TestAHandWrittenProject:
     def write(self, tmp_path: Path) -> Path:
         """The layout example as shipped, its project naming ``../plugins/ddd_layout.py``."""

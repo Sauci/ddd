@@ -127,9 +127,24 @@ def _kind_detail(entry: ResolvedObject) -> str:
 
 
 def sanitize_comment(text: str) -> str:
-    """Make text safe to put inside a ``/* ... */`` comment."""
+    """Make text safe to put inside a ``/* ... */`` comment.
+
+    Both markers are defused, because both of them end a build. ``*/`` closes the comment the
+    template opened and spills the rest of the description into the code; ``/*`` stays inside
+    it and is a diagnostic instead - ``-Wcomment``, which ``-Wall`` turns on, reports ``"/*"
+    within comment``, and the warning set this repository verifies the generated code with
+    (``docker/compile.sh``) carries ``-Werror``. One description reaches the definition file,
+    the shared header, the types header and the component's own header, so one of them stops
+    the compilation of all four.
+
+    The opener is replaced first, and the order is what makes the pair safe rather than a
+    matter of taste: ``/*/`` is both markers sharing one ``*``, and defusing either of them
+    alone re-forms the other out of what is left. Taking the opener first leaves no ``/``
+    immediately before a ``*``, so the second pass can form no new opener, and it inserts a
+    space before the ``/`` it writes, so it can form no new closer either.
+    """
     collapsed = re.sub(r"\s+", " ", text).strip()
-    return collapsed.replace("*/", "* /")
+    return collapsed.replace("/*", "/ *").replace("*/", "* /")
 
 
 def guard_name(*parts: str) -> str:

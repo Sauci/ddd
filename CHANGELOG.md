@@ -80,6 +80,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   document is refused.  The shipped VS Code extension sends `shutdown` first; its launch test
   no longer pins the lenient exit, and its handshake has a timeout.
 
+* **A description may say `/*`.**  The generated c defused the marker that ends a comment and
+  not the one that opens another inside it, so a description, a unit, a member, an enumerator
+  or a constant carrying `/*` rendered `/** opens a comment /* inside */` into the definition
+  file, the shared header, the types header and the component's own header at once - and
+  `-Wcomment`, which `-Wall` turns on, reports `"/*" within comment`, so the warning set this
+  repository verifies the generated code with stopped the build on all four.  Both markers are
+  now spaced apart: `/*` renders as `/ *`, beside the `*/` that already rendered as `* /`.
+  **Migration:** none.  Prose carrying neither marker renders exactly as it did.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

@@ -264,7 +264,8 @@ themselves:
        what the object is and what it is dimensioned by - or nothing at all if the
        description says nothing. It is plain text without comment markers, already collapsed
        to one line and already defused, so that a ``*/`` in a description cannot end the
-       comment the template opens around it.
+       comment the template opens around it and a ``/*`` cannot open one inside it - which
+       ``-Wcomment``, and so ``-Wall``, reports.
    * - ``.condition``
      - The preprocessor condition the object is guarded by, or nothing. It is validated on
        the way in so that it is safe to emit verbatim into both ``#if`` and the ``#endif``

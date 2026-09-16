@@ -314,9 +314,11 @@ The command line's boundary with plugins, paths and streams.
 - [ ] **Task 4 (`P5-I4`, decision: the tool):** `load_address_map` range-checks only the symbols
       the dictionary carries and reports the others in the `address-missing` note; the recipe on
       the page then completes on a 64-bit host.
-- [ ] **Task 5 (`P5-M10`, `P10-M12`, `S-M3`, `P5-M16`):** a component whose file cannot be parsed
-      still gets its check target; the module compares its own version with the tool's at include
-      time; the build page's include-isolation sentence says what the module builds.
+- [ ] **Task 5 (`P5-M10`, `P10-M12`, `S-M3`, `P5-M16`, the rest of `P7-M9`):** a component whose
+      file cannot be parsed still gets its check target; the module compares its own version with
+      the tool's at include time; the build page's include-isolation sentence says what the module
+      builds; the `docs` compose service stops reinstalling `.[docs]` on every run, and either a
+      job builds `docker/Dockerfile` or the developer page says the image is unguarded.
 - [ ] **Task 6 (`P10-M1`, `M2`, `M3`, `M4`, `P6-M13`):** the c model buckets objects and
       instances by owner once; the a2l indexes leaves by instance once; a run with an address map
       builds the a2l model once; the alignment walk is memoised. Test: a generation bounded in the
@@ -385,10 +387,11 @@ Every sentence the review found wrong that an earlier branch did not already cor
       integer"; the page that contradicts itself about the include depth; `StringConversion` on
       the contracts page; the "literal as written" claim in three places; the four python-only
       rules in the schema descriptions.
-- [ ] **Task 4 (`P3-M8`, `P5-M15`, `SD-M3`, `M4`, `M5`, `M6`, `M8`):** the checks page's three
+- [ ] **Task 4 (`P3-M8`, `P5-M15`, `P7-M11`, `SD-M3`, `M4`, `M5`, `M6`, `M8`):** the checks page's three
       drifts; the vocabulary table and the undefined terms on the site; the dictionary reference's
       five missing records; the conversion `kind` descriptions; `rasters` in the component
-      sentence; the hover texts naming python identifiers.
+      sentence; the hover texts naming python identifiers; and the README's relative links, which
+      ship as the PyPI description and resolve only on GitHub.
 - [ ] **Task 5:** the changelog entry for the whole review, naming every migration the eight
       branches introduce, and a `tests/test_documentation.py` guard that every `BaseModel`
       exported by `ddd.models` is rendered on the contracts page (`P2-M3`).
@@ -425,7 +428,10 @@ deferred strict-mode residue, kept deferred by decision 10), `P11B-I2` (branch 9
 `P4-M11`'s Windows device names (unreproducible on this machine; the path-length half is branch 3
 task 7), `P9-M11` (the layer table's wording, branch 2 task 5), `P8-M17` (branch 7 task 7).
 `P6-M13` was missing from every branch when this plan was first written, as the implementer of
-branch 1 noticed; it is in branch 6 task 6, beside the other measured repetitions.
+branch 1 noticed; it is in branch 6 task 6, beside the other measured repetitions. `P7-M11` was
+missing the same way, as branch 2's implementer noticed; it is in branch 8 task 4, with the other
+pages. Branch 2 left two halves of `P7-M9` (the `docs` service reinstalling `.[docs]`, and no
+workflow building the image); they join branch 6 task 5, where the build is.
 
 **Order.** Branch 3 task 3 introduces the tolerance helper that branch 4 task 2 consumes; branch
 7 task 7 changes the include sort that branch 8 task 1 documents; branch 1 task 3 changes the

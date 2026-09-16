@@ -106,8 +106,10 @@ Every check identifier is spelled ``<name>/<check>``. The prefix is the namespac
 cannot shadow a built-in check, two plugins cannot collide, and a severity override targets
 one exactly as it targets a built-in check - ``-W layout/duplicate-key=warning``,
 ``--strict``, ``ignore``. The plugin's checks are registered when the plugin is loaded, so an
-override naming one is accepted first and verified once the project is read; one that no
-loaded plugin registered is a usage error, the same outcome an unknown built-in check gets.
+override naming one is accepted first and verified once the project is read - whether or not
+the read reported findings of its own - and one that no loaded plugin registered is a usage
+error, the same outcome an unknown built-in check gets. A run given a baseline is held to the
+baseline's plugins as well, which it loaded to analyse it.
 
 The hooks
 ~~~~~~~~~

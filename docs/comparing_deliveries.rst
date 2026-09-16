@@ -665,13 +665,22 @@ The verdict line names the two files rather than the two projects, because two d
 one project carry one project name - and, as here, one file name too, so where the two file
 names are the same it spells the paths out as they were typed.
 
+Neither does this run's ``-W`` reach it, for the same reason and in both directions.
+``-W unused-output=error`` is a run asking to be told about *its own* unread outputs; applied
+to the baseline as well it promoted the ``ValveDuty`` above into an error about a delivery
+that went out long ago, carried it over and refused a verdict. ``--standalone`` does reach it,
+because that states how the file was handed over - a component read on its own - and the
+baseline was handed over the same way.
+
 Its errors are another matter. A baseline that could not be read, as in the missing-file
 example above, or whose own components disagree has no dictionary that can be trusted, so
-every error it produces is carried over under the ``in the baseline:`` prefix, and the run
-fails on them: with a description on the candidate side the comparison is not attempted and
-no verdict is printed, and with an archived dump on the candidate side the errors are reported
-beside the comparison and the verdict is a refusal. A baseline that is to be compared against
-has to be one that checks clean of errors on its own.
+every error it produces is carried over under the ``in the baseline:`` prefix, at the severity
+its own analysis gave it, and the run fails on them: with a description on the candidate side
+the comparison is not attempted and no verdict is printed, and with an archived dump on the
+candidate side the errors are reported beside the comparison and the verdict is a refusal.
+A ``-W`` of this run does not relax one of them either - the line saying the dictionary the
+comparison rests on cannot be trusted is not this run's to soften. A baseline that is to be
+compared against has to be one that checks clean of errors on its own.
 
 In a build pipeline
 -------------------

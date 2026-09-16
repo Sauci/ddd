@@ -1680,6 +1680,108 @@ class TestTheCompareHook:
         assert checks(bag) == []
 
 
+class TestWhenAnOverrideIsVerified:
+    """A ``-W`` naming a plugin's check is held to the plugins this run loaded, whether or
+    not the run got as far as a dictionary, and to all of them when there is a baseline."""
+
+    def broken_project(self, tree: Path) -> str:
+        """A project naming the tag plugin and one include that does not exist."""
+        write_plugin(tree / "tools")
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "gone.ddd.json", plugins=["tools/tag_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        return str(tree / "p.ddd.json")
+
+    def test_a_typo_is_refused_although_the_load_reported_an_error(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The plugins are loaded by the time an include is missed, so a check name nothing
+        registers is a usage error on this run rather than on the first run that happens to
+        load cleanly - which is when the typo used to surface."""
+        arguments = ["check", self.broken_project(tree), "-W", "tag/no-such=error"]
+        assert main(arguments) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        assert "unknown check 'tag/no-such'" in captured
+        # The findings gathered before the usage error are still printed first.
+        assert "error[file-not-found]" in captured
+
+    def test_a_check_the_loaded_plugin_registers_survives_that_failure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["check", self.broken_project(tree), "-W", "tag/bad-prefix=error"]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_a_check_of_a_plugin_only_the_baseline_names_is_accepted(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd compare`` accepts it; ``ddd check --baseline`` refused it, because the
+        overrides were verified at the end of the analysis - before the baseline was read."""
+        old, _ = two_deliveries(tree, "a", "b")
+        write_tree(
+            tree,
+            {
+                "plain.ddd.json": project("P", "plain-a.ddd.json"),
+                "plain-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tree / "plain.ddd.json"),
+            "--baseline",
+            old,
+            "-W",
+            "missing-id=ignore",
+            "-W",
+            "tag/retagged=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_a_typo_beside_a_baseline_is_still_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = two_deliveries(tree, "a", "b")
+        arguments = ["check", new, "--baseline", old, "-W", "tag/no-such=ignore"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'tag/no-such'" in capsys.readouterr().err
+
+    def test_a_baseline_that_cannot_be_read_leaves_the_candidates_plugins(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Nothing says which plugins an unreadable baseline names, so the overrides are held
+        to the candidate's - the plugin it does name is still accepted."""
+        _, new = two_deliveries(tree, "a", "b")
+        arguments = [
+            "check",
+            new,
+            "--baseline",
+            str(tree / "gone.json"),
+            "-W",
+            "missing-id=ignore",
+            "-W",
+            "tag/bad-prefix=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "unknown check" not in captured
+        assert "gone.json" in captured
+
+    def test_a_candidate_that_did_not_resolve_beside_a_baseline_still_holds_the_override(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, _ = two_deliveries(tree, "a", "b")
+        arguments = ["check", self.broken_project(tree), "--baseline", old, "-W", "no/such=error"]
+        assert main(arguments) == EXIT_USAGE
+        assert "unknown check 'no/such'" in capsys.readouterr().err
+
+
 _GENERATE_SIGNATURE = (
     "    def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:\n"
 )

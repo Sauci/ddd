@@ -1620,6 +1620,91 @@ class TestBaselineIsolation:
         assert main(arguments) == EXIT_FINDINGS
         assert "in the baseline:" in capsys.readouterr().err
 
+    def test_an_override_does_not_reach_the_baselines_own_analysis(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``-W`` is this run's taste, and the baseline's findings are its own.
+
+        Sharing the overrides made ``-W unused-output=error`` promote a warning about a
+        predecessor into an error carried over as ``in the baseline:``, so a run that asked
+        to be told about *its* unread outputs got no verdict about the delivery at all -
+        while ``--strict``, which says the same thing in one word, already left the baseline
+        alone.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": project("P", "old-a.ddd.json"),
+                "old-a.ddd.json": component("A", declare("output", "X")),
+                "new.ddd.json": project("P", "new-a.ddd.json", "new-b.ddd.json"),
+                "new-a.ddd.json": component("A", declare("output", "X")),
+                "new-b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "unused-output=error",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "in the baseline:" not in capsys.readouterr().err
+
+    def test_a_relaxation_does_not_reach_the_baseline_either(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other direction of the same rule, and the one that costs something: a baseline
+        that resolved only because this run relaxed an error of its own now reports it."""
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": project("P", "plain.json"),
+                "plain.json": component("A", declare("local", "X")),
+                "new.ddd.json": project("P", "new-a.ddd.json"),
+                "new-a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = [
+            "check",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "file-extension=warning",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        assert "in the baseline:" in capsys.readouterr().err
+
+    def test_the_floor_of_a_component_read_alone_still_reaches_the_baseline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--standalone`` says how the file was handed over, not how strictly this run
+        grades, and the baseline was handed over the same way."""
+        write_tree(
+            tmp_path,
+            {
+                "old.ddd.json": component("A", declare("input", "X")),
+                "new.ddd.json": component("A", declare("input", "X"), declare("local", "Y")),
+            },
+        )
+        arguments = [
+            "check",
+            "--standalone",
+            str(tmp_path / "new.ddd.json"),
+            "--baseline",
+            str(tmp_path / "old.ddd.json"),
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_OK
+        assert "in the baseline:" not in capsys.readouterr().err
+
     def test_a_bom_marked_description_is_compared_as_a_description(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1988,13 +2073,17 @@ class TestFindingsSurviveAFailedStep:
             {
                 "project.ddd.json": project("P", "plain.json"),
                 "plain.json": component("A", declare("local", "X")),
+                # The baseline is judged on its own terms - ``-W`` does not reach its
+                # analysis - so it has to be a delivery that resolves without a relaxation.
+                "baseline.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
             },
         )
         project_path = tree / "project.ddd.json"
         severities = ["-W", "file-extension=warning", "-W", "tag/no-such=error"]
         for arguments in (
             ["check", str(project_path), *severities],
-            ["compare", str(project_path), str(project_path), *severities],
+            ["compare", str(tree / "baseline.ddd.json"), str(project_path), *severities],
         ):
             code = main(arguments)
             captured = capsys.readouterr()

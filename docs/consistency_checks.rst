@@ -169,7 +169,10 @@ colliding on one identifier. Which checks a run actually registers is only known
 plugins are loaded, which happens after the command line is parsed, so an override naming a
 plugin check is accepted provisionally at that point and verified once the project is read;
 one naming a check no loaded plugin registered is then the same usage error an unknown
-built-in check is.
+built-in check is. It is verified whether or not the read found anything - the plugins are
+loaded before the rest of the project, so a typo does not wait for the first run that happens
+to load cleanly - and a run given a baseline as well is held to the baseline's plugins too,
+which it loaded to analyse it.
 
 Checking a component on its own
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

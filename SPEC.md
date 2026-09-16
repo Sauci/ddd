@@ -1149,7 +1149,10 @@ failure and is reported exactly as a hook's is. Plugin checks are registered per
 than in the built-in registry, and an override naming a plugin check is accepted
 provisionally and held, once the project is read, to the checks the loaded plugins
 registered: one that no loaded plugin registers is then the usage error an unknown built-in
-check is.
+check is. It is held to them whether or not the read reported findings of its own, the
+plugins being loaded before the rest of the project is; and where a run reads a baseline as
+well ([section 4.1](#41-comparing-two-deliveries)), the plugins it is held to include the
+baseline's own, which that run loaded to analyse it.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
@@ -1424,9 +1427,12 @@ artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the compar
 function of two of them. Either side **may** also be given as a project or component
 description, which is resolved to its dictionary on the spot; the archived dictionary is
 what keeps the question answerable after the descriptions have moved on. The baseline is
-analysed in its own right and without `--strict`, its warnings being its own; only its
-error findings are carried into the report, each prefixed with "in the baseline:", so that
-a broken baseline is visible without drowning the comparison. A candidate given as a
+analysed in its own right, under neither `--strict` nor the `-W` of this run, its findings
+being its own; only its error findings are carried into the report, each prefixed with
+"in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
+is visible without drowning the comparison and without this run's policy relaxing it away.
+What does reach it is `--standalone`, which states how the file was handed over rather than
+how strictly the run grades. A candidate given as a
 description is analysed too, and all of its findings are reported at their own severities.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the

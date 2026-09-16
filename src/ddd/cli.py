@@ -622,6 +622,22 @@ def _where(path: Path) -> Location:
     return Location(resolve_path(path))
 
 
+def _verify_overrides(bag: DiagnosticBag, plugins: Sequence[Plugin] = ()) -> None:
+    """Hold every ``-W`` naming a plugin's check to the checks the run's plugins register.
+
+    ``plugins`` are the ones whose checks are not on the bag already: a baseline's, which ran
+    on a bag of its own. Their checks are checks this run knows - an override naming one of
+    them, ``-W layout/removed-entry=ignore`` beside the ``missing-plugin`` the same run
+    reports about that plugin, was refused as naming a check no loaded plugin registers,
+    which is the opposite of what happened. Registered only where nothing has claimed the
+    identifier yet: a check both sides declare keeps the candidate's own, because the
+    candidate's plugins are the ones that report through this bag.
+    """
+    for plugin in plugins:
+        bag.register(info for info in plugin.checks if info.identifier not in bag.registered)
+    bag.policy.verify(bag.registered)
+
+
 def _plugins_from_arguments(
     specs: Sequence[str], bag: DiagnosticBag | None = None
 ) -> tuple[Plugin, ...]:
@@ -650,14 +666,26 @@ def _plugins_from_arguments(
 
 
 def _command_check(args: argparse.Namespace) -> int:
-    resolved, bag = _analyze(args)
+    # The plugins of a run with a baseline include the baseline's own - loaded for its
+    # analysis, on a bag of its own - and those are known only once it has been read. So a
+    # `-W` naming a plugin's check is verified below rather than at the end of the analysis,
+    # which is where a run without a baseline verifies it.
+    resolved, bag = _analyze(args, verify=args.baseline is None)
     dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
     # is what a ci job wants: is the project consistent, and is it still a replacement?
-    if resolved is not None and args.baseline is not None:
+    if args.baseline is not None:
         with _reported_on_failure(bag, args.format):
-            baseline = _read_baseline(args.baseline, bag)
-            if baseline is not None:
+            # Not read at all when the project did not resolve: its errors are what this run
+            # has to say, and a comparison against them would say nothing. The overrides are
+            # still held to what did load, so a typo is reported by the run that made it.
+            baseline = (
+                _read_baseline(args.baseline, bag, getattr(args, "standalone", False))
+                if resolved is not None
+                else None
+            )
+            _verify_overrides(bag, () if baseline is None else baseline.plugins)
+            if resolved is not None and baseline is not None:
                 location = _where(args.project)
                 compare(baseline.dictionary, resolved.dictionary, bag, location=location)
                 run_compare_hooks(
@@ -705,16 +733,7 @@ def _command_compare(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             plugins = _plugins_from_arguments(args.plugin, bag)
-        # The baseline's own plugins ran, on a bag of its own, so their checks are checks
-        # this run knows: an override naming one of them - `-W layout/removed-entry=ignore`,
-        # beside the `missing-plugin` this same run reports about that plugin - was refused
-        # as naming a check no loaded plugin registers, which is the opposite of what
-        # happened. Registered before the overrides are verified, and only where nothing has
-        # claimed the identifier yet: a check both sides declare keeps the candidate's own,
-        # because the candidate's plugins are the ones that report through this bag.
-        for plugin in baseline.plugins:
-            bag.register(info for info in plugin.checks if info.identifier not in bag.registered)
-        bag.policy.verify(bag.registered)
+        _verify_overrides(bag, baseline.plugins)
 
         location = _where(args.candidate)
         paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
@@ -1460,21 +1479,37 @@ class Resolved:
     output path against."""
 
 
-def _analyze(args: argparse.Namespace, stream: Any = None) -> tuple[Resolved | None, DiagnosticBag]:
+def _analyze(
+    args: argparse.Namespace, stream: Any = None, *, verify: bool = True
+) -> tuple[Resolved | None, DiagnosticBag]:
+    """Load and analyse ``args.project`` under the run's policy.
+
+    ``verify`` is left to the caller by ``ddd check --baseline`` alone, which knows the
+    plugins of the run only once the baseline has been read as well.
+    """
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
     policy = SeverityPolicy.from_strings([*standalone, *args.severity], strict=args.strict)
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
-    if workspace is None or bag.has_errors:
+    if workspace is None:
+        # Nothing was read, so nothing says which plugins this project names: holding a `-W`
+        # naming one of their checks to an empty registry would blame the command line for a
+        # file the run could not open.
         return None, bag
     with _reported_on_failure(bag, args.format, stream):
         # An override naming a plugin check is verified once the project is read - only then
         # is it known which plugins loaded - so this has to sit inside the block: the
         # load-time findings gathered by then are reported before the usage error, as
-        # `compare` already does.
-        bag.policy.verify(bag.registered)
+        # `compare` already does. Before the gate below rather than after it, because the
+        # plugins are loaded by the time an include goes missing: verified afterwards, a typo
+        # on the command line surfaced only on the first run that happened to load cleanly,
+        # which is the run that no longer needed telling.
+        if verify:
+            _verify_overrides(bag)
+        if bag.has_errors:
+            return None, bag
         # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
         # findings collected before the hook ran are the project's, and are printed first.
         dictionary = analyze(workspace, bag)
@@ -1539,7 +1574,7 @@ def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
         raise ValueError(msg)
 
 
-def _read_baseline(path: Path, bag: DiagnosticBag) -> Resolved | None:
+def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> Resolved | None:
     """Resolve the baseline side of a comparison, in a bag of its own.
 
     A baseline given as a project description has to be analysed to become a dictionary, and
@@ -1552,8 +1587,16 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> Resolved | None:
     compared against whatever resolved, because a delivery that cannot be accepted still needs
     its differences listed; a candidate given as a description is not analysed once the shared
     bag holds an error, so a broken baseline stops that run at the errors.
+
+    ``-W`` does not reach it either, for the same reason and against the same objection: the
+    overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told about
+    *its own* unread outputs - promoted a warning about a predecessor into an error, carried
+    it over as ``in the baseline:`` and refused a verdict about the delivery. What does reach
+    it is ``standalone``, the floor a component read on its own sets: that is a statement
+    about how the file was handed over, and the baseline was handed over the same way.
     """
-    own = DiagnosticBag(SeverityPolicy(bag.policy.overrides, strict=False))
+    floor = STANDALONE_POLICY if standalone else ()
+    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False))
     resolved = _read_dictionary(path, own)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
@@ -1562,6 +1605,11 @@ def _read_baseline(path: Path, bag: DiagnosticBag) -> Resolved | None:
                 f"in the baseline: {diagnostic.message}",
                 diagnostic.location,
                 diagnostic.notes,
+                # At the severity the baseline's own analysis gave it: "the run fails on
+                # them" (4.1) is what makes a comparison against an untrustworthy dictionary
+                # visible, and a `-W` of this run relaxing the check would leave the run
+                # reporting no verdict and exiting 0.
+                severity=diagnostic.severity,
             )
     return resolved
 

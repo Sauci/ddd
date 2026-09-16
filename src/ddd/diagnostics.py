@@ -488,9 +488,20 @@ class DiagnosticBag:
         message: str,
         location: Location | None = None,
         notes: Iterable[tuple[str, Location | None]] = (),
+        *,
+        severity: Severity | None = None,
     ) -> Diagnostic | None:
-        """Record a finding; returns ``None`` when the check is ignored."""
-        severity = self.policy.resolve(check, self._registered.get(check))
+        """Record a finding; returns ``None`` when the check is ignored.
+
+        ``severity`` states one the policy has no say over, for a finding whose severity was
+        decided by another analysis: the errors a baseline's own analysis produced are carried
+        into this run's report prefixed, and they are that delivery's findings rather than
+        this run's to re-grade. Graded here, a ``-W`` of this run would relax or silence the
+        one word saying that the dictionary the comparison rests on could not be trusted, and
+        the run would report no verdict and exit 0.
+        """
+        if severity is None:
+            severity = self.policy.resolve(check, self._registered.get(check))
         if severity is Severity.IGNORE:
             return None
         diagnostic = Diagnostic(check, severity, message, location, tuple(notes), len(self._items))

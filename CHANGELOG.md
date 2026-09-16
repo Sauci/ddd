@@ -364,6 +364,24 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   candidate's, which is what did not run.  A `-W` naming a check of such a plugin is accepted
   for the same reason, instead of being refused as naming a check nothing registers.
 
+  *A `-W` is held to the plugins of the run, and grades this run alone.*  An override naming a
+  plugin's check is verified once the project has been read, and the run used to return before
+  verifying it whenever the read reported an error: `ddd check p.ddd.json -W layout/x=error`
+  over a project with a missing include reported the missing file and never a word about
+  `layout/x`, so a typo on the command line surfaced only on the first run that happened to
+  load cleanly - the run that no longer needed telling.  The plugins are loaded by the time an
+  include goes missing, so the override is now held to them either way.  With `--baseline` the
+  plugins of the run include the baseline's own, which were loaded to analyse it, so a `-W`
+  naming one of their checks is accepted there as `ddd compare` already accepts it.  And a
+  `-W` no longer reaches the baseline's own analysis at all: `-W unused-output=error`, a run
+  asking to be told about *its own* unread outputs, promoted a predecessor's into an error,
+  carried it over as `in the baseline:` and refused a verdict on a delivery that is fine -
+  where `--strict`, which says the same thing in one word, had always left the baseline alone.
+  The errors that analysis does produce are carried at the severity it gave them, so the one
+  line saying the dictionary the comparison rests on cannot be trusted is not relaxed away by
+  this run's policy.  `--standalone` still reaches it: that says how the file was handed over,
+  and the baseline was handed over the same way.
+
   **Migration:** a script spelling an option by a prefix - `--stand`, `--dict` - now fails
   with "unrecognized arguments" and needs the option's full name; nothing else on any command
   line changes.  The text report of the findings is unchanged - every path is still rendered
@@ -375,7 +393,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   130, for a run stopped by hand.  A plugin that printed to standard output on purpose - to
   produce a document of its own there - writes a file instead.  A script that matched the
   wording of `missing-plugin`, or the verdict line of two deliveries whose file names
-  coincide, matches new text; no check identifier, option or file format changes.
+  coincide, matches new text; no check identifier, option or file format changes.  A run that
+  relaxed or silenced a check so that its *baseline* would resolve - `-W
+  file-extension=warning` over a tree that does not follow the naming convention - now reports
+  that check as `in the baseline:` and attempts no comparison: give the run a baseline that
+  checks clean on its own, or the archived `ddd dump` of it, which is what a delivery
+  comparison has always asked for.  A `-W` that named a check of a plugin the project does not
+  name, and went unnoticed because the project happened not to load, is now the usage error it
+  always was.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

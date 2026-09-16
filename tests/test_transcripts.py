@@ -386,6 +386,68 @@ def unrun(page: Path) -> list[Transcript]:
     return [t for t in SHOWN[page] if not t.illustrative]
 
 
+def never_run(page: Path) -> list[Transcript]:
+    """The commands of a page that nothing runs, on a page that runs some of the others.
+
+    The other half of :func:`unrun`. A page that runs one of its commands has the rest read
+    as illustrations, and a command carrying a trailing comment says it is one; these carry
+    none. They are shown to a reader as the tool's own output and are compared with no run.
+    """
+    if not RUNS[page]:
+        return []
+    running = {transcript.line for transcript in RUNS[page]}
+    return [t for t in SHOWN[page] if t.line not in running and not t.illustrative]
+
+
+SILENTLY_SHOWN: dict[str, int] = {
+    "docs/consistency_checks.rst": 3,
+    "docs/data_dictionary.rst": 1,
+    "docs/faq.rst": 14,
+    "docs/file_formats/component.rst": 7,
+    "docs/file_formats/index.rst": 5,
+    "docs/file_formats/project.rst": 6,
+    "docs/file_formats/types.rst": 14,
+    "docs/generated_artefacts.rst": 1,
+}
+"""How many ``$ ddd`` commands each page shows that nothing here re-runs: 51 of 170.
+
+A ledger rather than a rule. The convention is that a page which runs one of its commands
+has the rest read as illustrations, which is what keeps a page free to show a command whose
+project it only describes - and is also how a command can be shown as the tool's output,
+never compared with any, and nobody notice. Written down, the number moves only when
+somebody moves it, and the diff says which page gained or lost a silent command.
+"""
+
+PINNED_EXIT_STATUSES = 3
+"""How many of the documented runs pin an exit status with ``$ echo $?``.
+
+Every run's output is compared line by line; its status is compared only where the page
+shows one. Three of eighty-four is the honest figure, and this is where it is said out loud.
+"""
+
+
+def test_the_commands_shown_and_never_run_are_counted() -> None:
+    """The number stays visible, so that it is a decision rather than a drift."""
+    measured = {
+        page.relative_to(ROOT).as_posix(): len(never_run(page)) for page in PAGES if never_run(page)
+    }
+    assert measured == SILENTLY_SHOWN, (
+        f"the count of commands shown and never run has moved: {measured}. A page that "
+        f"gained one is showing output nothing compares - spell the shipped example it "
+        f"reads, or end the command with a comment saying what it illustrates; a page that "
+        f"lost one is good news and wants its number lowered here"
+    )
+
+
+def test_the_documented_runs_that_pin_an_exit_status_are_counted() -> None:
+    pinned = [t.where for runs in RUNS.values() for t in runs if t.status is not None]
+    assert len(pinned) == PINNED_EXIT_STATUSES, (
+        f"{len(pinned)} documented runs pin an exit status, not {PINNED_EXIT_STATUSES}: "
+        f"{pinned}. Add `$ echo $?` under a command whose verdict a reader relies on, and "
+        f"raise the number here"
+    )
+
+
 @pytest.mark.parametrize(
     "page",
     [page for page, shown in SHOWN.items() if shown],

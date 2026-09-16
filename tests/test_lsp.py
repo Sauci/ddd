@@ -3361,6 +3361,76 @@ class TestServer:
         # The file that was not opened is published too, which is the point.
         assert drawn[beside.as_uri()][0]["code"] == "definition-mismatch"
 
+    def test_a_configured_build_directory_is_where_the_records_are_looked_for(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd.buildDirectories`` is the extension's only setting; this is what it buys.
+
+        The record sits where none of the usual names would be searched - the patterns are
+        ``build``, ``out`` and ``cmake-build-*`` directly under the workspace folder - and the
+        project file sits beside the component rather than above it, so no walk upwards finds
+        it either: the configured directory is the only route from the open document to the
+        project. The control below is the same open without it, where the component is checked
+        on its own and ``missing-producer`` is one of the checks a standalone file is spared.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "proj/p.ddd.json": project("P", "../src/a.ddd.json"),
+                "src/a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        elsewhere = tmp_path / "elsewhere"
+        build_record(elsewhere, tmp_path / "proj" / "p.ddd.json", severity=["missing-id=ignore"])
+        opened = tmp_path / "src" / "a.ddd.json"
+
+        writer = io.BytesIO()
+        Server(
+            session(self.opened(opened)),
+            writer,
+            root=tmp_path,
+            build_directories=[elsewhere],
+        ).run()
+        assert [entry["code"] for entry in published(writer)[opened.as_uri()]] == [
+            "missing-producer"
+        ]
+
+        bare = io.BytesIO()
+        Server(session(self.opened(opened)), bare, root=tmp_path).run()
+        assert not published(bare).get(opened.as_uri())
+
+    def test_the_command_hands_its_build_directories_to_the_server(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other end of the same setting: ``ddd lsp -b DIR``, as the extension spawns it.
+
+        Fed a real document rather than an empty stream, which returns from the loop before
+        anything is discovered at all - so the argument is followed from the command line
+        through ``serve`` to the publication a client would draw.
+        """
+        from ddd.cli import EXIT_OK, main
+
+        class Stream:
+            def __init__(self, buffer: io.BytesIO) -> None:
+                self.buffer = buffer
+
+        write_tree(
+            tmp_path,
+            {
+                "proj/p.ddd.json": project("P", "../src/a.ddd.json"),
+                "src/a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        elsewhere = tmp_path / "elsewhere"
+        build_record(elsewhere, tmp_path / "proj" / "p.ddd.json", severity=["missing-id=ignore"])
+        opened = tmp_path / "src" / "a.ddd.json"
+        wire = io.BytesIO()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.stdin", Stream(session(self.opened(opened))))
+        monkeypatch.setattr("sys.stdout", Stream(wire))
+        assert main(["lsp", "-b", str(elsewhere)]) == EXIT_OK
+        assert [entry["code"] for entry in published(wire)[opened.as_uri()]] == ["missing-producer"]
+
     def logged(self, stream: io.BytesIO) -> list[str]:
         return [
             message["params"]["message"]
@@ -4056,6 +4126,49 @@ class TestServer:
             "component.interface[0].definition.name"
         )
         assert edits[(tmp_path / "a.ddd.json").as_uri()][0]["range"] == on_disk_a
+
+    def test_the_findings_are_the_disks_while_the_buffer_says_otherwise(
+        self, tmp_path: Path
+    ) -> None:
+        """The other half of the promise above, which nothing pinned.
+
+        Positions come from the buffer because that is what an edit is applied to; the
+        analysis reads the files, because what a build compiles is what is saved. An unsaved
+        edit that would fix - or cause - a finding therefore changes nothing until it is
+        saved, and a server that analysed the buffer instead would draw a squiggle on a
+        project that is fine on disk, or withdraw one from a project that is not.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Shared")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
+        # The buffer produces the other finding of the pair: an output nobody reads.
+        buffer = json.dumps(component("A", declare("output", "Shared")), indent=2)
+        uri = (tmp_path / "a.ddd.json").as_uri()
+        writer = io.BytesIO()
+        Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {
+                            "uri": uri,
+                            "languageId": "json",
+                            "version": 1,
+                            "text": buffer,
+                        }
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        assert [entry["code"] for entry in published(writer)[uri]] == ["missing-producer"]
 
     def test_a_change_notification_replaces_the_buffer_and_a_close_forgets_it(
         self, tmp_path: Path

@@ -8,7 +8,18 @@ from typing import Any
 
 import pytest
 
-from conftest import checks, component, declare, messages, project, run_analysis
+from conftest import (
+    checks,
+    component,
+    declare,
+    messages,
+    project,
+    run_analysis,
+    scalar_type,
+    struct_type,
+    types,
+    value_member,
+)
 from ddd.diagnostics import CHECKS, DiagnosticBag, Severity
 
 
@@ -2124,3 +2135,254 @@ class TestStringTypes:
             assert leaf.conversion.describe() == "string"
             assert leaf.shape == (16,)
             assert leaf.limits.as_tuple() == (0, 255)
+
+
+def sections_file(*entries: dict[str, Any]) -> dict[str, Any]:
+    return {"sections": list(entries)}
+
+
+def rasters_file(*entries: dict[str, Any]) -> dict[str, Any]:
+    return {"rasters": list(entries)}
+
+
+# One project per check, and where the finding it produces is anchored. The key of each entry
+# names the case, because two of them are one check added from two different places.
+DRAWN_AT: dict[str, tuple[str, dict[str, Any], str]] = {
+    "unused-output": (
+        "unused-output",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+        },
+        "a.ddd.json#component.interface[0]",
+    ),
+    "missing-producer": (
+        "missing-producer",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("input", "X")),
+        },
+        "a.ddd.json#component.interface[0]",
+    ),
+    "multiple-producers": (
+        "multiple-producers",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("output", "X")),
+            "c.ddd.json": component("C", declare("input", "X")),
+        },
+        "b.ddd.json#component.interface[0]",
+    ),
+    "empty-component": (
+        "empty-component",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A"),
+        },
+        "a.ddd.json#component",
+    ),
+    "duplicate-declaration": (
+        "duplicate-declaration",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X"), declare("local", "X")),
+        },
+        "a.ddd.json#component.interface[1]",
+    ),
+    "local-conflict": (
+        "local-conflict",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X")),
+            "b.ddd.json": component("B", declare("local", "X")),
+        },
+        "b.ddd.json#component.interface[0]",
+    ),
+    "name-similar": (
+        "name-similar",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "FilterGain")),
+            "b.ddd.json": component("B", declare("local", "Filtergain")),
+        },
+        "b.ddd.json#component.interface[0].definition.name",
+    ),
+    "name-collision": (
+        "name-collision",
+        {
+            "project.ddd.json": project("P", "c.ddd.json", "a.ddd.json"),
+            "c.ddd.json": {"constants": [{"name": "LIMIT", "value": 4}]},
+            "a.ddd.json": component("A", declare("local", "LIMIT")),
+        },
+        "a.ddd.json#component.interface[0].definition.name",
+    ),
+    "storage-mismatch": (
+        "storage-mismatch",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X", a2l={"format": "%8.2"})),
+            "b.ddd.json": component("B", declare("input", "X", a2l={"format": "%8.3"})),
+        },
+        "b.ddd.json#component.interface[0].definition",
+    ),
+    "condition-mismatch": (
+        "condition-mismatch",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X", condition="FEATURE_A")),
+            "b.ddd.json": component("B", declare("input", "X", condition="FEATURE_B")),
+        },
+        "b.ddd.json#component.interface[0].condition",
+    ),
+    "consumer-storage": (
+        "consumer-storage",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", init=3)),
+        },
+        "b.ddd.json#component.interface[0].definition.init",
+    ),
+    "consumer-identity": (
+        "consumer-identity",
+        {
+            "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", id="k7m2q9xr4t8w")),
+        },
+        "b.ddd.json#component.interface[0].definition.id",
+    ),
+    "consumer-raster": (
+        "consumer-raster",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json", "b.ddd.json"),
+            "r.ddd.json": rasters_file({"raster": "R10", "event": 1}),
+            "a.ddd.json": component("A", declare("output", "X")),
+            "b.ddd.json": component("B", declare("input", "X", raster="R10")),
+        },
+        "b.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-reference": (
+        "unknown-reference",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "C", kind="curve", axis="Nope")),
+        },
+        "a.ddd.json#component.interface[0].definition.axis",
+    ),
+    "enum-duplicate-value": (
+        "enum-duplicate-value",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare(
+                    "local",
+                    "X",
+                    conversion={"kind": "enum", "name": "E_t", "enumerators": {"A": 1, "B": 1}},
+                ),
+            ),
+        },
+        "a.ddd.json#component.interface[0].definition.conversion",
+    ),
+    "type-kind": (
+        "type-kind",
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct_type("S_t", value_member("raw"))),
+            "a.ddd.json": component(
+                "A", declare("local", "X", typename="S_t", kind="curve", axis="Ax")
+            ),
+        },
+        "a.ddd.json#component.interface[0].definition",
+    ),
+    "limits-out-of-range": (
+        "limits-out-of-range",
+        {
+            "project.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(scalar_type("S_t", "uint8", limits={"min": 0, "max": 300})),
+            "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+        },
+        "t.ddd.json#types[0].limits",
+    ),
+    "section-access": (
+        "section-access",
+        {
+            "project.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+            "s.ddd.json": sections_file({"section": ".ro", "access": "read-only", "alignment": 4}),
+            "a.ddd.json": component("A", declare("local", "X", section=".ro")),
+        },
+        "a.ddd.json#component.interface[0].definition.section",
+    ),
+    "section-alignment": (
+        "section-alignment",
+        {
+            "project.ddd.json": project("P", "s.ddd.json", "a.ddd.json"),
+            "s.ddd.json": sections_file(
+                {"section": ".small", "access": "read-write", "alignment": 2}
+            ),
+            "a.ddd.json": component("A", declare("local", "X", "uint64", section=".small")),
+        },
+        "a.ddd.json#component.interface[0].definition.section",
+    ),
+    "raster-kind": (
+        "raster-kind",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters_file({"raster": "R10", "event": 1}),
+            "a.ddd.json": component("A", declare("local", "X", kind="parameter", raster="R10")),
+        },
+        "a.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-raster on a declaration": (
+        "unknown-raster",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", raster="Nope")),
+        },
+        "a.ddd.json#component.interface[0].definition.raster",
+    ),
+    "unknown-raster on a component": (
+        "unknown-raster",
+        {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X"), raster="Nope"),
+        },
+        "a.ddd.json#component.raster",
+    ),
+    "duplicate-event": (
+        "duplicate-event",
+        {
+            "project.ddd.json": project("P", "r.ddd.json", "a.ddd.json"),
+            "r.ddd.json": rasters_file(
+                {"raster": "R10", "event": 1}, {"raster": "R20", "event": 1}
+            ),
+            "a.ddd.json": component("A", declare("local", "X")),
+        },
+        "r.ddd.json#rasters[1]",
+    ),
+}
+
+
+class TestWhereEachFindingIsDrawn:
+    """The half of a finding an editor uses, and the half this suite pinned least.
+
+    A check identifier and a message phrase are pinned all over the suite; the location
+    mostly was not, and the location is what an editor underlines. A pointer at the whole
+    file where the mistake is one key, or at the wrong one of two declarations, is a finding
+    a reader cannot act on - and neither shape fails a test that reads the identifier and the
+    words. The cases below are the checks whose anchor nothing else pinned.
+    """
+
+    @pytest.mark.parametrize(("check", "files", "anchor"), DRAWN_AT.values(), ids=list(DRAWN_AT))
+    def test_the_finding_is_anchored_where_the_mistake_is(
+        self, tree: Path, check: str, files: dict[str, Any], anchor: str
+    ) -> None:
+        _, bag = run_analysis(tree, files)
+        drawn = [
+            f"{diagnostic.location.path.name}#{diagnostic.location.pointer}"
+            for diagnostic in bag
+            if diagnostic.check == check and diagnostic.location
+        ]
+        assert drawn == [anchor], f"{check} was drawn at {drawn}"

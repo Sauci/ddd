@@ -311,7 +311,11 @@ page shows beneath it. A page that shows commands and runs none of them fails as
 each of those commands ends in a comment marking it as an illustration, so that no page can
 quietly leave the harness by naming files the examples do not ship. It is the stronger of the
 two documentation guards - a claim about what the tool prints is checked against what it
-prints - so a reworded diagnostic fails there first.
+prints - so a reworded diagnostic fails there first. What it does *not* run is counted rather
+than left to be discovered: a page that runs one of its commands has the rest read as
+illustrations, and ``SILENTLY_SHOWN`` in that file records how many such commands each page
+has - 51 of the 170 shown, and three of the eighty-four runs pinning an exit status. A page
+that gains one fails until somebody writes the new number down.
 
 Running the checks
 ------------------
@@ -320,6 +324,7 @@ Running the checks
 
    python -m pytest              # the suite, the coverage gate and the documentation checks
    python -m pytest --no-cov     # quicker, while working on a single test
+   python -m pytest --co --no-cov  # what would run, without the gate weighing a run of none
    python -m ruff check .
    python -m ruff format .
    python -m mypy
@@ -332,7 +337,9 @@ the module - so ``--no-cov`` and a ``-k`` are what a single test is worth runnin
 the whole of it is what a commit is worth running under. Not ``-q``: the ``addopts`` in
 ``pyproject.toml`` carry one already, pytest counts them, and a second drops the summary - the
 "N passed" line and the coverage total both - leaving the exit code as the only statement of
-what happened.
+what happened. And ``--no-cov`` beside ``--co``: coverage is in the ``addopts`` too, so a
+collection-only run measures a run of nothing and prints ``Required test coverage of 100% not
+reached`` before exiting 0, which reads as a failure and is not one.
 
 Nothing in the suite skips, and a test in ``tests/test_documentation.py`` holds it to that:
 no ``pytest.skip``, ``skipif``, ``importorskip`` or ``xfail`` anywhere under ``tests/``. A

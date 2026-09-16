@@ -1133,8 +1133,14 @@ class TestGenerate:
         assert "is not an integer" in capsys.readouterr().err
 
     def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """The whole payload of a clean run, which is the shape a build reads.
+
+        The statuses alone left the other two keys unpinned on a run with nothing to report -
+        so a `generate` that dropped `diagnostics` or `summary` where there were none would
+        have failed only on a project that had findings, which is the run a build does not do.
+        """
         output = tmp_path / "gen"
-        main(
+        code = main(
             [
                 "generate",
                 "all",
@@ -1147,8 +1153,16 @@ class TestGenerate:
                 "json",
             ]
         )
-        payload = json.loads(capsys.readouterr().out)
+        assert code == EXIT_OK
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
         assert {entry["status"] for entry in payload["generated"]} == {"created"}
+        assert payload["diagnostics"] == []
+        assert payload["summary"] == {"error": 0, "warning": 0, "info": 0}
+        # stdout is the document and nothing else, and under --format json the report is the
+        # document, so nothing at all is said on the other stream.
+        assert json.dumps(payload, indent=2) + "\n" == captured.out
+        assert captured.err == ""
 
     def test_json_spells_a_path_the_way_the_output_directory_was_typed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

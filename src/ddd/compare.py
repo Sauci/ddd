@@ -33,6 +33,7 @@ from ddd.ir import Comparable, DataDictionary, ResolvedLeaf
 from ddd.models import (
     Conversion,
     EnumConversion,
+    broadcast,
     conversion_identity,
     format_number,
     format_shape,
@@ -115,6 +116,33 @@ def _describe_init(value: object) -> str:
     return repr(value)
 
 
+def _stored_init(entry: Comparable) -> object:
+    """The init as the bytes it stores, which is what two deliveries compare.
+
+    An init has more than one spelling for one piece of storage, and the tool offers both:
+    a scalar init fills every element of an array - the c backend broadcasts it to render
+    the initialiser, and the dictionary deliberately keeps it as the description wrote it
+    (``ddd.analysis``) so that an archive says what was stated - and a string object takes
+    either its text or the character codes of it. Compared as written, ``7`` on a
+    ``uint8[4]`` and ``[7, 7, 7, 7]`` were a ``changed-storage`` warning and, under the
+    ``--strict`` gate the comparison page recommends, a delivery that "cannot replace" its
+    predecessor over generated code that is byte for byte the same file.
+
+    So both spellings are reduced to the elements the storage holds before they are
+    compared. A string's zeros are the ones c writes after the text: the analysis has
+    already refused a string that is not one dimensional and refused text that leaves no
+    room for the terminator, so the padding here only fills what the array has left.
+    """
+    init = entry.init
+    if init is None:
+        return None
+    if isinstance(init, str):
+        codes = tuple(ord(character) for character in init)
+        width = entry.shape[0] if entry.shape else len(codes)
+        return codes + (0,) * (width - len(codes))
+    return broadcast(init, entry.shape)
+
+
 # Change any of these and the consumers of the object are wrong, whether or not they still
 # compile: a widened datatype breaks the abi, a rescaled conversion falsifies every value,
 # and an object turning local takes itself out of reach.
@@ -179,7 +207,10 @@ def _interface_fields(old: Comparable, new: Comparable) -> tuple[ComparedField[C
 
 # Changing these alters behaviour or the generated files, but no consumer becomes wrong.
 _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
-    ComparedField("init", lambda o: o.init, lambda o: _describe_init(o.init)),
+    # Compared as the storage it produces and described as it was written: the value the two
+    # deliveries have to agree on is the bytes, while a reader of the finding is looking for
+    # the line to edit, which is the spelling in front of them.
+    ComparedField("init", _stored_init, lambda o: _describe_init(o.init)),
     ComparedField("volatile", lambda o: o.volatile, lambda o: str(o.volatile).lower()),
     ComparedField(
         "section", lambda o: o.section, lambda o: o.section if o.section is not None else "none"

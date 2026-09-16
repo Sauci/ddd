@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -58,6 +58,19 @@ def verdict(baseline: DataDictionary, candidate: DataDictionary, *severities: st
     bag = DiagnosticBag(SeverityPolicy.from_strings(severities))
     compare(baseline, candidate, bag)
     return bag
+
+
+def ruling(base: Path, capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str]:
+    """Run ``ddd compare`` over the two deliveries ``one_component`` writes as ``old``/``new``.
+
+    What a comparison is *for* is the verdict line and the exit code, and a check that only
+    counts the findings cannot see either: a delivery whose findings are all warnings is a
+    replacement, and the same run under ``--strict`` is not. The tests of this file that
+    decide whether one delivery can stand in for another therefore go through the command.
+    """
+    capsys.readouterr()
+    code = main(["compare", str(base / "old.ddd.json"), str(base / "new.ddd.json"), *arguments])
+    return code, capsys.readouterr().err
 
 
 class TestBreakingChanges:
@@ -375,6 +388,94 @@ class TestGradedChanges:
         old = one_component(tree, "old", declare("local", "X", "uint16"))
         new = one_component(tree, "new", declare("local", "X", "uint32"))
         assert checks(verdict(old, new, "changed-interface=ignore")) == []
+
+
+class TestAnInitComparesAsBytes:
+    """An init is compared as the storage it produces, not as the way it was spelled.
+
+    A delivery whose bytes are identical can replace the one before it, so a respelling is
+    not a change: ``7`` on a ``uint8[4]`` is the array it fills, and a string's text is its
+    bytes padded with zeros to the dimension, which is what c writes after the characters.
+    Both respellings are ones the tool itself invites - the strings feature offers the text
+    form for an array of character codes - and both used to be a ``changed-storage`` warning
+    and, under the ``--strict`` gate the comparison page recommends, a "cannot replace".
+
+    The dumped dictionary is not touched: it carries the init as the description wrote it,
+    so an archive still says what was stated. Only the comparison normalises.
+    """
+
+    ARRAY: ClassVar[dict[str, Any]] = {"kind": "value_block", "dimensions": [4]}
+    TEXT: ClassVar[dict[str, Any]] = {
+        "kind": "value_block",
+        "dimensions": [4],
+        "conversion": {"kind": "string"},
+    }
+
+    def deliveries(
+        self, tree: Path, before: object, after: object
+    ) -> tuple[DataDictionary, DataDictionary]:
+        return (
+            one_component(tree, "old", declare("local", "V", "uint8", init=before, **self.ARRAY)),
+            one_component(tree, "new", declare("local", "V", "uint8", init=after, **self.ARRAY)),
+        )
+
+    def text_deliveries(
+        self, tree: Path, before: object, after: object
+    ) -> tuple[DataDictionary, DataDictionary]:
+        return (
+            one_component(tree, "old", declare("local", "V", "uint8", init=before, **self.TEXT)),
+            one_component(tree, "new", declare("local", "V", "uint8", init=after, **self.TEXT)),
+        )
+
+    def test_a_scalar_init_is_the_array_it_fills(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 7])
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK, report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_scalar_init_is_the_array_it_fills_the_other_way_round(self, tree: Path) -> None:
+        """The rule is symmetric, and the baseline is as likely to be the expanded side."""
+        old, new = self.deliveries(tree, [7, 7, 7, 7], 7)
+        assert checks(verdict(old, new)) == []
+
+    def test_a_strings_text_is_the_bytes_it_stores(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.text_deliveries(tree, [72, 105, 0, 0], "Hi")
+        assert checks(verdict(old, new)) == []
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK, report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_different_value_in_the_array_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The normalisation must not swallow the finding it exists to stop over-reporting."""
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 8])
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "'V': init:" in messages(bag)
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_different_character_in_the_text_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self.text_deliveries(tree, [72, 105, 0, 0], "Ho")
+        assert checks(verdict(old, new)) == ["changed-storage"]
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_the_dictionary_still_carries_the_init_as_it_was_written(self, tree: Path) -> None:
+        """Only the comparison normalises; the archive says what the description said."""
+        old, new = self.deliveries(tree, 7, [7, 7, 7, 7])
+        assert old.by_name["V"].init == 7
+        assert new.by_name["V"].init == (7, 7, 7, 7)
 
 
 class TestCommandLine:

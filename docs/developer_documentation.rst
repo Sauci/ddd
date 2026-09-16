@@ -399,6 +399,16 @@ Style and types are checked once rather than per platform, since neither varies 
 release can be cut from a commit this workflow never saw, and an upload to an index is
 permanent.
 
+Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
+extension's lock file pins its dependencies exactly, and ``ruff`` and ``mypy`` are capped to
+a minor in ``requirements-dev.txt`` - those two are gates rather than libraries, so a release
+of either fails the lint job on the day it is published rather than on the day somebody
+upgrades it. What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the
+actions, the requirements files and the extension: a bump then arrives as a pull request that
+ci has already run, which is the difference between upgrading a tool and discovering on a
+release day that one has moved on without you. A test holds every action to one version
+across the three workflows, and both caps to being caps.
+
 Building this documentation
 ---------------------------
 

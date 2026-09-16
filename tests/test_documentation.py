@@ -1681,6 +1681,87 @@ class TestTheCompileService:
         )
 
 
+def workflow_actions() -> dict[str, set[str]]:
+    """Every action the workflows use, to the set of refs they pin it at."""
+    used: dict[str, set[str]] = {}
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        for action, ref in re.findall(r"uses:\s*([\w.-]+/[\w.-]+)@(\S+)", text):
+            used.setdefault(action, set()).add(ref)
+    return used
+
+
+def dependabot() -> dict[str, str]:
+    """Each ecosystem dependabot watches, to the directory it watches it in.
+
+    Read with a regex rather than a yaml parser, as the pre-commit hook definition is: the
+    file is a handful of ``key: value`` lines, and a yaml dependency in the test requirements
+    would be a larger commitment than the thing being read.
+    """
+    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    entries = re.findall(
+        r"package-ecosystem:\s*\"?([\w-]+)\"?.*?directory:\s*\"?([^\s\"]+)", text, flags=re.S
+    )
+    assert len(entries) == text.count("package-ecosystem:"), (
+        "an entry of dependabot.yml names no directory"
+    )
+    return dict(entries)
+
+
+class TestWhatKeepsTheToolchainMoving:
+    """Everything this repository pins, and the one thing that proposes moving it.
+
+    Nothing here moves on its own - the actions are pinned by major tag, the two tools that
+    are gates are capped to a minor, the extension's lock file pins exactly - which is what
+    makes a build reproducible and, without something proposing the updates, what makes a
+    release the moment somebody discovers the toolchain has moved on without them.
+    """
+
+    @pytest.mark.parametrize("ecosystem", ["github-actions", "pip", "npm"])
+    def test_every_manifest_of_this_repository_is_watched(self, ecosystem: str) -> None:
+        watched = dependabot()
+        assert ecosystem in watched, (
+            f"nothing proposes an update for {ecosystem}, so those pins move only when a "
+            f"release is already blocked by one of them"
+        )
+        directory = (ROOT / watched[ecosystem].lstrip("/")).resolve()
+        assert directory.is_dir(), f"{ecosystem} is watched in {watched[ecosystem]}, which is not"
+
+    def test_the_node_manifest_is_watched_where_it_lives(self) -> None:
+        """A directory that does not hold the manifest is watched in silence: dependabot
+        reports "no dependencies found" on its own page and nothing else."""
+        watched = Path(dependabot()["npm"].lstrip("/"))
+        assert (ROOT / watched / "package.json").is_file()
+        assert (ROOT / watched / "package-lock.json").is_file()
+
+    @pytest.mark.parametrize("tool", ["ruff", "mypy"])
+    def test_the_two_tools_that_are_gates_are_capped(self, tool: str) -> None:
+        """A library's new release breaks a test; these two fail the lint job by design.
+
+        ``ruff format --check`` disagrees with whatever the new release decided to reformat,
+        and a ``mypy`` minor adds inferences that strict mode reports - on whatever ran next,
+        which on the wrong day is the release. Everything else here is a lower bound.
+        """
+        requirements = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+        line = next(
+            line for line in requirements.splitlines() if line.strip().startswith(f"{tool}>")
+        )
+        assert "<" in line, (
+            f"{line.strip()} takes whatever {tool} is released next, which turns the lint job "
+            f"red on the day it is released rather than on the day somebody upgrades it"
+        )
+
+    def test_an_action_is_pinned_at_one_version_across_the_workflows(self) -> None:
+        """Three workflows, one toolchain: a version bumped in two of them and not the third
+        is how ci ran an upload two majors behind the one the release used."""
+        disagreeing = {
+            action: sorted(refs) for action, refs in workflow_actions().items() if len(refs) > 1
+        }
+        assert not disagreeing, (
+            f"the workflows pin the same action at different versions: {disagreeing}"
+        )
+
+
 class TestContinuousIntegration:
     """The classifiers are a public claim about what this package runs on."""
 

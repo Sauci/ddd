@@ -79,6 +79,7 @@ include = [
     "/tests",
     "/tools",
     "/.github/workflows",
+    "/.github/dependabot.yml",
     "/.pre-commit-hooks.yaml",
     "/CHANGELOG.md",
     "/LICENSE",

@@ -38,6 +38,22 @@ endif()
 # environment, or a wrapper script running "python -m ddd".
 find_program(DDD_EXECUTABLE NAMES ddd DOC "The ddd data dictionary tool")
 
+# A keyword whose value expanded to nothing - ddd_generate(... ADDRESS_MAP ${DDD_MAP}) with DDD_MAP unset or empty,
+# the ordinary CMake mistake - reads to cmake_parse_arguments() as a keyword that was never given at all, and every
+# check below is written as if(arg_X), which cannot tell the two apart. Dropped in silence, each one changes what the
+# call does: ADDRESS_MAP generates an a2l with every ECU_ADDRESS 0x00000000 and makes no map a dependency, so the
+# two-run flow the map was configured for never happens; PROJECT falls into the collected mode and generates out of
+# the link closure instead of out of the file the caller named. Refused here, once, for both functions.
+function(_ddd_refuse_empty_keywords context missing)
+    if(missing)
+        list(JOIN missing "\", \"" spelled)
+        message(FATAL_ERROR "${context}: \"${spelled}\" was given no value. A variable that expands to nothing "
+                            "leaves the keyword with no argument, which reads exactly like a keyword that was "
+                            "never given - so the call would quietly have done something else. Give it a value, "
+                            "or leave the keyword out.")
+    endif()
+endfunction()
+
 # The transitive property feature is only needed when the component descriptions are collected through the link
 # graph; a caller passing PROJECT never reaches this check.
 function(_ddd_require_transitive_properties context)
@@ -192,6 +208,7 @@ function(ddd_add_component target)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
+    _ddd_refuse_empty_keywords("ddd_add_component" "${arg_KEYWORDS_MISSING_VALUES}")
     if(NOT arg_JSON)
         message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
     endif()
@@ -367,6 +384,7 @@ function(ddd_generate image)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
+    _ddd_refuse_empty_keywords("ddd_generate" "${arg_KEYWORDS_MISSING_VALUES}")
     # A hand written project names its own plugins, so a second list here would be a second source of truth.
     if(arg_PLUGINS AND arg_PROJECT)
         message(FATAL_ERROR "ddd_generate: PLUGINS cannot be given together with PROJECT: the project description "

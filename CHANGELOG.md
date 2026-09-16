@@ -494,6 +494,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   naming an existing file is that file, whatever is in its name, and an entry naming none is
   expanded as before.
 
+  *A keyword given no value is refused, and named.*  `ddd_generate(fw.elf ... ADDRESS_MAP
+  ${DDD_MAP})` with `DDD_MAP` unset or empty - the ordinary CMake mistake - reads to
+  `cmake_parse_arguments()` exactly like a keyword nobody gave, and neither call looked at
+  `KEYWORDS_MISSING_VALUES`.  So the a2l was generated with every `ECU_ADDRESS 0x00000000`,
+  no map was seeded and none was a dependency, and the two-run flow the map was configured for
+  never happened - in silence, under a `cmake_minimum_required(VERSION 3.31)` project without
+  so much as an author warning.  `PROJECT` without a value fell into the collected mode and
+  generated out of the link graph instead of out of the file the caller meant.  Both calls now
+  stop the configure step, naming the keyword.
+
   **Migration:** a directory that a `ddd generate` run is pointed at now belongs to that run:
   its own files are untouched, but a file DDD wrote there and no longer writes is deleted at
   the next run, where it used to accumulate.  Two runs generating into one directory - which
@@ -504,7 +514,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   up.  `ddd generate --format json` can report a fourth `status`, `removed`, beside `created`,
   `updated` and `unchanged`.  A project whose `includes` holds an entry spelled exactly like
   a file beside it - `a[12].ddd.json`, with a file of that very name - now reads that file
-  instead of expanding the class; renaming either one is what keeps the class.
+  instead of expanding the class; renaming either one is what keeps the class.  A
+  `ddd_generate()` or `ddd_add_component()` call whose keyword expanded to nothing now fails
+  the configure step where it used to be ignored: give the keyword a value, or leave it out.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

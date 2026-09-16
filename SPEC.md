@@ -2085,7 +2085,9 @@ registers descriptions, component and vocabulary files alike, on their target, a
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
 built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
-a registered file not named `*.ddd.json` is a configure error; it defines an on-demand
+a registered file not named `*.ddd.json` is a configure error; so, in both calls, is a
+keyword given no value, which the error names: a variable that expanded to nothing reads
+exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own. `ddd_generate` generates into the build tree and defines

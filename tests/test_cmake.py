@@ -59,8 +59,9 @@ def cmake(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def configure(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
-    run = cmake(
+def attempt(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
+    """One configure, whether or not it is expected to succeed."""
+    return cmake(
         "-S",
         str(source),
         "-B",
@@ -73,6 +74,10 @@ def configure(source: Path, build: Path, *definitions: str) -> subprocess.Comple
         *definitions,
         cwd=source,
     )
+
+
+def configure(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
+    run = attempt(source, build, *definitions)
     assert run.returncode == 0, run.stdout + run.stderr
     return run
 
@@ -756,6 +761,85 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
         dictionary = tmp_path / "build" / "ddd" / "img" / "StoreDevice.dictionary.json"
         objects = json.loads(dictionary.read_text(encoding="utf-8"))["objects"]
         assert "Unproduced" in {entry["name"] for entry in objects}
+
+
+class TestAKeywordGivenNoValue:
+    """``ADDRESS_MAP ${DDD_MAP}`` with ``DDD_MAP`` unset is the ordinary CMake mistake.
+
+    Neither function read ``KEYWORDS_MISSING_VALUES``, so the keyword was dropped in silence
+    and the call ran as if it had never been given: the a2l came out with every
+    ``ECU_ADDRESS 0x00000000``, no map was seeded and none was a dependency, so the two-run
+    flow the map was configured for never happened - and ``PROJECT`` without a value fell
+    into the collected mode, generating something else entirely.
+    """
+
+    def write(self, tmp_path: Path, call: str) -> Path:
+        component = tmp_path / "store.ddd.json"
+        described = {"component": {"name": "Store", "interface": [declare("local", "Level")]}}
+        component.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Missing LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+{call.format(component=component.as_posix(), templates=TEMPLATES.as_posix())}
+""",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        ("call", "keyword"),
+        [
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP ${{DDD_MAP}})',
+                "ADDRESS_MAP",
+                id="the address map of the two-run flow",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" PROJECT ${{DDD_PROJECT}})',
+                "PROJECT",
+                id="the project description, which decides the mode",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                "ddd_generate(img TEMPLATE_DIRECTORY ${{DDD_TEMPLATES}})",
+                "TEMPLATE_DIRECTORY",
+                id="the required keyword",
+            ),
+            pytest.param(
+                "ddd_add_component(store JSON ${{DDD_FILES}})\n"
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
+                "JSON",
+                id="the descriptions of a component",
+            ),
+        ],
+    )
+    def test_it_is_refused_and_named(self, tmp_path: Path, call: str, keyword: str) -> None:
+        source = self.write(tmp_path, call)
+        run = attempt(source, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        # Rewrapped: cmake folds a message to its own width, so the sentence arrives with
+        # newlines and two-space indents wherever it happened to break.
+        assert f'"{keyword}" was given no value' in " ".join(run.stderr.split())
+
+    def test_a_keyword_with_a_value_still_configures(self, tmp_path: Path) -> None:
+        """The positive control: the same call with the variable set is not refused."""
+        source = self.write(
+            tmp_path,
+            'ddd_add_component(store JSON "{component}")\n'
+            'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP ${{DDD_MAP}})',
+        )
+        # A map in the source tree has to exist: there, a missing file is a mistake of its own.
+        (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
+        configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
 
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])

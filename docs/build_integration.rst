@@ -506,6 +506,14 @@ Options
      - do not hand ``<stem>_ddd_headers``, and the compile usage it carries, to the
        registered components.
 
+A keyword given no value is a fatal error naming it, in both calls. ``ADDRESS_MAP
+${DDD_MAP}`` with ``DDD_MAP`` unset or empty - the ordinary CMake mistake - reads to
+``cmake_parse_arguments()`` exactly like a keyword nobody gave, so it used to be dropped in
+silence: the a2l came out with every address ``0x00000000``, no map was seeded and none was a
+dependency, and the two-run flow below never happened.  ``PROJECT`` without a value fell into
+the collected mode and generated out of the link graph instead of out of the file the caller
+meant.
+
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include

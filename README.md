@@ -549,7 +549,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `init-invalid` | an initial value or enumerator does not fit the datatype or the shape |
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
-| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares, or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
+| error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares or brings in (`<stddef.h>`'s `size_t` among them), or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |

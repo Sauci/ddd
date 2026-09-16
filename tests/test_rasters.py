@@ -50,6 +50,11 @@ class TestTheFile:
         with pytest.raises(ValidationError):
             RastersFile.model_validate(rasters(raster("Task_10ms")))
 
+    def test_a_name_is_refused_when_its_utf_8_would_overrun_the_event_field(self) -> None:
+        """Eight letters, sixteen bytes: the a2l field is ``char[9]``, counted in bytes."""
+        with pytest.raises(ValidationError):
+            RastersFile.model_validate(rasters(raster("тактовый")))
+
     def test_a_name_of_exactly_the_xcp_event_name_length_is_accepted(self) -> None:
         """Eight characters, which is the limit itself rather than one below it.
 

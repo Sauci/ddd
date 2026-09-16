@@ -11,7 +11,9 @@ Three families are covered:
 * the keywords of C11 and C23, plus what ``<stdbool.h>`` defines,
 * everything ``<stdint.h>`` declares, because a project's types header may include it - the
   example templates' one does - and a variable named ``uint16_t`` would then produce the
-  definition ``uint16_t uint16_t;``,
+  definition ``uint16_t uint16_t;``; with it the handful of ``<stddef.h>`` names it pulls in
+  on the common toolchains, which are refused for the same reason and were reaching the
+  compiler as ``size_t size_t;``,
 * the identifiers C11 7.1.3 reserves for the implementation.
 """
 
@@ -34,22 +36,37 @@ C_KEYWORDS: Final[frozenset[str]] = frozenset(
     }
 )  # fmt: skip
 
+STDDEF_NAMES: Final[frozenset[str]] = frozenset(
+    {"NULL", "max_align_t", "offsetof", "ptrdiff_t", "size_t", "wchar_t"}
+)
+"""What ``<stddef.h>`` declares, which ``<stdint.h>`` brings in with it.
+
+The standard does not require the one header to include the other, so the promise above is
+read as what a project's types header actually ends up with: MinGW's ``<stdint.h>`` reaches
+these through ``<crtdefs.h>``, and glibc's through ``__need_size_t``. A measurement named
+``size_t`` passed every check and then stopped the build with ``'size_t' redeclared as a
+different kind of symbol``, which is the compiler saying what belongs here instead.
+``errno`` is ``<errno.h>``'s and stays a project's own risk.
+"""
+
 # The exact width, least width and fast width sets follow the same three shapes, so they are
-# matched by pattern instead of listed one by one.
+# matched by pattern instead of listed one by one. ``_WIDTH`` is C23's; it is reserved here
+# although this toolchain does not define it, because the promise is what <stdint.h>
+# declares rather than what one compiler got round to.
 _STANDARD_TYPE_PATTERN: Final = re.compile(
     r"^u?int(?:_least|_fast)?(?:8|16|32|64)_t$|^u?int(?:max|ptr)_t$"
 )
 _STANDARD_MACRO_PATTERN: Final = re.compile(
-    r"^U?INT(?:_LEAST|_FAST)?(?:8|16|32|64)_(?:MIN|MAX|C)$"
-    r"|^U?INT(?:MAX|PTR)_(?:MIN|MAX|C)$"
-    r"|^(?:PTRDIFF|SIG_ATOMIC|WCHAR|WINT)_(?:MIN|MAX)$"
-    r"|^SIZE_MAX$"
+    r"^U?INT(?:_LEAST|_FAST)?(?:8|16|32|64)_(?:MIN|MAX|C|WIDTH)$"
+    r"|^U?INT(?:MAX|PTR)_(?:MIN|MAX|C|WIDTH)$"
+    r"|^(?:PTRDIFF|SIG_ATOMIC|WCHAR|WINT)_(?:MIN|MAX|WIDTH)$"
+    r"|^SIZE_(?:MAX|WIDTH)$"
 )
 
 
 def is_reserved_identifier(name: str) -> bool:
     """Return ``True`` for names a c compiler or a header DDD includes reserves."""
-    if name in C_KEYWORDS:
+    if name in C_KEYWORDS or name in STDDEF_NAMES:
         return True
     if _STANDARD_TYPE_PATTERN.match(name) or _STANDARD_MACRO_PATTERN.match(name):
         return True

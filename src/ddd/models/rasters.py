@@ -29,6 +29,18 @@ terminator - beside the ``char[101]`` long name that ``description`` supplies. T
 raster name goes once the module level ``DAQ`` block is written. Nothing writes one yet, and
 the limit is enforced anyway, so that a rasters file which loads today still loads then - the
 reason the cycle rule below is enforced ahead of its use as well.
+
+Counted in characters, which is the same as counting the bytes because
+:data:`EVENT_NAME_PATTERN` admits only the printable ASCII ones.
+"""
+
+EVENT_NAME_PATTERN = r"^[\x21-\x7e]+$"
+"""What a raster name is spelled with: printable ASCII, and no space.
+
+That ``char[9]`` is nine bytes rather than nine characters, so eight letters outside ASCII -
+two utf-8 bytes each for a Cyrillic or a Greek name, three for a CJK one - would not fit the
+field the length above is there to protect. The rule is on the spelling rather than on the
+encoded length so that what the file may say does not depend on how the a2l is encoded.
 """
 
 EVENT_MAX = 0xFFFF
@@ -74,13 +86,15 @@ class RasterDeclaration(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
 
     raster: Annotated[
-        str, StringConstraints(min_length=1, max_length=EVENT_NAME_LENGTH, pattern=r"^\S+$")
+        str,
+        StringConstraints(min_length=1, max_length=EVENT_NAME_LENGTH, pattern=EVENT_NAME_PATTERN),
     ]
     """The name a definition refers to, which is also the short name of the XCP event.
 
-    The a2l writes that short name into a field eight characters wide, so a longer name is
+    The a2l writes that short name into a field eight bytes wide, so a longer name is
     refused rather than shortened: two names shortened to the same eight would collide in a
     calibration tool rather than here, where the author could still do something about it.
+    Printable ASCII and no space, so that eight characters are eight bytes.
     """
 
     event: int = Field(strict=True, ge=0, le=EVENT_MAX)

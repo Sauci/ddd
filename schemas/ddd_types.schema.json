@@ -21,7 +21,7 @@
         "format": {
           "anyOf": [
             {
-              "pattern": "^%\\d*\\.\\d+$",
+              "pattern": "^%[0-9]*\\.[0-9]+$",
               "type": "string"
             },
             {

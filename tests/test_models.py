@@ -76,6 +76,19 @@ class TestIdentifiers:
     def test_reserved(self, name: str) -> None:
         assert is_reserved_identifier(name)
 
+    @pytest.mark.parametrize(
+        "name", ["size_t", "ptrdiff_t", "wchar_t", "max_align_t", "NULL", "offsetof"]
+    )
+    def test_the_names_stdint_brings_in_from_stddef_are_reserved(self, name: str) -> None:
+        """MinGW's <stdint.h> pulls <stddef.h> in, so a variable named size_t breaks the build."""
+        assert is_reserved_identifier(name)
+
+    @pytest.mark.parametrize(
+        "name", ["UINT8_WIDTH", "INT_LEAST16_WIDTH", "UINTMAX_WIDTH", "SIZE_WIDTH", "WCHAR_WIDTH"]
+    )
+    def test_the_c23_width_macros_are_reserved(self, name: str) -> None:
+        assert is_reserved_identifier(name)
+
     @pytest.mark.parametrize("name", ["ValueE", "_speed", "x1", "a_b"])
     def test_allowed(self, name: str) -> None:
         assert not is_reserved_identifier(name)
@@ -369,6 +382,30 @@ class TestContractStrictness:
             }
         )
         assert model.component.interface[0].condition is None
+
+    def test_a_condition_may_not_end_in_a_backslash(self) -> None:
+        """A trailing backslash splices the next generated line into the ``#if``."""
+        with pytest.raises(ValidationError, match="cannot end in a backslash"):
+            ComponentFile.model_validate(
+                {
+                    "component": {
+                        "name": "C",
+                        "interface": [
+                            {
+                                "scope": "output",
+                                "condition": "defined(FEAT_X) \\",
+                                "definition": {
+                                    "kind": "measurement",
+                                    "name": "X",
+                                    "datatype": "uint8",
+                                    "conversion": {},
+                                    "volatile": False,
+                                },
+                            }
+                        ],
+                    }
+                }
+            )
 
     def test_json_schema_is_generated(self) -> None:
         for model in (ProjectFile, ComponentFile):
@@ -879,6 +916,19 @@ class TestSixtyFourBitBound:
 
         with pytest.raises(ValidationError, match="less than or equal"):
             ConstantsFile.model_validate({"constants": [{"name": "N", "value": self.HUGE}]})
+
+
+class TestA2lOptions:
+    @pytest.mark.parametrize("spelling", ["%8.3", "%.3", "%12.0"])
+    def test_a_display_format_is_a_width_and_a_decimal_count(self, spelling: str) -> None:
+        parsed = declared(a2l={"format": spelling})
+        assert parsed.a2l is not None
+        assert parsed.a2l.format == spelling
+
+    def test_a_display_format_is_written_in_ascii_digits(self) -> None:
+        """Arabic-Indic digits: no calibration tool parses the FORMAT string they spell."""
+        with pytest.raises(ValidationError, match="String should match pattern"):
+            declared(a2l={"format": "%٣.٢"})
 
 
 class TestStringRules:

@@ -21,7 +21,7 @@
         "format": {
           "anyOf": [
             {
-              "pattern": "^%\\d*\\.\\d+$",
+              "pattern": "^%[0-9]*\\.[0-9]+$",
               "type": "string"
             },
             {
@@ -663,7 +663,7 @@
             }
           ],
           "default": null,
-          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.\n\nOne expression, written as it would appear after ``#if``. It is emitted verbatim into the\ngenerated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or\n``*/`` - each of which would let a description file put arbitrary directives, or live\ncode, into somebody else's build.",
+          "description": "C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.\n\nOne expression, written as it would appear after ``#if``. It is emitted verbatim into the\ngenerated files, so it cannot span lines, cannot end in ``\\`` and cannot contain ``#``,\n``//``, ``/*`` or ``*/`` - each of which would let a description file put arbitrary\ndirectives, or live code, into somebody else's build.",
           "title": "Condition"
         },
         "definition": {

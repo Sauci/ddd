@@ -1272,9 +1272,13 @@ def resolve_path(path: Path) -> Path:
     a property of the platform: linux rejects such a path in ``resolve()`` while Windows
     carries it as far as the read. Degrading here puts every one of them through the same
     handler in :func:`_read_text`, so the run ends with one located finding on both.
+
+    A leading ``~`` is left where it stands: expansion is the shell's, and a root named
+    ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author
+    never wrote.
     """
     try:
-        return Path(path).expanduser().resolve()
+        return Path(path).resolve()
     except (OSError, ValueError):
         return Path(path)
 

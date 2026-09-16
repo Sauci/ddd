@@ -623,6 +623,25 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   there are and, where they differ, the first few of them.  A declaration with one wrong
   value reads exactly as it did.
 
+  *A spelling that reaches the compiler is spelled the way the compiler reads it.*  Five
+  places where a description was accepted and something downstream then refused it, or
+  quietly took it to mean something else.  A variable, type, constant or enumerator named
+  `size_t`, `NULL`, `wchar_t`, `ptrdiff_t`, `max_align_t` or `offsetof` passed
+  `reserved-identifier` and stopped the build in the generated header, because the
+  `<stdint.h>` a types header includes brings `<stddef.h>` in with it; those six and the C23
+  `_WIDTH` macros - `UINT8_WIDTH`, `SIZE_WIDTH` and the rest of the family the check already
+  promised to cover - are now reserved with the rest.  An `a2l.format` was matched by an
+  engine in which `\d` is every decimal digit Unicode has, so `"%٣.٢"` in Arabic-Indic
+  digits was written into the a2l as a `FORMAT` string no calibration tool parses, while the
+  published schema, where `\d` is `[0-9]`, refused it; both now say `[0-9]`.  A raster name
+  was capped at eight *characters* where the a2l field it is sized for is nine *bytes*, so
+  eight letters outside ASCII would have overrun it; a name is now printable ASCII.  A
+  `condition` ending in `\` spliced the declaration generated below it into the `#if` and
+  the compiler stopped there; it is refused where the other ways out of an expression are.
+  And a root file whose name begins with `~` was looked for in a home directory: `ddd check
+  ~x.ddd.json` reported `C:/Users/x.ddd.json: file-not-found`, a path nobody wrote.
+  Expanding a tilde is the shell's business, and the tool no longer does it a second time.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
@@ -630,7 +649,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   The other three change what a run says about a file it already refused, not what it
   accepts: a file with one of these mistakes now reports fewer findings than before - one
   where there was one per enclosing list, one per block and one per element - so a build that
-  counts findings rather than reading them counts differently.
+  counts findings rather than reading them counts differently.  Four more spellings are
+  refused where they used to load: a name reserved by `<stddef.h>` or by the `_WIDTH` family,
+  an `a2l.format` written in non-ASCII digits, a raster name outside printable ASCII, and a
+  `condition` ending in a backslash.  Each of them broke something further along - the
+  compiler, the calibration tool, the a2l event field - so the description that carried one
+  had to change anyway; the finding now names it.  And a path beginning with `~` is read as
+  the name it is: a project that relied on the tool expanding it passes the expansion from
+  its shell instead.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

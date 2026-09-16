@@ -19,9 +19,11 @@ guess which task moves the signal.
      ]
    }
 
-``raster`` is the name a definition refers to, one word without whitespace, and it is also
-the short name the a2l gives the event - a field eight characters wide, which is where the
-limit comes from. It is not a
+``raster`` is the name a definition refers to, one word of printable ASCII without
+whitespace, and it is also
+the short name the a2l gives the event - a field eight bytes wide, which is where the
+limit and the spelling rule both come from: eight characters outside ASCII would be more
+than eight bytes. It is not a
 protocol limit: XCP itself length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened, because two names shortened to the same eight
 would collide in a calibration tool rather than here, where the author can still do something

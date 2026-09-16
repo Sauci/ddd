@@ -17,7 +17,7 @@ from conftest import (
     write_tree,
 )
 from ddd.diagnostics import DiagnosticBag
-from ddd.loading import load_workspace
+from ddd.loading import load_workspace, resolve_path
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -558,3 +558,23 @@ class TestPointersWithPunctuation:
         assert len(bag) == 2, messages(bag)
         assert "project.extensions.a-b: error[schema]" in messages(bag), messages(bag)
         assert "project.extensions.c-d: error[schema]" in messages(bag), messages(bag)
+
+
+class TestPathsAsWritten:
+    """A path is read as the author wrote it; expansion is the shell's business."""
+
+    def test_a_name_beginning_with_a_tilde_names_a_file(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``~x.ddd.json`` used to be looked for in user ``x``'s home directory."""
+        write_tree(tree, {"~x.ddd.json": component("A", declare("local", "X"))})
+        monkeypatch.chdir(tree)
+        bag = DiagnosticBag()
+        assert load_workspace(Path("~x.ddd.json"), bag) is not None, messages(bag)
+        assert checks(bag) == []
+
+    def test_resolve_path_leaves_a_tilde_where_it_stands(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tree)
+        assert resolve_path(Path("~x.ddd.json")) == resolve_path(tree) / "~x.ddd.json"

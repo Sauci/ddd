@@ -47,9 +47,9 @@ class Declaration(BaseModel):
     """C preprocessor expression wrapping the generated declaration, e.g. ``defined(FEAT_X)``.
 
     One expression, written as it would appear after ``#if``. It is emitted verbatim into the
-    generated files, so it cannot span lines and cannot contain ``#``, ``//``, ``/*`` or
-    ``*/`` - each of which would let a description file put arbitrary directives, or live
-    code, into somebody else's build.
+    generated files, so it cannot span lines, cannot end in ``\\`` and cannot contain ``#``,
+    ``//``, ``/*`` or ``*/`` - each of which would let a description file put arbitrary
+    directives, or live code, into somebody else's build.
     """
 
     definition: AnyDataObject
@@ -62,10 +62,10 @@ class Declaration(BaseModel):
 
         The text is emitted verbatim into ``#if <condition>`` and into the trailing
         ``#endif /* <condition> */`` of every generated file, and into a comment in the a2l.
-        A line break would put arbitrary directives inside the guarded region, and a comment
-        marker would close the trailer early and leave whatever follows as live code -
-        neither of which the author of a description file should be able to do to somebody
-        else's build.
+        A line break would put arbitrary directives inside the guarded region, a comment
+        marker would close the trailer early and leave whatever follows as live code, and a
+        trailing backslash splices the line after the ``#if`` into the directive - none of
+        which the author of a description file should be able to do to somebody else's build.
         """
         if value is None:
             return None
@@ -79,6 +79,12 @@ class Declaration(BaseModel):
             if token in stripped:
                 msg = f"a condition cannot contain '{token}'"
                 raise ValueError(msg)
+        if stripped.endswith("\\"):
+            msg = (
+                "a condition cannot end in a backslash, which would splice the line after "
+                "the '#if' into it"
+            )
+            raise ValueError(msg)
         return stripped
 
 

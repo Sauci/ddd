@@ -100,7 +100,7 @@ c - ``__attribute__((section(".calib")))`` - where a quote would end the string 
 whatever follows would become live code in somebody else's build.
 """
 
-A2L_FORMAT_PATTERN: Final = r"^%\d*\.\d+$"
+A2L_FORMAT_PATTERN: Final = r"^%[0-9]*\.[0-9]+$"
 
 A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]
 """An a2l ``FORMAT`` string: ``%`` then the total width, a dot, and the decimal places.
@@ -108,6 +108,12 @@ A2lFormat = Annotated[str, StringConstraints(pattern=A2L_FORMAT_PATTERN)]
 Constrained rather than passed through, because the value is written into a quoted a2l
 literal: a quote or a backslash in it would unbalance the string and no calibration tool
 would parse the file at all - a whole delivery lost to one typo in one description.
+
+The digits are spelled ``[0-9]`` rather than ``\\d`` because the engine that compiles this
+pattern reads ``\\d`` as every decimal digit Unicode has: ``%٣.٢`` in Arabic-Indic
+digits was accepted and written into the a2l, where no calibration tool reads it as a format
+at all. The same text is published in the schemas, where ``\\d`` is ``[0-9]``, so spelling it
+out also makes the two agree.
 """
 
 Real = Annotated[float, Field(allow_inf_nan=False)]

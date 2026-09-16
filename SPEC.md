@@ -304,9 +304,10 @@ Each declaration contains:
 - `"condition"` (optional): a C preprocessor conditional expression which wraps the
   generated declarations of the object
   ([section 3.3.1](#331-one-object-several-declarations)). The expression **must** be a
-  single line and **must not** contain `#` or a comment token (`//`, `/*`, `*/`)
-  (`schema`): the text is emitted verbatim behind `#if`, where any of them could change
-  the meaning of the generated file. A condition consisting only of whitespace counts as
+  single line, **must not** contain `#` or a comment token (`//`, `/*`, `*/`) and
+  **must not** end in `\` (`schema`): the text is emitted verbatim behind `#if`, where any
+  of them could change the meaning of the generated file - a trailing backslash splices the
+  line after the directive into it. A condition consisting only of whitespace counts as
   no condition.
 - `"definition"` (required): a definition object
   ([section 3.3](#33-data-object-definition)).
@@ -1032,7 +1033,8 @@ preselects it.
 ```
 
 `raster` is the name a definition refers to and the short name of the XCP event, so it is at
-most eight characters, and contains no whitespace - the width of that field in the a2l, not a
+most eight characters, all of them printable ASCII and none of them a space - the width of
+that field in the a2l, in bytes rather than characters, not a
 limit of the protocol, which length-prefixes an event channel name and carries far more. A
 longer one is refused rather than shortened (`schema`), because two names shortened to the
 same eight would collide in a calibration tool instead of here. No file DDD writes carries an
@@ -1333,7 +1335,9 @@ Errors:
   dropped as unresolvable is not reported a second time: the finding at the declaration is
   the one to act on, and the referring object is dropped with it.
 - `reserved-identifier`: a name collides with a C keyword, with a name `<stdint.h>` or
-  `<stdbool.h>` declares, or with one of two families the C standard reserves for the
+  `<stdbool.h>` declares or brings in with it - `<stddef.h>`'s `size_t`, `ptrdiff_t`,
+  `wchar_t`, `max_align_t`, `NULL` and `offsetof` among them - or with one of two families
+  the C standard reserves for the
   implementation everywhere: a double underscore anywhere, or a leading underscore followed
   by a capital letter. The third family of the same clause, every other leading underscore,
   which the standard reserves at file scope only, is not refused and is left to the

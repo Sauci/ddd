@@ -364,6 +364,29 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   candidate's, which is what did not run.  A `-W` naming a check of such a plugin is accepted
   for the same reason, instead of being refused as naming a check nothing registers.
 
+  *The address map is read like every other file, and its grammar is the documented one.*
+  The map `--address-map` names was read as plain utf-8 where the description files, the
+  dumped dictionaries and the build records are all read `utf-8-sig`, so a map a Windows tool
+  or Notepad wrote came back as `Unexpected UTF-8 BOM (decode using utf-8-sig)` - python's
+  advice to a programmer, for a file nobody writes by hand.  Its addresses were parsed with
+  python's `int()`, which took `0x1_0000` as `0x00010000`, `+5` as `5` and the Arabic-Indic
+  `١٢` as `12`; a string address is now written in decimal or behind a `0x` prefix and in no
+  other way, whatever whitespace surrounds it.  And a symbol the map states twice is refused,
+  where the second address used to win in silence, as the description loader already refuses
+  a repeated key.  Every complaint about a map spells its path forward-slashed, as the rest
+  of the tool does.
+
+  *What a check hook changes is what everything after it sees.*  A hook is handed the
+  resolved dictionary itself, and the `extensions` blocks inside its frozen models are
+  ordinary dictionaries, so a hook that writes into one has changed what the backends render,
+  what `ddd dump` prints and what `ddd compare` reads back.  Nothing said so.  The plugins
+  page now does, in both directions: a hook that reports does not assign, and a value a
+  plugin computes for its own artefact belongs to that artefact rather than to a block.
+  Read-only views were the alternative and were not taken: they would copy every block on
+  every run against something no plugin has a reason to do, change the type every plugin
+  already written against the api sees, and still leave `object.__setattr__` one line away -
+  a guarantee that reads as complete and is not.
+
   *A `-W` is held to the plugins of the run, and grades this run alone.*  An override naming a
   plugin's check is verified once the project has been read, and the run used to return before
   verifying it whenever the read reported an error: `ddd check p.ddd.json -W layout/x=error`
@@ -400,7 +423,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   checks clean on its own, or the archived `ddd dump` of it, which is what a delivery
   comparison has always asked for.  A `-W` that named a check of a plugin the project does not
   name, and went unnoticed because the project happened not to load, is now the usage error it
-  always was.
+  always was.  An address map whose writer spelled an address `+5` or `0x1_0000`, or that
+  states one symbol twice, is now refused instead of read: both come from a generator, and
+  the message names the symbol.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

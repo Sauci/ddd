@@ -2417,6 +2417,61 @@ class TestAPluginThatPrints:
         assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
 
 
+MUTATING_PLUGIN = TAG_PLUGIN.replace(
+    "def check(context: CheckContext) -> None:\n",
+    "def check(context: CheckContext) -> None:\n"
+    "    for entry in context.dictionary.objects:\n"
+    '        block = entry.extensions.get("tag")\n'
+    "        if block is not None:\n"
+    '            block["tag"] = "rewritten"\n'
+    '    context.dictionary.extensions["mutated"] = {"by": "the check hook"}\n',
+)
+"""A check hook that rewrites the blocks it was handed, rather than only reading them."""
+
+
+class TestWhatACheckHookChanges:
+    """The dictionary a check hook receives is the one every later step consumes.
+
+    A hook is handed the resolved dictionary itself: the models are frozen, but the
+    ``extensions`` blocks inside them are ordinary dicts, so a hook that writes into one is
+    writing into what the backends render, what ``dump`` prints and what the comparison reads.
+    Handing out deep-copied read-only views instead would cost a copy of every block on every
+    run to prevent something no plugin has a reason to do, would change the type every plugin
+    already written against the api sees, and would still not be a guarantee - the models are
+    frozen and ``object.__setattr__`` is one line away. So it is stated on the plugins page,
+    and pinned here, rather than defended half way.
+    """
+
+    @pytest.fixture
+    def rewriting(self, tree: Path) -> str:
+        write_plugin(tree / "tools", source=MUTATING_PLUGIN)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "original"}})
+                ),
+            },
+        )
+        return str(tree / "project.ddd.json")
+
+    def test_the_artefacts_render_what_the_hook_left_behind(
+        self, rewriting: str, tree: Path
+    ) -> None:
+        quiet = ["-W", "missing-id=ignore"]
+        assert main(["generate", "tag", rewriting, "-o", str(tree / "gen"), *quiet]) == EXIT_OK
+        assert (tree / "gen" / "tags.txt").read_text(encoding="utf-8") == "X rewritten\n"
+
+    def test_the_dumped_dictionary_carries_what_the_hook_left_behind(
+        self, rewriting: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dump", rewriting, "-W", "missing-id=ignore"]) == EXIT_OK
+        dictionary = json.loads(capsys.readouterr().out)
+        assert dictionary["objects"][0]["extensions"]["tag"]["tag"] == "rewritten"
+        assert dictionary["extensions"]["mutated"] == {"by": "the check hook"}
+
+
 class TestTheLanguageServerAndPlugins:
     def test_hover_resolution_survives_a_hook_that_raises(self, tree: Path) -> None:
         from ddd.lsp.hover import resolve

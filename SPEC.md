@@ -1876,11 +1876,16 @@ The addresses of the generated objects are only known after linking. DDD accepts
 to address map in JSON form (`--address-map` of `ddd generate a2l` and `all`): one flat JSON object mapping
 each symbol to its address. The key is the C identifier of an object or, for the member of
 a structured object, its access path, for example `Inlet.latest` or `Inlet[2].raw`, exactly
-as the A2L names it ([section 5.2](#52-a2l)). The address is a JSON integer, or a string
-read as hexadecimal with a `0x` prefix and as decimal without one, and it **must** fit an
-unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON object, a value that is neither of
-those two spellings, or an address outside `0 .. 0xFFFFFFFF`, is a usage error and nothing
-is written. A key the project does not know is ignored, and an object the map does not
+as the A2L names it ([section 5.2](#52-a2l)). A symbol **shall** be stated once: a map
+naming one twice is a usage error rather than the last of the two addresses silently
+winning. The address is a JSON integer, or a string read as hexadecimal with a `0x` prefix
+and as decimal without one - those two spellings exactly, whatever whitespace surrounds
+them - and it **must** fit an unsigned 32 bit `ECU_ADDRESS`: a map that is not a JSON
+object, a value that is neither of those two spellings, or an address outside
+`0 .. 0xFFFFFFFF`, is a usage error and nothing is written. The file **may** begin with a
+byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
+a build step, and on Windows that is exactly where one comes from. A key the project does
+not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
 output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
 downstream tool resolve those it cares about. A map with entries that leaves an object of

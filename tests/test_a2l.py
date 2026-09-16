@@ -209,11 +209,64 @@ class TestHelpers:
         with pytest.raises(ValueError, match="is not an integer"):
             load_address_map(path)
 
+    def test_address_map_still_ignores_the_space_around_a_value(self, tree: Path) -> None:
+        """The grammar holds the stripped text: a map is machine written, and a stray space
+        around a number it got right is not what the strictness is for."""
+        path = tree / "addresses.json"
+        path.write_text('{"A": " 0x10 ", "B": "\\t32"}', encoding="utf-8")
+        assert load_address_map(path) == {"A": 0x10, "B": 32}
+
+    @pytest.mark.parametrize("value", ["0x1_0000", "+5", "١٢", "-5", "-0x10", "0b11", "0x"])
+    def test_address_map_holds_a_spelled_address_to_the_two_documented_forms(
+        self, tree: Path, value: str
+    ) -> None:
+        """``int()`` took every spelling python accepts, none of which section 6 offers.
+
+        ``0x1_0000`` reached the a2l as ``0x00010000``, ``+5`` as ``0x00000005`` and the
+        Arabic-Indic ``١٢`` as ``0x0000000C`` - from a file a linker script or a patch tool
+        wrote, which is the argument for a strict grammar rather than a lenient one.
+        """
+        path = tree / "addresses.json"
+        path.write_text(json.dumps({"A": value}), encoding="utf-8")
+        with pytest.raises(ValueError, match="is not an integer"):
+            load_address_map(path)
+
+    def test_address_map_refuses_a_symbol_stated_twice(self, tree: Path) -> None:
+        """Python's json reader keeps the last of two equal keys, so the first address was
+        dropped in silence - the loader refuses a repeated key for the same reason."""
+        path = tree / "addresses.json"
+        path.write_text('{"A": "0x10", "B": "0x20", "A": "0x30"}', encoding="utf-8")
+        with pytest.raises(ValueError, match="names 'A' twice"):
+            load_address_map(path)
+
+    def test_address_map_reads_a_byte_order_mark(self, tree: Path) -> None:
+        """Every other file the tool reads is read ``utf-8-sig``; a map written by a Windows
+        tool or by Notepad was a json syntax error with python's advice to a programmer."""
+        path = tree / "addresses.json"
+        path.write_text('﻿{"A": "0x10"}', encoding="utf-8")
+        assert load_address_map(path) == {"A": 0x10}
+
     def test_address_map_must_be_an_object(self, tree: Path) -> None:
         path = tree / "addresses.json"
         path.write_text("[1, 2]", encoding="utf-8")
         with pytest.raises(ValueError, match="expected a json object"):
             load_address_map(path)
+
+    @pytest.mark.parametrize(
+        "content", ["[1, 2]", '{"A": "nowhere"}', '{"A": "0x1FFFFFFFF"}', '{"A": 1, "A": 2}']
+    )
+    def test_every_complaint_about_a_map_spells_the_path_forward_slashed(
+        self, tree: Path, content: str
+    ) -> None:
+        """As every other path this tool prints is spelled, and as the same messages about a
+        description file already are; on Windows these four carried backslashes."""
+        path = tree / "sub" / "addresses.json"
+        path.parent.mkdir()
+        path.write_text(content, encoding="utf-8")
+        with pytest.raises(ValueError) as error:
+            load_address_map(path)
+        assert path.as_posix() in str(error.value)
+        assert "\\" not in str(error.value)
 
 
 class TestMeasurementRasters:

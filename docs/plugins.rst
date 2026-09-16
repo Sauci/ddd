@@ -141,6 +141,15 @@ notes)``, exactly as a built-in check does. ``locate`` returns the producing dec
 under ``ddd check``, and the dump file when the dictionary was read back from an archive,
 because a dump records a component's file name and not the position of each declaration.
 
+**The dictionary a hook receives is the one every later step consumes.** It is handed over
+as it is, not as a copy: the models are frozen, but the ``extensions`` blocks inside them are
+ordinary dictionaries, so a hook that writes into one has changed what the backends render,
+what ``ddd dump`` prints and archives, and what ``ddd compare`` reads back. That is worth
+knowing in both directions. A hook that means to *report* on the project must not assign, and
+a hook that needs to compute something for its own artefact should hand it to the artefact
+rather than leave it in a block - a later release that copies the dictionary between the two
+steps would take the value with it. The blocks are not offered as a channel between hooks.
+
 ``compare`` runs after the built-in comparison. The plugins in play are the candidate's: a
 project description names its own, and an archived dump has ``ddd compare --plugin``. A
 compared dictionary that records a plugin that is not among the candidate's is

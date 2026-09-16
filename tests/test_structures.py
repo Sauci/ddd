@@ -1551,6 +1551,38 @@ class TestGeneratingAStructure:
         files = self.render(tree, struct("S_t", val("v")), a2l={"export": False})
         assert "X.v" not in files["Device.a2l"]
 
+    def test_a_display_format_on_the_whole_structure_is_carried_and_written_nowhere(
+        self, tree: Path
+    ) -> None:
+        """A structure has no record of its own to display, so neither key reaches the a2l.
+
+        Stating one is neither refused nor used: the dictionary's instance carries it as the
+        declaration wrote it, and the records - the members - carry each member's own. The
+        specification says so rather than leaving a reader to find out from the file.
+        """
+        stated = {"format": "%8.3", "display_identifier": "Alias"}
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("Device", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(struct("S_t", val("v"))),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", typename="S_t", a2l={"export": True, **stated})
+                ),
+            },
+        )
+        assert dictionary is not None
+        instance = dictionary.instances[0]
+        assert (instance.a2l.format, instance.a2l.display_identifier) == ("%8.3", "Alias")
+        content = next(
+            file.content
+            for file in render_files(dictionary, tree / "gen")
+            if file.path.suffix == ".a2l"
+        )
+        assert "X.v" in content
+        assert "Alias" not in content
+        assert "FORMAT" not in content
+
     def test_a_structured_output_nobody_reads_is_reported(self, tree: Path) -> None:
         """The same finding any other unread output gets, and for the same reason."""
         _, bag = run_analysis(

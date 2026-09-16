@@ -387,6 +387,27 @@ class TestTheCheck:
         assert "types.ddd.json#types[0].members[0].dimensions[0]" in rendered
         assert "member 'raw' of structure 'S_t' is dimensioned by 'CELL_GAIN'" in rendered
 
+    def test_silenced_at_a_member_it_is_the_type_that_goes(self, tree: Path) -> None:
+        """A member of no known length leaves the structure without a size, so the type is
+        unusable and every declaration naming it is dropped - which the specification says of
+        ``dimension-value`` at a member and ``incomplete-project`` names among its causes."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "constants.ddd.json", "types.ddd.json", "a.ddd.json"
+                ),
+                "constants.ddd.json": constants(constant("CELL_GAIN", 1.5)),
+                "types.ddd.json": struct_type("S_t", value_member("raw", dimensions=["CELL_GAIN"])),
+                "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            },
+            severities=["dimension-value=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project"]
+        assert "the dimension-value that says why the type is unusable" in messages(bag)
+        assert dictionary is not None
+        assert dictionary.objects == () and dictionary.instances == ()
+
     def test_silencing_it_says_what_the_silence_costs(self, tree: Path) -> None:
         """Relaxed like every shape finding, and the dropped declaration is reported anyway -
         a dictionary quietly one variable short is the one way this tool can be wrong without

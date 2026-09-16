@@ -431,7 +431,9 @@ post-build step can pick it up without rebuilding the path by hand:
    get_target_property(a2l firmware.elf DDD_A2L)
    install(FILES "${a2l}" DESTINATION delivery)
 
-Beside the artefacts the generation step writes ``<NAME>.dictionary.json``, the resolved
+Beside the artefacts the generation step writes ``<project name>.dictionary.json`` - the
+name the a2l takes, which beside ``PROJECT`` is the one written inside that file rather than
+``NAME`` - the resolved
 :doc:`data dictionary <data_dictionary>` they were all generated from: what a template author
 reads to see what the templates receive, and what a delivery archives for a later
 ``ddd compare`` (see :doc:`comparing_deliveries`). The generation writes it itself, with

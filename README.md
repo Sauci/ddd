@@ -844,7 +844,8 @@ plus `firmware_ddd_check` to run the consistency check on its own in ci, `firmwa
 to print the table of the image's variables, and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
-`<NAME>.dictionary.json` - the resolved dictionary the generation writes beside the artefacts,
+`<project name>.dictionary.json` - the resolved dictionary the generation writes beside the
+artefacts, under the name the a2l takes,
 in the same write as them (`ddd generate --dictionary`) - as its `DDD_DICTIONARY` property.
 
 In the collected mode `firmware_ddd_headers` carries more than the include directory: the

@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -504,6 +505,23 @@ class TestDiagnostics:
         # exactly as standalone mode would - unlike 'unknown-type', it is not one of the
         # checks that context was needed to answer.
         assert codes == {"unused-output", "missing-id"}
+
+    def test_a_project_file_no_build_claims_is_checked_as_the_project_it_is(self) -> None:
+        """The standalone policy is for "a component read alone"; a project file is not one.
+
+        Nothing includes a project file, so the search above it finds nothing and it used to
+        fall through to the policy that silences the ten checks the project is the only thing
+        able to answer - in the state every unconfigured checkout is in.
+        """
+        reports = service.collect([], [INCONSISTENT], INCONSISTENT.parent)
+        codes = {entry["code"] for findings in reports.values() for entry in findings}
+        assert codes == {
+            "multiple-producers",
+            "definition-mismatch",
+            "missing-producer",
+            "local-conflict",
+            "unused-output",
+        }
 
     def test_a_file_no_project_claims_falls_back_to_reading_it_alone(self, tmp_path: Path) -> None:
         """A thin answer, but the only honest one when there is nothing else to read."""
@@ -2922,6 +2940,32 @@ class TestServer:
             "method": "textDocument/didOpen",
             "params": {"textDocument": {"uri": path.as_uri()}},
         }
+
+    def test_opening_the_project_file_does_not_withdraw_the_project_wide_findings(
+        self, tmp_path: Path
+    ) -> None:
+        """A squiggle that disappears when the reader opens another file is worse than none.
+
+        The component was reached through the project above it and reported everything; the
+        project file, reached as a root, used to be read under the policy for a lone
+        component, so the second refresh republished the same files without the two checks the
+        project exists to answer.
+        """
+        tree = tmp_path / "inconsistent"
+        shutil.copytree(INCONSISTENT.parent, tree)
+        stream = framed(
+            self.handshake(tree),
+            self.opened(tree / "component_c.ddd.json"),
+            self.opened(tree / "project.ddd.json"),
+            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tree).run() == 0
+        # The last word on each file, which is what stays on screen.
+        final = published(writer)
+        assert "missing-producer" in {entry["code"] for entry in final["component_c.ddd.json"]}
+        assert "unused-output" in {entry["code"] for entry in final["component_a.ddd.json"]}
 
     def test_a_request_without_params_is_refused_rather_than_fatal(self, tmp_path: Path) -> None:
         """One badly shaped message is not the end of the conversation, framing or not.

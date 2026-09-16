@@ -55,9 +55,33 @@ def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
 
 
 def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
-    """Run the checks over a file that no build in this workspace claims."""
+    """Run the checks over a file read as "a component on its own"."""
     policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False)
     return _run(path, DiagnosticBag(policy))
+
+
+def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBag, frozenset[Path]]:
+    """Run the checks over a file no build and no project above it claims.
+
+    A project file is the whole project, whatever no build record says about it: it lists the
+    components, so every check has what it needs, and the ten that need the whole project are
+    exactly the ones somebody opening a project file wants to see. Reading it under the
+    standalone policy silenced them for every file of the project - and, because opening a
+    file republishes everything it covers, withdrew them from the components as well.
+
+    The thinner policy stays for what it was written for: a component read alone really does
+    have inputs nobody produces and outputs nobody reads, by construction rather than by
+    mistake.
+    """
+    if _declares_a_project(path, cache):
+        return _run(path, DiagnosticBag())
+    return analyse_standalone(path)
+
+
+def _declares_a_project(path: Path, cache: dict[Path, Document]) -> bool:
+    """Whether the file is a project file, keyed on what the loader keys the kind on."""
+    data = read(path, cache).data
+    return isinstance(data, dict) and "project" in data
 
 
 def _run(root: Path, bag: DiagnosticBag) -> tuple[DiagnosticBag, frozenset[Path]]:
@@ -110,6 +134,7 @@ def collect(
     after every file has been read and before the analysis - and counting only the load would
     then check an open file a second time on its own and publish everything about it twice.
     """
+    cache: dict[Path, Document] = {}
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
     for info in builds:
@@ -133,10 +158,9 @@ def collect(
                 bag, sources = _run(project, DiagnosticBag())
                 covered |= sources | _group(bag, project, grouped)
             continue
-        bag, sources = analyse_standalone(document)
+        bag, sources = _analyse_root(document, cache)
         covered |= sources | _group(bag, document, grouped)
 
-    cache: dict[Path, Document] = {}
     return {
         path: [_as_lsp(finding, cache) for finding in grouped.get(path, ())]
         for path in sorted(covered | set(grouped))

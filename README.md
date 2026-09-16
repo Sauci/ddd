@@ -151,9 +151,13 @@ account and no network policy exception: that installs with
 Extensions view.  It updates no more automatically than any other file, so reinstall it when
 the python package is upgraded - the two share a version number.
 
-The server reports on open and on save, and it publishes for
+The server reports on open, on save, and when the editor tells it a description file changed
+on disk behind your back - a build writes them, a branch switch rewrites them all - and it
+publishes for
 **every** file of the project rather than only the one in front of you, because half of a
-disagreement is always in the other component.
+disagreement is always in the other component.  A component linked into two images is checked
+under both and one mistake in it is drawn once, unless the two images disagree about how
+loudly to report it, in which case both are shown.
 
 Hovering anywhere in a declaration shows what the **project** made of that variable, which
 the file under the cursor does not say: the shape a curve got from its axis, limits derived
@@ -173,6 +177,10 @@ Those are *initial* values: DDD describes an interface, and what an engineer cal
 in the calibration tool, the hex file and the a2l.  A map is drawn a row at a time against one
 shared scale, and an object whose values are all the same is stated rather than drawn - a row
 of identical bars looks like a reading of the data rather than the absence of one.
+
+Inside a types file, where there is no variable to describe, hovering a type name shows the
+type: a structure and its members, a scalar type's storage and conversion, an external type
+and the header that defines it.
 
 It also navigates, which is where a data dictionary stops being a pile of files:
 
@@ -202,14 +210,33 @@ not a usable identifier, or one the project already declares is refused with the
 before a single file is touched - a rename writes into several at once, and an unusable
 name is otherwise noticed a build later.  Free text is left alone: a `description` that
 mentions the old name still mentions it, because rewriting prose by substring is how a
-rename tool starts corrupting files.
+rename tool starts corrupting files.  A rename and the quick fixes are refused outright,
+naming the file, while a document has unsaved changes that moved a declaration they would
+touch or while a file of the project did not load: the project the edit would be computed
+from is not the project on disk, and rewriting the rest of it around the gap is exactly the
+half-done rename the refusal exists to prevent.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
 the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
-directory names next to the workspace are searched.
+directory names next to the workspace are searched.  The records it finds are listed in the
+editor's log, and so is a record it declines - one written by a newer DDD, or naming a check
+this one has not got - because a record nothing can use looks, in silence, exactly like a
+workspace nobody configured a build in.
 
-A file no build claims is still checked, on its own, but only for what one file can decide.
+Everything published or edited is spelled the way your editor spelled it, so a workspace
+opened through a junction, a `subst` drive, a symlink or with a different case gets its
+squiggles on the document you actually have open.
+
+A file no build claims is looked for in a project instead: the server walks up from it to the
+workspace folder and checks it through the nearest project description that includes it,
+under the **default** severities - a `-W` or a `--strict` belongs to a build, and no build
+record named this file.  A project description opened directly is checked as the project it
+is, which is what makes opening `project.ddd.json` in a tree nobody has built yet show the
+missing producers and the unused outputs rather than hide them.
+
+A file that no build and no project above it claims is still checked, on its own, but only
+for what one file can decide.
 Read alone a component has inputs nobody writes, outputs nobody reads and types, units,
 sections, constants and axes declared in files nobody handed over, so the ten checks that need
 every component of a project - `unknown-type`, `unknown-unit`, `unknown-section`,

@@ -1820,8 +1820,9 @@ description files in place), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
-description is left alone, and a file that cannot be parsed is reported while the others
-are stamped, the run exiting 1; printing the JSON schema of the file
+description is left alone, and a file that cannot be parsed, or that nests more deeply than
+a position in it can be located, is reported while the others are stamped, the run exiting 1;
+printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
 closing the extension blocks over the named plugins' models); listing
@@ -2008,34 +2009,70 @@ initial value included; renaming an object, a declared type or a declared consta
 everywhere the project writes it - the declaration and every reference, `typename`,
 dimension or axis `size` spelling it - refused up front for a name the C language does not
 allow, a type name spelling a base datatype, or one the project already uses, whether for
-another object, an enum, an enumerator, a type or a constant, or while an open document has
-unsaved changes that moved a declaration the rename would touch, in which case the refusal
-names the file rather than renaming the rest of the project around it, because a rename that
-silently merges two objects compiles, links, and shares storage nobody intended to share;
-and quick fixes that reconcile one key across the declarations of one object, in either
-direction, including removing a key the others do not have; and, on a `missing-id`, a fix
-that gives the declaration an identity, writing what `ddd id --assign` would write and
-offered only where that finding is reported.
+another object, an enum, an enumerator, a type or a constant, because a rename that silently
+merges two objects compiles, links, and shares storage nobody intended to share; and quick
+fixes that reconcile one key across the declarations of one object, in either direction,
+including removing a key the others do not have; and, on a `missing-id`, a fix that gives the
+declaration an identity, writing what `ddd id --assign` would write and offered only where
+that finding is reported.
+
+A rename and the quick fixes are also refused, naming the file, in two states where the
+project the edit would be computed from is not the project on disk: while an open document
+has unsaved changes that moved a declaration the edit would touch, and while a file of the
+project reported an error that stopped it being read. Both are refused whole rather than
+performed in part. A project is indexed from what loaded, so a file a `schema` error dropped
+mid edit declares nothing as far as the index knows: the rename would rewrite every other
+file and leave that one holding the old name, and a fix would offer to remove a key "no
+other declaration has" while the unloaded producer states exactly that key.
+
+A hover on a name naming a declared type describes the data object that names it where
+there is one, and otherwise the type itself: a structure and its members, a scalar type's
+storage and conversion, an external type and the header that defines it. Inside a types file
+there is no data object, and the one place a name is defined is the last place a reader
+should be told nothing about it.
 
 Which project a file belongs to comes from the build records of
 [section 3.6](#36-build-record), found by searching the build directories the client names,
 or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under the
-workspace, recursively for `ddd-build.json`. A file claimed by several builds is checked
+workspace, recursively for `ddd-build.json`. Each record found is counted under the path it
+resolves to, so a link inside a build tree does not turn one record into a record per way of
+spelling it. A file claimed by several builds is checked
 under each of them and the findings published together: a component linked into two images
-is in two projects, and the answer to which one the reader cares about is both. A file no
+is in two projects, and the answer to which one the reader cares about is both. A finding
+equal in check, message, place and severity to one already published for that file is
+published once, because two images reporting the same mistake in the same words are not two
+mistakes; where their severities differ they really are saying two different things and both
+are published. A file no
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
 descriptions of the nearest directory that include it - the candidates of a directory being
-its `*.ddd.json` files in sorted order, the opened file itself excluded. A file
-belonging to no build and to no such project is still checked, on its own, with the ten
-checks that
+its `*.ddd.json` files in sorted order, the opened file itself excluded - under the default
+severities of [section 4](#4-consistency-checks), since the `-W` and `--strict` of a build
+are properties of a build and no record named this file. A file that is itself a project
+description is checked as the project it is, under those same default severities: it lists
+its components, so every check has what it needs, and the checks that need the whole project
+are exactly the ones somebody opening a project file is asking about. A file
+belonging to no build, to no such project and declaring no project of its own is still
+checked, on its own, with the ten checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in
 front of the reader. Each check declares whether it needs the whole project, so the two
 modes cannot drift apart.
 
-The server re-reads a file from disk when it is opened or saved, and analyses nothing per
+The server publishes, answers and edits under the spelling the client used for every
+document it opened, and under the resolved path for every file it never opened. A client
+keys what it draws on the uri *string*, and a workspace opened through a junction, a
+substituted or mapped drive, a symlinked directory or with a different case spells every path
+in it differently from the way the loader resolves it - so the resolved spelling sent the
+findings to a resource the editor was not showing and handed a rename to a document that was
+not on screen. A document whose uri names a scheme other than `file:` is refused with the
+protocol's invalid-parameters error rather than read for whatever path-like text it holds:
+there is nothing on disk to check.
+
+The server re-reads a file from disk when it is opened, when it is saved, and when the client
+reports that a file it watches changed - a build writes description files and a branch switch
+rewrites them, and neither is a document event - and analyses nothing per
 keystroke: read from disk, the editor and the server agree exactly at the moment of a save,
 and a half-typed document never produces a screenful of findings about a mistake nobody has
 finished making. The findings are therefore the disk's. The text of every open document is
@@ -2043,8 +2080,14 @@ nonetheless kept current as it is typed, and every position the client sends and
 the server answers - a rename, a quick fix - is read from and written for that text, so that
 an edit lands where the editor shows it; a client that takes versioned edits is told which
 version of each document an edit was computed for. Each finding is also published at the
-locations of its notes, so that both sides of a conflict carry a mark. The build records a
-search discovers are announced as log messages, and a record that cannot be read is skipped.
+locations of its notes - a note stating no place of its own being published at the first line
+of the file its finding is on, the protocol having no way to say "here". The build records a
+search discovers are announced as log messages, and a record that cannot be read, or that
+names a check this version has not got, is skipped and the reason announced with them. A
+record whose severities name a plugin's check that no plugin of the project registers is
+reported as a `plugin-invalid` finding at the project file, which is the editor's answer to
+what `ddd check` refuses a `-W` for: silently accepted, a build silencing a check by a name
+nothing registers looks exactly like a build silencing one that exists.
 A plugin hook that raises or exits the interpreter while a file is checked is reported as a
 `plugin-invalid` finding at the project file rather than ending the session, and so is a model
 of the plugin's own that raises or exits while a block is validated against it
@@ -2056,10 +2099,20 @@ that a plugin defect stopped has already reported on every file it read, and tho
 not read a second time on their own.
 
 A message body the server cannot parse is answered with the protocol's parse or
-invalid-request error and does not stop the server; a frame header whose `Content-Length`
-is not a number, or is negative, after which no message boundary can be trusted, ends the
-session with a message rather than a failure trace, and a header block without a length is
-read as the end of the conversation.
+invalid-request error and does not stop the server, and a request whose parameters are not
+the shape its method takes is answered with the invalid-parameters error, while a
+notification is answered with nothing, which is what a notification always gets. A frame
+header whose `Content-Length` is not a count of bytes written in decimal digits - after which
+no message boundary can be trusted - ends the session with a message rather than a failure
+trace, and a header block without a length is read as the end of the conversation.
+
+The session has a beginning and an end. A request arriving before `initialize` is answered
+with the protocol's server-not-initialized error and a notification is dropped, because until
+then the server has not been told what the workspace is; a second `initialize`, and any
+request after `shutdown`, is answered with the invalid-request error. `exit` ends the run
+whenever it arrives, with the exit code 0 if `shutdown` came first and 1 if it did not, so
+that a client watching the process can tell a stop that was prepared for from one that was
+not.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
 repeatable `-b` arguments, a relative one read against the server's working directory; the

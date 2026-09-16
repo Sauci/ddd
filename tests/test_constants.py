@@ -779,6 +779,34 @@ class TestGeneratedC:
         assert "#define SPARE_CELLS 0\n" in header
         assert "#define ZERO_OFFSET -40\n" in header
 
+    def test_a_constant_at_the_edge_of_64_bits_is_the_literal_its_author_meant(
+        self, tree: Path
+    ) -> None:
+        """A whole number outside the range of an ``int`` is not the literal it looks like.
+        ``18446744073709551615`` has no signed type to be, so c reads it as unsigned and
+        says so; ``-9223372036854775808`` is the unary minus applied to a literal one past
+        every signed type, which is the same warning and the wrong value besides. Both are
+        values a constant may hold, and the template renders each as the literal that means
+        it."""
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "constants.ddd.json", "a.ddd.json"),
+                "constants.ddd.json": constants(
+                    constant("C_I64MIN", -9223372036854775808),
+                    constant("C_U64MAX", 18446744073709551615),
+                    constant("C_BILLION", 3000000000),
+                ),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert dictionary is not None, [d.render() for d in bag]
+        files = {file.path.name: file.content for file in render_files(dictionary, tree / "gen")}
+        header = files["ddd_types.h"]
+        assert "#define C_I64MIN (-9223372036854775807LL - 1)\n" in header
+        assert "#define C_U64MAX 18446744073709551615ULL\n" in header
+        assert "#define C_BILLION 3000000000LL\n" in header
+
     def test_without_constants_no_block_is_emitted(self, tree: Path) -> None:
         dictionary, _ = run_analysis(
             tree,

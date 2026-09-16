@@ -414,7 +414,10 @@ Kind specific attributes:
   or a map over its two axes, holds at most 10 000 000 elements, the product of its
   dimensions, because the dictionary, the A2L and the generated code carry every element; a
   larger one is `schema` where the shape is written, at `dimensions`, at the `size` of an axis
-  or, for a map, at the whole declaration, and the declaration is dropped. In the A2L the same
+  or, for a map, at the whole declaration, and the declaration is dropped. A shape states at
+  most 64 dimensions, a limit on the list and not on what it multiplies out to, because the
+  walks that expand a shape descend once per dimension; a longer one is `schema` at
+  `dimensions`, and the declaration is dropped. In the A2L the same
   object is described by a
   `MATRIX_DIM` listing the fastest running index first, that is in the reverse order,
   because describing it in C order would state a transposed object; the list is padded with
@@ -422,7 +425,12 @@ Kind specific attributes:
 - `init` is a scalar or a nested list matching the shape of the object. A scalar given
   for an array shaped object initialises every element; the scalar fill applies to the
   whole object only, not to a nested position. An initial value **must** fit the raw
-  range of its datatype and **must** match the shape of the object (`init-invalid`). It is
+  range of its datatype and **must** match the shape of the object (`init-invalid`). On a
+  floating point datatype it **must** also be a magnitude that datatype can hold: a value
+  that is not zero and that the storage rounds to zero is `init-invalid`, because the value
+  the object would start with is not the value the description states - `1e-50` on a
+  `float32`, whose smallest magnitude is about 1.4e-45, and which the generated C carries as
+  a literal a compiler refuses rather than silently zeroes. It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
   A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
@@ -1295,8 +1303,9 @@ Errors:
   value pairs are compared, in the textual order of the file, for the list form and the
   mapping form alike, so a reordering conflicts and the free text descriptions do not.
 - `init-invalid`: an initial value or an enumerator does not fit the datatype or the shape,
-  or a string init is not printable ASCII, leaves no room for its terminator, or is written
-  on an object that is not a string.
+  or a non-zero initial value rounds to zero in a floating point datatype, or a string init
+  is not printable ASCII, leaves no room for its terminator, or is written on an object that
+  is not a string.
 - `unknown-reference`, `reference-kind`: a curve, map or axis refers to an object that does
   not exist or has the wrong kind. A structured object ([section 3.3.2](#332-naming-a-declared-type))
   is the wrong kind for the `input` of an axis as well, although an instance of a structure

@@ -15,7 +15,7 @@ import contextlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final, Protocol, runtime_checkable
 
 from jinja2 import (
@@ -284,34 +284,59 @@ def describe_template_error(
     deepest of those is where it happened. A ``{component}`` template is rendered once per
     component, with data that differs per run, so the message carries the component the
     failing render was for.
+
+    A line belongs to the file the failing frame came from, which is not always the template
+    being rendered: a macro imported from a helper fails on the helper's line, and a helper
+    that does not parse is reported while the template that imports it is being loaded. Named
+    under the rendered template alone, such a line points at whatever that file happens to
+    carry there - usually nothing at all - so the file is named beside the line whenever the
+    two differ, and left unsaid when they do not.
     """
     if isinstance(error, TemplateSyntaxError):
         line: int | None = error.lineno
+        source = error.name
         reason = error.message or str(error)
     else:
-        line = _template_line(error)
+        line, source = _template_frame(error)
         reason = str(error)
     where = f"template '{template_name}'"
     if component is not None:
         where += f" for component '{component}'"
     if line is not None:
         where += f", line {line}"
+        if source is not None and _file_name(source) != _file_name(template_name):
+            where += f" of '{_file_name(source)}'"
     return f"cannot render {where}: {reason}"
 
 
-def _template_line(error: Exception) -> int | None:
-    """The template line a runtime error was raised from, read off the traceback.
+def _file_name(spelling: str) -> str:
+    """The last segment of a template name or of the path jinja compiled it from.
+
+    A template is named to jinja with ``/`` whatever the platform is, and jinja names the code
+    it compiles by the path the loader read it from, so the two spellings of one file never
+    match as written. Comparing and printing the last segment is what makes them comparable;
+    a template directory holding two files of the same name in different subdirectories is
+    the one arrangement this cannot tell apart, and it reports the name they share.
+    """
+    return PurePosixPath(spelling.replace("\\", "/")).name
+
+
+def _template_frame(error: Exception) -> tuple[int | None, str | None]:
+    """The template line a runtime error was raised from, and the file it is a line of.
 
     jinja marks the frames it fabricates with ``__jinja_exception__`` in their globals,
     whether it is fabricating them for one of its own exceptions or for a bare python one a
     template's body raised; the last one on the stack is the line of the template that
-    actually failed. ``None`` when there is no such frame to read, in which case the message
-    goes out without a line rather than not at all.
+    actually failed, and the code object it belongs to carries that template's own path.
+    ``None`` when there is no such frame to read, in which case the message goes out without
+    a line rather than not at all.
     """
     line: int | None = None
+    source: str | None = None
     trace = error.__traceback__
     while trace is not None:
         if trace.tb_frame.f_globals.get("__jinja_exception__") is not None:
             line = trace.tb_lineno
+            source = trace.tb_frame.f_code.co_filename
         trace = trace.tb_next
-    return line
+    return line, source

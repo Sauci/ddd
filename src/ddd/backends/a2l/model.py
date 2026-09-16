@@ -648,12 +648,20 @@ _UNIT_WORDS = {
     "°": "DEG",
     "µ": "MICRO",
     "Ω": "OHM",
+    "²": "2",
+    "³": "3",
     "/": "_PER_",
     "*": "_",
     ".": "_",
     "^": "",
     "-": "_",
 }
+"""What a character of a unit contributes to the identifier built from it.
+
+The superscripts are here for the reason the other symbols are: dropped instead, ``m/s²``
+and ``m/s`` produce the same name, and whichever is met second is pushed onto ``_2`` - a
+number that says nothing about the unit and everything about the order the project happens to
+be read in. They spell the digit that ``^2`` already spells."""
 
 
 def _slug(unit: str) -> str:

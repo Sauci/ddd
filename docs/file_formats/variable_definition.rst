@@ -316,7 +316,11 @@ uses it for ``CurveB``, whose ``"init": 200`` covers all six points of the axis 
 
 Everything about an initial value is checked against the object it belongs to. A value outside
 the raw range of the datatype, a fractional value in an integer object, and a nested list of
-the wrong shape are all errors, each naming what it actually is:
+the wrong shape are all errors, each naming what it actually is. So is a magnitude a floating
+point datatype cannot hold from below: ``1e-50`` is inside the range a ``float32`` states and
+past the precision it has, so the object would start at zero rather than at the value written,
+and the generated c says so out loud - a compiler refuses ``1e-50F`` rather than quietly
+zeroing it.
 
 .. code-block:: text
 
@@ -508,7 +512,10 @@ array dimensions that is empty for a scalar - each an integer of at least 1, or 
 same rule. An array holds at most 10 000 000 elements, the product of its dimensions, and a
 map the same over its two axes, because the dictionary, the a2l and the generated code carry
 every one of them; a larger one is ``schema`` - at ``dimensions``, at an axis's ``size``, or
-at the whole declaration for a map, which writes neither - and the declaration is dropped.
+at the whole declaration for a map, which writes neither - and the declaration is dropped. A
+shape states at most 64 dimensions, a cap on the list rather than on its product, because the
+walks that expand a shape descend once per dimension; a longer one is ``schema`` at
+``dimensions`` and the declaration is dropped too.
 A measurement is also the one kind that is not generated
 ``const``, so the ``volatile`` every definition states is the whole of its qualifier -
 ``ValueB`` says ``true``, which is the answer for a value written by an interrupt or by

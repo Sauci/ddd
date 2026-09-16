@@ -162,6 +162,22 @@ class TestCompuMethods:
         assert "CM_LIN_PCT" in content
         assert '"%"' in content
 
+    def test_a_superscript_exponent_is_a_digit_of_the_name(self, tree: Path) -> None:
+        """``m/s²`` is the spelling most people type, and the superscript carried none of
+        its meaning into the identifier: the name it produced was the one ``m/s`` deserves,
+        so whichever of the two was met second was pushed onto ``_2`` and neither read as
+        what it is."""
+        content = a2l(
+            tree,
+            declare("local", "X", "uint16", unit="m/s²", conversion={"factor": 0.25}),
+            declare("local", "Y", "uint16", unit="m/s", conversion={"factor": 0.25}),
+            declare("local", "Z", "uint16", unit="m³", conversion={"factor": 0.25}),
+        )
+        assert "CM_LIN_M_PER_S2" in content
+        assert "CM_LIN_M_PER_S " in content
+        assert "CM_LIN_M3" in content
+        assert "CM_LIN_M_PER_S_2" not in content
+
     def test_enum_becomes_a_verbal_table(self, tree: Path) -> None:
         content = a2l(
             tree,

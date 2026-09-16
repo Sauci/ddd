@@ -180,11 +180,20 @@ The model
      - The tool and version that produced the file, such as ``ddd 0.9.0``.
    * - ``model.constants``
      - One entry per :doc:`declared constant <file_formats/constants>`, in name order, each
-       with ``.name``, ``.value`` and ``.description``; empty when the project declares
-       none. Offered so the template can emit them however the house style spells one - the
-       example templates write each as a ``#define`` in the types header - because an array
-       dimensioned by a constant renders its ``array_suffix`` with the constant's *name*,
-       which therefore has to be declared before the first array that uses it.
+       with ``.name``, ``.value``, ``.literal`` and ``.description``; empty when the project
+       declares none. Offered so the template can emit them however the house style spells
+       one - the example templates write each as a ``#define`` in the types header - because
+       an array dimensioned by a constant renders its ``array_suffix`` with the constant's
+       *name*, which therefore has to be declared before the first array that uses it.
+       ``.value`` is the number and nothing else, for a template that does its own
+       formatting; ``.literal`` is that value as a c literal of the narrowest type that
+       holds it, which is what to render where the value is simply to be emitted. The two
+       differ only at the ends of the 64 bit range, where there is no literal to write out
+       bare: ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c
+       has no negative literal and the unary minus would be applied to a literal too large
+       for any signed type, and ``18446744073709551615`` renders as
+       ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
+       says so.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.

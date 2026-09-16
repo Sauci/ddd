@@ -37,6 +37,27 @@ def c_literal(value: bool | int | float, datatype: Datatype) -> str:
     return f"{number}{suffix}"
 
 
+def c_constant_literal(value: int | float) -> str:
+    """Render a declared constant as the c literal its value means.
+
+    A constant carries no datatype - it is a named number, and what a shape or an expression
+    does with it is the project's business - so the literal is spelled for the narrowest type
+    that holds the value: an ``int`` where one holds it, and ``long long`` or ``unsigned long
+    long`` past that, which is what :func:`c_literal` already spells for an ``init``. Written
+    out bare instead, the two ends of the 64 bit range are not the numbers they read as:
+    ``18446744073709551615`` has no signed type to be and c takes it as unsigned with a
+    diagnostic, and ``-9223372036854775808`` is a unary minus applied to that same literal.
+    A number with a fraction is a ``double`` literal, which is what it looks like already.
+    """
+    if isinstance(value, float):
+        return c_literal(value, Datatype.FLOAT64)
+    if Datatype.SINT32.raw_min <= value <= Datatype.SINT32.raw_max:
+        return c_literal(value, Datatype.SINT32)
+    if value <= Datatype.SINT64.raw_max:
+        return c_literal(value, Datatype.SINT64)
+    return c_literal(value, Datatype.UINT64)
+
+
 def c_string_literal(text: str) -> str:
     """Render a string init as a c string literal.
 

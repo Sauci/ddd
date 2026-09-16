@@ -391,6 +391,60 @@ class TestTemplateErrorReporting:
             "cannot render template '{component}.h.jinja2' for component 'Beta': boom"
         )
 
+    def helpers(self, tree: Path, helper: str, main: str) -> Path:
+        """A template directory whose rendered template leans on ``_helper.jinja2``."""
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "_helper.jinja2").write_text(helper, encoding="utf-8")
+        (templates / "main.c.jinja2").write_text(main, encoding="utf-8")
+        return templates
+
+    def test_a_runtime_error_inside_a_helper_names_the_helper(self, tree: Path) -> None:
+        """The line is the helper's, so the file has to be the helper's too: reported under
+        the importing template's name it points at whatever that file's line 4 happens to
+        be, which is nothing to do with the mistake."""
+        from ddd.backends.base import make_environment, render_template
+
+        templates = self.helpers(
+            tree,
+            "{% macro emit() %}\n/* two */\n/* three */\n{{ none.x }}\n{% endmacro %}\n",
+            '{% import "_helper.jinja2" as helper %}\n/* two */\n{{ helper.emit() }}\n',
+        )
+        with pytest.raises(ValueError) as caught:
+            render_template(make_environment(templates), "main.c.jinja2", tree / "out.c")
+        assert str(caught.value) == (
+            "cannot render template 'main.c.jinja2', line 4 of '_helper.jinja2': "
+            "'None' has no attribute 'x'"
+        )
+
+    def test_a_syntax_error_inside_a_helper_names_the_helper(self, tree: Path) -> None:
+        """The other half of the same gap: a helper that does not parse is reported with its
+        own line under the name of the template that imported it."""
+        from ddd.backends.base import make_environment, render_template
+
+        templates = self.helpers(
+            tree,
+            "{# one #}\n{# two #}\n{% if %}\n",
+            '{% import "_helper.jinja2" as helper %}\n',
+        )
+        with pytest.raises(ValueError) as caught:
+            render_template(make_environment(templates), "main.c.jinja2", tree / "out.c")
+        assert "cannot render template 'main.c.jinja2', line 3 of '_helper.jinja2': " in str(
+            caught.value
+        )
+
+    def test_a_failure_in_the_rendered_template_itself_names_it_once(self, tree: Path) -> None:
+        """Nothing is appended when the failing frame is the template being rendered - the
+        name is already the first thing the line says."""
+        from ddd.backends.base import make_environment, render_template
+
+        templates = self.helpers(tree, "{# unused #}\n", "/* one */\n{{ none.x }}\n")
+        with pytest.raises(ValueError) as caught:
+            render_template(make_environment(templates), "main.c.jinja2", tree / "out.c")
+        assert str(caught.value) == (
+            "cannot render template 'main.c.jinja2', line 2: 'None' has no attribute 'x'"
+        )
+
 
 class TestObjectViewComposition:
     """``.definition`` is documented template api, kept whole for templates that want the

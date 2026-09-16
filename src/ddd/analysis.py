@@ -115,6 +115,18 @@ larger than this is a constant that resolved to the wrong number rather than sto
 planned.
 """
 
+_MAX_DIMENSIONS = 64
+"""How many dimensions one shape states.
+
+Nothing about the storage: sixty-four dimensions of one element each are one element, so
+:data:`_MAX_ELEMENTS` never sees them. What the number bounds is the descent - the walks that
+expand a shape take one call per dimension, so a scalar ``init`` over a few hundred of them
+ended ``ddd generate c`` in python's ``RecursionError``, a traceback where the conventions
+ask for a finding. The same limit :data:`_MAX_TYPE_NESTING` puts on a chain of structures,
+for the same reason, and as far past any array a description means to state: the a2l already
+says out loud that it carries three.
+"""
+
 _MAX_LEAVES = 100_000
 """How many leaves an array of structures contributes.
 
@@ -1928,12 +1940,15 @@ class _Analysis:
         with whatever the file said, so an array of a billion was a run with no output and no
         end rather than a finding.
 
-        Two limits, because the two arrays cost the outputs differently. An array of values
-        is one declaration and one ``MATRIX_DIM`` however long it is, so only
-        :data:`_MAX_ELEMENTS` speaks about it; an array of structures is spread out, so it is
-        weighed in leaves first - the tighter and the more telling of the two answers - and
-        by its elements after, which is what still bounds the element paths of a structure
-        whose members are every one of them opaque and so contributes no leaf at all.
+        Three limits, because an array costs the outputs three ways. An array of values is one
+        declaration and one ``MATRIX_DIM`` however long it is, so only :data:`_MAX_ELEMENTS`
+        speaks about it; an array of structures is spread out, so it is weighed in leaves
+        first - the tighter and the more telling of the two answers - and by its elements
+        after, which is what still bounds the element paths of a structure whose members are
+        every one of them opaque and so contributes no leaf at all. :data:`_MAX_DIMENSIONS`
+        is about neither: it bounds how far the walks that expand a shape descend, and it
+        comes first because a shape of a thousand dimensions of one element is under both of
+        the other two.
 
         Reported where the shape is written, which is ``size`` on an axis and ``dimensions``
         everywhere else, and routed through :meth:`_refuse` so that the declaration is
@@ -1948,10 +1963,19 @@ class _Analysis:
             # known once every axis has resolved, which `_refuse_wide_maps` weighs once `run`
             # has turned axes into numbers.
             return True
-        elements = math.prod(self._numeric_shape(spelled))
         location = ref.location(
             "definition.size" if isinstance(definition, Axis) else "definition.dimensions"
         )
+        if len(spelled) > _MAX_DIMENSIONS:
+            self._refuse(
+                "schema",
+                f"'{ref.name}' has {len(spelled)} dimensions; DDD carries at most "
+                f"{_MAX_DIMENSIONS}",
+                location,
+                ref,
+            )
+            return False
+        elements = math.prod(self._numeric_shape(spelled))
         named = definition.declared_type
         if named is not None and self._is_structure(named):
             # Present for every structure a declaration can still resolve as: one refused
@@ -2394,6 +2418,18 @@ class _Analysis:
                     "init-invalid",
                     f"init value {format_number(value)} does not fit into {datatype.value} "
                     f"({format_number(datatype.raw_min)} .. {format_number(datatype.raw_max)})",
+                    location,
+                )
+            elif datatype.rounds_to_zero(value):
+                # Inside the magnitude the datatype states and past the precision it has, so
+                # the range check above cannot see it: the value the storage would hold is
+                # zero, which is not the value the description states, and the generated c
+                # says so out loud - a float32 literal that rounds to zero is
+                # `-Werror=overflow`, the warning set the artefacts page verifies with.
+                self._bag.add(
+                    "init-invalid",
+                    f"init value {format_number(value)} rounds to zero in {datatype.value}, "
+                    f"which holds no magnitude that small",
                     location,
                 )
 

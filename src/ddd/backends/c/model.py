@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ddd.backends.c.literals import (
+    c_constant_literal,
     c_type,
     doc_comment,
     guard_name,
@@ -192,13 +193,31 @@ class ConstantView:
     value: int | float
     """The number as the description wrote it: a whole number of either sign, or a float.
 
-    Rendered with ``{{ constant.value }}`` it is already a c literal of the type its author
-    meant - ``8``, ``-40``, ``1.5`` - so a template that suffixes it, ``U`` for unsigned say,
-    has to look at which it is first.
+    Rendered with ``{{ constant.value }}`` it is the number and nothing else - ``8``,
+    ``-40``, ``1.5`` - which is what a template wants that does its own formatting, a
+    suffix of the project's own or a cast. It is not always a c literal of the value it
+    spells: past the range of a signed ``long long`` there is no such literal to write out,
+    so ``{{ constant.literal }}`` beside it is the one to render where the value is simply
+    to be emitted.
     """
 
     description: str
     """Already safe to put in a comment; empty when the constant states none."""
+
+    @property
+    def literal(self) -> str:
+        """The value as a c literal of the narrowest type that holds it.
+
+        ``8`` and ``-40`` and ``1.5`` come back as themselves; the two ends of the 64 bit
+        range do not, because bare they are not the values they read as. C has no negative
+        literal, so ``-9223372036854775808`` is a unary minus over a literal too large for
+        any signed type - which is a constraint violation, and the reason every
+        ``<stdint.h>`` spells ``INT64_MIN`` as ``(-9223372036854775807LL - 1)`` - and
+        ``18446744073709551615`` has no signed type at all, so a compiler reads it as
+        unsigned and says so. This is the same spelling an ``init`` of that value reaches
+        the generated c with.
+        """
+        return c_constant_literal(self.value)
 
 
 @dataclass(frozen=True, slots=True)

@@ -566,9 +566,10 @@ or an a2l file that does not do what the description says - or that does not com
    * - ``init-invalid``
      - error
      - an initial value does not fit its datatype - out of range, written as a fraction for an
-       integer, neither 0 nor 1 for a bool - or an initialiser has a shape the variable does
-       not have (for a curve or a map, the shape given by its axes), or an enumerator does not
-       fit the datatype of the variable, or does not fit into a c ``int``, which every
+       integer, neither 0 nor 1 for a bool, or a magnitude a floating point datatype rounds to
+       zero, such as ``1e-50`` on a ``float32`` - or an initialiser has a shape the variable
+       does not have (for a curve or a map, the shape given by its axes), or an enumerator does
+       not fit the datatype of the variable, or does not fit into a c ``int``, which every
        enumerator has to (C11 6.7.2.2), or a string init that is not printable ASCII, leaves
        no room for its terminator, or sits on an object that is not a string.
 

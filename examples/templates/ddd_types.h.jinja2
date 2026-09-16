@@ -20,7 +20,7 @@
 
 /* named constants of the data dictionary */
 {% for constant in model.constants %}
-#define {{ constant.name }} {{ constant.value }}{{ (" /**< " ~ constant.description ~ " */") if constant.description else "" }}
+#define {{ constant.name }} {{ constant.literal }}{{ (" /**< " ~ constant.description ~ " */") if constant.description else "" }}
 {% endfor %}
 {% endif %}
 {% for enum in model.enums %}

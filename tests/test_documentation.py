@@ -25,6 +25,7 @@ import site_versions
 from pydantic import BaseModel, ValidationError
 
 from ddd import __version__
+from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
 from ddd.cli import _SCHEMA_MODELS, _build_parser
 from ddd.diagnostics import CHECKS
@@ -255,6 +256,36 @@ class TestTheFileKinds:
         assert row is not None
         for kind in FILE_KINDS:
             assert f"``{kind}``" in row.group(1), f"the file-kind row does not name {kind}"
+
+
+CAPPED = {"docs/faq.rst": PAGES["docs/faq.rst"], "SPEC.md": SPEC}
+"""The documents that state how large a shape may be, and so have to state the same numbers."""
+
+
+class TestTheCapsOnAShape:
+    """Four limits an object is held to, and the page that answered there were none.
+
+    The caps arrived in 0.9.0 and the FAQ's answer did not move, so a reader sizing a buffer
+    by the page met ``error[schema]`` on the day the product went past ten million - the one
+    kind of documentation mistake that costs a whole day, since the page promises exactly
+    the thing the tool refuses.
+
+    Read from the analysis rather than from a list of numbers written here, so that a cap
+    changed in the code fails on the pages that state it.
+    """
+
+    @pytest.mark.parametrize("document", sorted(CAPPED))
+    def test_the_caps_are_stated_as_the_analysis_applies_them(self, document: str) -> None:
+        text = flattened(CAPPED[document])
+        for cap in (_MAX_ELEMENTS, _MAX_LEAVES):
+            spelled = f"{cap:,}".replace(",", " ")
+            assert spelled in text, f"{document} does not state the cap of {spelled}"
+
+    def test_the_page_that_answers_how_large_no_longer_promises_no_bound(self) -> None:
+        answer = flattened(PAGES["docs/faq.rst"]).split("How large may an array be?", 1)[1]
+        assert "no bound" not in answer, "the FAQ still answers that a shape is unbounded"
+        assert "caps neither" not in answer, "the FAQ still answers that DDD caps nothing"
+        assert "schema" in answer, "the FAQ does not say what a shape past a cap is reported as"
 
 
 class TestCommands:

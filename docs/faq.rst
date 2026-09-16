@@ -606,10 +606,45 @@ calibration tool would address the wrong element.
 How large may an array be?
 --------------------------
 
-There is no bound: a dimension is any integer of at least one, stated as a number or through
-a :doc:`declared constant <file_formats/constants>`, and DDD caps neither the number of
-dimensions nor their product. What grows with that product is the work. A structured object
-is resolved into one member object per element and member, and those objects are what the
+A dimension is any integer of at least one, stated as a number or through a :doc:`declared
+constant <file_formats/constants>`, and nothing caps how many dimensions an object has. What
+they multiply out to is capped, in four places:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 20 34
+
+   * - what
+     - at most
+     - reported at
+   * - the elements of an array
+     - 10 000 000
+     - ``dimensions``, or the ``size`` of an axis
+   * - the elements of a map, over its two axes
+     - 10 000 000
+     - the declaration, which states no shape of its own
+   * - the leaves of a structure type
+     - 100 000
+     - the innermost type that is already over the limit
+   * - the leaves an array of structures contributes
+     - 100 000
+     - ``dimensions``
+
+A leaf is one value member of one element - ``cell[0].raw`` and ``cell[1].raw`` are two -
+because no single address describes them both, and each reaches the dumped dictionary, the
+a2l and ``ddd list`` as an entry of its own. A structure type is weighed whether or not
+anything declares a variable of it, and a type nesting one that is already over the limit is
+unusable for the same reason.
+
+Past any of the four, the shape is ``schema`` where it is written - ``'Huge' has 10000001
+elements; DDD carries at most 10000000`` - and the declaration is dropped, so the run is one
+finding rather than an expansion nobody waits for. The limits sit well past any array a
+description means to state: a shape larger than one of them is usually a constant that
+resolved to the wrong number, and one that is meant needs splitting into objects a
+calibration tool can carry.
+
+Inside them, what grows with the product is the work. A structured object is resolved into
+one member object per element and member, and those objects are what the
 checks walk, what the dumped dictionary records and what the a2l describes, so a structured
 object of several million elements takes correspondingly long to check and correspondingly
 much space to archive. The generated initialiser grows the same way, because an ``init`` is

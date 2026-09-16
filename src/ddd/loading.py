@@ -453,7 +453,13 @@ def load_dictionary(path: Path, bag: DiagnosticBag) -> DataDictionary | None:
     The counterpart of :func:`load_workspace`: it takes the resolved form rather than the
     description files, which is what makes a published dictionary usable as a baseline long
     after the sources of that delivery have moved on.
+
+    The path is resolved first, as the root of a workspace is: everything reported about
+    this file - that it does not exist, that its json is malformed, that its format is one
+    this version cannot read, that a field does not validate - is located at it, and the
+    ``location`` of a finding is an absolute path whether the caller typed one or not.
     """
+    path = resolve_path(path)
     text = _read_text(path, bag, None)
     if text is None:
         return None

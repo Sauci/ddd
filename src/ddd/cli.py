@@ -564,6 +564,22 @@ def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _where(path: Path) -> Location:
+    """A finding's place, out of a path typed on the command line.
+
+    Resolved rather than taken as typed: a ``location`` is "an absolute, forward-slashed
+    path" (``docs/consistency_checks.rst``), and everything the loader locates is one, because
+    it resolves every file it reads. The paths this module locates a finding at itself - the
+    project or candidate a comparison is about, the address map a note is about - arrive as
+    somebody typed them, and a relative one is unresolvable to whoever reads the json without
+    the working directory the run had. It is also unorderable against the rest: within one
+    severity the findings sort by path, so a relative one landed apart from the findings of
+    the very file it is about. The text report is unchanged, because it renders every path
+    back against the working directory.
+    """
+    return Location(resolve_path(path))
+
+
 def _plugins_from_arguments(
     specs: Sequence[str], bag: DiagnosticBag | None = None
 ) -> tuple[Plugin, ...]:
@@ -600,19 +616,15 @@ def _command_check(args: argparse.Namespace) -> int:
         with _reported_on_failure(bag, args.format):
             baseline = _read_baseline(args.baseline, bag)
             if baseline is not None:
-                compare(
-                    baseline.dictionary,
-                    resolved.dictionary,
-                    bag,
-                    location=Location(args.project),
-                )
+                location = _where(args.project)
+                compare(baseline.dictionary, resolved.dictionary, bag, location=location)
                 run_compare_hooks(
                     resolved.plugins,
                     baseline.dictionary,
                     resolved.dictionary,
                     bag,
                     resolved.locate,
-                    Location(args.project),
+                    location,
                 )
     _report(bag, args.format)
     if args.format == "json":
@@ -652,7 +664,7 @@ def _command_compare(args: argparse.Namespace) -> int:
             plugins = _plugins_from_arguments(args.plugin, bag)
         bag.policy.verify(bag.registered)
 
-        location = Location(args.candidate)
+        location = _where(args.candidate)
         paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
         run_compare_hooks(
             plugins, baseline.dictionary, candidate.dictionary, bag, candidate.locate, location
@@ -718,7 +730,7 @@ def _check_address_coverage(
         "address-missing",
         f"the address map has no entry for {_listed(missing)}; "
         f"{'it reaches' if len(missing) == 1 else 'they reach'} the a2l at address 0",
-        Location(path),
+        _where(path),
         notes=notes,
     )
 
@@ -1407,7 +1419,8 @@ def _read_dictionary(path: Path, bag: DiagnosticBag) -> Resolved | None:
     dictionary = load_dictionary(path, bag)
     if dictionary is None:
         return None
-    return Resolved(dictionary, (), lambda _: Location(path), False, (resolve_path(path),))
+    archived = _where(path)
+    return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
 
 
 def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:

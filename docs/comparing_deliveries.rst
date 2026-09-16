@@ -625,11 +625,14 @@ A baseline that cannot be read at all is a different matter, and it stops the ru
 .. code-block:: text
 
    $ ddd compare examples/pressure/release/PressureLoop-1.3.0.json examples/pressure/work/pressure.ddd.json
-   examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file 'examples/pressure/release/PressureLoop-1.3.0.json' does not exist
+   examples/pressure/release/PressureLoop-1.3.0.json: error[file-not-found]: in the baseline: file '/home/you/ddd/examples/pressure/release/PressureLoop-1.3.0.json' does not exist
    1 error
 
 The ``in the baseline:`` prefix is there so that a missing or malformed file on the reference
-side is never mistaken for a problem with the delivery being judged.
+side is never mistaken for a problem with the delivery being judged. The message spells the
+file out in full, as it does for a description that cannot be found: what a finding is
+*located* at is an absolute path - rendered here against the directory the command ran in -
+and a file that is not there is worth naming where it was looked for.
 
 The baseline's warnings are not findings of this run
 ----------------------------------------------------

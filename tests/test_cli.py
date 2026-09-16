@@ -23,7 +23,15 @@ from conftest import (
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FORMAT
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, _displayed_path, main
+from ddd.cli import (
+    EXIT_FINDINGS,
+    EXIT_OK,
+    EXIT_USAGE,
+    _displayed_path,
+    _read_dictionary,
+    main,
+)
+from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DICTIONARY_FORMAT
 from ddd.models.common import OBJECT_ID_PATTERN
 
@@ -2336,6 +2344,137 @@ class TestGenerateTheDictionary:
         assert main(self.a2l(Path("gen"), "dictionary.json")) == EXIT_OK
         assert (tmp_path / "dictionary.json").is_file()
         assert not (tmp_path / "gen" / "dictionary.json").exists()
+
+
+class TestWhereTheRunsOwnFindingsAre:
+    """A finding DDD locates at a file named on the command line says where that file is.
+
+    ``location`` is "an absolute, forward-slashed path together with the json pointer"
+    (``docs/consistency_checks.rst``), and every finding of an analysis is one, because the
+    loader resolves what it reads. The findings the command line locates itself - a
+    comparison's, a `--baseline` comparison's, the note about an address map - carried the
+    path as it was typed, so a dashboard could not resolve it without knowing the working
+    directory of the run; and in text, where the sort key inside one severity is the path,
+    a relative one sorted apart from the findings of the very file it is about.
+    """
+
+    BASE: ClassVar[dict[str, Any]] = {
+        "app.ddd.json": project("P", "components/a.ddd.json"),
+        "components/a.ddd.json": component(
+            "A", declare("output", "Kept"), declare("output", "Gone")
+        ),
+    }
+    """Sorts the project file before its component, so the order below is a real question."""
+
+    def deliveries(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """An archived baseline beside a candidate that has dropped one unused output.
+
+        What the archiving run printed is drained, so that what each test reads is the output
+        of the one command it is about.
+        """
+        write_tree(tree, self.BASE)
+        assert main(["dump", str(tree / "app.ddd.json"), "-o", str(tree / "base.json")]) == EXIT_OK
+        write_tree(tree, {"components/a.ddd.json": component("A", declare("output", "Kept"))})
+        capsys.readouterr()
+
+    def test_a_comparison_finding_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        arguments = ["compare", "base.json", "app.ddd.json", "--format", "json"]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        checks = {entry["check"] for entry in payload["diagnostics"]}
+        assert "removed-unused-object" in checks and "unused-output" in checks
+        for entry in payload["diagnostics"]:
+            path = entry["location"]["path"]
+            assert Path(path).is_absolute(), entry
+            assert "\\" not in path
+
+    def test_the_text_output_is_the_one_it_was(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Rendered against the working directory, so what a reader sees is what they typed."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "-W", "missing-id=ignore"]) == EXIT_OK
+        lines = capsys.readouterr().err.splitlines()
+        assert [line for line in lines if "removed-unused-object" in line] == [
+            "app.ddd.json: warning[removed-unused-object]: 'Gone' is gone; no component read "
+            "it, but a calibration dataset or an external tool still might"
+        ]
+
+    def test_a_comparison_finding_sorts_with_the_file_it_is_about(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both are warnings, so the path decides: the project file, then its component.
+
+        Typed, the comparison's path sorted after every absolute one of the analysis - which
+        is what the comparison page says does not happen.
+        """
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "-W", "missing-id=ignore"]) == EXIT_OK
+        err = capsys.readouterr().err
+        assert err.index("warning[removed-unused-object]") < err.index("warning[unused-output]")
+
+    def test_a_baseline_comparison_under_check_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``check --baseline`` locates the same findings at the project it was given."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        arguments = ["check", "app.ddd.json", "--baseline", "base.json", "--format", "json"]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK
+        payload = json.loads(capsys.readouterr().out)
+        located = [
+            entry["location"]["path"]
+            for entry in payload["diagnostics"]
+            if entry["check"] == "removed-unused-object"
+        ]
+        assert located == [(tree / "app.ddd.json").as_posix()]
+
+    def test_the_note_about_an_address_map_carries_an_absolute_path(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tree, self.BASE)
+        (tree / "addresses.json").write_text('{"Elsewhere": "0x20001000"}', encoding="utf-8")
+        monkeypatch.chdir(tree)
+        arguments = ["generate", "a2l", "app.ddd.json", "-o", "gen", "--format", "json"]
+        assert main([*arguments, "--address-map", "addresses.json", "-W", "missing-id=ignore"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        located = [
+            entry["location"]["path"]
+            for entry in payload["diagnostics"]
+            if entry["check"] == "address-missing"
+        ]
+        assert located == [(tree / "addresses.json").as_posix()]
+
+    def test_a_finding_a_plugin_places_on_an_archived_dictionary_is_absolute(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A dump has no declaration to point at, so a hook's finding lands on the file."""
+        self.deliveries(tree, capsys)
+        monkeypatch.chdir(tree)
+        resolved = _read_dictionary(Path("base.json"), DiagnosticBag())
+        assert resolved is not None
+        located = resolved.locate("Kept")
+        assert located is not None and located.path == tree / "base.json"
+
+    def test_a_finding_about_a_dump_that_cannot_be_read_is_absolute(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The loader resolves a description before it reads it; a dump is read by its own
+        entry point, and everything reported about it was located as it was typed."""
+        write_tree(tree, self.BASE)
+        (tree / "base.json").write_text("{ not json", encoding="utf-8")
+        monkeypatch.chdir(tree)
+        assert main(["compare", "base.json", "app.ddd.json", "--format", "json"]) == EXIT_FINDINGS
+        payload = json.loads(capsys.readouterr().out)
+        assert [entry["location"]["path"] for entry in payload["diagnostics"]] == [
+            (tree / "base.json").as_posix()
+        ]
 
 
 class TestAnOutputThatIsASource:

@@ -309,6 +309,25 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   project, one of its includes, a plugin module, or an archived dictionary being compared -
   as a usage error naming it, before anything is written.
 
+  *A finding says where the file is.*  A `location` is "an absolute, forward-slashed path
+  together with the json pointer", and every finding of an analysis was one, because the
+  loader resolves what it reads.  The findings the command line places itself were not: a
+  comparison's own findings, the ones `check --baseline` adds, the note about an address map
+  and everything reported about an archived dictionary carried the path as it was typed, so
+  `--format json` handed a dashboard a `location.path` of `work/p.ddd.json` that nobody can
+  resolve without knowing the working directory of the run - beside absolute paths in the
+  same document.  In text they also sorted apart: within one severity the findings sort by
+  path, so a relative one landed after every absolute one instead of beside the findings of
+  the file it is about, which is not what the comparison page says.  All of them are built
+  from the resolved path now.
+
+  **Migration:** the text output is unchanged - every path is still rendered against the
+  directory the command ran in.  A reader of `--format json` that resolved `location.path`
+  against the working directory gets the same file; one that compared it with a path as
+  typed no longer matches, and should compare resolved paths.  The message of a finding
+  about a baseline that cannot be read now spells the file out in full, as the same message
+  about a description has always done.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

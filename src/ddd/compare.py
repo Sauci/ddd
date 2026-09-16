@@ -37,6 +37,8 @@ from ddd.models import (
     conversion_identity,
     format_number,
     format_shape,
+    is_above,
+    is_below,
 )
 
 
@@ -618,7 +620,15 @@ def _compare_object(
     # value the baseline allowed, a narrower one can invalidate data that was calibrated.
     # When the interface already changed - references included - tighter limits are a
     # consequence of it - reporting both would bury the cause under its own symptom.
-    narrowed = new.limits.min > old.limits.min or new.limits.max < old.limits.max
+    #
+    # Weighed with the tolerance the analysis weighs a derived limit with, because most
+    # limits are derived and deriving one goes through a float: a baseline archived before
+    # the derived ends were rounded carries 3276.7000000000003 where a candidate that states
+    # the limits its datatype implies writes 3276.7, and an exact comparison called that a
+    # narrowing of 3e-13 on every rescaled object of every old delivery. One spelling of the
+    # tolerance keeps this check and ``limits-out-of-range`` agreeing about which two numbers
+    # are the same number.
+    narrowed = is_above(new.limits.min, old.limits.min) or is_below(new.limits.max, old.limits.max)
     if narrowed and not interface and references is None:
         bag.add(
             "narrowed-limits",

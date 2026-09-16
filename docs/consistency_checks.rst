@@ -714,7 +714,10 @@ registry can be read in one place.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
-       Widening is silent, because every value the baseline allowed still fits.
+       Widening is silent, because every value the baseline allowed still fits. The ends are
+       compared with the relative tolerance of ``limits-out-of-range``: most limits are
+       derived, and a candidate that writes down the ones its datatype implies is not
+       narrowing the unrounded ends an older baseline carries.
    * - ``changed-owner``
      - warning
      - another component produces the object now.

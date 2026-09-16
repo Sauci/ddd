@@ -1481,7 +1481,11 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   the section says literally which memory the object ends up in, and the raster which event
   a measuring tool receives the value in.
 - `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
-  fit.
+  fit. The two ends are compared with the relative tolerance of `limits-out-of-range`
+  ([section 4](#4-consistency-checks)), because most limits are derived and a derived end
+  is the product of a float: a candidate that writes down the limits its datatype and
+  conversion imply is not narrowing the range of a baseline archived before those ends
+  were rounded ([section 3.3](#33-data-object-definition)).
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
   the one the dictionary records on the object

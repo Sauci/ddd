@@ -15,6 +15,7 @@ from ddd.compare import compare
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
+from ddd.models import Limits
 
 
 def resolve(base: Path, root: str) -> DataDictionary:
@@ -388,6 +389,94 @@ class TestGradedChanges:
         old = one_component(tree, "old", declare("local", "X", "uint16"))
         new = one_component(tree, "new", declare("local", "X", "uint32"))
         assert checks(verdict(old, new, "changed-interface=ignore")) == []
+
+
+class TestDerivedLimitsCarryTheAnalysisTolerance:
+    """A limit nobody wrote is computed, and computing it goes through a float.
+
+    ``sint16`` under ``{"factor": 0.1}`` implies [-3276.8, 3276.7], and the binary arithmetic
+    that derives the upper end used to write it out as ``3276.7000000000003``. Rounding it
+    where it is derived is not enough on its own: every dictionary archived before that
+    rounding still carries the unrounded number, and a candidate that makes the implicit
+    limits explicit - or adopts a scalar type that states them - was then narrowing the range
+    by 3e-13. That is a ``narrowed-limits`` warning and, under the ``--strict`` gate the
+    comparison page recommends, "cannot replace" and exit 1 over nothing at all.
+
+    The analysis has weighed a derived limit with a relative tolerance since it was written;
+    the comparison now weighs one with the same one, so the check that reports an impossible
+    limit and the check that reports a narrowed one cannot disagree about which two numbers
+    are the same number.
+    """
+
+    SCALED: ClassVar[dict[str, float]] = {"factor": 0.1}
+
+    def archived(self, tree: Path, dictionary: DataDictionary, **ends: float) -> Path:
+        """The baseline as an older DDD dumped it: the derived limits, unrounded."""
+        entry = dictionary.objects[0].model_copy(update={"limits": Limits(**ends)})
+        path = tree / "baseline.json"
+        older = dictionary.model_copy(update={"objects": (entry,)})
+        path.write_text(older.model_dump_json(indent=2), encoding="utf-8")
+        return path
+
+    def against(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], baseline: Path
+    ) -> tuple[int, str]:
+        capsys.readouterr()
+        code = main(["compare", str(baseline), str(tree / "new.ddd.json"), "--strict"])
+        return code, capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("conversion", "implied", "unrounded"),
+        [
+            # The upper end, where 32767 counts of 0.1 overshoot the range they cover.
+            ({"factor": 0.1}, {"min": -3276.8, "max": 3276.7}, 3276.7000000000003),
+            # The lower one, which the same arithmetic overshoots as soon as an offset moves
+            # the raw zero: -32768 counts of 0.1 plus 0.1 is -3276.7000000000003.
+            (
+                {"factor": 0.1, "offset": 0.1},
+                {"min": -3276.7, "max": 3276.8},
+                -3276.7000000000003,
+            ),
+        ],
+    )
+    def test_a_candidate_stating_the_limits_its_datatype_implies_compares_clean(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        conversion: dict[str, float],
+        implied: dict[str, float],
+        unrounded: float,
+    ) -> None:
+        scaled = {"conversion": conversion}
+        old = one_component(tree, "old", declare("local", "T", "sint16", **scaled))
+        assert old.by_name["T"].limits == Limits(**implied), "derived, and rounded where derived"
+
+        end = "min" if unrounded < 0 else "max"
+        baseline = self.archived(tree, old, **{**implied, end: unrounded})
+        assert repr(unrounded) in baseline.read_text(encoding="utf-8"), "the archive is unrounded"
+
+        one_component(tree, "new", declare("local", "T", "sint16", limits=implied, **scaled))
+        code, report = self.against(tree, capsys, baseline)
+        assert code == EXIT_OK, report
+        assert "narrowed-limits" not in report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_narrowing_anybody_wrote_on_purpose_is_still_reported(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The tolerance absorbs the arithmetic, not a range somebody actually tightened."""
+        scaled = {"conversion": self.SCALED}
+        old = one_component(tree, "old", declare("local", "T", "sint16", **scaled))
+        baseline = self.archived(tree, old, min=-3276.8, max=3276.7000000000003)
+        one_component(
+            tree,
+            "new",
+            declare("local", "T", "sint16", limits={"min": -3276.8, "max": 3000}, **scaled),
+        )
+        code, report = self.against(tree, capsys, baseline)
+        assert code == EXIT_FINDINGS
+        assert "narrowed-limits" in report
+        assert "cannot replace" in report
 
 
 class TestAnInitComparesAsBytes:

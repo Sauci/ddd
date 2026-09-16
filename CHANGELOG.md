@@ -111,7 +111,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   description implies, and the engineer reading the a2l saw a number nobody wrote.  Both ends
   are now rounded to twelve significant digits, the width a reading has always been spelled
   at, wherever they are derived: the a2l, the dumped dictionary, the hover in the editor and
-  the checks.
+  the checks.  A delivery comparison weighs a narrowing with the same relative tolerance
+  `limits-out-of-range` already weighed a stated limit with, because rounding alone would
+  only move the problem: every dictionary archived before this release carries the unrounded
+  end, and a candidate that states the limits its datatype implies was tightening it by
+  3e-13 - a `narrowed-limits` warning, and under `--strict` a "cannot replace", on every
+  rescaled object of every old baseline.
 
   *Two names the generated files could not carry.*  An axis whose `input` named a
   structured variable passed every check, because an instance of a structure is of kind

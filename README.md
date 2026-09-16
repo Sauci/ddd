@@ -591,7 +591,8 @@ ddd check project.ddd.json --baseline baseline.json   # both questions, one exit
 ```
 
 `--renames` writes the old-to-new name pairs of the comparison - each object's `id` (a member
-of a renamed structure under the instance's id followed by its member path), its old
+of a renamed structure under the instance's id followed by its access path below it,
+`abcdefghjkmn.latest` or `abcdefghjkmn[2].raw`), its old
 name and its new name - to a json file, so a migration tool can update the calibration
 datasets, recordings, test scripts and requirement documents that key on the old spelling
 without having to parse the findings above.
@@ -603,11 +604,11 @@ for the baseline - and graded, because the changes are not equally bad:
 | severity | check | reported when |
 | --- | --- | --- |
 | error | `removed-object` | an object is gone and a component read it |
-| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed |
+| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes or locality changed, or the layout a released structure fixed for its consumers: a bitfield's width, the order of the members, or the type a structured variable names |
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |

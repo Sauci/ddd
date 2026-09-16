@@ -1434,10 +1434,12 @@ old-to-new name pairs the comparison established, so that a calibration dataset,
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
 name changed, sorted by `to`, `[]` when nothing was renamed; a member of a structured
-object is listed once per member, its `id` being the instance's `id` followed by `.` and
-the member path. The file is written whether or not the comparison found errors, because a
-delivery that cannot be accepted still needs its renames listed - and not at all when a
-side could not be read. Both `--renames` and `--plugin` belong to `ddd compare`;
+object is listed once per member, its `id` being the instance's `id` followed by the
+member's path below the instance as the access path spells it - `.latest` for a member of a
+single structure, `[2].raw` for a member of the third element of an array of them, with no
+`.` before the index. The file is written whether or not the comparison found errors,
+because a delivery that cannot be accepted still needs its renames listed - and not at all
+when a side could not be read. Both `--renames` and `--plugin` belong to `ddd compare`;
 `ddd check --baseline` runs the candidate's own plugins and writes no rename list.
 
 A change **shall** be graded by what it costs the consumers.
@@ -1446,10 +1448,26 @@ Errors, because the consumers of the object become wrong, whether or not they st
 compile:
 
 - `removed-object`: an object is gone that a component read.
-- `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects or locality
-  changed. Locality is whether the object is local to its component
+- `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
+  the width of a bitfield, the `type` a structured variable names or the order of a
+  structure's members changed. Scaling is the conversion, compared by its kind and by its
+  parameters, and an enum by its name together with its enumerators in order; a description,
+  of an object or of an enumerator, is documentation and is never compared. An enum inside a
+  project compares by its name alone ([section 4](#4-consistency-checks)), because
+  `enum-conflict` owns the enumerators there and reporting them twice said nothing; a
+  comparison of two deliveries has no such finding to leave them to, so it compares them
+  itself. Locality is whether the object is local to its component
   ([section 2.1](#21-scope)); a local object becoming shared, or the reverse, changes who
-  **may** use it.
+  **may** use it. A bitfield's width and the order of the members are the layout a released
+  structure fixed for its consumers ([section 3.7](#37-type-description)): narrowing a field
+  changes the value every reader takes out of the word, widening one moves every member after
+  it, and reordering two of them moves every address after the first change while every
+  member still compares identical to the byte. A reordering is reported once, at the
+  structure, because the edit is one line of one type description however many variables of
+  it a project declares; only the members both sides declare are lined up, since a member
+  that arrived or left is already the addition or the removal of the leaf it contributes. A
+  structured variable's `type` is what every consumer's header declares, so renaming the
+  structure changes the interface even when its members are untouched.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1485,7 +1503,14 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   raster ([section 3.10](#310-measurement-rasters)) changed. On a calibration object the
   volatility also decides whether a tool can still change the value in a running target,
   the section says literally which memory the object ends up in, and the raster which event
-  a measuring tool receives the value in.
+  a measuring tool receives the value in. An `init` is compared as the storage it produces
+  and not as it was spelled: a scalar written for an array is the array it fills, and a
+  string's text is the character codes it stands for followed by the zeros that pad the
+  array ([section 3.3](#33-data-object-definition)), so a delivery that respells an initial
+  value without moving a byte of it replaces its predecessor. Both spellings are the tool's
+  own offer, and a finding naming them is what the description writes: the two values as
+  JSON, cut short past a few elements when the array is long, with the first index at which
+  they part named beside them.
 - `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
   fit. The two ends are compared with the relative tolerance of `limits-out-of-range`
   ([section 4](#4-consistency-checks)), because most limits are derived and a derived end
@@ -1519,7 +1544,10 @@ addition in the candidate is identical to it in interface, storage and reference
 under a different name: `'X' was added with an identical interface; if that was a rename, the
 id did not travel with it`. It asserts nothing and pairs nothing - the two may simply be
 different objects - and stays silent the moment more than one addition matches equally well.
-This is the only part of the feature that helps a project which never adopts `id` at all.
+It stays silent too where a delivery offers more than a handful of additions alike in every
+one of those properties: a crowd no single candidate was going to come out of, and the note
+is advisory where the answer to it is not. This is the only part of the feature that helps a
+project which never adopts `id` at all.
 
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration
 of its own to carry an `id`: it is paired by the `id` of its instance together with its
@@ -1528,6 +1556,17 @@ reported as a `renamed-object` under its path, which is what a migration tool ne
 renaming a member of the *type* changes the path and is reported as a removal and an
 addition, exactly as an object without an `id` is. The gap is known; closing it would mean
 an identity on a type's member.
+
+A structured object **shall** be compared as the variable it is and not only through its
+members. The variable answers for what no member carries - its `type` - and for what every
+member carries only because the variable states it: its array shape and its locality as
+interface, and its volatility, its section, its raster, its producer and its condition as
+storage and as their own findings. Each of those is therefore reported once, at the
+variable, where the declaration that states it is. Reported under the members instead, one
+edit on one declaration was one finding per member of the structure, and one per member of
+every element of an array of them, each naming a path for a change that is on one line.
+What is left at a member is what the member itself states: its datatype, its meaning, its
+shape, its width in bits and the A2L entry it asks for.
 
 Widening a limit **shall** be silent, because every value the baseline allowed still fits.
 Limits that got tighter **shall not** be reported on an object whose interface changed as
@@ -1783,9 +1822,14 @@ themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *p
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
 checking front end and every backend, DDD's own and a project's. Its `format` is `8`: a
-reader **shall** refuse a higher number, and reads a lower one with the defaults of that
-format ([section 4.1](#41-comparing-two-deliveries)). Its schema is published by
-`ddd schema dictionary`. The top level carries `format`, `name`, `description`, `source`
+whole number of at least 1, written as a number and not as text, of which a reader
+**shall** refuse a higher one and reads a lower one with the defaults of that format
+([section 4.1](#41-comparing-two-deliveries)). A dictionary is read under the JSON rules a
+description file is read under ([section 3](#3-file-formats)) - a key spelled twice in one
+object is refused rather than resolved to its last spelling - because a document archived
+beside a delivery is as open to a hand edit as the description it was dumped from. Its
+schema is published by `ddd schema dictionary`. The top level carries `format`, `name`,
+`description`, `source`
 (the file name of the root description), `components`, `objects`, `enums`, `constants`,
 `rasters`, `types`, `instances`, `leaves`, `plugins` and `extensions`.
 

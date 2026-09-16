@@ -197,6 +197,95 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   added beside `.value`, and the changes to the example templates are changes to the copy
   `ddd templates-dir` hands out, not to anything a project already has - a project that took
   that copy and generates for a float-only or object-less image wants the same two edits.
+* **The verdict on a delivery.**  Everything a review of the whole tool found in the answer
+  to "can this delivery replace the one before it?": three changes it did not see at all, a
+  name it did not see reused, a note that cost more than the comparison it annotates, four
+  findings that said the wrong thing about an initial value, and an archived dictionary read
+  more loosely than the description it was dumped from.
+
+  *An `init` compares as the bytes it stores.*  DDD offers two spellings of one array - a
+  scalar fills every element of it, and a string's text is the character codes it stands for -
+  and the comparison read the spelling.  Respelling `7` on a `uint8[4]` as `[7, 7, 7, 7]`, or
+  a list of character codes as the text it spells, was a `changed-storage` warning and, under
+  the `--strict` gate the comparison page recommends, a delivery that "cannot replace" its
+  predecessor over generated code that is byte for byte the same file.  The two spellings now
+  reduce to one before they meet; the dumped dictionary is untouched and still carries the
+  init as the description wrote it, so an archive says what was stated.
+
+  *The layout a released structure fixed for its consumers.*  Swapping two members of a
+  structure moves every address after the first of them and narrowing a bitfield changes the
+  value every reader takes out of the word - and every member of the edited type compared
+  identical to the byte, so the comparison reported nothing at all and the delivery that had
+  moved every offset of every variable of that type "can replace" its predecessor, `--strict`
+  or not.  This is what the `Member` docstring published in two schemas had always promised a
+  comparison reports.  A member's `bits` is a compared interface field now, and the order of
+  the members is compared once at the structure, where the edit is - one line of one types
+  file, however many variables of that type a project declares.
+
+  *A structured variable is compared as the variable it is.*  The dictionary offers the plain
+  objects and the members, never the variables, so two things fell between them.  Renaming
+  `Sensor_t` to `Sensor2_t` with the members untouched changes what every consumer's header
+  declares - `extern Sensor2_t Inlet` - and was silent, while inside one project the same
+  disagreement is a `definition-mismatch`.  And the volatility, section, raster, producer and
+  condition a member carries only because its variable states them were compared under every
+  member: one edit on one declaration was three findings for a three member structure, and
+  one per member of every element of an array of them.  The variable is now paired and
+  compared like any other object - its `type`, array shape and locality as interface, the
+  rest as storage - and each of those is reported once, where it is written.
+
+  *A name freed by a removal and taken by a rename.*  `reused-name` is the failure that
+  compiles, links, runs and reads the wrong storage, and it proved the reuse from one end
+  only: it caught a rename landing on a name the baseline's own object had left, and not the
+  mirror case - an unstamped `A` removed and a stamped `B` renamed onto the spelling it freed
+  - which was two warnings and "can replace", although a dataset keyed by `A` now binds to
+  what was `B`'s storage.  A rename proves the reuse from either end now, and the finding
+  carries a note naming what the baseline called the object standing under the name.
+
+  *The note under a removal, and what it cost.*  A `removed-object` carries a note when
+  exactly one addition is identical to it, which is the only help a project that never adopts
+  `id` gets.  It asked that of every removal against every addition of the same kind,
+  datatype and unit, so the naming-convention sweep `--renames` exists for - a project without
+  ids renaming everything at once - was quadratic: 5 000 objects took three minutes and 53 000
+  never finished.  Candidates are grouped on everything the note compares now, and a crowd of
+  additions alike in all of it is given up on rather than worked through; 5 000 objects compare
+  in a tenth of a second.
+
+  *Four findings about an initial value.*  `changed-storage` printed both inits whole, in
+  python's spelling: a `uint8[100000]` block with one element changed was one warning of
+  600 017 characters, in the text report and in the json, and the reader still had to find the
+  element that moved; a list read `(7, 7, 7, 8)` where the description file, `ddd list` and
+  the hover all write `[7, 7, 7, 8]`.  Both sides are json now, cut short past a few elements,
+  with the first index they part at named beside them.  Beside those, a list nested one level
+  too deep was refused as "init is a list but the object is a scalar" of an object declaring
+  `"dimensions": [2]` two lines above - the shape checks name the element they are judging now
+  - and `2.0` on a `boolean` was refused as "init value 2", a complaint about a whole number
+  nobody had written.
+
+  *An archived dictionary is held to what a description is held to.*  A dump's `format` was
+  read as whatever coerced to a number, so one stamped `"9"` or `9.0` went past the check that
+  refuses a dictionary from a newer DDD - there was nothing there to compare - and was then
+  coerced into the very 9 that check exists to refuse, comparing clean and "can replace"; `0`
+  and `-3` were accepted the same way.  It is a strict whole number of at least 1 now.  And
+  the dump was handed to a json parser with no hook for a key spelled twice, where every
+  description file goes through one that refuses it, so a baseline carrying `"name": "P",
+  "name": "Q"` read back as a delivery of a project the line above says it is not.  Both go
+  through one reader now.
+
+  **Migration:** three deliveries that used to compare clean now report an error, and each of
+  the three is a real change of what a consumer compiles against: a structure whose members
+  were reordered, a bitfield whose width changed, and a structured variable whose type was
+  renamed.  A project that means one of them accepts it the way it accepts any other, with
+  `-W changed-interface=warning` on that run.  `reused-name` fires in one arrangement more,
+  and relaxes with `-W reused-name=warning` as before.  In the other direction a comparison
+  reports less: a respelled `init` is no longer a change, and an edit to a structured
+  variable is one finding instead of one per member, so a script counting findings sees fewer
+  of them.  A dumped dictionary is unchanged and still format 8 - nothing DDD writes carries a
+  `format` that is not a number, or a key twice - but a file edited by hand into either is now
+  refused where it used to be read.  The `--renames` file is unchanged; the specification
+  spelled a member's id `<id>` followed by `.` and the member path, where the tool has always
+  written the access path, `abcdefghjkmn[0].a` with no `.` before the index, so a migration
+  script written from that sentence matched nothing and now has the spelling to key on.
+
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`
   through the c templates, a `SYSTEM_CONSTANT` in the a2l - whether or not a shape names it,

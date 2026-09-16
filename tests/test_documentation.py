@@ -1435,7 +1435,7 @@ class TestTheBuildIntegrationPage:
     CMAKE_MODULE = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
 
     def test_the_component_target_holds_back_what_the_registry_says(self) -> None:
-        """A hand-kept list of two checks silenced two of the ten; the flag derives them."""
+        """A hand-kept list of two checks silenced two of the nine; the flag derives them."""
         command = re.search(
             r"\$\{DDD_EXECUTABLE\} check \"\$\{description\}\"(.*?)\n", self.CMAKE_MODULE
         )

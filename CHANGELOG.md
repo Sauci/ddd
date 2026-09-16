@@ -709,6 +709,28 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   declaration whose type nobody declares hid the copied id along with itself, so the second
   half of one edit's mistake surfaced only once the first half was fixed.
 
+  *What is reported, and when.*  Five places where a run said less than it knew, or said it
+  twice.  `incomplete-project` - the trace a declaration leaves when the finding that dropped
+  it is silenced - was held back with the checks that need every component of a project, so a
+  component checked on its own with any *other* check relaxed lost a variable from `ddd list`
+  and `ddd dump` with nothing said at all, which is the one outcome the trace exists to
+  prevent.  It is no longer one of that set: a run handed a single file weighs the cause
+  instead and stays quiet only where it is itself the reason nobody reported it - a constant
+  declared in a file nobody handed over is not an omission, a `-W dimension-value=ignore`
+  is.  Two of its other appearances were wrong the other way round.  A declaration whose own
+  reference was refused *and reported* earned the trace as well, an info saying that the
+  cause is not reported filed beside the error that is the cause; it now says nothing, and
+  the object that did go in silence keeps the trace of its own.  And a text `init` on an
+  object that is not a string was refused only once the declaration resolved, so silencing
+  the unknown constant that sizes it silenced that too - it is a rule about the conversion,
+  and is now answered where the conversion is read, whatever the shape turns out to be.  The
+  second copy of a `duplicate-declaration` is finally what the checks page says it is,
+  ignored for the rest of the run: its unit, its section and its raster were still read, and
+  answered with findings the reader can only fix by deleting the copy the first finding
+  already names.  And a conflicting second copy of an enum screens the enumerators it adds,
+  which take an identifier in the shared types header like any others and used to take one
+  unscreened.
+
   **Migration:** a list `init` holding a quoted number or one of those words is now refused
   with a `schema` finding at the element that holds it, where it used to load, generate and
   dump.  Write the value without the quotes: `["1", "2"]` becomes `[1, 2]`.  A string object
@@ -729,7 +751,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   to expand in the directory the process happened to be in and now expands in the project's,
   the way the same spelling without the wildcard always did.  Each of the first two was
   already reported at the end of the run, as `unknown-raster` or `unknown-extension`; the
-  finding moves to where it is written and becomes a `schema` error.
+  finding moves to where it is written and becomes a `schema` error.  Nothing else accepted
+  before is refused now, and no exit code changes: what does change is the number of findings
+  a run prints.  A component read on its own - `ddd check --standalone`, a build's
+  per-component target, a file no build claims in an editor - reports one `incomplete-project`
+  info per declaration a relaxed check of the caller's own took out of the dictionary, where
+  it used to report none; a run that relaxes none is untouched.  A project run reports one
+  fewer wherever the object's own reference was refused and reported, and one more wherever a
+  text `init` sits on an object that is not a string and never resolved.
 
 * **Constants hold any number.**  A constant's `value` was an integer of at least 1, because
   a constant was thought of as a size; but every declared constant is emitted - a `#define`

@@ -206,10 +206,14 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l has no entry in the address map the run was given"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
+        # Not one of the checks a missing component makes wrong, although every one of those
+        # can be its cause: the analysis weighs the cause instead, and says nothing when the
+        # run is itself the reason nobody reported it - see ``_silenced_by_construction``.
+        # What is left is a declaration a caller's own ``-W`` took out of the dictionary,
+        # which is as true of a component read alone as of a whole project.
         _check("incomplete-project", Severity.INFO,
                "a declaration is missing from the dictionary and the finding that explains "
-               "why is not reported",
-               needs_every_component=True),
+               "why is not reported"),
         _check("missing-id", Severity.INFO,
                "a declaration that produces a variable states no identity for it"),
         _check("renamed-object", Severity.WARNING,
@@ -263,11 +267,12 @@ STANDALONE_POLICY: Final = tuple(
 """What is silenced for a component read on its own.
 
 The editor applies it to a file no build claims, and ``ddd check --standalone`` - which a
-build's per-component target runs - applies it under whatever ``-W`` the caller adds. A
-component read on its own has inputs nobody produces, outputs nobody reads and types, units,
-sections, constants and axes declared in files nobody handed over - all by construction rather
-than by mistake. Reporting those fills the run with findings whose only cause is what it was
-not shown, and buries the ones about the file in front of the reader.
+build's per-component target runs - applies it under whatever ``-W`` the caller adds, beside
+:attr:`SeverityPolicy.standalone`, which says that this is why they are silenced. A component
+read on its own has inputs nobody produces, outputs nobody reads and types, units, sections,
+constants and axes declared in files nobody handed over - all by construction rather than by
+mistake. Reporting those fills the run with findings whose only cause is what it was not
+shown, and buries the ones about the file in front of the reader.
 
 Derived from the registry rather than listed anywhere, because listing it is how this went
 wrong twice already: ``missing-producer`` was silenced and ``unused-output``, which is the same
@@ -403,8 +408,20 @@ class SeverityPolicy:
     strict: bool = False
     """Report warnings as errors."""
 
+    standalone: bool = False
+    """Whether this run was handed one component rather than the project it belongs to.
+
+    What :data:`STANDALONE_POLICY` silences is then silenced by the run itself rather than by
+    anybody's opinion of the check, and an analysis that reasons about a silenced finding has
+    to be able to tell the two apart: a declaration dropped because a constant lives in a file
+    nobody handed over is not an omission to report, where the same declaration dropped
+    because the caller relaxed ``dimension-value`` is exactly one.
+    """
+
     @classmethod
-    def from_strings(cls, values: Iterable[str], *, strict: bool = False) -> Self:
+    def from_strings(
+        cls, values: Iterable[str], *, strict: bool = False, standalone: bool = False
+    ) -> Self:
         """Build a policy from ``check=severity`` strings (as given on the command line)."""
         overrides: dict[str, Severity] = {}
         for value in values:
@@ -427,7 +444,7 @@ class SeverityPolicy:
                 msg = f"the severity of check '{name}' cannot be changed"
                 raise UnknownCheckError(msg)
             overrides[name] = _parse_severity(severity, name)
-        return cls(overrides, strict)
+        return cls(overrides, strict, standalone)
 
     @property
     def provisional(self) -> tuple[str, ...]:

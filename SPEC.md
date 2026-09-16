@@ -1198,13 +1198,19 @@ option is repeatable, and for one check the last override wins; `--strict` then 
 what is still a warning to an error. Overriding a check that cannot be relaxed is a usage
 error rather than a finding, as is naming an unknown check or severity.
 
-Ten checks need every component of a project to mean anything: `unknown-type`,
+Nine checks need every component of a project to mean anything: `unknown-type`,
 `unknown-unit`, `unknown-section`, `unknown-constant`, `unknown-raster`, `unknown-extension`,
-`missing-producer`, `unknown-reference`, `unused-output` and
-`incomplete-project`. Exactly these are the checks held back by `--standalone` - on
-`ddd check`, `ddd list` and `ddd dump` - by the CMake module's per-component target, which
-runs `ddd check --standalone` ([section 7](#7-tool-interface)), and by the language server
-for a file belonging to no project ([section 7.2](#72-editor-integration)).
+`missing-producer`, `unknown-reference` and `unused-output`. Exactly these are the checks
+held back by `--standalone` - on `ddd check`, `ddd list` and `ddd dump` - by the CMake
+module's per-component target, which runs `ddd check --standalone`
+([section 7](#7-tool-interface)), and by the language server for a file belonging to no
+project ([section 7.2](#72-editor-integration)).
+
+`incomplete-project` is not one of them, although every one of the nine can be its cause: a
+run that holds them back weighs the cause instead, and reports nothing where it is itself the
+reason nobody did - a declaration dropped because its constant lives in a file nobody handed
+over is not an omission. What is left is a declaration a caller's own `-W` took out of the
+dictionary, which is as true of a component read alone as of a whole project.
 
 A declaration dropped as unresolvable still counts for the ownership checks: a consumer of
 an object whose producing declaration was dropped is not `missing-producer`, an output
@@ -2026,7 +2032,7 @@ printing its own version (`ddd --version`). Beside the command line, the package
 a pre-commit hook, `ddd-id`, that runs `ddd id --assign` on the staged description files.
 The root handed to a command is a project or a single component file; a component alone is
 checked, listed and dumped with every check unless `--standalone` is given to `ddd check`,
-`ddd list` or `ddd dump`, which holds back the ten checks that need every component of a
+`ddd list` or `ddd dump`, which holds back the nine checks that need every component of a
 project ([section 4](#4-consistency-checks)), the
 same set the editor holds back ([section 7.2](#72-editor-integration)); an explicit `-W` on
 the same run still wins. Given a project root, `--standalone` holds the same checks back
@@ -2255,7 +2261,7 @@ description is checked as the project it is, under those same default severities
 its components, so every check has what it needs, and the checks that need the whole project
 are exactly the ones somebody opening a project file is asking about. A file
 belonging to no build, to no such project and declaring no project of its own is still
-checked, on its own, with the ten checks that
+checked, on its own, with the nine checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
 component read alone has inputs nobody produces and outputs nobody reads by construction
 rather than by mistake, and reporting those buries the findings that are about the file in

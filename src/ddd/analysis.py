@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from ddd.compare import ComparedField, differing, spell_out
-from ddd.diagnostics import DiagnosticBag, Location
+from ddd.diagnostics import CHECKS, DiagnosticBag, Location
 from ddd.ir import (
     ComponentDeclaration,
     DataDictionary,
@@ -645,6 +645,28 @@ def _nesting_depths(declared: dict[str, LoadedType]) -> tuple[dict[str, int], se
     return depths, cyclic
 
 
+def _repeats(loaded: LoadedComponent) -> dict[int, int]:
+    """Where a repeated declaration's name was first declared, by the repeat's own index.
+
+    A component declaring one name twice is ``duplicate-declaration``, and the second copy
+    is ignored for the rest of the run - by every check, which is what this answers for.
+    Decided on the name alone, before anything resolves: a second copy of a name whose first
+    copy could not resolve is still a second copy. Read by the checks that walk a component's
+    interface of their own - its units, its sections, its rasters - so that a copy nothing
+    reads is not answered with a list of mistakes in it, none of which the reader can fix
+    other than by deleting the copy the first finding already names.
+    """
+    first: dict[str, int] = {}
+    repeats: dict[int, int] = {}
+    for index, declaration in enumerate(loaded.component.interface):
+        name = declaration.definition.name
+        if name in first:
+            repeats[index] = first[name]
+        else:
+            first[name] = index
+    return repeats
+
+
 def _resolve_component(loaded: LoadedComponent, kept: set[tuple[str, int]]) -> ResolvedComponent:
     """The component and its interface, in the order the author wrote it.
 
@@ -734,12 +756,14 @@ class _Analysis:
         not unread. Erasing dropped declarations from the census made both findings fire,
         each pointing at the file the mistake was not in."""
         self._dropped: dict[tuple[str, int], bool] = {}
-        """The declarations that were dropped as unresolvable, and whether a finding said why.
+        """The declarations that were dropped as unresolvable, and whether the drop is explained.
 
-        ``True`` when the cause was reported at whatever severity, ``False`` when it was
-        silenced; a silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn
-        into ``incomplete-project``, because an absence nothing mentions is the one way this
-        tool is wrong without anybody being told."""
+        ``True`` when the cause was reported at whatever severity - or when this run is
+        itself the reason nobody reported it, which is what
+        :meth:`_silenced_by_construction` answers - and ``False`` when it was silenced; a
+        silenced cause is what :meth:`_refuse` and :meth:`_drop_for_type` turn into
+        ``incomplete-project``, because an absence nothing mentions is the one way this tool
+        is wrong without anybody being told."""
         self._refs: dict[str, list[DeclarationRef]] = defaultdict(list)
         self._effective: dict[str, DataObject] = {}
         """The definition that counts for each name: the producer's, once known."""
@@ -1070,7 +1094,10 @@ class _Analysis:
                 )
 
         for loaded in self._workspace.components:
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
+                if index in repeats:
+                    continue
                 check(
                     declaration.definition.unit,
                     loaded.declaration_location(index, "definition.unit"),
@@ -1098,10 +1125,11 @@ class _Analysis:
         """
         declared = {entry.section: entry.declared for entry in self._workspace.sections}
         for loaded in self._workspace.components:
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
                 definition = declaration.definition
                 named = definition.section
-                if named is None:
+                if named is None or index in repeats:
                     continue
                 where = loaded.declaration_location(index, "definition.section")
                 entry = declared.get(named)
@@ -1162,10 +1190,11 @@ class _Analysis:
                     f"raster any file of this project declares{nearest}",
                     loaded.location("component.raster"),
                 )
+            repeats = _repeats(loaded)
             for index, declaration in enumerate(loaded.component.interface):
                 definition = declaration.definition
                 named = definition.raster
-                if named is None or named in declared:
+                if named is None or named in declared or index in repeats:
                     continue
                 nearest = _did_you_mean(named, sorted(declared), cutoff=0.5)
                 self._bag.add(
@@ -1931,9 +1960,11 @@ class _Analysis:
         The drop is recorded against the declaration rather than the name, because a name may
         be declared by several components and only some of those declarations dropped.
         """
-        reported = self._bag.add(check, message, location, notes) is not None
-        self._dropped[ref.key] = self._dropped.get(ref.key, False) or reported
-        if reported:
+        explained = self._bag.add(check, message, location, notes) is not None or (
+            self._silenced_by_construction(check)
+        )
+        self._dropped[ref.key] = self._dropped.get(ref.key, False) or explained
+        if explained:
             return
         self._bag.add(
             "incomplete-project",
@@ -1942,6 +1973,23 @@ class _Analysis:
             f"reading the dictionary - the listing, the dump, every backend - carries it either",
             location,
         )
+
+    def _silenced_by_construction(self, check: str) -> bool:
+        """Whether this run is itself the reason nobody reported that check.
+
+        A component read on its own - ``ddd check --standalone``, a build's per-component
+        target, a file in an editor that no build claims - is not shown the files its
+        constants, types, sections and axes are declared in, so the checks about them are
+        silenced by :data:`~ddd.diagnostics.STANDALONE_POLICY` rather than by anybody's
+        opinion of them. A declaration dropped for one of those is not an omission: what it
+        names is there, in a file this run was not handed.
+
+        Every other silence is a caller's own ``-W``, and a declaration dropped for one of
+        those leaves the listing, the dump and every backend a row short - which is exactly
+        what ``incomplete-project`` exists to say, whether the run was given one component or
+        a whole project.
+        """
+        return self._bag.policy.standalone and CHECKS[check].needs_every_component
 
     def _shape_resolves(self, ref: DeclarationRef) -> bool:
         """Whether every constant this declaration's shape names is declared.
@@ -2219,8 +2267,9 @@ class _Analysis:
         dump and every backend, and the one place that can say so is this declaration.
         """
         cause = self._poisoned_types[named]
-        self._dropped[ref.key] = cause.reported
-        if cause.reported:
+        explained = cause.reported or self._silenced_by_construction(cause.check)
+        self._dropped[ref.key] = explained
+        if explained:
             return
         self._bag.add(
             "incomplete-project",
@@ -2306,13 +2355,13 @@ class _Analysis:
                 loaded.location(),
             )
 
-        seen: dict[str, DeclarationRef] = {}
+        repeats = _repeats(loaded)
         for index, declaration in enumerate(component.interface):
             original = DeclarationRef(loaded, index, declaration)
-            previous = seen.get(original.name)
-            if previous is not None:
-                # Decided on the name alone, before resolution: a second copy of a name whose
-                # first copy could not resolve is still a second copy.
+            if index in repeats:
+                previous = DeclarationRef(
+                    loaded, repeats[index], component.interface[repeats[index]]
+                )
                 self._bag.add(
                     "duplicate-declaration",
                     f"component '{component.name}' declares '{original.name}' twice "
@@ -2321,7 +2370,6 @@ class _Analysis:
                     notes=[("first declared here", previous.location())],
                 )
                 continue
-            seen[original.name] = original
             ref = self._resolve_type(original)
             # The resolved form goes into the census when there is one: ownership is decided
             # over the census, and what the owning declaration says the object is has to be
@@ -2446,8 +2494,28 @@ class _Analysis:
         4096 identical lines at one pointer, half a megabyte of text, and 4096 diagnostics on
         one range in the editor. No per-element pointer exists to lose, so the count and the
         values that differ say everything the list of them said.
+
+        Text is the one init this weighs without a number to weigh: only a string object
+        takes one, and that is a question about the conversion, which every declaration
+        answers whether or not its shape resolved. Left to :meth:`_check_string_init`, which
+        is reached only once the object is built, silencing the constant a dimension names
+        silenced this as well - and what an init says is wrong outside the datatype whatever
+        the shape turns out to be.
         """
         datatype = definition.storage
+        if isinstance(definition.init, str):
+            conversion = definition.conversion
+            assert conversion is not None  # a structured declaration refuses an init outright
+            if not isinstance(conversion, StringConversion):
+                self._bag.add(
+                    "init-invalid",
+                    f"'{definition.name}' is initialised with text, but its conversion is "
+                    f"{conversion.describe()}; only a string object takes a string init",
+                    location,
+                )
+            # The printable and terminator rules need the resolved length, so they stay with
+            # the shape, in :meth:`_check_string_init`.
+            return
         values = definition.scalar_values()
         if datatype is Datatype.BOOLEAN:
             # Spelled the way it was written, for the reason the integer case below is:
@@ -2535,7 +2603,7 @@ class _Analysis:
             return
         assert definition.conversion is not None
         low, high = conversion_range(definition.conversion, definition.storage)
-        self._check_limits_fit(definition.limits, low, high, definition.storage, location)
+        self._check_limits_fit(definition.limits, low, high, definition.storage.value, location)
 
     def _check_limits_fit(
         self, limits: Limits, low: float, high: float, phrase: str, location: Location
@@ -2563,9 +2631,19 @@ class _Analysis:
         known = self._enums.by_name.get(conversion.name)
         if known is None:
             self._enums.by_name[conversion.name] = (conversion, location)
+            if is_reserved_identifier(conversion.name):
+                self._bag.add(
+                    "reserved-identifier",
+                    f"enum name '{conversion.name}' is reserved by the c language",
+                    location,
+                )
             self._check_enum_names(conversion, location)
             self._check_enum_values(conversion, location, storage)
             return
+        # Whatever this copy says about the enum, the names it introduces reach the same
+        # header: a conflicting second copy carrying an enumerator the first has not got used
+        # to take that c identifier without anybody screening it.
+        self._check_enum_names(conversion, location)
         previous, previous_location = known
         if conversion_identity(previous) != conversion_identity(conversion):
             self._bag.add(
@@ -2586,14 +2664,16 @@ class _Analysis:
             self._enums.by_name[conversion.name] = (conversion, previous_location)
 
     def _check_enum_names(self, conversion: EnumConversion, location: Location) -> None:
-        """The enum type name and its enumerators become c identifiers in the types header."""
-        if is_reserved_identifier(conversion.name):
-            self._bag.add(
-                "reserved-identifier",
-                f"enum name '{conversion.name}' is reserved by the c language",
-                location,
-            )
+        """The enumerators of one copy of an enum become c identifiers in the types header.
+
+        Run for every copy, and for the names each of them introduces: a name this enum has
+        already registered is this enum's, however many components spell it out, so it is
+        passed over rather than reported as colliding with itself.
+        """
         for enumerator in conversion.enumerators:
+            previous = self._enums.enumerators.get(enumerator.name)
+            if previous is not None and previous[0] == conversion.name:
+                continue
             if is_reserved_identifier(enumerator.name):
                 self._bag.add(
                     "reserved-identifier",
@@ -2601,7 +2681,6 @@ class _Analysis:
                     f"by the c language",
                     location,
                 )
-            previous = self._enums.enumerators.get(enumerator.name)
             if previous is not None:
                 enum_name, previous_location = previous
                 self._bag.add(
@@ -2828,13 +2907,16 @@ class _Analysis:
                 silenced = next(((key, target) for key, target in gone if not absent[target]), None)
                 if silenced is not None and name not in self._dangling:
                     self._via[name] = silenced
-                # Every absent target weighed, not the first one met: a map over two absent
-                # axes is explained only if both of them were, or the key order of a
-                # definition would decide whether the map's own absence is ever said. A
-                # name's own refusals fold with any, because a reported refusal names the
-                # object itself, so it is never silently absent, while a half-explained
-                # absence through other objects is not explained.
-                explained = own.get(name, True) and all(absent[target] for _, target in gone)
+                # A name with a refusal of its own is answered by that refusal alone: it
+                # names the object itself, so the object is never silently absent, and a
+                # finding saying that the cause is not reported, filed beside the one that
+                # is, sends the reader looking for a silence that is not there.
+                #
+                # Without one, every absent target is weighed, not the first one met: a map
+                # over two absent axes is explained only if both of them were, or the key
+                # order of a definition would decide whether the map's own absence is ever
+                # said. Half explained is not explained.
+                explained = own[name] if name in own else all(absent[target] for _, target in gone)
                 if explained != absent[name]:
                     absent[name] = explained
                     settled = False
@@ -2849,10 +2931,12 @@ class _Analysis:
         requires, or some component does declare it and it was dropped - the fixpoint takes
         the referrer with it, and ``unknown-reference`` would claim that nobody declares the
         target, which is false. Otherwise the finding is written where the name is, and what
-        comes back is whether the bag reported it. A silenced refusal is the one the absence
-        report has to say out loud, so the reference and the check are kept for it - the
-        first silenced one, because a name is absent once however many of its references are
-        wrong, while each of those references is a mistake of its own and is reported.
+        comes back is whether the refusal is explained: reported by the bag, or silenced by
+        this run rather than by anybody's opinion of the check
+        (:meth:`_silenced_by_construction`). A silenced refusal is the one the absence report
+        has to say out loud, so the reference and the check are kept for it - the first
+        silenced one, because a name is absent once however many of its references are wrong,
+        while each of those references is a mistake of its own and is reported.
         """
         found = self._effective.get(target)
         if found is None:
@@ -2886,11 +2970,13 @@ class _Analysis:
         else:
             return None
         location = reference.location(f"definition.{key}")
-        reported = self._bag.add(check, message, location) is not None
-        if not reported:
+        explained = self._bag.add(check, message, location) is not None or (
+            self._silenced_by_construction(check)
+        )
+        if not explained:
             self._via.setdefault(definition.name, (key, target))
             self._dangling.setdefault(definition.name, check)
-        return reported
+        return explained
 
     def _check_local_reference(
         self,
@@ -3299,29 +3385,24 @@ class _Analysis:
         )
 
     def _check_string_init(self, ref: DeclarationRef, init: str, shape: Shape) -> None:
-        """A string init is the text of a string object, printable, with room for its zero.
+        """A string init is printable, with room for its terminating zero.
 
-        Three ways to be wrong, one identifier - ``init-invalid``, as every wrong init is.
-        The conversion is asked here rather than in the contract because a declaration
-        naming a scalar type only learns it from the type; the length is counted against the
-        resolved dimension, so a length spelled as a constant name is resolved first. The
-        content is printable ASCII, 0x20 to 0x7E, because neither the c literal nor the a2l
-        could carry anything else unambiguously; and the text is shorter than the array so
-        that the terminating zero fits - a string that exactly fills its array is legal c,
-        refused by C++, and indistinguishable in the generated file from one that was meant
-        to be terminated.
+        Two ways to be wrong, one identifier - ``init-invalid``, as every wrong init is - and
+        both need the resolved length, which is why they are here rather than in the contract:
+        a length spelled as a constant name is resolved first. The content is printable ASCII,
+        0x20 to 0x7E, because neither the c literal nor the a2l could carry anything else
+        unambiguously; and the text is shorter than the array so that the terminating zero
+        fits - a string that exactly fills its array is legal c, refused by C++, and
+        indistinguishable in the generated file from one that was meant to be terminated.
+
+        That the object takes a string init at all is :meth:`_check_init`'s: it is a question
+        about the conversion, and one this is in no position to ask, because a declaration
+        whose shape did not resolve never gets here.
         """
         conversion = ref.definition.conversion
-        assert conversion is not None  # a structured declaration refuses an init before this
         location = ref.location("definition.init")
         if not isinstance(conversion, StringConversion):
-            self._bag.add(
-                "init-invalid",
-                f"'{ref.name}' is initialised with text, but its conversion is "
-                f"{conversion.describe()}; only a string object takes a string init",
-                location,
-            )
-            return
+            return  # reported where the conversion is read, whatever the shape came to
         unprintable = sorted({character for character in init if not " " <= character <= "~"})
         if unprintable:
             spelled = ", ".join(f"U+{ord(character):04X}" for character in unprintable)

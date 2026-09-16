@@ -74,6 +74,29 @@ class TestProducersAndConsumers:
         assert "duplicate-declaration" in checks(bag)
         assert "declares 'X' twice (as output and as input)" in messages(bag)
 
+    def test_the_second_declaration_is_ignored_by_every_check(self, tree: Path) -> None:
+        """ "Ignored for the rest of the run" was only mostly true.
+
+        The three checks that walk a component's interface of their own - its units, its
+        sections and its rasters - walked the repeat as well, so a copied declaration was
+        answered with a list of mistakes in a declaration the run does not read, none of
+        which the reader can fix other than by deleting the copy the first finding names.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "units.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "units.ddd.json": {"units": [{"unit": "rpm"}]},
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "X", unit="rpm"),
+                    declare("input", "X", unit="nope", section=".nowhere", raster="never"),
+                ),
+                "b.ddd.json": component("B", declare("input", "X", unit="rpm")),
+            },
+        )
+        assert checks(bag) == ["duplicate-declaration"], messages(bag)
+
 
 class TestDefinitionAgreement:
     def test_datatype_mismatch(self, tree: Path) -> None:
@@ -658,6 +681,43 @@ class TestEnums:
         assert where is not None
         assert where.path.name == "a.ddd.json"
 
+    def test_a_conflicting_copy_screens_the_enumerators_it_adds(self, tree: Path) -> None:
+        """Only the first registration used to screen its enumerators.
+
+        The names of a second copy reach the same header, so an enumerator only that copy
+        introduces takes a c identifier like any other - and took it in silence, because the
+        conflict returned before the screening.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", conversion=self.enum(("OFF", 0), ("ON", 1)))
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare(
+                        "local", "Y", conversion=self.enum(("OFF", 0), ("ON", 1), ("EXTRA", 2))
+                    ),
+                ),
+                "c.ddd.json": component("C", declare("local", "EXTRA")),
+            },
+        )
+        assert checks(bag) == ["enum-conflict", "name-collision"], messages(bag)
+        assert "'EXTRA' is declared as a variable and is also an enumerator" in messages(bag)
+
+    def test_an_identical_copy_collides_with_nothing(self, tree: Path) -> None:
+        """Screening the second copy must not report its enumerators against its own."""
+        _, bag = run_analysis(
+            tree,
+            two_components(
+                a=[declare("output", "X", conversion=self.enum(("OFF", 0)))],
+                b=[declare("input", "X", conversion=self.enum(("OFF", 0)))],
+            ),
+        )
+        assert checks(bag) == []
+
     def test_a_value_outside_the_datatype_and_the_c_int_is_reported_once(self, tree: Path) -> None:
         """The c int bound only covers values the datatype holds; one bad value, one finding."""
         _, bag = run_analysis(
@@ -1166,6 +1226,32 @@ class TestDroppedDeclarations:
         assert "'Gain' is not in the data dictionary: its axis 'Ax' did not resolve" in rendered
         assert "a.ddd.json#component.interface[1].definition.axis" in rendered
 
+    def test_a_reported_refusal_of_its_own_needs_no_second_finding(self, tree: Path) -> None:
+        """An object refused for its own reference is not one that went in silence.
+
+        Its own refusal was folded in with the targets': ``Az`` names a curve as its input,
+        which is reported, and the curve was absent for a silenced reason, so the name was
+        judged half explained and earned the trace as well - an error and an info at one key,
+        the second saying that the cause is not reported while the first one is it.
+        """
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Ax", "uint16", kind="axis", size="MISSING"),
+                    declare("local", "Cv", "uint16", kind="curve", axis="Ax"),
+                    declare("local", "Az", "uint16", kind="axis", size=4, input="Cv"),
+                ),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        assert checks(bag) == ["incomplete-project", "reference-kind", "incomplete-project"]
+        rendered = messages(bag)
+        assert "the input of axis 'Az' must be of kind 'measurement'" in rendered
+        assert "'Az' is not in the data dictionary" not in rendered
+
     def test_a_reported_cause_drops_the_referring_object_silently(self, tree: Path) -> None:
         """The unknown-constant already says the axis went; the curve needs no second finding."""
         _, bag = run_analysis(
@@ -1387,12 +1473,15 @@ class TestDanglingReferences:
         assert dictionary is not None and dictionary.objects == ()
         assert checks(bag) == ["unknown-reference"]
 
-    def test_a_map_over_a_dangling_and_an_absent_axis_says_the_silenced_one(
-        self, tree: Path
-    ) -> None:
+    def test_a_map_whose_own_reference_is_reported_needs_nothing_further(self, tree: Path) -> None:
         """Absent twice over: its x_axis names nothing, which is reported, and its y_axis
-        went silently. Half explained is not explained, and the finding sits at the axis
-        nothing else mentions."""
+        went silently.
+
+        The reported refusal names the map itself, so the map is not a variable that went
+        without a word - and the trace beside it read as one, an info saying that the cause
+        is not reported filed at a declaration whose cause is an error two keys away. The
+        axis that did go in silence keeps its own trace, which is where the silence is.
+        """
         _, bag = run_analysis(
             tree,
             {
@@ -1407,8 +1496,8 @@ class TestDanglingReferences:
         )
         rendered = messages(bag)
         assert "unknown-reference" in rendered
-        assert "'M' is not in the data dictionary: its y_axis 'Ay' did not resolve" in rendered
-        assert "a.ddd.json#component.interface[1].definition.y_axis" in rendered
+        assert "the declaration of 'Ay' by component 'A' is not in the data dictionary" in rendered
+        assert "'M' is not in the data dictionary" not in rendered
 
     def test_a_silenced_dangling_reference_outweighs_a_reported_absence(self, tree: Path) -> None:
         """The same map the other way round: what nobody reported is the reference that names
@@ -1729,6 +1818,37 @@ class TestStringInit:
         )
         assert found == ["init-invalid"]
         assert "initialised with text, but its conversion is linear(factor=0.25, offset=0)" in text
+
+    def test_a_text_init_on_a_number_is_refused_whatever_the_shape_turns_out_to_be(
+        self, tree: Path
+    ) -> None:
+        """The rule is about the conversion, so it is answered where the conversion is read.
+
+        Asked only of a declaration that resolved, it was silenced along with the constant
+        nobody declares: the shape decided whether the tool said anything about an init that
+        is wrong however many elements there are.
+        """
+        _, found, text = self.one(
+            tree, declare("local", "Trend", "uint8", dimensions=["NOPE"], init="text")
+        )
+        assert found == ["unknown-constant", "init-invalid"], text
+        assert "'Trend' is initialised with text, but its conversion is identity" in text
+
+    def test_silencing_the_unknown_constant_does_not_silence_the_text_init(
+        self, tree: Path
+    ) -> None:
+        dictionary, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Trend", "uint8", dimensions=["NOPE"], init="text")
+                ),
+            },
+            severities=["unknown-constant=ignore"],
+        )
+        assert dictionary is not None and dictionary.objects == ()
+        assert checks(bag) == ["incomplete-project", "init-invalid"], messages(bag)
 
     def test_bytes_and_text_disagree(self, tree: Path) -> None:
         """A byte array in one component and a string in another is a mismatch, as written."""

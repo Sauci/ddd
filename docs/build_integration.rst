@@ -81,7 +81,7 @@ holds back the checks that need every component of the project: a component in i
 nobody on the other side of its interface, and the types, units, sections, constants and
 rasters it names may live in files the supplier does not have. Which checks those are is
 declared in the registry - ``ddd checks`` marks each one ``(project)``, and
-:doc:`editor_integration` names the ten the editor holds back for the same reason - and
+:doc:`editor_integration` names the nine the editor holds back for the same reason - and
 everything else, from datatypes and conversions to initial values and bitfields, is verified
 as usual.
 

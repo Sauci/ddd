@@ -194,11 +194,17 @@ definition not part of the file:
    $ ddd check examples/demo/components/controller.ddd.json --standalone
    ok: 14 variables in 1 component are consistent
 
-``--standalone`` is that policy, and the whole of it. It holds back the ten checks that need
-every component of a project - ``incomplete-project``, ``missing-producer``,
-``unknown-constant``, ``unknown-extension``, ``unknown-raster``, ``unknown-reference``,
-``unknown-section``, ``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches
-nothing else, so everything DDD can decide from the file in front of it is still reported.
+``--standalone`` is that policy, and the whole of it. It holds back the nine checks that need
+every component of a project - ``missing-producer``, ``unknown-constant``,
+``unknown-extension``, ``unknown-raster``, ``unknown-reference``, ``unknown-section``,
+``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches nothing else, so
+everything DDD can decide from the file in front of it is still reported. A declaration one
+of the nine drops is left out of the dictionary in silence as well, because
+``incomplete-project`` - the trace a dropped declaration leaves when the finding that says
+why is silenced - has nothing to say where the missing file is the reason: the constant, the
+raster or the type is declared, in a file this run was not handed. The trace stays for the
+other cause it has, a check the caller's own ``-W`` relaxed, which takes a variable out of
+``ddd list`` and ``ddd dump`` whether the run was given one component or a whole project.
 Whether a check needs the whole project is stated where the check itself is - ``ddd checks``
 marks each one ``(project)`` - and that is what keeps this set, the one the language server
 holds back for a file no build claims (see :doc:`editor_integration`) and the one the
@@ -211,12 +217,12 @@ back with ``--standalone -W unused-output=warning``. ``ddd list`` and ``ddd dump
 flag as well: a component that names its project's vocabulary, or carries the block of a
 plugin only its project loads, is listed or dumped on its own under the same policy.
 
-Naming the overrides by hand instead is the mistake the flag exists to end. Two of the ten are
-about the other side of the interface; the other eight are about names the component uses and
-the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a
-plugin's ``extensions`` block, an axis or an input quantity another component declares, and the
-declaration DDD then has to drop. A component using the vocabulary of its project meets the
-second group at once:
+Naming the overrides by hand instead is the mistake the flag exists to end. Two of the nine
+are about the other side of the interface; the other seven are about names the component uses
+and the file it lives in does not carry - a type, a unit, a section, a constant, a raster, a
+plugin's ``extensions`` block, an axis or an input quantity another component declares, and
+the declaration DDD then has to drop. A component using the vocabulary of its project meets
+the second group at once:
 
 .. code-block:: text
 

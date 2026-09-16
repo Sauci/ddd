@@ -1582,7 +1582,9 @@ def _analyze(
     # The standalone policy goes first, so that an explicit -W on the same run overrides it:
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
-    policy = SeverityPolicy.from_strings([*standalone, *args.severity], strict=args.strict)
+    policy = SeverityPolicy.from_strings(
+        [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
+    )
     bag = DiagnosticBag(policy)
     workspace = load_workspace(args.project, bag)
     if workspace is None:
@@ -1697,7 +1699,7 @@ def _read_baseline(path: Path, bag: DiagnosticBag, standalone: bool = False) -> 
     about how the file was handed over, and the baseline was handed over the same way.
     """
     floor = STANDALONE_POLICY if standalone else ()
-    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False))
+    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
     resolved = _read_dictionary(path, own)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:

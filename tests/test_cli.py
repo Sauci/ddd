@@ -43,7 +43,7 @@ from ddd.models.common import OBJECT_ID_PATTERN
 class TestStandalone:
     """A component checked on its own is judged by what one file can decide.
 
-    Ten checks need every component of a project; the language server holds them back for a
+    Nine checks need every component of a project; the language server holds them back for a
     file no build claims, and a build's per-component target has to do the same instead of
     hand-listing two of them.
     """
@@ -74,6 +74,42 @@ class TestStandalone:
         remaining = {entry["check"] for entry in json.loads(capsys.readouterr().out)["diagnostics"]}
         assert not remaining & held_back
         assert remaining == reported - held_back
+
+    def test_a_cause_the_absent_project_explains_leaves_no_trace(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A shape named by a constant the project declares is a drop the flag is about."""
+        assert main(["check", str(self.PUMP), "--standalone"]) == EXIT_OK
+        assert "incomplete-project" not in capsys.readouterr().err
+
+    def test_a_silenced_cause_that_needs_no_project_still_says_what_went(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--standalone`` is about what the file was not shown, not about what it says.
+
+        ``incomplete-project`` was silenced with the nine, so a check the caller relaxed took
+        a variable out of the listing and the dump with nothing said at all - the very
+        outcome the trace exists to prevent, and the one the flag has no business hiding: the
+        constant is the component's own, and its value is wrong wherever the rest of the
+        project is.
+        """
+        write_tree(
+            tree,
+            {
+                "c.ddd.json": component(
+                    "C",
+                    declare("local", "Trend", "uint8", dimensions=["ZERO"]),
+                    constants=[{"name": "ZERO", "value": 0}],
+                )
+            },
+        )
+        code = main(
+            ["check", str(tree / "c.ddd.json"), "--standalone", "-W", "dimension-value=ignore"]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK
+        assert "info[incomplete-project]" in captured
+        assert "the dimension-value that says why is not reported" in captured
 
     def test_an_explicit_override_still_wins(self, capsys: pytest.CaptureFixture[str]) -> None:
         """``--standalone`` sets the floor; ``-W`` on the same run says what the caller wants."""
